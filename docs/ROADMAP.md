@@ -221,10 +221,11 @@ now selects operation-scoped bounded APIs and fixes step, stack-depth,
 interruption, queue, and diagnostic semantics.
 Stage 4 implementation is in progress. Private execution-control state,
 statement/expression observations, the public policy and interruption handle,
-and bounded evaluation are implemented. The bounded JSON-call slice now covers
-lookup and target execution through the stable facade on all four targets.
-Bounded queue checkpoints, complete activation/native-loop accounting, and the
-permanent final acceptance gate remain pending.
+and bounded evaluation are implemented. The bounded JSON-call slice covers
+lookup and target execution, and the bounded microtask-checkpoint slice now
+observes queue dispatch before selection and preserves at-most-once FIFO state.
+The bounded timer checkpoint, complete activation/native-loop accounting, and
+the permanent final acceptance gate remain pending.
 
 ### 3. Inject host-owned JSON data — implemented
 

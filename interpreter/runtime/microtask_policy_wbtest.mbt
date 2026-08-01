@@ -44,6 +44,54 @@ fn expect_invalid_microtask_policy_transition(
 }
 
 ///|
+test "rejected first dispatch observation does not select a job" {
+  let queue = [microtask_policy_test_job("A"), microtask_policy_test_job("B")]
+  let policy = MicrotaskQueuePolicy(queue)
+  assert_true(policy.readiness() is MicrotaskObservationRequired)
+  policy.reject_dispatch_observation()
+  json_inspect(microtask_policy_test_queue_ids(queue), content=["A", "B"])
+  expect_invalid_microtask_policy_transition("select_next requires Ready", () => {
+    let _ = policy.select_next()
+  })
+  let retry = MicrotaskQueuePolicy(queue)
+  inspect(microtask_policy_test_id(retry.select_next()), content="A")
+}
+
+///|
+test "rejected later dispatch retains only unselected jobs" {
+  let queue = [
+    microtask_policy_test_job("A"),
+    microtask_policy_test_job("B"),
+    microtask_policy_test_job("C"),
+  ]
+  let policy = MicrotaskQueuePolicy(queue)
+  assert_true(policy.readiness() is MicrotaskObservationRequired)
+  inspect(microtask_policy_test_id(policy.select_next()), content="A")
+  policy.complete_selected()
+  assert_true(policy.readiness() is MicrotaskObservationRequired)
+  policy.reject_dispatch_observation()
+  json_inspect(microtask_policy_test_queue_ids(queue), content=["B", "C"])
+}
+
+///|
+test "empty microtask readiness requires no observation" {
+  let queue : Array[Microtask] = []
+  let policy = MicrotaskQueuePolicy(queue)
+  assert_true(policy.readiness() is MicrotaskQueueEmpty)
+  policy.complete_drain()
+}
+
+///|
+test "microtask readiness rejects non-ready phases" {
+  let queue = [microtask_policy_test_job("A")]
+  let policy = MicrotaskQueuePolicy(queue)
+  let _ = policy.select_next()
+  expect_invalid_microtask_policy_transition("readiness requires Ready", () => {
+    let _ = policy.readiness()
+  })
+}
+
+///|
 test "microtask policy selects jobs in FIFO order" {
   let queue = [microtask_policy_test_job("A"), microtask_policy_test_job("B")]
   let policy = MicrotaskQueuePolicy(queue)

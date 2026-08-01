@@ -6,10 +6,11 @@ Date: 2026-07-26
 
 Accepted for staged implementation. Private execution-control state transitions
 and statement/expression dispatch observation are implemented internally.
-Public bounded-evaluation and bounded JSON-call slices now provide a validated
-operation-scoped budget/depth policy and host-owned monotonic interruption.
-Bounded queue checkpoints and complete execution accounting remain deferred.
-Existing unbounded operations retain their compatibility behavior.
+Public bounded-evaluation, bounded JSON-call, and bounded microtask-checkpoint
+slices now provide a validated operation-scoped budget/depth policy and
+host-owned monotonic interruption. The bounded timer checkpoint and complete
+execution accounting remain deferred. Existing unbounded operations retain
+their compatibility behavior.
 
 ## Context
 
