@@ -3772,6 +3772,58 @@ test "RegExp exec observes lastIndex coercion and strict writes" {
 }
 
 ///|
+test "RegExp exec retains parsed matcher semantics across repeated calls" {
+  let src =
+    #|var re = /(?<first>a)(b)/gu;
+    #|var first = re.exec("😀abxab");
+    #|console.log(first.index + ":" + first[0] + ":" + first[1] + ":" + first[2] + ":" + first.groups.first);
+    #|console.log(re.lastIndex);
+    #|var second = re.exec("😀abxab");
+    #|console.log(second.index + ":" + second[0] + ":" + re.lastIndex);
+    #|var sticky = /a/y;
+    #|sticky.lastIndex = 1;
+    #|console.log(sticky.exec("ba")[0] + ":" + sticky.lastIndex);
+    #|sticky.lastIndex = 0;
+    #|console.log(sticky.exec("ba") === null);
+    #|console.log(sticky.lastIndex);
+    #|var dot = /./gu;
+    #|console.log(dot.exec("😀x")[0].length + ":" + dot.lastIndex);
+    #|console.log(dot.exec("😀x")[0] + ":" + dot.lastIndex);
+    #|var compiled = /x/g;
+    #|console.log(compiled.compile("z", "u") === compiled);
+    #|console.log(compiled.source + ":" + compiled.flags + ":" + compiled.exec("z")[0]);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "2:ab:a:b:a", "4", "5:ab:7", "a:2", "true", "0", "2:2", "x:3", "true",
+    "z:u:z",
+  ])
+}
+
+///|
+test "RegExp compile failure preserves the complete prior matcher state" {
+  let src =
+    #|var re = /a/g;
+    #|try { re.compile("[", "g"); } catch (e) { console.log(e instanceof SyntaxError); }
+    #|console.log(re.source + ":" + re.flags);
+    #|console.log(re.exec("a")[0] + ":" + re.lastIndex);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "a:g", "a:1"])
+}
+
+///|
+test "RegExp private matcher state is invisible to reflective own-key APIs" {
+  let src =
+    #|var re = /a/g;
+    #|console.log(Reflect.ownKeys(re).join(","));
+    #|console.log(Object.getOwnPropertySymbols(re).length);
+    #|var match = re.exec("a");
+    #|console.log(Reflect.ownKeys(match).join(","));
+    #|console.log(Object.getOwnPropertySymbols(match).length);
+  let output = run_output(src)
+  json_inspect(output, content=["lastIndex", "0", "0,length,index,input,groups", "0"])
+}
+
+///|
 test "RegExp Symbol.search saves lastIndex and honors custom exec" {
   let src =
     #|var duringExec;
