@@ -41,7 +41,7 @@ fn PreparedExecutorActivation::PreparedExecutorActivation(
   env~ : Environment,
   args~ : Array[Value],
 ) -> PreparedExecutorActivation {
-  { ctx, env, args }
+  { ctx, env, args: args.copy() }
 }
 
 ///|
@@ -130,24 +130,6 @@ pub fn ExecutorCallableData::start_frame(
 // semantics, while the caller may push the private frame returned by
 // `start_frame` instead of invoking the synchronous compatibility adapter.
 pub fn Interpreter::prepare_executor_callable_call(
-  self : Interpreter,
-  executable : ExecutorCallableData,
-  callee : Value,
-  this_value : Value,
-  args : Array[Value],
-) -> PreparedExecutorActivation raise Error {
-  // The exported preparation seam may outlive its caller's mutable array.
-  // Snapshot exactly once before handing ownership to the prepared result.
-  self.prepare_executor_callable_call_owned(
-    executable,
-    callee,
-    this_value,
-    args.copy(),
-  )
-}
-
-///|
-fn Interpreter::prepare_executor_callable_call_owned(
   self : Interpreter,
   executable : ExecutorCallableData,
   callee : Value,
@@ -345,7 +327,7 @@ fn Interpreter::run_executor_function(
       let prepared = self.prepare_executor_activation(
         callee,
         instance,
-        args.copy(),
+        args,
         executable.params,
         executable.rest_param,
         executable.closure,
@@ -360,10 +342,7 @@ fn Interpreter::run_executor_function(
         instance,
       )
     } else {
-      // `call_value` transfers this per-call argument array into the synchronous
-      // adapter. #631's explicit call request will likewise own its array, so
-      // the internal path need not duplicate it before starting the frame.
-      let prepared = self.prepare_executor_callable_call_owned(
+      let prepared = self.prepare_executor_callable_call(
         executable, callee, this_value, args,
       )
       executor_call_completion(
