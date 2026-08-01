@@ -820,6 +820,188 @@ test "ordinary bytecode call normalizes fallthrough and arrow expression results
 }
 
 ///|
+test "bytecode construct recursion reaches the synchronous constructor boundary" {
+  let source = "function Step(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Step(n - 1); " +
+    "this.value = child.value + 1; }\n" +
+    "new Step(320).value;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_construct = false
+  for instr in lowered.main.code {
+    match instr {
+      Construct(_, _) => saw_root_construct = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_construct)
+  let mut saw_step_child = false
+  let mut saw_child_construct = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "Step" => {
+        saw_step_child = true
+        for instr in child.code {
+          match instr {
+            Construct(_, _) => saw_child_construct = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_step_child)
+  assert_true(saw_child_construct)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode mutual constructor recursion stays on the activation stack" {
+  let source = "function Left(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Right(n - 1); " +
+    "this.value = child.value + 1; }\n" +
+    "function Right(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Left(n - 1); " +
+    "this.value = child.value + 1; }\n" +
+    "new Left(320).value;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode construct suspension preserves setup and completion semantics" {
+  let source = "var closed = 5;\n" +
+    "function C(a, b) { " +
+    "this.sum = a + b + closed; " +
+    "this.same = new.target === C; " +
+    "if (a === 1) return { replaced: 9 }; " +
+    "return 7; }\n" +
+    "var kept = new C(2, 3); " +
+    "var replacement = new C(1, 2); " +
+    "kept.sum + (kept.same ? 100 : 0) + " +
+    "(Object.getPrototypeOf(kept) === C.prototype ? 10 : 0) + " +
+    "replacement.replaced;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="129")
+}
+
+///|
+test "bytecode construct evaluates operands once before suspended entry" {
+  let source = "var log = ''; var entered = 0;\n" +
+    "function C(a, b) { entered = entered + 1; log = log + 'b'; " +
+    "this.value = a + b; }\n" +
+    "function arg(value) { log = log + value; return 1; }\n" +
+    "new (log = log + 'c', C)(arg('a'), arg('z'));\n" +
+    "log + ':' + entered;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="cazb:1")
+}
+
+///|
+test "bytecode construct abrupt argument prevents suspended body entry" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var entered = 0; var marker = {};\n" +
+    "function C(value) { entered = entered + 1; this.value = value; }\n" +
+    "function boom() { throw marker; }\n" +
+    "function invoke() { new C(boom()); }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invoke(); } catch (error) { caught = error === marker; } " +
+      "caught && entered === 0;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode nested constructor throw releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {};\n" +
+    "function Inner() { throw marker; }\n" +
+    "function Outer() { new Inner(); }\n" +
+    "function invokeThrow() { new Outer(); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf().value; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invokeThrow(); } catch (error) { caught = error === marker; } " +
+      "caught ? laterLeaf() : -1;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode constructor depth rejection releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var innerEntered = 0;\n" +
+    "function Inner() { innerEntered = innerEntered + 1; }\n" +
+    "function Outer() { new Inner(); }\n" +
+    "function invokeDepth() { new Outer(); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf().value; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let result = interp.run_bounded(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invokeDepth(); } catch (error) { caught = true; } " +
+      "caught && innerEntered === 0 ? laterLeaf() : -1;",
+    ).stmts,
+    policy,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode construct keeps residual constructor families synchronous" {
+  let source = "function C(x) { this.x = x; }\n" +
+    "var Bound = C.bind(null, 4);\n" +
+    "var proxyCalls = 0;\n" +
+    "var ProxyCtor = new Proxy(C, { construct: function(target, args) { " +
+    "proxyCalls = proxyCalls + 1; return { x: args[0] + 1 }; } });\n" +
+    "var boundValue = new Bound();\n" +
+    "var proxyValue = new ProxyCtor(5);\n" +
+    "var nativeValue = new Object(7);\n" +
+    "boundValue.x + proxyValue.x + proxyCalls + Number(nativeValue);"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="18")
+}
+
+///|
 test "executor-neutral bytecode activation preserves construct and new.target" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(

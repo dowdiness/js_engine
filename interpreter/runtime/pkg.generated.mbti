@@ -81,6 +81,8 @@ pub fn execution_control_failure_code(Error) -> String?
 
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
+pub fn executor_activation_construct(Value, Array[Value], @token.Loc) -> ExecutorActivationStep
+
 pub fn executor_activation_continue() -> ExecutorActivationStep
 
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
@@ -585,6 +587,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationNormal(Value)
   ExecutorActivationReturn(Value)
   ExecutorActivationCall(ExecutorCallRequest)
+  ExecutorActivationConstruct(ExecutorConstructRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -598,6 +601,10 @@ pub fn ExecutorCallableData::is_constructable(Self) -> Bool
 pub fn ExecutorCallableData::length(Self) -> Int
 pub fn ExecutorCallableData::name(Self) -> String
 pub fn ExecutorCallableData::start_frame(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
+
+pub struct ExecutorConstructRequest {
+  // private fields
+}
 
 pub(all) struct FuncData {
   name : String?
