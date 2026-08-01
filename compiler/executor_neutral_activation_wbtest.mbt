@@ -177,6 +177,21 @@ test "spread bytecode final invocation keeps tree and native fallbacks" {
 }
 
 ///|
+test "spread bytecode non-receiver calls preserve strict and sloppy this" {
+  let source = "var strict_seen = false; var sloppy_seen = false;\n" +
+    "function strict_child() { 'use strict'; " +
+    "strict_seen = this === undefined; }\n" +
+    "function sloppy_child() { sloppy_seen = this === globalThis; }\n" +
+    "strict_child(...[]); sloppy_child(...[]);\n" +
+    "strict_seen && sloppy_seen;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "spread lowering keeps receiver construct and direct-eval opcodes residual" {
   let lowered = parse_bytecode_for_wb(
     "var obj = { call: function() {} }; var xs = []; " +
