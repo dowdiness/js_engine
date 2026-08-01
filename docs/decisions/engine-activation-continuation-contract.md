@@ -19,8 +19,8 @@ entering guest code is stack-safe.
 The public workload and evidence-ownership boundary for the permanent #619
 gate is recorded in the [stack-safe public workload contract](stack-safety-public-workload-contract.md).
 That contract keeps the exact #630 slices and #614 phase-isolation evidence
-required while naming the #616 mixed workload and success-valued 512-comma
-runtime case as deferred #608 graduation evidence.
+required, graduates the direct-comma 512 workload under #772, and retains the
+#616 mixed workload as deferred #608 graduation evidence.
 
 #630 applies the general model below to a conservatively admitted set of exact
 recipes. Admission and runtime provenance checks establish the complete managed

@@ -10,7 +10,6 @@ CONSUMER_PACKAGE="$ROOT_DIR/integration/external_consumer/moon.pkg"
 CONSUMER_SUITE="$ROOT_DIR/integration/external_consumer/stack_safety_test.mbt"
 BOUNDED_SUITE="$ROOT_DIR/integration/external_consumer/bounded_eval_test.mbt"
 ACTIVATION_SUITE="$ROOT_DIR/interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt"
-DEFERRED_SUITE="$ROOT_DIR/interpreter/stack_safety_deferred_test.mbt"
 CHECK_ONLY=false
 
 if [[ ${1:-} == "--check-only" ]]; then
@@ -115,10 +114,15 @@ selected_suites=(
 )
 for suite in "${selected_suites[@]}"; do
   [[ -f "$suite" ]] || fail "selected stack-safety suite is missing: ${suite#"$ROOT_DIR/"}"
-  if grep -Eq '#skip|nested_comma_source\(512, "7"\)' "$suite"; then
-    fail "selected stack-safety suite contains deferred #608 runtime coverage: ${suite#"$ROOT_DIR/"}"
+  if grep -Eq '#skip' "$suite"; then
+    fail "selected stack-safety suite contains a skipped test: ${suite#"$ROOT_DIR/"}"
   fi
 done
+
+grep -Fq 'nested_comma_source(512, "7")' "$ROOT_DIR/interpreter/stack_safety_test.mbt" ||
+  fail 'engine selected suite omits the required 512-comma workload'
+grep -Fq 'nested_comma_source(512, "7")' "$CONSUMER_SUITE" ||
+  fail 'external-consumer selected suite omits the required 512-comma workload'
 
 for suite in \
   'interpreter/stack_safety_test.mbt' \
@@ -133,15 +137,6 @@ grep -Fq '(cd integration/external_consumer' "$MAKEFILE" ||
 grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt' "$MAKEFILE" ||
   fail 'focused Make target does not select both external-consumer suites'
 
-[[ -f "$DEFERRED_SUITE" ]] || fail 'deferred #608 suite is missing'
-grep -Fq '#skip("blocked by #608 runtime evaluator stack safety")' "$DEFERRED_SUITE" ||
-  fail 'deferred #608 suite no longer records its skip reason'
-grep -Fq 'nested_comma_source(512, "7")' "$DEFERRED_SUITE" ||
-  fail 'deferred #608 suite no longer records the deferred workload'
-if grep -Fq 'stack_safety_deferred_test.mbt' "$MAKEFILE"; then
-  fail 'deferred #608 suite was admitted to the focused Make target'
-fi
-
 grep -Fq 'import {' "$CONSUMER_PACKAGE" ||
   fail 'external-consumer package manifest is missing its facade import'
 grep -Fq '"dowdiness/js_engine"' "$CONSUMER_PACKAGE" ||
@@ -150,8 +145,8 @@ grep -Fq '"dowdiness/js_engine"' "$CONSUMER_PACKAGE" ||
 if grep -Eq 'NODE_OPTIONS|--stack-size|stack_size|stack-size' "$WORKFLOW" "$MAKEFILE"; then
   fail 'host stack-size override found in the permanent gate'
 fi
-if grep -Eq 'step\([^)]*,|nested_comma_source\(512, "7"\)' "$CONSUMER_SUITE"; then
-  fail 'deferred #608 runtime workload was admitted to the public gate'
+if grep -Eq 'step\([^)]*,' "$CONSUMER_SUITE"; then
+  fail 'deferred #608 mixed call-plus-expression workload was admitted to the public gate'
 fi
 
 if [[ "$CHECK_ONLY" == true ]]; then
@@ -228,7 +223,6 @@ copy_fixture() {
   cp \
     "$ROOT_DIR/interpreter/runtime/execution_control_dispatch_wbtest.mbt" \
     "$fixture/interpreter/runtime/execution_control_dispatch_wbtest.mbt"
-  cp "$DEFERRED_SUITE" "$fixture/interpreter/stack_safety_deferred_test.mbt"
 }
 
 expect_fixture_failure() {
