@@ -932,6 +932,24 @@ test "bytecode construct spread recursion lowers and completes deeply" {
 }
 
 ///|
+test "bytecode construct spread mutual recursion completes deeply" {
+  let source = "function Left(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Right(...[n - 1]); " +
+    "this.value = child.value + 1; }\n" +
+    "function Right(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Left(...[n - 1]); " +
+    "this.value = child.value + 1; }\n" +
+    "new Left(...[320]).value;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "bytecode mutual constructor recursion stays on the activation stack" {
   let source = "function Left(n) { " +
     "if (n === 0) { this.value = 0; return; } " +
