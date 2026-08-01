@@ -215,18 +215,29 @@ test "nested ordinary bytecode calls preserve guest throw identity" {
 }
 
 ///|
-test "nested receiver bytecode calls preserve guest throw identity" {
+test "nested receiver bytecode calls release before a later bounded leaf" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
     interp,
     "var marker = {};\n" +
     "var receiver = { fail: function() { throw marker; } };\n" +
-    "function caller() { receiver.fail(); }",
+    "function caller() { receiver.fail(); }\n" +
+    "function leaf() { return 42; }",
   )
-  let result = interp.run(
-    @parser.parse("try { caller(); } catch (error) { error === marker; }").stmts,
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 32L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let result = interp.run_bounded(
+    @parser.parse(
+      "var caught = false;\n" +
+      "try { caller(); } catch (error) { caught = error === marker; }\n" +
+      "caught ? leaf() : -1;",
+    ).stmts,
+    policy,
   )
-  inspect(result.to_string(), content="true")
+  inspect(result.to_string(), content="42")
 }
 
 ///|
@@ -262,6 +273,9 @@ test "executor-neutral bytecode activation preserves arguments aliasing" {
 }
 
 ///|
+// Direct calls keep the sloppy undefined/global fallback; an undefined member
+// base cannot form CallWithReceiver, so primitive member normalization is
+// covered by the test below.
 test "executor-neutral bytecode activation preserves strict and sloppy this" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
@@ -271,6 +285,38 @@ test "executor-neutral bytecode activation preserves strict and sloppy this" {
   )
   let result = interp.run(@parser.parse("sloppy() && strict();").stmts)
   inspect(result.to_string(), content="true")
+}
+
+///|
+test "executor-neutral primitive receiver calls normalize strict and sloppy this" {
+  let lowered = parse_bytecode_for_wb("(7).receiver_730_strict();")
+  let mut saw_receiver_call = false
+  for instr in lowered.main.code {
+    match instr {
+      CallWithReceiver(_, _) => saw_receiver_call = true
+      _ => ()
+    }
+  }
+  guard saw_receiver_call else {
+    fail("primitive member call must lower to CallWithReceiver")
+  }
+  let interp = @interpreter.new_interpreter()
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "Number.prototype.receiver_730_strict = function() { 'use strict'; " +
+    "return typeof this + ':' + String(this); };\n" +
+    "Number.prototype.receiver_730_sloppy = function() { " +
+    "return this instanceof Number; };\n" +
+    "String.prototype.receiver_730_strict = function() { 'use strict'; " +
+    "return typeof this + ':' + String(this); };\n" +
+    "String.prototype.receiver_730_sloppy = function() { " +
+    "return this instanceof String; };\n" +
+    "(7).receiver_730_strict() + '|' + " +
+    "(7).receiver_730_sloppy() + '|' + " +
+    "('x').receiver_730_strict() + '|' + " +
+    "('x').receiver_730_sloppy();",
+  )
+  inspect(result.to_string(), content="number:7|true|string:x|true")
 }
 
 ///|
