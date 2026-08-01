@@ -55,6 +55,29 @@ test "ordinary bytecode recursive calls complete at finite depth" {
 }
 
 ///|
+test "bytecode spread recursion reaches the synchronous final call boundary" {
+  let source =
+    "function count(n) { if (n === 0) return 0; " +
+    "return count(n - 1, ...[]) + 1; }\n" +
+    "count(321, ...[]);"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_arg_spread = false
+  let mut saw_call_spread = false
+  for instr in lowered.main.code {
+    match instr {
+      ArgPushSpread(_) => saw_arg_spread = true
+      CallSpread(_) => saw_call_spread = true
+      _ => ()
+    }
+  }
+  assert_true(saw_arg_spread)
+  assert_true(saw_call_spread)
+  let interp = @interpreter.new_interpreter()
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="321")
+}
+
+///|
 test "bytecode receiver recursion reaches the synchronous call boundary" {
   let interp = @interpreter.new_interpreter()
   let depth = 320
