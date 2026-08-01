@@ -399,10 +399,10 @@ test "activation coordinator rejects depth before child preparation" {
     let _ = interp.run_executor_activation_coordinator(root)
     "completed"
   }) catch {
-    @errors.RangeError(message~) => "range-error:" + message
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
     _ => "other-error"
   }
-  inspect(outcome, content="range-error:Maximum call stack size exceeded")
+  inspect(outcome, content="stack-depth-limit")
   inspect(starts.val, content="0")
   inspect(control.active_depth(), content="0")
 }

@@ -84,6 +84,35 @@ test "tree adapter trampolines nested ordinary bytecode calls" {
 }
 
 ///|
+test "bounded compiled ordinary calls preserve the engine depth marker" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "function count(n) { if (n === 0) return 0; return count(n - 1) + 1; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.run_bounded(@parser.parse("count(2);").stmts, policy)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected a classified JavaScript depth exception, got " +
+        error.to_string(),
+      )
+    None => fail("bounded compiled recursion must reject at the depth limit")
+  }
+}
+
+///|
 test "ordinary bytecode call consumes its result once at the advanced IP" {
   let interp = @interpreter.new_interpreter()
   let source = "var calls = 0;\n" +

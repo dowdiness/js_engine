@@ -239,11 +239,7 @@ fn observe_executor_activation_entry(
 ) -> ActivationEntryAttempt raise Error {
   observe_activation_entry(
     interp.execution_control_activation_observation_port(),
-  ) catch {
-    ExecutionControlError(StackDepthLimit) =>
-      raise @errors.RangeError(message=STACK_DEPTH_LIMIT_MESSAGE)
-    error => raise error
-  }
+  )
 }
 
 ///|
