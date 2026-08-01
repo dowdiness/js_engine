@@ -55,6 +55,33 @@ test "ordinary bytecode recursive calls complete at finite depth" {
 }
 
 ///|
+test "bytecode receiver recursion reaches the synchronous call boundary" {
+  let interp = @interpreter.new_interpreter()
+  let depth = 320
+  let source = "var receiver = { count: function(n) { " +
+    "if (n === 0) return 0; return this.count(n - 1) + 1; } };\n" +
+    "receiver.count(" +
+    depth.to_string() +
+    ");"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode computed receiver mutual recursion completes deeply" {
+  let interp = @interpreter.new_interpreter()
+  let source = "var left = 'left'; var right = 'right';\n" +
+    "var receiver = { " +
+    "left: function(n) { if (n === 0) return 1; " +
+    "return receiver[right](n - 1) + 1; }, " +
+    "right: function(n) { if (n === 0) return 0; " +
+    "return receiver[left](n - 1) + 1; } };\n" +
+    "receiver[left](2000);"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="2001")
+}
+
+///|
 test "ordinary bytecode mutual calls complete at deep finite depth" {
   let interp = @interpreter.new_interpreter()
   let source = "function even(n) { if (n === 0) return true; return odd(n - 1); }\n" +
@@ -71,6 +98,17 @@ test "ordinary bytecode arrow calls complete at deep finite depth" {
     "count(2000);"
   let result = run_executor_neutral_bytecode(interp, source)
   inspect(result.to_string(), content="2000")
+}
+
+///|
+test "executor-neutral bytecode arrow receiver call keeps lexical this" {
+  let interp = @interpreter.new_interpreter()
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "var expected = this; var arrow = () => this;\n" +
+    "var holder = { arrow: arrow }; holder.arrow() === expected;",
+  )
+  inspect(result.to_string(), content="true")
 }
 
 ///|
@@ -177,6 +215,33 @@ test "nested ordinary bytecode calls preserve guest throw identity" {
 }
 
 ///|
+test "nested receiver bytecode calls release before a later bounded leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {};\n" +
+    "var receiver = { fail: function() { throw marker; } };\n" +
+    "function caller() { receiver.fail(); }\n" +
+    "function leaf() { return 42; }\n" +
+    "function probe() { return leaf(); }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let result = interp.run_bounded(
+    @parser.parse(
+      "var caught = false;\n" +
+      "try { caller(); } catch (error) { caught = error === marker; }\n" +
+      "caught ? probe() : -1;",
+    ).stmts,
+    policy,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
 test "ordinary bytecode call normalizes fallthrough and arrow expression results" {
   let interp = @interpreter.new_interpreter()
   let source = "function noResult() { var local = 1; }\n" +
@@ -209,6 +274,9 @@ test "executor-neutral bytecode activation preserves arguments aliasing" {
 }
 
 ///|
+// Direct calls keep the sloppy undefined/global fallback; an undefined member
+// base cannot form CallWithReceiver, so primitive member normalization is
+// covered by the test below.
 test "executor-neutral bytecode activation preserves strict and sloppy this" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
@@ -218,6 +286,38 @@ test "executor-neutral bytecode activation preserves strict and sloppy this" {
   )
   let result = interp.run(@parser.parse("sloppy() && strict();").stmts)
   inspect(result.to_string(), content="true")
+}
+
+///|
+test "executor-neutral primitive receiver calls normalize strict and sloppy this" {
+  let lowered = parse_bytecode_for_wb("(7).receiver_730_strict();")
+  let mut saw_receiver_call = false
+  for instr in lowered.main.code {
+    match instr {
+      CallWithReceiver(_, _) => saw_receiver_call = true
+      _ => ()
+    }
+  }
+  guard saw_receiver_call else {
+    fail("primitive member call must lower to CallWithReceiver")
+  }
+  let interp = @interpreter.new_interpreter()
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "Number.prototype.receiver_730_strict = function() { 'use strict'; " +
+    "return typeof this + ':' + String(this); };\n" +
+    "Number.prototype.receiver_730_sloppy = function() { " +
+    "return this instanceof Number; };\n" +
+    "String.prototype.receiver_730_strict = function() { 'use strict'; " +
+    "return typeof this + ':' + String(this); };\n" +
+    "String.prototype.receiver_730_sloppy = function() { " +
+    "return this instanceof String; };\n" +
+    "(7).receiver_730_strict() + '|' + " +
+    "(7).receiver_730_sloppy() + '|' + " +
+    "('x').receiver_730_strict() + '|' + " +
+    "('x').receiver_730_sloppy();",
+  )
+  inspect(result.to_string(), content="number:7|true|string:x|true")
 }
 
 ///|
@@ -243,6 +343,20 @@ test "executor-neutral mixed bytecode to tree call preserves return" {
 }
 
 ///|
+test "executor-neutral foreign realm receiver call preserves this" {
+  let callee_interp = @interpreter.new_interpreter()
+  let caller_interp = @interpreter.new_interpreter()
+  let foreign_read = run_executor_neutral_bytecode(
+    callee_interp, "function read() { return this.tag; } read;",
+  )
+  caller_interp.global.def_builtin("foreignRead", foreign_read)
+  let result = run_executor_neutral_bytecode(
+    caller_interp, "var holder = { tag: 'foreign-ok', read: foreignRead }; holder.read();",
+  )
+  inspect(result.to_string(), content="foreign-ok")
+}
+
+///|
 test "executor-neutral bytecode to native call preserves arguments" {
   let interp = @interpreter.new_interpreter()
   interp.global.def_builtin(
@@ -256,6 +370,21 @@ test "executor-neutral bytecode to native call preserves arguments" {
   )
   let result = run_executor_neutral_bytecode(interp, "nativeAdd(2, 3);")
   inspect(result.to_string(), content="5")
+}
+
+///|
+test "executor-neutral fixed receiver call falls back for native targets" {
+  let interp = @interpreter.new_interpreter()
+  interp.global.def_builtin(
+    "nativeRead",
+    @runtime.make_native_func(name="nativeRead", _args => {
+      Value::String_("native-ok")
+    }),
+  )
+  let result = run_executor_neutral_bytecode(
+    interp, "var holder = { read: nativeRead }; holder.read();",
+  )
+  inspect(result.to_string(), content="native-ok")
 }
 
 ///|
