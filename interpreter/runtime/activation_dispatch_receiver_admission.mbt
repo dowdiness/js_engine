@@ -6,7 +6,7 @@
 #warnings("-unused_value")
 priv enum ReceiverRecursionAccessKind {
   ReceiverRecursionStatic
-  ReceiverRecursionComputedLiteral(@token.Loc)
+  ReceiverRecursionComputedLiteral(@token.Loc, Bool)
 }
 
 ///|
@@ -97,8 +97,10 @@ fn receiver_recursion_access_mode_matches(
 ) -> Bool {
   match (left, right) {
     (ReceiverRecursionStatic, ReceiverRecursionStatic) => true
-    (ReceiverRecursionComputedLiteral(_), ReceiverRecursionComputedLiteral(_)) =>
-      true
+    (
+      ReceiverRecursionComputedLiteral(_, left_escaped),
+      ReceiverRecursionComputedLiteral(_, right_escaped),
+    ) => left_escaped == right_escaped
     _ => false
   }
 }
@@ -111,9 +113,9 @@ fn receiver_recursion_access_matches(
   match (expected, actual) {
     (ReceiverRecursionStatic, ReceiverRecursionStatic) => true
     (
-      ReceiverRecursionComputedLiteral(expected_loc),
-      ReceiverRecursionComputedLiteral(actual_loc),
-    ) => expected_loc == actual_loc
+      ReceiverRecursionComputedLiteral(expected_loc, expected_escaped),
+      ReceiverRecursionComputedLiteral(actual_loc, actual_escaped),
+    ) => expected_loc == actual_loc && expected_escaped == actual_escaped
     _ => false
   }
 }
@@ -124,12 +126,14 @@ fn receiver_recursion_property_access(
 ) -> (String, ReceiverRecursionAccessKind)? {
   guard property.kind == @ast.Init && !property.is_method else { return None }
   match property.key {
-    @ast.StringLit(name, false, @token.LexForm::LexNormal, key_loc) if name !=
+    @ast.StringLit(name, has_escape, @token.LexForm::LexNormal, key_loc) if name !=
       "__proto__" =>
       if property.computed {
-        Some((name, ReceiverRecursionComputedLiteral(key_loc)))
-      } else {
+        Some((name, ReceiverRecursionComputedLiteral(key_loc, has_escape)))
+      } else if !has_escape {
         Some((name, ReceiverRecursionStatic))
+      } else {
+        None
       }
     _ => None
   }
@@ -146,7 +150,12 @@ fn receiver_recursion_this_member_access(
       @ast.ThisExpr(_),
       @ast.StringLit(name, false, @token.LexForm::LexNormal, key_loc),
       member_loc
-    ) => Some((name, ReceiverRecursionComputedLiteral(key_loc), member_loc))
+    ) => Some((name, ReceiverRecursionComputedLiteral(key_loc, false), member_loc))
+    @ast.ComputedMember(
+      @ast.ThisExpr(_),
+      @ast.StringLit(name, true, @token.LexForm::LexNormal, key_loc),
+      member_loc
+    ) => Some((name, ReceiverRecursionComputedLiteral(key_loc, true), member_loc))
     _ => None
   }
 }
@@ -164,7 +173,13 @@ fn receiver_recursion_ident_member_access(
       @ast.StringLit(name, false, @token.LexForm::LexNormal, key_loc),
       member_loc
     ) if base == expected_base =>
-      Some((name, ReceiverRecursionComputedLiteral(key_loc), member_loc))
+      Some((name, ReceiverRecursionComputedLiteral(key_loc, false), member_loc))
+    @ast.ComputedMember(
+      @ast.Ident(base, _),
+      @ast.StringLit(name, true, @token.LexForm::LexNormal, key_loc),
+      member_loc
+    ) if base == expected_base =>
+      Some((name, ReceiverRecursionComputedLiteral(key_loc, true), member_loc))
     _ => None
   }
 }
