@@ -379,9 +379,14 @@ fn receiver_recursion_body_statement_matches(
     0 =>
       match stmt {
         @ast.IfStmt(
-          @ast.Binary(@ast.EqEqEq, @ast.Ident(parameter, _), base_condition, _),
+          @ast.Binary(
+            @ast.EqEqEq,
+            @ast.Ident(parameter, _),
+            base_condition,
+            base_condition_loc
+          ),
           @ast.ReturnStmt(
-            Some(@ast.Member(@ast.ThisExpr(_), marker_name, _)),
+            Some(@ast.Member(@ast.ThisExpr(_), marker_name, marker_member_loc)),
             _
           ),
           None,
@@ -389,6 +394,8 @@ fn receiver_recursion_body_statement_matches(
         ) =>
           parameter == plan.parameter &&
           marker_name == plan.marker_name &&
+          base_condition_loc == plan.recipe.base_condition_loc &&
+          marker_member_loc == plan.recipe.marker_member_loc &&
           exact_numeric_recursion_number(base_condition, NUMERIC_RECURSION_BASE)
         _ => false
       }
@@ -400,23 +407,36 @@ fn receiver_recursion_body_statement_matches(
               @ast.Add,
               increment,
               @ast.Call(
-                @ast.Member(@ast.ThisExpr(_), property_name, _),
+                @ast.Member(
+                  @ast.ThisExpr(_),
+                  property_name,
+                  recursive_member_loc
+                ),
                 args,
-                _
+                recursive_call_loc
               ),
-              _
+              recursive_add_loc
             )
           ),
           _
         ) => {
           guard property_name == plan.property_name &&
+            recursive_add_loc == plan.recipe.recursive_add_loc &&
+            recursive_member_loc == plan.recipe.recursive_member_loc &&
+            recursive_call_loc == plan.recipe.recursive_call_loc &&
             exact_numeric_recursion_number(increment, NUMERIC_RECURSION_STEP) &&
             args.length() == 1 else {
             return false
           }
           match args[0] {
-            @ast.Binary(@ast.Sub, @ast.Ident(parameter, _), decrement, _) =>
+            @ast.Binary(
+              @ast.Sub,
+              @ast.Ident(parameter, _),
+              decrement,
+              recursive_subtract_loc
+            ) =>
               parameter == plan.parameter &&
+              recursive_subtract_loc == plan.recipe.recursive_subtract_loc &&
               exact_numeric_recursion_number(decrement, NUMERIC_RECURSION_STEP)
             _ => false
           }

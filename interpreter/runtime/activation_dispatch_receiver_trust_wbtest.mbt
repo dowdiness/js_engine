@@ -163,6 +163,52 @@ test "receiver recursion trust rejects function body drift" {
 }
 
 ///|
+test "receiver recursion trust rejects equivalent body at a different source location" {
+  let (body_interp, _, body_registry) = receiver_recursion_sealed_fixture()
+  guard body_registry.trusted.callee
+    is Object({ callable: Some(UserFunc(body_data)), .. }) else {
+    fail("expected the sealed UserFunc")
+  }
+  let shifted_body = match
+    @parser.parse(
+      "function step(n){\n\nif(n===0)return this.marker;return 1+this.step(n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body
+    _ => fail("expected an equivalent function declaration")
+  }
+  body_data.body[0] = shifted_body[0]
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(body_registry.require_receiver(body_interp))
+    }),
+    content="rejected",
+  )
+}
+
+///|
+test "receiver recursion trust rejects equivalent recursive body at a different source location" {
+  let (body_interp, _, body_registry) = receiver_recursion_sealed_fixture()
+  guard body_registry.trusted.callee
+    is Object({ callable: Some(UserFunc(body_data)), .. }) else {
+    fail("expected the sealed UserFunc")
+  }
+  let shifted_body = match
+    @parser.parse(
+      "function step(n){if(n===0)return this.marker;\n\nreturn 1+this.step(n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body
+    _ => fail("expected an equivalent function declaration")
+  }
+  body_data.body[1] = shifted_body[1]
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(body_registry.require_receiver(body_interp))
+    }),
+    content="rejected",
+  )
+}
+
+///|
 test "receiver recursion trust rejects source and realm metadata drift" {
   let (source_interp, _, source_registry) = receiver_recursion_sealed_fixture(
     source_identity=Some("sealed source"),
