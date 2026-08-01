@@ -11,6 +11,12 @@ priv enum MicrotaskQueuePolicyPhase {
 }
 
 ///|
+priv enum MicrotaskQueueReadiness {
+  MicrotaskQueueEmpty
+  MicrotaskObservationRequired
+}
+
+///|
 priv struct MicrotaskQueuePolicy {
   queue : Array[Microtask]
   mut next_index : Int
@@ -32,6 +38,20 @@ fn microtask_policy_enqueue(queue : Array[Microtask], job : Microtask) -> Unit {
 ///|
 fn[T] invalid_microtask_policy_transition(operation : String) -> T raise {
   fail("invalid microtask policy transition: " + operation)
+}
+
+///|
+fn MicrotaskQueuePolicy::readiness(
+  self : MicrotaskQueuePolicy,
+) -> MicrotaskQueueReadiness raise {
+  guard self.phase is MicrotaskQueueReady else {
+    invalid_microtask_policy_transition("readiness requires Ready")
+  }
+  if self.next_index < self.queue.length() {
+    MicrotaskObservationRequired
+  } else {
+    MicrotaskQueueEmpty
+  }
 }
 
 ///|
@@ -62,15 +82,38 @@ fn MicrotaskQueuePolicy::complete_selected(
 }
 
 ///|
+fn MicrotaskQueuePolicy::retain_unselected(self : MicrotaskQueuePolicy) -> Unit {
+  let remaining = self.queue.length() - self.next_index
+  self.queue[self.next_index:].blit_to(self.queue)
+  self.queue.truncate(remaining)
+}
+
+///|
+fn MicrotaskQueuePolicy::reject_dispatch_observation(
+  self : MicrotaskQueuePolicy,
+) -> Unit raise {
+  guard self.phase is MicrotaskQueueReady else {
+    invalid_microtask_policy_transition(
+      "reject_dispatch_observation requires Ready",
+    )
+  }
+  guard self.next_index < self.queue.length() else {
+    invalid_microtask_policy_transition(
+      "reject_dispatch_observation requires pending work",
+    )
+  }
+  self.retain_unselected()
+  self.phase = MicrotaskQueueFailed
+}
+
+///|
 fn MicrotaskQueuePolicy::fail_selected(
   self : MicrotaskQueuePolicy,
 ) -> Unit raise {
   guard self.phase is MicrotaskQueueSelected else {
     invalid_microtask_policy_transition("fail_selected requires Selected")
   }
-  let remaining = self.queue.length() - self.next_index
-  self.queue[self.next_index:].blit_to(self.queue)
-  self.queue.truncate(remaining)
+  self.retain_unselected()
   self.phase = MicrotaskQueueFailed
 }
 

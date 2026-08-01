@@ -207,15 +207,14 @@
       "operation_family": "microtask policy",
       "entry_category": "microtask queue selection, consumption, and drain progress",
       "contract_observation_category": "dispatch-point",
-      "current_accounting_owner": "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed and interpreter/runtime/microtask_policy.mbt#MicrotaskQueuePolicy::select_next",
+      "current_accounting_owner": "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed",
       "intended_final_accounting_owner": "microtask-policy-dispatch",
-      "status": "unobserved",
-      "duplicate_charge_risk": "Queue selection advances next_index before callback execution and the drain loop has no observe_execution_step; future queue-dispatch observation must not double-charge callback activation or queue progress.",
-      "owning_implementation_or_issue": "#749",
-      "tracking_issue": "#749",
-      "focused_evidence": ["interpreter/runtime/microtask_policy.mbt#MicrotaskQueuePolicy::select_next", "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed", "interpreter/runtime/execution_control.mbt#Interpreter::observe_execution_step"],
+      "status": "observed-exactly-once",
+      "duplicate_charge_risk": "MicrotaskQueuePolicy::readiness performs only empty detection; run_microtasks_observed charges exactly once before select_next, while call_value activation remains a distinct accounting category owned by the activation audit.",
+      "owning_implementation_or_issue": "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed",
+      "focused_evidence": ["interpreter/runtime/microtask_policy.mbt#MicrotaskQueuePolicy::readiness", "interpreter/runtime/microtask_policy.mbt#MicrotaskQueuePolicy::reject_dispatch_observation", "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed", "interpreter/runtime/execution_control.mbt#Interpreter::observe_execution_step", "integration/external_consumer/bounded_microtask_checkpoint_test.mbt#one microtask budget spans the complete drain"],
       "public_facade_evidence_required": true,
-      "public_facade_evidence": ["engine_diagnostic.mbt#Engine::run_microtask_checkpoint_diagnostic"]
+      "public_facade_evidence": ["engine_diagnostic.mbt#Engine::run_microtask_checkpoint_bounded"]
     },
     {
       "id": "microtask-policy-bookkeeping",

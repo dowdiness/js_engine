@@ -111,6 +111,12 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "Engine::run_microtask_checkpoint_bounded",
+      "category": "stable_embedding",
+      "reason": "staged Stage 4 operation-scoped bounded microtask-checkpoint availability slice"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "ExecutionPolicy",
       "category": "stable_embedding",
       "reason": "documented opaque bounded-evaluation policy input"

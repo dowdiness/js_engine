@@ -67,11 +67,23 @@ pub fn Interpreter::run_microtasks_observed(
   with_cleared_active_callee_realm(self.realm_state, fn() raise {
     let policy = MicrotaskQueuePolicy(self.host.microtask_queue)
     while true {
+      match policy.readiness() {
+        MicrotaskQueueEmpty => break
+        MicrotaskObservationRequired => ()
+      }
+      self.observe_execution_step() catch {
+        error => {
+          policy.reject_dispatch_observation()
+          raise error
+        }
+      }
       let task = match policy.select_next() {
         Some(task) => task
-        None => break
+        None => fail("microtask queue readiness changed before selection")
       }
-      // Call the callback with queued arguments
+      // Call the callback with queued arguments. Applicable activation
+      // observation belongs to call_value; queue dispatch must not charge it a
+      // second time.
       match task.callback {
         Object(obj_data) =>
           match obj_data.callable {
@@ -195,6 +207,7 @@ pub fn enqueue_promise_reaction_job(
           // Try to call the handler
           let result = i.call_value(handler, Undefined, [value], loc) catch {
             e => {
+              guard is_js_catchable_error(e) else { raise e }
               // Handler threw - reject the dependent promise
               let error_value = js_error_to_value_with_env(e, Some(i.global))
               let _ = i.call_value(
@@ -243,7 +256,7 @@ pub fn create_resolving_functions(
     name="",
     length=1,
     realm_state=Some(interp.realm_state),
-    fn(i, _this, args) {
+    fn(i, _this, args) raise {
       if already_resolved.val {
         return Undefined
       }
@@ -276,6 +289,7 @@ pub fn create_resolving_functions(
         let loc = @token.Loc::default()
         let then_val = i.get_property(resolution, "then", loc) catch {
           e => {
+            guard is_js_catchable_error(e) else { raise e }
             // If Get throws, reject the promise with the error
             let err = js_error_to_value_with_env(e, Some(i.global))
             reject_promise(i, promise_data, err)
@@ -302,6 +316,7 @@ pub fn create_resolving_functions(
                       )
                     } catch {
                       e => {
+                        guard is_js_catchable_error(e) else { raise e }
                         let err = js_error_to_value_with_env(e, Some(i2.global))
                         let _ = i2.call_value(rej, Undefined, [err], loc)
                       }

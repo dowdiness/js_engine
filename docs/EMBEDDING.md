@@ -56,7 +56,7 @@ or experimental execution paths and are not used by this guide.
 |---|---|
 | **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` |
 | **Stable diagnostics** | `run_diagnostic`; `Engine::eval_diagnostic`, `Engine::call_json_diagnostic`, `Engine::run_microtask_checkpoint_diagnostic`, `Engine::run_timer_checkpoint_diagnostic`; `EngineDiagnostic` and its accessors; `EngineIntegrity`, `RetainedEffects`, `PendingJobs`; `SourceLocation`, `SourcePosition` |
-| **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
+| **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
 | **Compatibility** | `run_module`, `run_modules` |
 | **Advanced/internal** | `run_compiled`, `run_with_event_loop`, `has_pending_microtasks`, `has_pending_timers`, `run_microtask_checkpoint`, `run_timer_checkpoint` |
 
@@ -67,13 +67,14 @@ advanced/internal because they accept or return a raw `Interpreter`.
 
 ## Staged Stage 4 bounded operations
 
-`Engine::eval_bounded` and `Engine::call_json_bounded` are staged Stage 4
-availability slices. They install one fresh operation-scoped policy around the
-currently observed runtime paths and return structured guardrail diagnostics.
-They do **not** claim complete execution accounting, protection from every
-native or host loop, rollback, process isolation, or security against hostile
-JavaScript. Hosts should treat `EngineIntegrity::Unknown` guardrail failures as
-discard-and-recreate outcomes.
+`Engine::eval_bounded`, `Engine::call_json_bounded`, and
+`Engine::run_microtask_checkpoint_bounded` are staged Stage 4 availability
+slices. They install one fresh operation-scoped policy around the currently
+observed runtime paths and return structured guardrail diagnostics. They do
+**not** claim complete execution accounting, protection from every native or
+host loop, rollback, process isolation, or security against hostile
+JavaScript. Hosts must discard an Engine after an `Unknown` or `Discard`
+guardrail failure.
 
 `Engine::call_json_bounded` keeps one policy across global lookup, lookup
 getters, direct host-JSON argument copying, target execution, and direct result
@@ -83,6 +84,19 @@ failures report operation `call-json`, phase `lookup` or `execute`, integrity
 `unknown`, retained effects `may-remain`, and the actual pending-job snapshot
 made after control unwinds. Existing `call_json`, `call_json_diagnostic`, and
 `EngineError` behavior is unchanged.
+
+`Engine::run_microtask_checkpoint_bounded` resets one policy at checkpoint
+entry and shares it across the complete FIFO drain, including jobs appended by
+earlier jobs. Empty detection is free. A dispatch limit or interruption is
+observed before selection; completed jobs remain consumed, while the rejected
+job and later jobs retain FIFO order. Once a job is selected, a later
+activation or callback failure never restores it. Failures report operation
+`microtask-checkpoint`, phase `microtask-dispatch`, integrity `discard`, retained
+effects `may-remain`, and the actual pending-job snapshot after the policy has
+unwound. Promise reactions, `then` getters, and thenable jobs propagate
+non-JavaScript execution-limit or interruption failures to this boundary rather
+than converting them into ordinary Promise rejections. Existing bounded
+accounting gaps outside microtask queue dispatch remain tracked separately.
 
 ## Strict JSON boundary
 

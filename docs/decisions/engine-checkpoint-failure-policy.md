@@ -36,8 +36,13 @@ classification.
 
 ### Target queue policy
 
-Each queued job instance uses at-most-once dispatch. The private microtask and
-timer policies implement these steps:
+Each queued job instance uses at-most-once dispatch. For a bounded microtask
+checkpoint, the private policy first reports whether work is pending without
+selecting it. The shell observes the dispatch guardrail next. If that
+observation rejects, the rejected job and later jobs remain queued while any
+completed prefix remains consumed.
+
+The private microtask and timer policies then implement these steps:
 
 1. Select and consume the next job before invoking its callback.
 2. Run the callback outside the queue-policy core.
