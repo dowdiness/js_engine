@@ -222,10 +222,11 @@ test "nested receiver bytecode calls release before a later bounded leaf" {
     "var marker = {};\n" +
     "var receiver = { fail: function() { throw marker; } };\n" +
     "function caller() { receiver.fail(); }\n" +
-    "function leaf() { return 42; }",
+    "function leaf() { return 42; }\n" +
+    "function probe() { return leaf(); }",
   )
   let policy = match
-    @runtime.ExecutionPolicy::new(100000L, 32L, @runtime.InterruptionHandle()) {
+    @runtime.ExecutionPolicy::new(100000L, 2L, @runtime.InterruptionHandle()) {
     Ok(policy) => policy
     Err(_) => fail("expected a valid bounded policy")
   }
@@ -233,7 +234,7 @@ test "nested receiver bytecode calls release before a later bounded leaf" {
     @parser.parse(
       "var caught = false;\n" +
       "try { caller(); } catch (error) { caught = error === marker; }\n" +
-      "caught ? leaf() : -1;",
+      "caught ? probe() : -1;",
     ).stmts,
     policy,
   )
