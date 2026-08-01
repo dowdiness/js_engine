@@ -397,6 +397,86 @@ test "spread receiver calls preserve this identity and ordered arguments" {
 }
 
 ///|
+test "spread receiver mutual recursion completes deeply" {
+  let source = "var left = 'left'; var right = 'right';\n" +
+    "var receiver = { " +
+    "left: function(n) { if (n === 0) return 1; " +
+    "return this[right](n - 1, ...[]) + 1; }, " +
+    "right: function(n) { if (n === 0) return 0; " +
+    "return this[left](n - 1, ...[]) + 1; } };\n" +
+    "receiver[left](2000, ...[]);"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_receiver_spread = false
+  let mut child_receiver_spreads = 0
+  for instr in lowered.main.code {
+    match instr {
+      CallSpreadWithReceiver(_) => saw_root_receiver_spread = true
+      _ => ()
+    }
+  }
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        CallSpreadWithReceiver(_) => child_receiver_spreads += 1
+        _ => ()
+      }
+    }
+  }
+  assert_true(saw_root_receiver_spread)
+  assert_true(child_receiver_spreads >= 2)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="2001")
+}
+
+///|
+test "receiver spread materializes a custom iterator once in order" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var iterator_gets = 0; var next_calls = 0; var invoked = 0;\n" +
+    "var receiver = { base: 40, read: function(first, second) { " +
+    "invoked = invoked + 1; return this.base + first * 10 + second; } };\n" +
+    "var iterable = {}; iterable[Symbol.iterator] = function() { " +
+    "iterator_gets = iterator_gets + 1; var index = 0; return { " +
+    "next: function() { next_calls = next_calls + 1; " +
+    "if (index === 0) { index = 1; return { value: 1, done: false }; } " +
+    "if (index === 1) { index = 2; return { value: 2, done: false }; } " +
+    "return { done: true }; } }; };\n" +
+    "receiver.read(...iterable) === 52 && iterator_gets === 1 && " +
+    "next_calls === 3 && invoked === 1;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "receiver spread iterator throw preserves identity without invocation or replay" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var iterator_gets = 0; var next_calls = 0; " +
+    "var invoked = 0;\n" +
+    "var receiver = { read: function() { invoked = invoked + 1; } };\n" +
+    "var iterable = {}; iterable[Symbol.iterator] = function() { " +
+    "iterator_gets = iterator_gets + 1; return { next: function() { " +
+    "next_calls = next_calls + 1; if (next_calls === 1) " +
+    "return { value: 1, done: false }; throw marker; } }; };\n" +
+    "function attempt() { receiver.read(...iterable); }\n" +
+    "function leaf() { return 42; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var same = false;\n" +
+      "try { attempt(); } catch (error) { same = error === marker; }\n" +
+      "same && iterator_gets === 1 && next_calls === 2 && " +
+      "invoked === 0 && leaf() === 42;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "spread receiver preparation does not replay static lookup or arguments" {
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
