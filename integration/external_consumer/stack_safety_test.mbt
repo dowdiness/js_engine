@@ -185,3 +185,43 @@ test "stack safety public facade: bounded production dispatcher stress" {
   // slice; its separate name records the measured CI-cost evidence for #619.
   inspect(run_value(SELF_RECURSION_SOURCE), content="256")
 }
+
+///|
+// Before #702 landed this selected root-facade case could not compile because
+// the bounded-evaluation policy types were not public; it now exercises the
+// landed API directly instead of duplicating the bounded-eval-only coverage.
+test "stack safety public facade: bounded eval owns logical-depth exhaustion" {
+  let engine = @js_engine.Engine()
+  let policy = match @js_engine.ExecutionPolicy::new(
+    100000L,
+    1L,
+    @js_engine.InterruptionHandle(),
+  ) {
+    Ok(value) => value
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  match
+    engine.eval_bounded(
+      SELF_RECURSION_SOURCE,
+      policy,
+      source_id="stack-safety-direct.js",
+    ) {
+    Ok(_) => fail("expected direct recursion to exhaust the logical depth limit")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="stack-depth-limit")
+      assert_true(diagnostic.message().length() > 0)
+      inspect(diagnostic.message(), content="Maximum call stack size exceeded")
+      inspect(diagnostic.operation_code(), content="eval")
+      inspect(diagnostic.phase_code(), content="execute")
+      assert_true(
+        diagnostic.source_identity() == Some("stack-safety-direct.js"),
+      )
+      assert_true(
+        diagnostic.retained_effects() is @js_engine.RetainedEffects::MayRemain,
+      )
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Unknown,
+      )
+    }
+  }
+}
