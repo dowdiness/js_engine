@@ -43,6 +43,61 @@ test "executor-neutral bytecode method activation preserves receiver" {
 }
 
 ///|
+test "ordinary bytecode recursive calls complete at finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let depth = 97
+  let source =
+    "function count(n) { if (n === 0) return 0; return count(n - 1) + 1; }\n" +
+    "count(" + depth.to_string() + ");"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="97")
+}
+
+///|
+test "ordinary bytecode mutual calls complete at deep finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let source =
+    "function even(n) { if (n === 0) return true; return odd(n - 1); }\n" +
+    "function odd(n) { if (n === 0) return false; return even(n - 1); }\n" +
+    "even(2000);"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "ordinary bytecode arrow calls complete at deep finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let source =
+    "var count = (n) => n === 0 ? 0 : count(n - 1) + 1;\n" +
+    "count(2000);"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="2000")
+}
+
+///|
+test "ordinary bytecode call consumes its result once at the advanced IP" {
+  let interp = @interpreter.new_interpreter()
+  let source =
+    "var calls = 0;\n" +
+    "function child() { calls = calls + 1; return 2; }\n" +
+    "function caller() { child(); return calls; }\n" +
+    "caller();"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="1")
+}
+
+///|
+test "ordinary bytecode call normalizes fallthrough and arrow expression results" {
+  let interp = @interpreter.new_interpreter()
+  let source =
+    "function noResult() { var local = 1; }\n" +
+    "var arrow = () => 3;\n" +
+    "noResult(); arrow();"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="3")
+}
+
+///|
 test "executor-neutral bytecode activation preserves construct and new.target" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
