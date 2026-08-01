@@ -203,7 +203,7 @@ jobs:
         run: make stack-safety-test TARGET=${{ matrix.target }} PROFILE=${{ matrix.profile }}
 
   stack-safety-required:
-    name: Stack safety required
+    name: stack-safety-required
     needs: [stack-safety]
     if: always()
     runs-on: ubuntu-latest

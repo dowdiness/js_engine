@@ -59,6 +59,9 @@ aggregator_block=$(awk '
 ' "$WORKFLOW")
 [[ -n "$aggregator_block" ]] ||
   fail 'stack-safety-required job body is missing'
+if ! grep -Fq '    name: stack-safety-required' <<<"$aggregator_block"; then
+  fail 'stack-safety-required must expose its stable check name'
+fi
 if ! grep -Fq '    needs: [stack-safety]' <<<"$aggregator_block"; then
   fail 'stack-safety-required must need the stack-safety matrix job'
 fi
