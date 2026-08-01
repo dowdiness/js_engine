@@ -950,6 +950,75 @@ test "bytecode construct spread mutual recursion completes deeply" {
 }
 
 ///|
+test "bytecode construct spread preserves activation and replacement semantics" {
+  let source = "let closed = 5;\n" +
+    "function C(a, b) { " +
+    "this.self = this; this.sum = a + b + closed; " +
+    "this.same = new.target === C; " +
+    "this.args = arguments.length === 2 && arguments[0] === a && " +
+    "arguments[1] === b; " +
+    "if (a === 1) return { replaced: 9 }; return 7; }\n" +
+    "var kept = new C(...[2, 3]); " +
+    "var replacement = new C(...[1, 2]);\n" +
+    "kept.sum === 10 && kept.self === kept && kept.same && kept.args && " +
+    "Object.getPrototypeOf(kept) === C.prototype && " +
+    "kept !== replacement && replacement.replaced === 9;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode construct spread drains iterator effects once before entry" {
+  let source = "var log = ''; var entered = 0; " +
+    "var iterator_return_calls = 0;\n" +
+    "function C(value) { entered = entered + 1; log = log + 'b'; " +
+    "this.value = value; }\n" +
+    "function makeIterable() { log = log + 'a'; var iterable = {}; " +
+    "iterable[Symbol.iterator] = function() { log = log + 'i'; " +
+    "var index = 0; var iterator = { next: function() { " +
+    "log = log + 'n'; if (index === 0) { index = 1; " +
+    "return { value: 7, done: false }; } return { done: true }; } }; " +
+    "iterator.return = function() { iterator_return_calls = " +
+    "iterator_return_calls + 1; log = log + 'r'; }; return iterator; }; " +
+    "return iterable; }\n" +
+    "var value = new (log = log + 'c', C)(...makeIterable());\n" +
+    "value.value === 7 && entered === 1 && log === 'cainnb' && " +
+    "iterator_return_calls === 0;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode construct spread iterator abrupt preserves identity" {
+  let source = "var marker = {}; var entered = 0; var iterator_gets = 0; " +
+    "var next_calls = 0; var iterator_return_calls = 0;\n" +
+    "var iterable = {}; iterable[Symbol.iterator] = function() { " +
+    "iterator_gets = iterator_gets + 1; var iterator = {}; " +
+    "iterator.next = function() { next_calls = next_calls + 1; " +
+    "throw marker; }; iterator.return = function() { " +
+    "iterator_return_calls = iterator_return_calls + 1; }; return iterator; };\n" +
+    "function C() { entered = entered + 1; }\n" +
+    "function invoke() { new C(...iterable); }"
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(interp, source)
+  let result = interp.run(
+    @parser.parse(
+      "var same = false; try { invoke(); } catch (error) { " +
+      "same = error === marker; }\n" +
+      "same && iterator_gets === 1 && next_calls === 1 && " +
+      "iterator_return_calls === 0 && entered === 0;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "bytecode mutual constructor recursion stays on the activation stack" {
   let source = "function Left(n) { " +
     "if (n === 0) { this.value = 0; return; } " +
