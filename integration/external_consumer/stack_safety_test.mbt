@@ -162,6 +162,11 @@ test "stack safety public facade: post-parse phase isolation" {
 }
 
 ///|
+test "stack safety public facade: deferred 512 comma expressions" {
+  inspect(run_value(nested_comma_source(512, "7")), content="7")
+}
+
+///|
 test "stack safety public facade: post-parse first-error ordering" {
   inspect(
     run_failure_message("\"use strict\"; (eval = 0, function() { let x; var x; })"),
