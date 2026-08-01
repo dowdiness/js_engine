@@ -775,6 +775,7 @@ priv enum DispatchProductionWork {
     Double,
     @token.Loc
   )
+  DispatchReceiverStartCall(DispatchCallRequest, DispatchContinuation)
   DispatchNumericApplyBinaryRight(DispatchBinaryResume, Value)
   DispatchPropertyStart(DispatchPropertyGetResume, DispatchContinuation)
   DispatchPropertyExecute(DispatchPropertyGetResume)
