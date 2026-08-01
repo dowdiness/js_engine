@@ -53,6 +53,7 @@ pub fn Engine::has_pending_microtasks(Self) -> Bool
 pub fn Engine::has_pending_timers(Self) -> Bool
 pub fn Engine::inject_json(Self, String, Json) -> Result[Unit, EngineDiagnostic]
 pub fn Engine::run_microtask_checkpoint(Self) -> Bool raise EngineError
+pub fn Engine::run_microtask_checkpoint_bounded(Self, @runtime.ExecutionPolicy) -> Result[Bool, EngineDiagnostic]
 pub fn Engine::run_microtask_checkpoint_diagnostic(Self) -> Result[Bool, EngineDiagnostic]
 pub fn Engine::run_timer_checkpoint(Self) -> Unit raise EngineError
 pub fn Engine::run_timer_checkpoint_diagnostic(Self) -> Result[Unit, EngineDiagnostic]

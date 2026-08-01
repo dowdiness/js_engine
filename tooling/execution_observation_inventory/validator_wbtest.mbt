@@ -357,11 +357,10 @@ test "valid seeded manifest" {
 }
 
 ///|
-fn assert_seeded_unobserved_issue_row(
+fn seeded_inventory_row(
   rows : Array[Map[String, Json]],
   id : String,
-  issue : String,
-) -> Unit raise {
+) -> Map[String, Json] raise {
   let matches = rows.filter(row => {
     match row.get("id") {
       Some(value) => (@json.from_json(value) catch { _ => "" }) == id
@@ -369,7 +368,16 @@ fn assert_seeded_unobserved_issue_row(
     }
   })
   assert_eq(matches.length(), 1)
-  let row = matches[0]
+  matches[0]
+}
+
+///|
+fn assert_seeded_unobserved_issue_row(
+  rows : Array[Map[String, Json]],
+  id : String,
+  issue : String,
+) -> Unit raise {
+  let row = seeded_inventory_row(rows, id)
   let status : String = @json.from_json(row["status"])
   let owner : String = @json.from_json(row["owning_implementation_or_issue"])
   let tracking : String = @json.from_json(row["tracking_issue"])
@@ -379,7 +387,7 @@ fn assert_seeded_unobserved_issue_row(
 }
 
 ///|
-test "seeded queue gaps are owned by their tracking issues" {
+test "seeded queue accounting distinguishes implemented and tracked rows" {
   let root : Map[String, Json] = @json.from_json(
     @json.parse(
       @fs.read_file_to_string("scripts/execution_observation_inventory.json") catch {
@@ -388,8 +396,15 @@ test "seeded queue gaps are owned by their tracking issues" {
     ),
   )
   let rows : Array[Map[String, Json]] = @json.from_json(root["rows"])
-  assert_seeded_unobserved_issue_row(
-    rows, "microtask-policy-queue-entry", "#749",
+  let microtask = seeded_inventory_row(rows, "microtask-policy-queue-entry")
+  let microtask_status : String = @json.from_json(microtask["status"])
+  let microtask_owner : String = @json.from_json(
+    microtask["owning_implementation_or_issue"],
   )
+  assert_eq(microtask_status, "observed-exactly-once")
+  assert_eq(
+    microtask_owner, "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed",
+  )
+  assert_true(microtask.get("tracking_issue") is None)
   assert_seeded_unobserved_issue_row(rows, "timer-policy-queue-entry", "#750")
 }

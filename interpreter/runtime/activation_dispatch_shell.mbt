@@ -238,6 +238,9 @@ priv struct PrimitiveProgramDispatchShell {
   receiver_root_preflight : ReceiverRecursionPreflight?
   receiver_root_stmts : Array[@ast.Stmt]?
   mut receiver_registry : TrustedReceiverRecursionRegistry?
+  mutual_receiver_root_preflight : MutualReceiverRecursionPreflight?
+  mutual_receiver_root_stmts : Array[@ast.Stmt]?
+  mut mutual_receiver_registry : TrustedMutualReceiverRecursionRegistry?
   activation_observation_port : ActivationObservationPort
   mut next_cleanup_id : Int
 }
@@ -257,6 +260,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   receiver_root_preflight? : ReceiverRecursionPreflight? = None,
   receiver_root_stmts? : Array[@ast.Stmt]? = None,
   receiver_registry? : TrustedReceiverRecursionRegistry? = None,
+  mutual_receiver_root_preflight? : MutualReceiverRecursionPreflight? = None,
+  mutual_receiver_root_stmts? : Array[@ast.Stmt]? = None,
+  mutual_receiver_registry? : TrustedMutualReceiverRecursionRegistry? = None,
   // The shell lifecycle is policy-free; admitted production roots inject the
   // execution-control port explicitly below.
   activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
@@ -280,6 +286,11 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     receiver_root_preflight,
     receiver_root_stmts: receiver_root_stmts.map(stmts => stmts.copy()),
     receiver_registry,
+    mutual_receiver_root_preflight,
+    mutual_receiver_root_stmts: mutual_receiver_root_stmts.map(stmts => {
+      stmts.copy()
+    }),
+    mutual_receiver_registry,
     activation_observation_port,
     next_cleanup_id: 0,
   }
@@ -691,13 +702,29 @@ fn PrimitiveProgramDispatchShell::start_receiver_call(
   request : DispatchCallRequest,
   continuation : DispatchContinuation,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let registry = self.require_receiver_registry()
-  let _ = registry.require_call(
-    self.interp,
-    request.callee,
-    request.this_value,
-    request.args,
-  )
+  match (self.receiver_registry, self.mutual_receiver_registry) {
+    (Some(registry), None) => {
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+      )
+    }
+    (None, Some(registry)) => {
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+        request.loc,
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "receiver call requires exactly one sealed receiver registry",
+      )
+  }
   DispatchWorkSuspended(DispatchSuspendCall(request, continuation))
 }
 
@@ -869,6 +896,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
     }
     DispatchReceiverRootRealmCleanup(previous_realm_protos) => {
       self.receiver_registry = None
+      self.mutual_receiver_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
     DispatchDeniedActivationCleanup => ()
@@ -1087,6 +1115,32 @@ fn PrimitiveProgramDispatchShell::receiver_root_stmts_or_fail(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::require_mutual_receiver_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedMutualReceiverRecursionRegistry raise InvalidActivationDispatchShell {
+  match self.mutual_receiver_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "mutual receiver activation requires a sealed runtime registry",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::mutual_receiver_root_stmts_or_fail(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[@ast.Stmt] raise InvalidActivationDispatchShell {
+  match self.mutual_receiver_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "mutual receiver root statements were not retained by admission",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1189,28 +1243,33 @@ fn PrimitiveProgramDispatchShell::enter_program(
           self.getter_root_preflight,
           self.proxy_root_preflight,
           self.receiver_root_preflight,
+          self.mutual_receiver_root_preflight,
         ) {
-        (Some(preflight), None, None, None, None) =>
+        (Some(preflight), None, None, None, None, None) =>
           self.complete_control_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        (None, Some(preflight), None, None, None) =>
+        (None, Some(preflight), None, None, None, None) =>
           self.complete_numeric_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        (None, None, Some(_), None, None) => {
+        (None, None, Some(_), None, None, None) => {
           self.push_getter_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, None, Some(_), None) => {
+        (None, None, None, Some(_), None, None) => {
           self.push_proxy_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, None, None, Some(_)) => {
+        (None, None, None, None, Some(_), None) => {
           self.push_receiver_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, None, None, None) => {
+        (None, None, None, None, None, Some(_)) => {
+          self.push_receiver_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None, None, None, None, None) => {
           self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
@@ -1581,6 +1640,101 @@ fn PrimitiveProgramDispatchShell::enter_receiver_call(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::enter_mutual_receiver_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_mutual_receiver_registry()
+  let _ = registry.require_call(
+    self.interp,
+    request.callee,
+    request.this_value,
+    request.args,
+    request.loc,
+  )
+  guard request.args.length() == 1 else {
+    invalid_activation_dispatch_shell(
+      "mutual receiver activation requires exactly one argument",
+    )
+  }
+  guard request.callee is Object(callee_object) &&
+    callee_object.callable is Some(UserFunc(data)) else {
+    invalid_activation_dispatch_shell(
+      "mutual receiver activation lost its exact UserFunc provenance",
+    )
+  }
+  let id = self.reserve_program_cleanup_id()
+  let observation = match self.begin_managed_activation_observation() {
+    Ok(attempt) => attempt
+    Err(error) =>
+      return self.reject_denied_managed_activation(
+        id,
+        RejectedReceiverCall,
+        error,
+      )
+  }
+  let cleared_realm = begin_cleared_active_callee_realm(self.interp.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.interp.realm_state,
+    request.callee,
+  )
+  let parameter_gate = self.interp.begin_simple_user_func_parameter_gate()
+  let setup : Result[PreparedUserFuncActivation, Error] = Ok(
+    self.interp.prepare_user_func_activation(
+      request.callee,
+      request.this_value,
+      request.args,
+      data,
+      throw_type_error_source=UsePreResolvedThrowTypeError(
+        registry.throw_type_error,
+      ),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  let resources = DispatchReceiverCallRealmCleanup(
+    cleared_realm~,
+    active_realm~,
+    parameter_gate~,
+  )
+  match setup {
+    Ok(prepared) => {
+      let token = accept_managed_activation_observation(observation)
+      self.push_receiver_call_cleanup(
+        id,
+        AcceptedReceiverCall,
+        resources,
+        Some(AcceptedActivationObservation(token)),
+      )
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id),
+        DispatchCallBody(
+          DispatchStatementCursor(
+            ctx=prepared.ctx,
+            stmts=data.body,
+            env=prepared.env,
+            production=true,
+          ),
+        ),
+      )
+    }
+    Err(error) => {
+      reject_managed_activation_observation(observation)
+      self.push_receiver_call_cleanup(
+        id,
+        RejectedReceiverCall,
+        resources,
+        Some(RejectedActivationObservation(observation)),
+      )
+      DispatchActivationRejected(
+        DispatchRejectedEntryCleanup(id),
+        dispatch_entry_rejection(error),
+      )
+    }
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::enter_managed_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
@@ -1591,12 +1745,15 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
       self.getter_registry,
       self.proxy_registry,
       self.receiver_registry,
+      self.mutual_receiver_registry,
     ) {
-    (Some(_), None, None, None) => self.enter_numeric_call(request)
-    (None, Some(_), None, None) => self.enter_getter_call(request)
-    (None, None, Some(_), None) => self.enter_proxy_call(request)
-    (None, None, None, Some(_)) => self.enter_receiver_call(request)
-    (None, None, None, None) =>
+    (Some(_), None, None, None, None) => self.enter_numeric_call(request)
+    (None, Some(_), None, None, None) => self.enter_getter_call(request)
+    (None, None, Some(_), None, None) => self.enter_proxy_call(request)
+    (None, None, None, Some(_), None) => self.enter_receiver_call(request)
+    (None, None, None, None, Some(_)) =>
+      self.enter_mutual_receiver_call(request)
+    (None, None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed call requires one sealed runtime registry",
       )
@@ -1992,6 +2149,69 @@ fn PrimitiveProgramDispatchShell::execute_receiver_root_statement(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::execute_mutual_receiver_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  preflight : MutualReceiverRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  guard physical_equal(step.env, self.interp.global) &&
+    mutual_receiver_root_statement_matches(
+      preflight.plan,
+      step.index,
+      step.stmt,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "mutual receiver root statement no longer matches exact admission",
+    )
+  }
+  match step.index {
+    0 | 1 => self.execute_statement_with_legacy_adapter(step)
+    2 => {
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          let registry = self.interp.seal_mutual_receiver_recursion_registry(
+            preflight,
+            self.mutual_receiver_root_stmts_or_fail(),
+          )
+          self.mutual_receiver_registry = Some(registry)
+        }
+        _ => ()
+      }
+      result
+    }
+    3 => {
+      match self.observe_managed_execution_steps(3) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let registry = self.require_mutual_receiver_registry()
+      let receiver = registry.require_receiver(self.interp)
+      let callee = registry.require_function(
+        self.interp,
+        preflight.plan.root_node,
+      )
+      let request = DispatchCallRequest(
+        callee~,
+        this_value=receiver,
+        args=[Number(preflight.plan.initial_argument)],
+        loc=preflight.plan.root_member_loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendContinueProduction(
+          DispatchDeliverCallResult,
+          DispatchReceiverStartCall(request, DispatchDeliverCallResult),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "mutual receiver root statement index is outside exact admission",
+      )
+  }
+}
+
+///|
 fn receiver_recursion_parameter_value(
   env : Environment,
   name : String,
@@ -2010,6 +2230,29 @@ fn receiver_recursion_parameter_value(
     _ =>
       invalid_activation_dispatch_shell(
         "receiver recursion parameter lost its activation provenance",
+      )
+  }
+}
+
+///|
+fn mutual_receiver_parameter_value(
+  env : Environment,
+  name : String,
+) -> Double raise InvalidActivationDispatchShell {
+  match env.bindings.get(name) {
+    Some(binding) if binding.initialized &&
+      binding.kind == LetBinding &&
+      binding.is_parameter =>
+      match binding.value {
+        Number(value) => value
+        _ =>
+          invalid_activation_dispatch_shell(
+            "mutual receiver recursion parameter is not a number",
+          )
+      }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "mutual receiver recursion parameter lost its activation provenance",
       )
   }
 }
@@ -2069,6 +2312,72 @@ fn PrimitiveProgramDispatchShell::execute_receiver_body_statement(
     _ =>
       invalid_activation_dispatch_shell(
         "receiver body statement index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_mutual_receiver_body_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_mutual_receiver_registry()
+  let node = registry.require_body_statement(self.interp, step.index, step.stmt)
+  let trusted = match node {
+    MutualReceiverLeft => registry.left
+    MutualReceiverRight => registry.right
+  }
+  guard step.env.parent is Some(parent) &&
+    physical_equal(parent, trusted.closure) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.env.bindings.get("this") is Some(this_binding) &&
+    this_binding.initialized &&
+    mutual_receiver_value_identity(trusted.receiver, this_binding.value) else {
+    invalid_activation_dispatch_shell(
+      "mutual receiver body statement lost its activation provenance",
+    )
+  }
+  match step.index {
+    0 => self.execute_statement_with_legacy_adapter(step)
+    1 => {
+      match self.observe_managed_execution_steps(5) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let argument = Number(
+        mutual_receiver_parameter_value(step.env, trusted.plan.parameter) -
+        NUMERIC_RECURSION_STEP,
+      )
+      let opposite = match node {
+        MutualReceiverLeft => MutualReceiverRight
+        MutualReceiverRight => MutualReceiverLeft
+      }
+      let callee = registry.require_function(self.interp, opposite)
+      let binary = DispatchBinaryResume(
+        op=@ast.Add,
+        left=Number(NUMERIC_RECURSION_STEP),
+        loc=trusted.plan.recipe.recursive_add_loc,
+      )
+      let request = DispatchCallRequest(
+        callee~,
+        this_value=trusted.receiver,
+        args=[argument],
+        loc=trusted.plan.recipe.recursive_call_loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendContinueProduction(
+          DispatchCompleteReturn,
+          DispatchReceiverStartCall(
+            request,
+            DispatchApplyPropertyBinaryRight(binary),
+          ),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "mutual receiver body statement index is outside exact admission",
       )
   }
 }
@@ -2575,20 +2884,21 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
       self.getter_root_preflight,
       self.proxy_root_preflight,
       self.receiver_root_preflight,
+      self.mutual_receiver_root_preflight,
     ) {
-    (Some(preflight), None, None) =>
+    (Some(preflight), None, None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_getter_root_statement(step, preflight)
       } else {
         self.execute_getter_body_statement(step, self.require_getter_registry())
       }
-    (None, Some(preflight), None) =>
+    (None, Some(preflight), None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_proxy_root_statement(step, preflight)
       } else {
         self.execute_proxy_body_statement(step, self.require_proxy_registry())
       }
-    (None, None, Some(preflight)) =>
+    (None, None, Some(preflight), None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_receiver_root_statement(step, preflight)
       } else {
@@ -2597,7 +2907,13 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
           self.require_receiver_registry(),
         )
       }
-    (None, None, None) =>
+    (None, None, None, Some(preflight)) =>
+      if physical_equal(step.env, self.interp.global) {
+        self.execute_mutual_receiver_root_statement(step, preflight)
+      } else {
+        self.execute_mutual_receiver_body_statement(step)
+      }
+    (None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed statement is outside admitted execution",
       )
@@ -2790,6 +3106,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
     self.getter_root_preflight is Some(_) ||
     self.proxy_root_preflight is Some(_) ||
     self.receiver_root_preflight is Some(_) ||
+    self.mutual_receiver_root_preflight is Some(_) ||
     activation_dispatch_leaf_program_is_admissible(stmts)
   try {
     let completion = self.drive(
@@ -2992,6 +3309,28 @@ fn Interpreter::run_activation_dispatch_receiver_program(
 }
 
 ///|
+fn Interpreter::run_activation_dispatch_mutual_receiver_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : MutualReceiverRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    mutual_receiver_root_preflight=Some(preflight),
+    mutual_receiver_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.mutual_receiver_registry is None else {
+    invalid_activation_dispatch_shell(
+      "mutual receiver registry outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
 fn Interpreter::run_activation_dispatch_root_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -3011,6 +3350,10 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_proxy_program(stmts, ctx, preflight)
     ActivationDispatchReceiverRoot(preflight) =>
       self.run_activation_dispatch_receiver_program(stmts, ctx, preflight)
+    ActivationDispatchMutualReceiverRoot(preflight) =>
+      self.run_activation_dispatch_mutual_receiver_program(
+        stmts, ctx, preflight,
+      )
   }
 }
 
