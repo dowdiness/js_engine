@@ -81,10 +81,11 @@ test "execution stack safety: escaped computed own-data receiver recursion at de
 
 ///|
 test "execution stack safety: escaped computed mutual receiver recursion at depth 256" {
-  for source in [
-    MUTUAL_RECEIVER_RECURSION_SOURCE,
-    REVERSED_MUTUAL_RECEIVER_RECURSION_SOURCE,
-  ] {
+  for
+    source in [
+      MUTUAL_RECEIVER_RECURSION_SOURCE,
+      REVERSED_MUTUAL_RECEIVER_RECURSION_SOURCE,
+    ] {
     match run(source) {
       Value::Number(256.0) => ()
       other =>

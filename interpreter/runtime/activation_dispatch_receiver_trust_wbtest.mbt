@@ -673,9 +673,445 @@ test "mutual receiver recursion preflight seals both function identities" {
   let interp = Interpreter::new()
   let stmts = @parser.parse(MUTUAL_RECEIVER_RECURSION_SOURCE).stmts
   let preflight = match
-    interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+    interp.preflight_dispatchable_mutual_receiver_recursion_program(stmts) {
     Some(found) => found
     None => fail("expected the exact mutual receiver preflight")
   }
-  let _ = interp.seal_receiver_recursion_registry(preflight, stmts)
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
+  let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
+  let _ = interp.exec_stmt(ctx, stmts[2], interp.global)
+  let registry : TrustedMutualReceiverRecursionRegistry = interp.seal_mutual_receiver_recursion_registry(
+    preflight, stmts,
+  ) catch {
+    InvalidActivationDispatchShell(message) =>
+      fail("mutual receiver seal failed: " + message)
+  }
+  guard !mutual_receiver_value_identity(
+    registry.left.callee,
+    registry.right.callee,
+  ) else {
+    fail("expected distinct mutual receiver functions")
+  }
+}
+
+///|
+fn mutual_receiver_sealed_fixture(
+  source_identity? : String? = None,
+) -> (Interpreter, Array[@ast.Stmt], TrustedMutualReceiverRecursionRegistry) raise {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = source_identity
+  let stmts = @parser.parse(MUTUAL_RECEIVER_RECURSION_SOURCE).stmts
+  let preflight = match
+    interp.preflight_dispatchable_mutual_receiver_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact mutual receiver preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
+  }
+  let registry = interp.seal_mutual_receiver_recursion_registry(
+    preflight, stmts,
+  )
+  (interp, stmts, registry)
+}
+
+///|
+test "mutual receiver recursion trust seals every escaped access recipe" {
+  let (interp, _, registry) = mutual_receiver_sealed_fixture()
+  let accesses = [
+    registry.plan.marker_property_access,
+    registry.plan.left_property_access,
+    registry.plan.right_property_access,
+    registry.plan.root_access,
+    registry.left.plan.recipe.marker_access,
+    registry.left.plan.recipe.recursive_access,
+    registry.right.plan.recipe.marker_access,
+    registry.right.plan.recipe.recursive_access,
+  ]
+  for access in accesses {
+    match access {
+      MutualReceiverComputedLiteral(_, has_escape) =>
+        inspect(has_escape, content="true")
+      MutualReceiverStatic => fail("expected escaped computed provenance")
+    }
+  }
+  ignore(registry.require_receiver(interp))
+}
+
+///|
+test "mutual receiver recursion trust rejects swapped and aliased properties" {
+  for swap in [true, false] {
+    let (interp, _, registry) = mutual_receiver_sealed_fixture()
+    guard registry.receiver is Object(receiver_data) else {
+      fail("expected the sealed receiver object")
+    }
+    if swap {
+      receiver_data.bag.properties[registry.plan.left.property_name] = registry.right.callee
+      receiver_data.bag.properties[registry.plan.right.property_name] = registry.left.callee
+    } else {
+      receiver_data.bag.properties[registry.plan.right.property_name] = registry.left.callee
+    }
+    inspect(
+      receiver_recursion_rejection(() => {
+        ignore(registry.require_receiver(interp))
+      }),
+      content="rejected",
+    )
+  }
+}
+
+///|
+test "mutual receiver recursion trust rejects descriptor and value drift" {
+  let (descriptor_interp, _, descriptor_registry) = mutual_receiver_sealed_fixture()
+  guard descriptor_registry.receiver is Object(descriptor_receiver) else {
+    fail("expected the sealed receiver object")
+  }
+  descriptor_receiver.bag.descriptors[descriptor_registry.plan.marker_name] = {
+    writable: false,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(descriptor_registry.require_receiver(descriptor_interp))
+    }),
+    content="rejected",
+  )
+
+  let (value_interp, _, value_registry) = mutual_receiver_sealed_fixture()
+  guard value_registry.receiver is Object(value_receiver) else {
+    fail("expected the sealed receiver object")
+  }
+  value_receiver.bag.properties[value_registry.plan.marker_name] = Number(1.0)
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(value_registry.require_receiver(value_interp))
+    }),
+    content="rejected",
+  )
+}
+
+///|
+test "mutual receiver recursion trust rejects both function body identities" {
+  for node in [MutualReceiverLeft, MutualReceiverRight] {
+    let (interp, _, registry) = mutual_receiver_sealed_fixture()
+    let trusted = mutual_receiver_registry_function(registry, node)
+    guard trusted.callee is Object({ callable: Some(UserFunc(data)), .. }) else {
+      fail("expected the sealed mutual UserFunc")
+    }
+    let source = match node {
+      MutualReceiverLeft =>
+        "function left(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x72ight\"](n-1);}"
+      MutualReceiverRight =>
+        "function right(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x6ceft\"](n-1);}"
+    }
+    let shifted_body = match @parser.parse(source).stmts[0] {
+      @ast.FuncDecl(_, _, body, _, _) => body
+      _ => fail("expected a mutual function declaration")
+    }
+    data.body[0] = shifted_body[0]
+    inspect(
+      receiver_recursion_rejection(() => {
+        ignore(registry.require_function(interp, node))
+      }),
+      content="rejected",
+    )
+  }
+}
+
+///|
+test "mutual receiver recursion trust rejects body statements without physical identity" {
+  let (interp, _, registry) = mutual_receiver_sealed_fixture()
+  let left_stmt = match
+    @parser.parse(
+      "function left(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x72ight\"](n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body[0]
+    _ => fail("expected a left mutual function declaration")
+  }
+  let right_stmt = match
+    @parser.parse(
+      "function right(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x6ceft\"](n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body[0]
+    _ => fail("expected a right mutual function declaration")
+  }
+  for statement in [left_stmt, right_stmt] {
+    inspect(
+      receiver_recursion_rejection(() => {
+        ignore(registry.require_body_statement(interp, 0, statement))
+      }),
+      content="rejected",
+    )
+  }
+}
+
+///|
+test "mutual receiver recursion trust seals location-callee pairings" {
+  let (interp, _, registry) = mutual_receiver_sealed_fixture()
+  let receiver = registry.require_receiver(interp)
+  let root = registry.require_function(interp, registry.plan.root_node)
+  ignore(
+    registry.require_call(
+      interp,
+      root,
+      receiver,
+      [Number(registry.plan.initial_argument)],
+      registry.plan.root_member_loc,
+    ),
+  )
+  let wrong_root = match registry.plan.root_node {
+    MutualReceiverLeft => registry.right.callee
+    MutualReceiverRight => registry.left.callee
+  }
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        registry.require_call(
+          interp,
+          wrong_root,
+          receiver,
+          [Number(registry.plan.initial_argument)],
+          registry.plan.root_member_loc,
+        ),
+      )
+    }),
+    content="rejected",
+  )
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        registry.require_call(
+          interp,
+          registry.left.callee,
+          receiver,
+          [Number(1.0)],
+          registry.left.plan.recipe.recursive_call_loc,
+        ),
+      )
+    }),
+    content="rejected",
+  )
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        registry.require_call(
+          interp,
+          registry.right.callee,
+          receiver,
+          [Number(1.0)],
+          registry.right.plan.recipe.recursive_call_loc,
+        ),
+      )
+    }),
+    content="rejected",
+  )
+}
+
+///|
+test "mutual receiver recursion trust revalidates ThrowTypeError identity" {
+  let (interp, _, registry) = mutual_receiver_sealed_fixture()
+  interp.global.def_builtin(
+    "[[ThrowTypeError]]",
+    make_native_func(name="replacement ThrowTypeError", _args => Undefined),
+  )
+  let outcome = try {
+    ignore(registry.require_receiver(interp))
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  inspect(
+    outcome,
+    content="mutual receiver recursion ThrowTypeError binding changed after sealing",
+  )
+}
+
+///|
+test "mutual receiver recursion trust rejects parameter, binding, and mirror drift" {
+  let (parameter_interp, _, parameter_registry) = mutual_receiver_sealed_fixture()
+  guard parameter_registry.left.callee
+    is Object({ callable: Some(UserFunc(parameter_data)), .. }) else {
+    fail("expected the sealed left UserFunc")
+  }
+  parameter_data.params[0] = "drifted"
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        parameter_registry.require_function(
+          parameter_interp,
+          MutualReceiverLeft,
+        ),
+      )
+    }),
+    content="rejected",
+  )
+
+  let (binding_interp, _, binding_registry) = mutual_receiver_sealed_fixture()
+  guard binding_interp.global.bindings.get("left") is Some(binding) else {
+    fail("expected the sealed left global binding")
+  }
+  binding.value = binding_registry.right.callee
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        binding_registry.require_function(binding_interp, MutualReceiverLeft),
+      )
+    }),
+    content="rejected",
+  )
+
+  let (mirror_interp, _, mirror_registry) = mutual_receiver_sealed_fixture()
+  guard mirror_interp.global_this is Object(mirror_global) else {
+    fail("expected the canonical global object")
+  }
+  mirror_global.bag.properties[mirror_registry.left.plan.function_name] = Number(
+    0.0,
+  )
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        mirror_registry.require_function(mirror_interp, MutualReceiverLeft),
+      )
+    }),
+    content="rejected",
+  )
+}
+
+///|
+test "mutual receiver recursion trust rejects source and realm metadata drift" {
+  let (source_interp, _, source_registry) = mutual_receiver_sealed_fixture(
+    source_identity=Some("sealed source"),
+  )
+  guard source_registry.left.callee is Object(source_data) &&
+    source_data.bag.symbol_properties.get(
+      FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID,
+    )
+    is Some(Array(source_metadata)) &&
+    source_metadata.elements.length() > FUNCTION_SOURCE_IDENTITY_IDX else {
+    fail("expected packed source metadata on the left function")
+  }
+  source_metadata.elements[FUNCTION_SOURCE_IDENTITY_IDX] = String_("drifted")
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        source_registry.require_function(source_interp, MutualReceiverLeft),
+      )
+    }),
+    content="rejected",
+  )
+
+  let (realm_interp, _, realm_registry) = mutual_receiver_sealed_fixture()
+  guard realm_registry.right.callee is Object(realm_data) &&
+    realm_data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID)
+    is Some(Array(realm_metadata)) &&
+    realm_metadata.elements.length() > REALM_PROTO_IDX_OBJECT else {
+    fail("expected packed realm metadata on the right function")
+  }
+  realm_metadata.elements[REALM_PROTO_IDX_OBJECT] = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(realm_registry.require_receiver(realm_interp))
+    }),
+    content="rejected",
+  )
+}
+
+///|
+test "mutual receiver recursion trust rejects pre-seal key and body location drift" {
+  let key_interp = Interpreter::new()
+  let key_stmts = @parser.parse(MUTUAL_RECEIVER_RECURSION_SOURCE).stmts
+  let key_preflight = match
+    key_interp.preflight_dispatchable_mutual_receiver_recursion_program(
+      key_stmts,
+    ) {
+    Some(found) => found
+    None => fail("expected the exact mutual receiver preflight")
+  }
+  guard key_stmts[2]
+    is @ast.VarDecl(_, _, Some(@ast.ObjectLit(properties, _)), _) else {
+    fail("expected the mutual receiver object declaration")
+  }
+  let key_property = properties[1]
+  properties[1] = {
+    ..key_property,
+    key: @ast.StringLit("left", true, @token.LexForm::LexNormal, {
+      line: 91,
+      col: 4,
+      offset: 9104,
+    }),
+  }
+  key_interp.prepare_root_program_execution(key_stmts, key_interp.global, false)
+  let key_ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = key_interp.exec_stmt(key_ctx, key_stmts[index], key_interp.global)
+  }
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        key_interp.seal_mutual_receiver_recursion_registry(
+          key_preflight, key_stmts,
+        ),
+      )
+    }),
+    content="rejected",
+  )
+
+  let body_interp = Interpreter::new()
+  let body_stmts = @parser.parse(MUTUAL_RECEIVER_RECURSION_SOURCE).stmts
+  let body_preflight = match
+    body_interp.preflight_dispatchable_mutual_receiver_recursion_program(
+      body_stmts,
+    ) {
+    Some(found) => found
+    None => fail("expected the exact mutual receiver preflight")
+  }
+  guard body_stmts[0] is @ast.FuncDecl(_, _, body, _, _) else {
+    fail("expected the left mutual function declaration")
+  }
+  let shifted = match
+    @parser.parse(
+      "function left(n){\n\nif(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x72ight\"](n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, shifted_body, _, _) => shifted_body[0]
+    _ => fail("expected the shifted left function body")
+  }
+  body[0] = shifted
+  body_interp.prepare_root_program_execution(
+    body_stmts,
+    body_interp.global,
+    false,
+  )
+  let body_ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = body_interp.exec_stmt(
+      body_ctx,
+      body_stmts[index],
+      body_interp.global,
+    )
+  }
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(
+        body_interp.seal_mutual_receiver_recursion_registry(
+          body_preflight, body_stmts,
+        ),
+      )
+    }),
+    content="rejected",
+  )
 }
