@@ -345,7 +345,7 @@ fn Interpreter::run_executor_function(
       let prepared = self.prepare_executor_activation(
         callee,
         instance,
-        args,
+        args.copy(),
         executable.params,
         executable.rest_param,
         executable.closure,
