@@ -1,4 +1,13 @@
 ///|
+/// Opaque policy and interruption controls for the staged bounded-evaluation
+/// facade. Runtime owns their invariants; the root package is the consumer API.
+pub using @runtime {
+  type ExecutionPolicy,
+  type ExecutionPolicyError,
+  type InterruptionHandle,
+}
+
+///|
 pub fn run(
   source : String,
   annex_b? : Bool = false,

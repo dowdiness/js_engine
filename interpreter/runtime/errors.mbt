@@ -170,6 +170,10 @@ pub fn js_error_to_value_with_env(err : Error, env : Environment?) -> Value {
     @errors.AggregateError(message~, errors~) =>
       make_aggregate_error_value(message, errors, env)
     JsException(val) => val // JavaScript throw statement value
+    ExecutionControlError(StackDepthLimit) =>
+      mark_engine_stack_depth_error(
+        make_error_value_with_env("RangeError", STACK_DEPTH_LIMIT_MESSAGE, env),
+      )
     e =>
       match @errors.name_message_if_js_error(e) {
         Some((name, msg)) => make_error_value_with_env(name, msg, env)
@@ -212,6 +216,7 @@ pub fn raise_js_exception(value : Value) -> Unit raise Error {
 pub fn is_js_catchable_error(err : Error) -> Bool {
   match err {
     JsException(_) => true
+    ExecutionControlError(StackDepthLimit) => true
     e => @errors.name_message_if_js_error(e) != None
   }
 }
