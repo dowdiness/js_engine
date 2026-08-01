@@ -214,6 +214,67 @@ test "timer policy preserves cancellation bookkeeping at the safety limit" {
 }
 
 ///|
+test "timer policy readiness does not pop the current entry" {
+  let queue = @priority_queue.PriorityQueue([
+    timer_policy_test_task(1, 0, 0),
+    timer_policy_test_task(2, 1, 1),
+  ])
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 10)
+  match policy.readiness() {
+    TimerQueueObservationRequired => ()
+    TimerQueueEmpty | TimerQueueSafetyLimit =>
+      fail("expected a ready timer observation")
+  }
+  inspect(queue.length(), content="2")
+  inspect(timer_policy_test_id(queue.peek()), content="1")
+}
+
+///|
+test "timer policy rejected observation retains the current entry" {
+  let queue = @priority_queue.PriorityQueue([
+    timer_policy_test_task(1, 0, 0),
+    timer_policy_test_task(2, 1, 1),
+  ])
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 10)
+  let _ = policy.readiness()
+  policy.reject_dispatch_observation()
+  inspect(queue.length(), content="2")
+  inspect(timer_policy_test_id(queue.peek()), content="1")
+  inspect(policy.readiness() is TimerQueueObservationRequired, content="true")
+}
+
+///|
+test "timer policy commit discards exactly one cancelled entry" {
+  let queue = @priority_queue.PriorityQueue([
+    timer_policy_test_task(1, 0, 0),
+    timer_policy_test_task(2, 1, 1),
+  ])
+  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 10)
+  let _ = policy.readiness()
+  inspect(policy.commit_next() is None, content="true")
+  inspect(queue.length(), content="1")
+  inspect(timer_policy_test_id(queue.peek()), content="2")
+}
+
+///|
+test "timer policy later rejection does not restore discarded cancellation" {
+  let queue = @priority_queue.PriorityQueue([
+    timer_policy_test_task(1, 0, 0),
+    timer_policy_test_task(2, 1, 1),
+  ])
+  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 10)
+  let _ = policy.readiness()
+  inspect(policy.commit_next() is None, content="true")
+  let _ = policy.readiness()
+  policy.reject_dispatch_observation()
+  inspect(queue.length(), content="1")
+  inspect(timer_policy_test_id(queue.peek()), content="2")
+  inspect(cancelled.contains(1), content="true")
+}
+
+///|
 test "timer policy rejects invalid transitions" {
   let queue = @priority_queue.PriorityQueue([timer_policy_test_task(1, 0, 0)])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
