@@ -58,7 +58,10 @@ test "execution stack safety: escaped computed own-data receiver recursion at de
     ) {
     Value::Number(256.0) => ()
     other =>
-      fail("expected escaped computed receiver recursion 256, got " + other.to_string())
+      fail(
+        "expected escaped computed receiver recursion 256, got " +
+        other.to_string(),
+      )
   }
 }
 

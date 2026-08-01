@@ -150,12 +150,14 @@ fn receiver_recursion_this_member_access(
       @ast.ThisExpr(_),
       @ast.StringLit(name, false, @token.LexForm::LexNormal, key_loc),
       member_loc
-    ) => Some((name, ReceiverRecursionComputedLiteral(key_loc, false), member_loc))
+    ) =>
+      Some((name, ReceiverRecursionComputedLiteral(key_loc, false), member_loc))
     @ast.ComputedMember(
       @ast.ThisExpr(_),
       @ast.StringLit(name, true, @token.LexForm::LexNormal, key_loc),
       member_loc
-    ) => Some((name, ReceiverRecursionComputedLiteral(key_loc, true), member_loc))
+    ) =>
+      Some((name, ReceiverRecursionComputedLiteral(key_loc, true), member_loc))
     _ => None
   }
 }

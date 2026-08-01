@@ -138,8 +138,9 @@ fn receiver_recursion_recipe_with_escape(
   original : ReceiverRecursionExpressionRecipe,
   drift_index : Int,
 ) -> ReceiverRecursionExpressionRecipe {
-  let drifted = (access : ReceiverRecursionAccessKind) =>
+  let drifted = (access : ReceiverRecursionAccessKind) => {
     receiver_recursion_access_with_escape(access, false)
+  }
   ReceiverRecursionExpressionRecipe(
     base_condition_loc=original.base_condition_loc,
     marker_property_access=if drift_index == 0 {
@@ -220,11 +221,11 @@ fn receiver_recursion_toggle_escaped_access(
           condition,
           @ast.ReturnStmt(
             Some(@ast.ComputedMember(base, key, member_loc)),
-            return_loc,
+            return_loc
           ),
           alternate,
           stmt_loc
-        ) => {
+        ) =>
           body[0] = @ast.IfStmt(
             condition,
             @ast.ReturnStmt(
@@ -234,7 +235,6 @@ fn receiver_recursion_toggle_escaped_access(
             alternate,
             stmt_loc,
           )
-        }
         _ => fail("expected the escaped marker member")
       }
     } else {
@@ -247,13 +247,13 @@ fn receiver_recursion_toggle_escaped_access(
               @ast.Call(
                 @ast.ComputedMember(base, key, member_loc),
                 args,
-                call_loc,
+                call_loc
               ),
-              add_loc,
-            ),
+              add_loc
+            )
           ),
-          return_loc,
-        ) => {
+          return_loc
+        ) =>
           body[1] = @ast.ReturnStmt(
             Some(
               @ast.Binary(
@@ -269,19 +269,15 @@ fn receiver_recursion_toggle_escaped_access(
             ),
             return_loc,
           )
-        }
         _ => fail("expected the escaped recursive member")
       }
     }
   } else {
-    guard stmts[2] is @ast.ExprStmt(
-      @ast.Call(
-        @ast.ComputedMember(base, key, member_loc),
-        args,
-        call_loc,
-      ),
-      stmt_loc,
-    ) else {
+    guard stmts[2]
+      is @ast.ExprStmt(
+        @ast.Call(@ast.ComputedMember(base, key, member_loc), args, call_loc),
+        stmt_loc
+      ) else {
       fail("expected the escaped root member call")
     }
     stmts[2] = @ast.ExprStmt(

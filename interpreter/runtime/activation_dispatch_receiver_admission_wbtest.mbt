@@ -77,7 +77,10 @@ test "receiver recursion admission recognizes all-escaped computed literals" {
   )
   let plan = match classify_receiver_recursion_program(stmts) {
     Some(found) => found
-    None => fail("expected the escaped computed receiver-recursion shape to be admitted")
+    None =>
+      fail(
+        "expected the escaped computed receiver-recursion shape to be admitted",
+      )
   }
   let accesses = [
     plan.recipe.marker_property_access,
@@ -90,7 +93,8 @@ test "receiver recursion admission recognizes all-escaped computed literals" {
     match access {
       ReceiverRecursionComputedLiteral(_, has_escape) =>
         inspect(has_escape, content="true")
-      ReceiverRecursionStatic => fail("expected every escaped receiver access to be computed")
+      ReceiverRecursionStatic =>
+        fail("expected every escaped receiver access to be computed")
     }
   }
   inspect(receiver_recursion_plan_is_dispatchable(plan), content="true")
@@ -98,8 +102,7 @@ test "receiver recursion admission recognizes all-escaped computed literals" {
 
 ///|
 test "receiver recursion admission accepts decoded Unicode escaped literals" {
-  let source =
-    "function step(n){if(n===0)return this[\"\\u006darker\"];return 1+this[\"\\u0073tep\"](n-1);}" +
+  let source = "function step(n){if(n===0)return this[\"\\u006darker\"];return 1+this[\"\\u0073tep\"](n-1);}" +
     "let receiver={[\"\\u006darker\"]:0,[\"\\u0073tep\"]:step};receiver[\"\\u0073tep\"](256);"
   let stmts = receiver_recursion_test_program(source)
   let plan = match classify_receiver_recursion_program(stmts) {
@@ -141,12 +144,11 @@ test "receiver recursion admission rejects escaped noncomputed object keys" {
   }
   let property = properties[0]
   match property.key {
-    @ast.StringLit(name, _, lex_form, key_loc) => {
+    @ast.StringLit(name, _, lex_form, key_loc) =>
       properties[0] = {
         ..property,
         key: @ast.StringLit(name, true, lex_form, key_loc),
       }
-    }
     _ => fail("expected a noncomputed string key")
   }
   inspect(classify_receiver_recursion_program(stmts) is None, content="true")
