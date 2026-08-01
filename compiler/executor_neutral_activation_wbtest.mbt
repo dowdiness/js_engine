@@ -332,6 +332,52 @@ test "bytecode receiver recursion reaches the synchronous call boundary" {
 }
 
 ///|
+test "bytecode receiver spread reaches the synchronous final call boundary" {
+  let source = "function step(n) { if (n === 0) return this.marker; " +
+    "return 1 + this.step(n - 1, ...[]); }\n" +
+    "let receiver = { marker: 0, step: step };\n" +
+    "receiver.step(320, ...[]);"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_main_spread = false
+  let mut saw_main_receiver_call = false
+  for instr in lowered.main.code {
+    match instr {
+      ArgPushSpread(_) => saw_main_spread = true
+      CallSpreadWithReceiver(_) => saw_main_receiver_call = true
+      _ => ()
+    }
+  }
+  assert_true(saw_main_spread)
+  assert_true(saw_main_receiver_call)
+  let mut saw_step_child = false
+  let mut saw_child_spread = false
+  let mut saw_child_receiver_call = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "step" => {
+        saw_step_child = true
+        for instr in child.code {
+          match instr {
+            ArgPushSpread(_) => saw_child_spread = true
+            CallSpreadWithReceiver(_) => saw_child_receiver_call = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_step_child)
+  assert_true(saw_child_spread)
+  assert_true(saw_child_receiver_call)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "bytecode computed receiver mutual recursion completes deeply" {
   let interp = @interpreter.new_interpreter()
   let source = "var left = 'left'; var right = 'right';\n" +
