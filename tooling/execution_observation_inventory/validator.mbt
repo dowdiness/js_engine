@@ -2,6 +2,9 @@
 const SCHEMA_VERSION : Int = 1
 
 ///|
+const REQUIRED_CONTRACT = "docs/decisions/engine-execution-guardrail-contract.md"
+
+///|
 priv struct EvidenceReference {
   row_id : String
   field : String
@@ -65,9 +68,22 @@ fn validate_operation_family(
 }
 
 ///|
+fn evidence_path_is_repository_relative(path : String) -> Bool {
+  let normalized = @path_utils.normalize_path(path)
+  let raw_components = path.replace_all(old="\\", new="/").split("/")
+  normalized != "" &&
+  normalized != "." &&
+  !normalized.has_prefix("/") &&
+  !(normalized.length() >= 3 && normalized[1] == ':' && normalized[2] == '/') &&
+  !raw_components.any(component => component == "..")
+}
+
+///|
 fn focused_reference_is_valid(value : String) -> Bool {
   let parts = value.split("#").to_array()
-  parts.length() == 2 && parts[0].length() > 0 && parts[1].length() > 0
+  parts.length() == 2 &&
+  evidence_path_is_repository_relative(parts[0].to_owned()) &&
+  parts[1].length() > 0
 }
 
 ///|
@@ -89,7 +105,10 @@ fn validate_reference_array(
   for value in values {
     if !focused_reference_is_valid(value) {
       return Err(
-        path + ": " + key + " entries must be non-empty path#anchor references",
+        path +
+        ": " +
+        key +
+        " entries must be repository-relative path#anchor references",
       )
     }
   }
@@ -198,7 +217,7 @@ fn validate_public_facade_evidence(
         if !focused_reference_is_valid(reference) {
           return Err(
             path +
-            ": public_facade_evidence entries must be non-empty path#anchor references",
+            ": public_facade_evidence entries must be repository-relative path#anchor references",
           )
         }
       }
@@ -305,6 +324,13 @@ fn validate_manifest_and_collect_evidence(
   if version != SCHEMA_VERSION {
     return Err(path + ": version must be " + SCHEMA_VERSION.to_string())
   }
+  let contract = match required_string(data, "contract", path) {
+    Ok(value) => value
+    Err(message) => return Err(message)
+  }
+  if contract != REQUIRED_CONTRACT {
+    return Err(path + ": contract must be " + REQUIRED_CONTRACT)
+  }
   let rows : Array[Map[String, Json]] = match data.get("rows") {
     Some(value) =>
       @json.from_json(value) catch {
@@ -314,7 +340,7 @@ fn validate_manifest_and_collect_evidence(
   }
   let permitted_issues = permitted_stage4_tracking_issues()
   let ids : Map[String, Bool] = Map([])
-  let final_owners : Map[String, String] = Map([])
+  let accounting_entries : Map[String, String] = Map([])
   let evidence : Array[EvidenceReference] = []
   for row in rows {
     let id : String = match row.get("id") {
@@ -323,6 +349,9 @@ fn validate_manifest_and_collect_evidence(
           _ => return Err(path + ": row id must be a string")
         }
       None => return Err(path + ": missing key: id")
+    }
+    if id == "" {
+      return Err(path + ": row id must not be empty")
     }
     if ids.contains(id) {
       return Err(path + ": duplicate row identifier: " + id)
@@ -337,15 +366,20 @@ fn validate_manifest_and_collect_evidence(
       Ok(_) => ()
       Err(message) => return Err(message)
     }
-    let final_owner = match
-      required_string(row, "intended_final_accounting_owner", row_path) {
+    let accounting_entry_id = match
+      required_string(row, "accounting_entry_id", row_path) {
       Ok(value) => value
       Err(message) => return Err(message)
     }
-    if final_owners.contains(final_owner) {
-      return Err(path + ": duplicate final accounting owner: " + final_owner)
+    if accounting_entry_id == "" {
+      return Err(row_path + ": accounting_entry_id must not be empty")
     }
-    final_owners[final_owner] = id
+    if accounting_entries.contains(accounting_entry_id) {
+      return Err(
+        path + ": duplicate accounting entry identifier: " + accounting_entry_id,
+      )
+    }
+    accounting_entries[accounting_entry_id] = id
     match validate_status_and_ownership(row, permitted_issues, row_path) {
       Ok(_) => ()
       Err(message) => return Err(message)

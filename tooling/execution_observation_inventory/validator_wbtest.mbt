@@ -1,22 +1,56 @@
 ///|
 fn six_family_manifest(first_row : String) -> String {
+  let first_row = if first_row.contains("\"accounting_entry_id\"") {
+    first_row
+  } else {
+    first_row.replace(
+      old="\"operation_family\":",
+      new="\"accounting_entry_id\":\"fixture-first-entry\",\"operation_family\":",
+    )
+  }
   let rest =
-    #|{"id":"expression","operation_family":"expression dispatch","current_accounting_owner":"expression","intended_final_accounting_owner":"expression","status":"observed-exactly-once","owning_implementation_or_issue":"expression","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"bounded","operation_family":"bounded evaluation","current_accounting_owner":"bounded","intended_final_accounting_owner":"bounded","status":"observed-exactly-once","owning_implementation_or_issue":"bounded","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"activation","operation_family":"activation dispatch","current_accounting_owner":"activation","intended_final_accounting_owner":"activation","status":"observed-exactly-once","owning_implementation_or_issue":"activation","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"microtask","operation_family":"microtask policy","current_accounting_owner":"microtask","intended_final_accounting_owner":"microtask","status":"observed-exactly-once","owning_implementation_or_issue":"microtask","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"timer","operation_family":"timer policy","current_accounting_owner":"timer","intended_final_accounting_owner":"timer","status":"observed-exactly-once","owning_implementation_or_issue":"timer","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false}
-  "{\"version\":1,\"rows\":[" + first_row + "," + rest + "]}"
+    #|{"id":"expression","accounting_entry_id":"fixture-expression-entry","operation_family":"expression dispatch","current_accounting_owner":"expression","intended_final_accounting_owner":"expression","status":"observed-exactly-once","owning_implementation_or_issue":"expression","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"bounded","accounting_entry_id":"fixture-bounded-entry","operation_family":"bounded evaluation","current_accounting_owner":"bounded","intended_final_accounting_owner":"bounded","status":"observed-exactly-once","owning_implementation_or_issue":"bounded","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"activation","accounting_entry_id":"fixture-activation-entry","operation_family":"activation dispatch","current_accounting_owner":"activation","intended_final_accounting_owner":"activation","status":"observed-exactly-once","owning_implementation_or_issue":"activation","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"microtask","accounting_entry_id":"fixture-microtask-entry","operation_family":"microtask policy","current_accounting_owner":"microtask","intended_final_accounting_owner":"microtask","status":"observed-exactly-once","owning_implementation_or_issue":"microtask","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"timer","accounting_entry_id":"fixture-timer-entry","operation_family":"timer policy","current_accounting_owner":"timer","intended_final_accounting_owner":"timer","status":"observed-exactly-once","owning_implementation_or_issue":"timer","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false}
+  "{\"version\":1,\"contract\":\"docs/decisions/engine-execution-guardrail-contract.md\",\"rows\":[" +
+  first_row +
+  "," +
+  rest +
+  "]}"
 }
 
 ///|
 fn paired_family_manifest(first_row : String, second_row : String) -> String {
+  let first_row = if first_row.contains("\"accounting_entry_id\"") {
+    first_row
+  } else {
+    first_row.replace(
+      old="\"operation_family\":",
+      new="\"accounting_entry_id\":\"fixture-first-entry\",\"operation_family\":",
+    )
+  }
+  let second_row = if second_row.contains("\"accounting_entry_id\"") {
+    second_row
+  } else {
+    second_row.replace(
+      old="\"operation_family\":",
+      new="\"accounting_entry_id\":\"fixture-second-entry\",\"operation_family\":",
+    )
+  }
   let rest =
-    #|{"id":"bounded","operation_family":"bounded evaluation","current_accounting_owner":"bounded","intended_final_accounting_owner":"bounded","status":"observed-exactly-once","owning_implementation_or_issue":"bounded","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"activation","operation_family":"activation dispatch","current_accounting_owner":"activation","intended_final_accounting_owner":"activation","status":"observed-exactly-once","owning_implementation_or_issue":"activation","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"microtask","operation_family":"microtask policy","current_accounting_owner":"microtask","intended_final_accounting_owner":"microtask","status":"observed-exactly-once","owning_implementation_or_issue":"microtask","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
-    #|{"id":"timer","operation_family":"timer policy","current_accounting_owner":"timer","intended_final_accounting_owner":"timer","status":"observed-exactly-once","owning_implementation_or_issue":"timer","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false}
-  "{\"version\":1,\"rows\":[" + first_row + "," + second_row + "," + rest + "]}"
+    #|{"id":"bounded","accounting_entry_id":"fixture-bounded-entry","operation_family":"bounded evaluation","current_accounting_owner":"bounded","intended_final_accounting_owner":"bounded","status":"observed-exactly-once","owning_implementation_or_issue":"bounded","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"activation","accounting_entry_id":"fixture-activation-entry","operation_family":"activation dispatch","current_accounting_owner":"activation","intended_final_accounting_owner":"activation","status":"observed-exactly-once","owning_implementation_or_issue":"activation","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"microtask","accounting_entry_id":"fixture-microtask-entry","operation_family":"microtask policy","current_accounting_owner":"microtask","intended_final_accounting_owner":"microtask","status":"observed-exactly-once","owning_implementation_or_issue":"microtask","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false},
+    #|{"id":"timer","accounting_entry_id":"fixture-timer-entry","operation_family":"timer policy","current_accounting_owner":"timer","intended_final_accounting_owner":"timer","status":"observed-exactly-once","owning_implementation_or_issue":"timer","focused_evidence":["fixture.mbt#anchor"],"entry_category":"entry","contract_observation_category":"dispatch-point","duplicate_charge_risk":"risk","public_facade_evidence_required":false}
+  "{\"version\":1,\"contract\":\"docs/decisions/engine-execution-guardrail-contract.md\",\"rows\":[" +
+  first_row +
+  "," +
+  second_row +
+  "," +
+  rest +
+  "]}"
 }
 
 ///|
@@ -31,7 +65,7 @@ fn tracking_issue_manifest(issue : String) -> String {
 }
 
 ///|
-test "validator rejects duplicate final accounting owners" {
+test "validator accepts distinct accounting entries with one final owner" {
   let row = "\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"same\",\"status\":\"observed-exactly-once\",\"owning_implementation_or_issue\":\"a\",\"focused_evidence\":[\"fixture.mbt#anchor\"],\"entry_category\":\"entry\",\"contract_observation_category\":\"dispatch-point\",\"duplicate_charge_risk\":\"risk\",\"public_facade_evidence_required\":false"
   let first = "{\"id\":\"statement\",\"operation_family\":\"statement dispatch\"," +
     row +
@@ -39,13 +73,14 @@ test "validator rejects duplicate final accounting owners" {
   let second = "{\"id\":\"expression\",\"operation_family\":\"expression dispatch\"," +
     row +
     "}"
-  let result = validate_manifest_text(
-    paired_family_manifest(first, second),
-    "duplicate-owner.json",
-  )
-  match result {
-    Ok(_) => fail("expected duplicate final owner rejection")
-    Err(message) => assert_true(message.contains("final accounting owner"))
+  match
+    validate_manifest_text(
+      paired_family_manifest(first, second),
+      "same-final-owner.json",
+    ) {
+    Ok(_) => ()
+    Err(message) =>
+      fail("distinct accounting entries should validate: " + message)
   }
 }
 
@@ -64,7 +99,7 @@ test "validator rejects missing accounting owner" {
 ///|
 test "validator rejects missing operation family" {
   let manifest =
-    #|{"version": 1, "rows": [{"id": "row"}]}
+    #|{"version": 1, "contract": "docs/decisions/engine-execution-guardrail-contract.md", "rows": [{"id": "row"}]}
   let result = validate_manifest_text(manifest, "missing-family.json")
   match result {
     Ok(_) => fail("expected missing operation family rejection")
@@ -208,14 +243,87 @@ test "validator rejects observed row without evidence" {
 ///|
 test "validator rejects duplicate row identifiers" {
   let manifest =
-    #|{"version": 1, "rows": [
-    #|  {"id": "dup", "operation_family": "statement dispatch", "current_accounting_owner": "a", "intended_final_accounting_owner": "b", "status": "observed-exactly-once", "owning_implementation_or_issue": "a", "focused_evidence": ["fixture.mbt#anchor"], "entry_category": "entry", "contract_observation_category": "dispatch-point", "duplicate_charge_risk": "risk", "public_facade_evidence_required": false},
-    #|  {"id": "dup", "operation_family": "statement dispatch", "current_accounting_owner": "a", "intended_final_accounting_owner": "b", "status": "observed-exactly-once", "owning_implementation_or_issue": "a", "focused_evidence": ["fixture.mbt#anchor"], "entry_category": "entry", "contract_observation_category": "dispatch-point", "duplicate_charge_risk": "risk", "public_facade_evidence_required": false}
+    #|{"version": 1, "contract": "docs/decisions/engine-execution-guardrail-contract.md", "rows": [
+    #|  {"id": "dup", "accounting_entry_id": "duplicate-first", "operation_family": "statement dispatch", "current_accounting_owner": "a", "intended_final_accounting_owner": "b", "status": "observed-exactly-once", "owning_implementation_or_issue": "a", "focused_evidence": ["fixture.mbt#anchor"], "entry_category": "entry", "contract_observation_category": "dispatch-point", "duplicate_charge_risk": "risk", "public_facade_evidence_required": false},
+    #|  {"id": "dup", "accounting_entry_id": "duplicate-second", "operation_family": "statement dispatch", "current_accounting_owner": "a", "intended_final_accounting_owner": "b", "status": "observed-exactly-once", "owning_implementation_or_issue": "a", "focused_evidence": ["fixture.mbt#anchor"], "entry_category": "entry", "contract_observation_category": "dispatch-point", "duplicate_charge_risk": "risk", "public_facade_evidence_required": false}
     #|]}
   let result = validate_manifest_text(manifest, "duplicate-id.json")
   match result {
     Ok(_) => fail("expected duplicate row identifier rejection")
     Err(message) => assert_true(message.contains("duplicate row identifier"))
+  }
+}
+
+///|
+test "validator rejects duplicate accounting entry identifiers" {
+  let row = "\"accounting_entry_id\":\"same-entry\",\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"owner\",\"status\":\"observed-exactly-once\",\"owning_implementation_or_issue\":\"a\",\"focused_evidence\":[\"fixture.mbt#anchor\"],\"entry_category\":\"entry\",\"contract_observation_category\":\"dispatch-point\",\"duplicate_charge_risk\":\"risk\",\"public_facade_evidence_required\":false"
+  let first = "{\"id\":\"statement\",\"operation_family\":\"statement dispatch\"," +
+    row +
+    "}"
+  let second = "{\"id\":\"expression\",\"operation_family\":\"expression dispatch\"," +
+    row.replace(
+      old="\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"owner\"",
+      new="\"current_accounting_owner\":\"b\",\"intended_final_accounting_owner\":\"other-owner\"",
+    ) +
+    "}"
+  let result = validate_manifest_text(
+    paired_family_manifest(first, second),
+    "duplicate-accounting-entry.json",
+  )
+  match result {
+    Ok(_) => fail("expected duplicate accounting entry rejection")
+    Err(message) => assert_true(message.contains("accounting entry"))
+  }
+}
+
+///|
+test "validator rejects empty row identifier" {
+  let first = "{\"id\":\"\",\"operation_family\":\"statement dispatch\",\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"statement\",\"status\":\"observed-exactly-once\",\"owning_implementation_or_issue\":\"a\",\"focused_evidence\":[\"fixture.mbt#anchor\"],\"entry_category\":\"entry\",\"contract_observation_category\":\"dispatch-point\",\"duplicate_charge_risk\":\"risk\",\"public_facade_evidence_required\":false}"
+  match
+    validate_manifest_text(six_family_manifest(first), "empty-row-id.json") {
+    Ok(_) => fail("expected empty row identifier rejection")
+    Err(message) => assert_true(message.contains("row id must not be empty"))
+  }
+}
+
+///|
+test "validator rejects empty accounting entry identifier" {
+  let first = "{\"id\":\"statement\",\"accounting_entry_id\":\"\",\"operation_family\":\"statement dispatch\",\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"statement\",\"status\":\"observed-exactly-once\",\"owning_implementation_or_issue\":\"a\",\"focused_evidence\":[\"fixture.mbt#anchor\"],\"entry_category\":\"entry\",\"contract_observation_category\":\"dispatch-point\",\"duplicate_charge_risk\":\"risk\",\"public_facade_evidence_required\":false}"
+  match
+    validate_manifest_text(
+      six_family_manifest(first),
+      "empty-accounting-entry.json",
+    ) {
+    Ok(_) => fail("expected empty accounting entry rejection")
+    Err(message) =>
+      assert_true(message.contains("accounting_entry_id must not be empty"))
+  }
+}
+
+///|
+test "validator rejects backslash parent traversal evidence" {
+  let first = "{\"id\":\"statement\",\"operation_family\":\"statement dispatch\",\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"statement\",\"status\":\"observed-exactly-once\",\"owning_implementation_or_issue\":\"a\",\"focused_evidence\":[\"..\\\\outside.mbt#anchor\"],\"entry_category\":\"entry\",\"contract_observation_category\":\"dispatch-point\",\"duplicate_charge_risk\":\"risk\",\"public_facade_evidence_required\":false}"
+  match
+    validate_manifest_text(
+      six_family_manifest(first),
+      "backslash-traversal.json",
+    ) {
+    Ok(_) => fail("expected backslash traversal rejection")
+    Err(message) => assert_true(message.contains("repository-relative"))
+  }
+}
+
+///|
+test "validator rejects incorrect contract" {
+  let manifest = six_family_manifest(
+    "{\"id\":\"statement\",\"operation_family\":\"statement dispatch\",\"current_accounting_owner\":\"a\",\"intended_final_accounting_owner\":\"statement\",\"status\":\"observed-exactly-once\",\"owning_implementation_or_issue\":\"a\",\"focused_evidence\":[\"fixture.mbt#anchor\"],\"entry_category\":\"entry\",\"contract_observation_category\":\"dispatch-point\",\"duplicate_charge_risk\":\"risk\",\"public_facade_evidence_required\":false}",
+  ).replace(
+    old="docs/decisions/engine-execution-guardrail-contract.md",
+    new="docs/decisions/other-contract.md",
+  )
+  match validate_manifest_text(manifest, "incorrect-contract.json") {
+    Ok(_) => fail("expected incorrect contract rejection")
+    Err(message) => assert_true(message.contains("contract must be"))
   }
 }
 

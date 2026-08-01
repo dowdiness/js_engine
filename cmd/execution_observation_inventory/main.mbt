@@ -45,13 +45,7 @@ fn main {
     Some(values) if values.length() > 0 => values[0]
     _ => "."
   }
-  let (stdout_lines, stderr_lines, code) = @inventory.run(root~) catch {
-    err => {
-      eprintln("Error: \{err}")
-      exit_with_error()
-      return
-    }
-  }
+  let (stdout_lines, stderr_lines, code) = @inventory.run(root~)
   for line in stdout_lines {
     println(line)
   }

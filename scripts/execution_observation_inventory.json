@@ -4,6 +4,7 @@
   "rows": [
     {
       "id": "statement-dispatch-ast-node",
+      "accounting_entry_id": "statement-dispatch-ast-node-entry",
       "operation_family": "statement dispatch",
       "entry_category": "ECMAScript statement node dispatch",
       "contract_observation_category": "dispatch-point",
@@ -18,6 +19,7 @@
     },
     {
       "id": "expression-dispatch-ast-node",
+      "accounting_entry_id": "expression-dispatch-ast-node-entry",
       "operation_family": "expression dispatch",
       "entry_category": "ECMAScript expression node dispatch",
       "contract_observation_category": "dispatch-point",
@@ -32,6 +34,7 @@
     },
     {
       "id": "bounded-evaluation-host-parse",
+      "accounting_entry_id": "bounded-evaluation-host-parse-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "host source parse before budget reset",
       "contract_observation_category": "host-source-parsing",
@@ -46,6 +49,7 @@
     },
     {
       "id": "bounded-evaluation-control-scope",
+      "accounting_entry_id": "bounded-evaluation-control-scope-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "operation-scoped execution-control installation",
       "contract_observation_category": "fixed-size-bookkeeping",
@@ -60,6 +64,7 @@
     },
     {
       "id": "activation-dispatch-admitted-entry",
+      "accounting_entry_id": "activation-dispatch-admitted-entry-entry",
       "operation_family": "activation dispatch",
       "entry_category": "admitted callable activation",
       "contract_observation_category": "dispatch-point",
@@ -73,7 +78,23 @@
       "public_facade_evidence": []
     },
     {
+      "id": "activation-dispatch-managed-execution-step-loop",
+      "accounting_entry_id": "activation-dispatch-managed-execution-step-loop-entry",
+      "operation_family": "activation dispatch",
+      "entry_category": "managed execution-step observation loop",
+      "contract_observation_category": "already-observed-loop",
+      "current_accounting_owner": "interpreter/runtime/activation_dispatch_shell.mbt#PrimitiveProgramDispatchShell::observe_managed_execution_steps",
+      "intended_final_accounting_owner": "activation-dispatch-managed-execution-step-loop-observation",
+      "status": "observed-exactly-once",
+      "duplicate_charge_risk": "The managed execution-step loop must charge each admitted step exactly once and must not add a second charge around the same Interpreter::observe_execution_step call.",
+      "owning_implementation_or_issue": "interpreter/runtime/activation_dispatch_shell.mbt",
+      "focused_evidence": ["interpreter/runtime/activation_dispatch_shell.mbt#PrimitiveProgramDispatchShell::observe_managed_execution_steps", "interpreter/runtime/execution_control.mbt#Interpreter::observe_execution_step"],
+      "public_facade_evidence_required": false,
+      "public_facade_evidence": []
+    },
+    {
       "id": "activation-dispatch-general-call",
+      "accounting_entry_id": "activation-dispatch-general-call-entry",
       "operation_family": "activation dispatch",
       "entry_category": "general callable entry route",
       "contract_observation_category": "dispatch-point",
@@ -89,6 +110,7 @@
     },
     {
       "id": "activation-dispatch-constructor-entry",
+      "accounting_entry_id": "activation-dispatch-constructor-entry-entry",
       "operation_family": "activation dispatch",
       "entry_category": "constructor activation route",
       "contract_observation_category": "dispatch-point",
@@ -104,6 +126,7 @@
     },
     {
       "id": "activation-dispatch-property-proxy-entry",
+      "accounting_entry_id": "activation-dispatch-property-proxy-entry-entry",
       "operation_family": "activation dispatch",
       "entry_category": "accessor and Proxy trap activation route",
       "contract_observation_category": "dispatch-point",
@@ -119,6 +142,7 @@
     },
     {
       "id": "activation-dispatch-generator-entry",
+      "accounting_entry_id": "activation-dispatch-generator-entry-entry",
       "operation_family": "activation dispatch",
       "entry_category": "generator and async-generator body start or resume",
       "contract_observation_category": "dispatch-point",
@@ -134,6 +158,7 @@
     },
     {
       "id": "microtask-policy-queue-entry",
+      "accounting_entry_id": "microtask-policy-queue-entry-entry",
       "operation_family": "microtask policy",
       "entry_category": "microtask queue selection, consumption, and drain progress",
       "contract_observation_category": "dispatch-point",
@@ -149,6 +174,7 @@
     },
     {
       "id": "microtask-policy-bookkeeping",
+      "accounting_entry_id": "microtask-policy-bookkeeping-entry",
       "operation_family": "microtask policy",
       "entry_category": "empty-queue and private queue bookkeeping",
       "contract_observation_category": "fixed-size-bookkeeping",
@@ -163,6 +189,7 @@
     },
     {
       "id": "timer-policy-queue-entry",
+      "accounting_entry_id": "timer-policy-queue-entry-entry",
       "operation_family": "timer policy",
       "entry_category": "timer and interval queue inspection, pop, cancellation filtering, and drain progress",
       "contract_observation_category": "dispatch-point",
@@ -178,6 +205,7 @@
     },
     {
       "id": "timer-policy-bookkeeping",
+      "accounting_entry_id": "timer-policy-bookkeeping-entry",
       "operation_family": "timer policy",
       "entry_category": "physical-empty and safety-limit bookkeeping",
       "contract_observation_category": "fixed-size-bookkeeping",
@@ -192,6 +220,7 @@
     },
     {
       "id": "bounded-evaluation-iterator-traversal",
+      "accounting_entry_id": "bounded-evaluation-iterator-traversal-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "iterator, array-like, and property traversal loops",
       "contract_observation_category": "script-controlled-execution-time-loop",
@@ -207,6 +236,7 @@
     },
     {
       "id": "bounded-evaluation-array-typedarray-loops",
+      "accounting_entry_id": "bounded-evaluation-array-typedarray-loops-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "Array and TypedArray native loops",
       "contract_observation_category": "script-controlled-execution-time-loop",
@@ -222,6 +252,7 @@
     },
     {
       "id": "bounded-evaluation-map-set-loops",
+      "accounting_entry_id": "bounded-evaluation-map-set-loops-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "Map and Set native loops",
       "contract_observation_category": "script-controlled-execution-time-loop",
@@ -237,6 +268,7 @@
     },
     {
       "id": "bounded-evaluation-json-loops",
+      "accounting_entry_id": "bounded-evaluation-json-loops-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "JSON parse and stringify native loops",
       "contract_observation_category": "script-controlled-execution-time-loop",
@@ -252,6 +284,7 @@
     },
     {
       "id": "bounded-evaluation-promise-loops",
+      "accounting_entry_id": "bounded-evaluation-promise-loops-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "Promise combinator and callback loops",
       "contract_observation_category": "script-controlled-execution-time-loop",
@@ -267,6 +300,7 @@
     },
     {
       "id": "bounded-evaluation-string-loops",
+      "accounting_entry_id": "bounded-evaluation-string-loops-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "String native algorithms",
       "contract_observation_category": "script-controlled-execution-time-loop",
@@ -282,6 +316,7 @@
     },
     {
       "id": "bounded-evaluation-regexp-loops",
+      "accounting_entry_id": "bounded-evaluation-regexp-loops-entry",
       "operation_family": "bounded evaluation",
       "entry_category": "RegExp execution loops",
       "contract_observation_category": "script-controlled-execution-time-loop",
