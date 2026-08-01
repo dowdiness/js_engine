@@ -15,6 +15,13 @@ priv enum TimerQueuePolicyPhase {
 }
 
 ///|
+priv enum TimerQueueReadiness {
+  TimerQueueEmpty
+  TimerQueueSafetyLimit
+  TimerQueueObservationRequired
+}
+
+///|
 priv struct TimerQueuePolicy {
   queue : @priority_queue.PriorityQueue[TimerTask]
   cancelled_timer_ids : Map[Int, Bool]
@@ -47,34 +54,62 @@ fn[T] invalid_timer_queue_policy_transition(operation : String) -> T raise {
 }
 
 ///|
-fn TimerQueuePolicy::select_next(self : TimerQueuePolicy) -> TimerTask? raise {
+fn TimerQueuePolicy::readiness(
+  self : TimerQueuePolicy,
+) -> TimerQueueReadiness raise {
   match self.phase {
     TimerQueueReady => ()
     TimerQueueSelected(_)
     | TimerQueueCallbackSucceeded(_)
     | TimerQueueFailed
     | TimerQueueCompleted =>
-      invalid_timer_queue_policy_transition("select_next requires Ready")
+      invalid_timer_queue_policy_transition("readiness requires Ready")
   }
-  while self.iterations < self.safety_limit && !self.queue.is_empty() {
-    self.iterations = self.iterations + 1
-    let timer = match self.queue.pop() {
-      Some(timer) => timer
-      None =>
-        invalid_timer_queue_policy_transition(
-          "select_next requires a non-empty queue",
-        )
-    }
-    if self.cancelled_timer_ids.contains(timer.id) {
-      continue
-    }
-    self.phase = TimerQueueSelected(timer)
-    return Some(timer)
+  if self.queue.is_empty() {
+    TimerQueueEmpty
+  } else if self.iterations >= self.safety_limit {
+    TimerQueueSafetyLimit
+  } else {
+    TimerQueueObservationRequired
   }
-  None
 }
 
 ///|
+fn TimerQueuePolicy::reject_dispatch_observation(
+  self : TimerQueuePolicy,
+) -> Unit raise {
+  match self.readiness() {
+    TimerQueueObservationRequired => ()
+    TimerQueueEmpty | TimerQueueSafetyLimit =>
+      invalid_timer_queue_policy_transition(
+        "reject_dispatch_observation requires ObservationRequired",
+      )
+  }
+}
+
+///|
+fn TimerQueuePolicy::commit_next(self : TimerQueuePolicy) -> TimerTask? raise {
+  match self.readiness() {
+    TimerQueueObservationRequired => ()
+    TimerQueueEmpty | TimerQueueSafetyLimit =>
+      invalid_timer_queue_policy_transition("commit_next requires ObservationRequired")
+  }
+  self.iterations = self.iterations + 1
+  let timer = match self.queue.pop() {
+    Some(timer) => timer
+    None =>
+      invalid_timer_queue_policy_transition(
+        "commit_next requires a non-empty queue",
+      )
+  }
+  if self.cancelled_timer_ids.contains(timer.id) {
+    None
+  } else {
+    self.phase = TimerQueueSelected(timer)
+    Some(timer)
+  }
+}
+
 fn TimerQueuePolicy::callback_succeeded(self : TimerQueuePolicy) -> Unit raise {
   match self.phase {
     TimerQueueSelected(timer) => self.phase = TimerQueueCallbackSucceeded(timer)

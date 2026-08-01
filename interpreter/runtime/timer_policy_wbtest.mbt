@@ -27,6 +27,22 @@ fn timer_policy_test_id(task : TimerTask?) -> Int raise {
 }
 
 ///|
+fn timer_policy_test_next(policy : TimerQueuePolicy) -> TimerTask? raise {
+  while true {
+    match policy.readiness() {
+      TimerQueueEmpty | TimerQueueSafetyLimit => return None
+      TimerQueueObservationRequired =>
+        match policy.commit_next() {
+          Some(task) => return Some(task)
+          None => continue
+        }
+    }
+  } nobreak {
+    None
+  }
+}
+
+///|
 fn expect_invalid_timer_queue_policy_transition(
   operation : String,
   action : () -> Unit raise,
@@ -54,12 +70,12 @@ test "timer policy selects smaller delays first" {
   let policy = TimerQueuePolicy(queue, Map([]), { val: 3 }, 10)
   let selected : Array[Int] = []
   for _ in 0..<3 {
-    selected.push(timer_policy_test_id(policy.select_next()))
+    selected.push(timer_policy_test_id(timer_policy_test_next(policy)))
     policy.callback_succeeded()
     policy.checkpoint_succeeded()
   }
   json_inspect(selected, content=[2, 3, 1])
-  inspect(policy.select_next() is None, content="true")
+  inspect(timer_policy_test_next(policy) is None, content="true")
   policy.complete_run()
 }
 
@@ -73,7 +89,7 @@ test "timer policy preserves insertion order for equal delays" {
   let policy = TimerQueuePolicy(queue, Map([]), { val: 3 }, 10)
   let selected : Array[Int] = []
   for _ in 0..<3 {
-    selected.push(timer_policy_test_id(policy.select_next()))
+    selected.push(timer_policy_test_id(timer_policy_test_next(policy)))
     policy.callback_succeeded()
     policy.checkpoint_succeeded()
   }
@@ -87,7 +103,7 @@ test "timer policy consumes the selected timer before callback outcome" {
     timer_policy_test_task(2, 1, 1),
   ])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 10)
-  inspect(timer_policy_test_id(policy.select_next()), content="1")
+  inspect(timer_policy_test_id(timer_policy_test_next(policy)), content="1")
   inspect(queue.length(), content="1")
   inspect(timer_policy_test_id(queue.peek()), content="2")
 }
@@ -100,7 +116,7 @@ test "timer policy skips cancelled timers with lazy deletion" {
   ])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 10)
-  inspect(timer_policy_test_id(policy.select_next()), content="2")
+  inspect(timer_policy_test_id(timer_policy_test_next(policy)), content="2")
   inspect(queue.length(), content="0")
 }
 
@@ -110,7 +126,7 @@ test "timer policy never re-registers one-shot timers" {
     timer_policy_test_task(1, 0, 0),
   ])
   let success_policy = TimerQueuePolicy(success_queue, Map([]), { val: 1 }, 10)
-  let _ = success_policy.select_next()
+  let _ = timer_policy_test_next(success_policy)
   success_policy.callback_succeeded()
   success_policy.checkpoint_succeeded()
   inspect(success_queue.length(), content="0")
@@ -119,7 +135,7 @@ test "timer policy never re-registers one-shot timers" {
     timer_policy_test_task(2, 0, 0),
   ])
   let failure_policy = TimerQueuePolicy(failure_queue, Map([]), { val: 1 }, 10)
-  let _ = failure_policy.select_next()
+  let _ = timer_policy_test_next(failure_policy)
   failure_policy.callback_failed()
   inspect(failure_queue.length(), content="0")
 }
@@ -131,11 +147,11 @@ test "timer policy re-registers intervals after callback and checkpoint success"
   ])
   let insertion_counter : Ref[Int] = { val: 7 }
   let policy = TimerQueuePolicy(queue, Map([]), insertion_counter, 10)
-  let _ = policy.select_next()
+  let _ = timer_policy_test_next(policy)
   policy.callback_succeeded()
   inspect(queue.length(), content="0")
   policy.checkpoint_succeeded()
-  let repeated = match policy.select_next() {
+  let repeated = match timer_policy_test_next(policy) {
     Some(task) => task
     None => fail("expected a re-registered interval")
   }
@@ -157,7 +173,7 @@ test "timer policy does not re-register an interval after callback failure" {
     timer_policy_test_task(1, 0, 0, period=5, is_interval=true),
   ])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
-  let _ = policy.select_next()
+  let _ = timer_policy_test_next(policy)
   policy.callback_failed()
   inspect(queue.length(), content="0")
 }
@@ -168,7 +184,7 @@ test "timer policy does not re-register an interval after checkpoint failure" {
     timer_policy_test_task(1, 0, 0, period=5, is_interval=true),
   ])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
-  let _ = policy.select_next()
+  let _ = timer_policy_test_next(policy)
   policy.callback_succeeded()
   policy.checkpoint_failed()
   inspect(queue.length(), content="0")
@@ -181,7 +197,7 @@ test "timer policy does not re-register an interval cancelled in its callback" {
   ])
   let cancelled : Map[Int, Bool] = Map([])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 1 }, 10)
-  let _ = policy.select_next()
+  let _ = timer_policy_test_next(policy)
   cancelled[1] = true
   policy.callback_succeeded()
   policy.checkpoint_succeeded()
@@ -193,7 +209,7 @@ test "timer policy clears cancellation bookkeeping only after a complete drain" 
   let queue = @priority_queue.PriorityQueue([timer_policy_test_task(1, 0, 0)])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 1 }, 10)
-  inspect(policy.select_next() is None, content="true")
+  inspect(timer_policy_test_next(policy) is None, content="true")
   inspect(cancelled.contains(1), content="true")
   policy.complete_run()
   inspect(cancelled.contains(1), content="false")
@@ -207,7 +223,7 @@ test "timer policy preserves cancellation bookkeeping at the safety limit" {
   ])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 1)
-  inspect(policy.select_next() is None, content="true")
+  inspect(timer_policy_test_next(policy) is None, content="true")
   inspect(queue.length(), content="1")
   policy.complete_run()
   inspect(cancelled.contains(1), content="true")
@@ -294,9 +310,9 @@ test "timer policy rejects invalid transitions" {
     "checkpoint_failed requires CallbackSucceeded",
     () => policy.checkpoint_failed(),
   )
-  let _ = policy.select_next()
-  expect_invalid_timer_queue_policy_transition("select_next requires Ready", () => {
-    let _ = policy.select_next()
+  let _ = policy.commit_next()
+  expect_invalid_timer_queue_policy_transition("readiness requires Ready", () => {
+    let _ = policy.readiness()
   })
   expect_invalid_timer_queue_policy_transition("complete_run requires Ready", () => {
     policy.complete_run()
@@ -307,8 +323,8 @@ test "timer policy rejects invalid transitions" {
     () => policy.callback_succeeded(),
   )
   policy.checkpoint_failed()
-  expect_invalid_timer_queue_policy_transition("select_next requires Ready", () => {
-    let _ = policy.select_next()
+  expect_invalid_timer_queue_policy_transition("readiness requires Ready", () => {
+    let _ = policy.readiness()
   })
   expect_invalid_timer_queue_policy_transition("complete_run requires Ready", () => {
     policy.complete_run()
@@ -321,7 +337,7 @@ test "timer policy rejects invalid transitions" {
     10,
   )
   completed.complete_run()
-  expect_invalid_timer_queue_policy_transition("select_next requires Ready", () => {
-    let _ = completed.select_next()
+  expect_invalid_timer_queue_policy_transition("readiness requires Ready", () => {
+    let _ = completed.readiness()
   })
 }
