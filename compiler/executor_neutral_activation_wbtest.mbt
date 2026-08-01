@@ -95,6 +95,35 @@ test "ordinary bytecode call consumes its result once at the advanced IP" {
 }
 
 ///|
+test "bytecode frame accepts one pending call result" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("0;")
+  let frame = BytecodeFrame(program.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  frame.pending_call_result = true
+  @runtime.ExecutorActivationFrame::deliver_call_result(frame, Number(7.0))
+  inspect(frame.stack.length(), content="1")
+  match frame.peek() {
+    Number(value) => inspect(value, content="7")
+    _ => fail("pending call result must be pushed onto the operand stack")
+  }
+  let second_delivery : Error? = try {
+    @runtime.ExecutorActivationFrame::deliver_call_result(frame, Number(8.0))
+    None
+  } catch {
+    error => Some(error)
+  }
+  match second_delivery {
+    Some(@errors.InternalError(message~)) =>
+      inspect(message, content="bytecode call result has no pending consumer")
+    _ => fail("duplicate call result delivery must be rejected")
+  }
+  inspect(frame.stack.length(), content="1")
+}
+
+///|
 test "nested ordinary bytecode calls own child arguments" {
   let interp = @interpreter.new_interpreter()
   let source = "function child(value) { arguments[0] = 7; " +
