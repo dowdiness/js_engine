@@ -41,6 +41,12 @@ const COMPUTED_RECEIVER_RECURSION_SOURCE =
   #|receiver["step"](256);
 
 ///|
+const ESCAPED_COMPUTED_RECEIVER_RECURSION_SOURCE =
+  #|function step(n){if(n===0)return this["\x6darker"];return 1+this["\x73tep"](n-1);}
+  #|let receiver={["\x6darker"]:0,["\x73tep"]:step};
+  #|receiver["\x73tep"](256);
+
+///|
 const MUTUAL_RECURSION_SOURCE =
   #|function f(n){if(n===0)return 0;return 1+g(n-1);}
   #|function g(n){if(n===0)return 0;return 1+f(n-1);}
@@ -110,6 +116,7 @@ test "stack safety public facade: exact production-admitted depth-256 values" {
   inspect(run_value(SELF_RECURSION_SOURCE), content="256")
   inspect(run_value(RECEIVER_RECURSION_SOURCE), content="256")
   inspect(run_value(COMPUTED_RECEIVER_RECURSION_SOURCE), content="256")
+  inspect(run_value(ESCAPED_COMPUTED_RECEIVER_RECURSION_SOURCE), content="256")
   inspect(run_value(MUTUAL_RECURSION_SOURCE), content="256")
   inspect(run_value(GETTER_REENTRY_SOURCE), content="256")
   inspect(run_value(PROXY_REENTRY_SOURCE), content="256")
