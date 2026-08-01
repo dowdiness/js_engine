@@ -79,6 +79,8 @@ pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interprete
 
 pub fn execution_control_failure_code(Error) -> String?
 
+pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
+
 pub fn executor_activation_continue() -> ExecutorActivationStep
 
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
@@ -582,6 +584,11 @@ pub enum ExecutorActivationStep {
   ExecutorActivationContinue
   ExecutorActivationNormal(Value)
   ExecutorActivationReturn(Value)
+  ExecutorActivationCall(ExecutorCallRequest)
+}
+
+pub struct ExecutorCallRequest {
+  // private fields
 }
 
 pub struct ExecutorCallableData {
@@ -781,6 +788,7 @@ pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_bounded(Self, Array[@ast.Stmt], ExecutionPolicy) -> Value raise
 pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise
+pub fn Interpreter::run_executor_activation_coordinator(Self, &ExecutorActivationFrame) -> ExecutorActivationStep raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
 pub fn Interpreter::run_microtasks_observed(Self) -> Result[Unit, MicrotaskRunFailure] raise
 pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
@@ -1134,6 +1142,7 @@ pub(all) struct WellKnownSymbols {
 // Traits
 pub(open) trait ExecutorActivationFrame {
   fn step(Self, Interpreter) -> ExecutorActivationStep raise
+  fn deliver_call_result(Self, Value) -> Unit raise
 }
 
 pub(open) trait ExecutorCode {
