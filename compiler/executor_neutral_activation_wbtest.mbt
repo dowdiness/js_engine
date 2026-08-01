@@ -861,6 +861,77 @@ test "bytecode construct recursion reaches the synchronous constructor boundary"
 }
 
 ///|
+test "bytecode construct spread recursion lowers and completes deeply" {
+  let source = "function Step(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Step(...[n - 1]); " +
+    "this.value = child.value + 1; }\n" +
+    "new Step(...[320]).value;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_arg_spread = false
+  let mut saw_root_construct_spread = false
+  let mut saw_root_fixed_construct = false
+  let mut saw_root_call_spread = false
+  let mut saw_root_receiver_spread = false
+  let mut saw_root_direct_eval = false
+  for instr in lowered.main.code {
+    match instr {
+      ArgPushSpread(_) => saw_root_arg_spread = true
+      ConstructSpread(_) => saw_root_construct_spread = true
+      Construct(_, _) => saw_root_fixed_construct = true
+      CallSpread(_) => saw_root_call_spread = true
+      CallSpreadWithReceiver(_) => saw_root_receiver_spread = true
+      CallDirectEval(_) => saw_root_direct_eval = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_arg_spread)
+  assert_true(saw_root_construct_spread)
+  assert_false(saw_root_fixed_construct)
+  assert_false(saw_root_call_spread)
+  assert_false(saw_root_receiver_spread)
+  assert_false(saw_root_direct_eval)
+  let mut saw_step_child = false
+  let mut saw_child_arg_spread = false
+  let mut saw_child_construct = false
+  let mut saw_child_fixed_construct = false
+  let mut saw_child_call_spread = false
+  let mut saw_child_receiver_spread = false
+  let mut saw_child_direct_eval = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "Step" => {
+        saw_step_child = true
+        for instr in child.code {
+          match instr {
+            ArgPushSpread(_) => saw_child_arg_spread = true
+            ConstructSpread(_) => saw_child_construct = true
+            Construct(_, _) => saw_child_fixed_construct = true
+            CallSpread(_) => saw_child_call_spread = true
+            CallSpreadWithReceiver(_) => saw_child_receiver_spread = true
+            CallDirectEval(_) => saw_child_direct_eval = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_step_child)
+  assert_true(saw_child_arg_spread)
+  assert_true(saw_child_construct)
+  assert_false(saw_child_fixed_construct)
+  assert_false(saw_child_call_spread)
+  assert_false(saw_child_receiver_spread)
+  assert_false(saw_child_direct_eval)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "bytecode mutual constructor recursion stays on the activation stack" {
   let source = "function Left(n) { " +
     "if (n === 0) { this.value = 0; return; } " +
