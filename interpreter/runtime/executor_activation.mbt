@@ -12,6 +12,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationNormal(Value)
   ExecutorActivationReturn(Value)
   ExecutorActivationCall(ExecutorCallRequest)
+  ExecutorActivationConstruct(ExecutorConstructRequest)
 }
 
 ///|
@@ -43,6 +44,34 @@ pub fn executor_activation_call(
   loc : @token.Loc,
 ) -> ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest(callee~, this_value~, args~, loc~))
+}
+
+///|
+// A closed direct-construction request. Runtime retains ownership of
+// constructability, prototype selection, instance allocation, new.target, and
+// constructor completion; executors only provide already-evaluated operands.
+pub struct ExecutorConstructRequest {
+  priv ctor : Value
+  priv args : Array[Value]
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorConstructRequest::ExecutorConstructRequest(
+  ctor~ : Value,
+  args~ : Array[Value],
+  loc~ : @token.Loc,
+) -> ExecutorConstructRequest {
+  { ctor, args: args.copy(), loc }
+}
+
+///|
+pub fn executor_activation_construct(
+  ctor : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationConstruct(ExecutorConstructRequest(ctor~, args~, loc~))
 }
 
 ///|
@@ -167,9 +196,21 @@ priv struct ExecutorActivationCleanup {
 }
 
 ///|
+priv enum ExecutorChildCompletion {
+  ExecutorChildCall(ExecutorCallableKind)
+  ExecutorChildConstruct(Value)
+}
+
+///|
+priv enum ExecutorActivationStart {
+  ExecutorStartCall(ExecutorCallRequest)
+  ExecutorStartConstruct(ExecutorConstructRequest)
+}
+
+///|
 priv struct ExecutorActivationStackEntry {
   frame : &ExecutorActivationFrame
-  kind : ExecutorCallableKind?
+  completion : ExecutorChildCompletion?
   cleanup : ExecutorActivationCleanup?
 }
 
@@ -246,27 +287,65 @@ fn observe_executor_activation_entry(
 fn Interpreter::start_executor_activation(
   self : Interpreter,
   executable : ExecutorCallableData,
-  request : ExecutorCallRequest,
+  start : ExecutorActivationStart,
 ) -> ExecutorActivationStackEntry raise Error {
+  let callee = match start {
+    ExecutorStartCall(request) => request.callee
+    ExecutorStartConstruct(request) => request.ctor
+  }
   let observation = observe_executor_activation_entry(self)
   let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
   let active_realm = begin_active_callee_realm_value(
     self.realm_state,
-    request.callee,
+    callee,
   )
   let saved_in_default = self.in_nonarrow_param_default_eval
   let saved_param_default_conflicts = self.param_default_eval_var_conflicts
   self.in_nonarrow_param_default_eval = false
   self.param_default_eval_var_conflicts = None
-  let setup : Result[&ExecutorActivationFrame, Error] = Ok(
+  let setup : Result[
+    (&ExecutorActivationFrame, ExecutorChildCompletion),
+    Error,
+  ] = Ok(
     {
-      let prepared = self.prepare_executor_callable_call(
-        executable,
-        request.callee,
-        request.this_value,
-        request.args,
-      )
-      executable.start_frame(self, prepared)
+      match start {
+        ExecutorStartCall(request) => {
+          let prepared = self.prepare_executor_callable_call(
+            executable,
+            request.callee,
+            request.this_value,
+            request.args,
+          )
+          (
+            executable.start_frame(self, prepared),
+            ExecutorChildCall(executable.kind),
+          )
+        }
+        ExecutorStartConstruct(request) => {
+          let proto = self.get_prototype_from_constructor(
+            request.ctor,
+            request.loc,
+          )
+          let instance = make_constructor_instance(proto, "Object")
+          let prepared = self.prepare_executor_activation(
+            request.ctor,
+            instance,
+            request.args,
+            executable.params,
+            executable.rest_param,
+            executable.closure,
+            executable.strict,
+            Some(request.ctor),
+            !executable.constructable,
+            executable.self_name,
+            executable.define_arguments_object,
+          )
+          (
+            executable.start_frame(self, prepared),
+            ExecutorChildConstruct(instance),
+          )
+        }
+      }
     },
   ) catch {
     error => Err(error)
@@ -284,11 +363,11 @@ fn Interpreter::start_executor_activation(
       release_rejected_executor_activation_observation(observation)
       raise error
     }
-    Ok(frame) => {
+    Ok((frame, completion)) => {
       let accepted = observation.accept()
       {
         frame,
-        kind: Some(executable.kind),
+        completion: Some(completion),
         cleanup: Some({
           observation: accepted,
           cleared_realm,
@@ -308,8 +387,10 @@ fn Interpreter::complete_executor_child(
   step : ExecutorActivationStep,
 ) -> Unit raise Error {
   let entry = stack.pop().unwrap()
-  let completion = match entry.kind {
-    Some(kind) => executor_call_completion(kind, step)
+  let completion = match entry.completion {
+    Some(ExecutorChildCall(kind)) => executor_call_completion(kind, step)
+    Some(ExecutorChildConstruct(instance)) =>
+      executor_construct_completion(step, instance)
     None => Undefined
   }
   match entry.cleanup {
@@ -321,6 +402,26 @@ fn Interpreter::complete_executor_child(
 }
 
 ///|
+fn direct_executor_constructor_with_data_prototype(
+  ctor : Value,
+) -> ExecutorCallableData? {
+  match ctor {
+    Object(object_data) =>
+      match object_data.callable {
+        Some(ExecutorCallable(executable)) if executable.constructable =>
+          match object_data.bag.descriptors.get("prototype") {
+            Some(descriptor) if !descriptor.is_accessor &&
+              object_data.bag.properties.contains("prototype") =>
+              Some(executable)
+            _ => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
 // Drive one root executor frame and every exact executor-backed ordinary call
 // it requests. The root is top-level script state and therefore has no
 // activation observation or cleanup record of its own.
@@ -329,7 +430,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
   root : &ExecutorActivationFrame,
 ) -> ExecutorActivationStep raise Error {
   let stack : Array[ExecutorActivationStackEntry] = [
-    { frame: root, kind: None, cleanup: None },
+    { frame: root, completion: None, cleanup: None },
   ]
   try {
     while true {
@@ -355,11 +456,36 @@ pub fn Interpreter::run_executor_activation_coordinator(
         ExecutorActivationCall(request) =>
           match request.callee {
             Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
-              stack.push(self.start_executor_activation(executable, request))
+              stack.push(
+                self.start_executor_activation(
+                  executable,
+                  ExecutorStartCall(request),
+                ),
+              )
             _ => {
               let value = self.call_value(
                 request.callee,
                 request.this_value,
+                request.args,
+                request.loc,
+              )
+              frame.deliver_call_result(value)
+            }
+          }
+        ExecutorActivationConstruct(request) =>
+          match direct_executor_constructor_with_data_prototype(
+            request.ctor,
+          ) {
+            Some(executable) =>
+              stack.push(
+                self.start_executor_activation(
+                  executable,
+                  ExecutorStartConstruct(request),
+                ),
+              )
+            None => {
+              let value = self.construct_value(
+                request.ctor,
                 request.args,
                 request.loc,
               )
@@ -532,14 +658,14 @@ fn executor_call_completion(
         ExecutorActivationContinue => Undefined
         ExecutorActivationNormal(_) => Undefined
         ExecutorActivationReturn(value) => value
-        ExecutorActivationCall(_) => Undefined
+        ExecutorActivationCall(_) | ExecutorActivationConstruct(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
         ExecutorActivationContinue => Undefined
         ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
           value
-        ExecutorActivationCall(_) => Undefined
+        ExecutorActivationCall(_) | ExecutorActivationConstruct(_) => Undefined
       }
   }
 }
@@ -556,7 +682,8 @@ fn executor_construct_completion(
     ExecutorActivationContinue
     | ExecutorActivationNormal(_)
     | ExecutorActivationReturn(_)
-    | ExecutorActivationCall(_) => instance
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_) => instance
   }
 }
 
