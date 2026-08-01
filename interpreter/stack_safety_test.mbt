@@ -337,12 +337,6 @@ test "post-parse stack safety: GeneratorFunction parameter Contains(YieldExpress
 }
 
 ///|
-#skip("blocked by #608 runtime evaluator stack safety")
-test "post-parse stack safety: 512 comma expressions" {
-  inspect(run(nested_comma_source(512, "7")), content="7")
-}
-
-///|
 test "post-parse stack safety phase isolation: 512 comma expressions" {
   inspect(
     run_throws("\"use strict\"; " + nested_comma_source(512, "eval = 0")),

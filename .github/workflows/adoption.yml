@@ -127,3 +127,94 @@ jobs:
 
       - name: Check and test consumer on ${{ matrix.target }}
         run: make external-consumer-test TARGET=${{ matrix.target }}
+
+  stack-safety:
+    name: Stack safety (${{ matrix.target }}, ${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: native
+            profile: debug
+          - target: native
+            profile: release
+          - target: js
+            profile: debug
+          - target: js
+            profile: release
+          - target: wasm
+            profile: debug
+          - target: wasm
+            profile: release
+          - target: wasm-gc
+            profile: debug
+          - target: wasm-gc
+            profile: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Validate focused stack-safety wiring
+        run: make stack-safety-validate
+
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+            integration/.mooncakes
+          key: moon-stack-safety-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod', 'integration/moon.work', 'integration/external_consumer/moon.mod') }}
+          restore-keys: moon-stack-safety-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install repository dependencies
+        run: moon update
+
+      - name: Install external-consumer dependencies
+        working-directory: integration/external_consumer
+        run: moon update
+
+      - name: Run focused stack-safety gate
+        run: make stack-safety-test TARGET=${{ matrix.target }} PROFILE=${{ matrix.profile }}
+
+  stack-safety-required:
+    name: stack-safety-required
+    needs: [stack-safety]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require every stack-safety cell to succeed
+        env:
+          STACK_SAFETY_RESULT: ${{ needs.stack-safety.result }}
+        run: |
+          test "$STACK_SAFETY_RESULT" = success || {
+            echo "stack-safety matrix result was $STACK_SAFETY_RESULT" >&2
+            exit 1
+          }
