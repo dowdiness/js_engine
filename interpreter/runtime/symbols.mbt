@@ -29,6 +29,7 @@ pub fn is_constructor_value(v : Value) -> Bool {
           // Generator functions are the spec-visible exception: they have a
           // prototype property but no [[Construct]].
           interpreter_callable_is_constructor(data)
+        Some(ExecutorCallable(executable)) => executable.is_constructable()
         Some(ArrowFunc(_)) | Some(ArrowFuncExt(_)) => false
         Some(FuncCallMethod(_)) | Some(FuncApplyMethod(_)) => false
         None => false

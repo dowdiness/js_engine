@@ -99,6 +99,66 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "Engine::eval_bounded",
+      "category": "stable_embedding",
+      "reason": "documented operation-scoped bounded evaluation entry point"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionPolicy",
+      "category": "stable_embedding",
+      "reason": "documented opaque bounded-evaluation policy input"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionPolicyError",
+      "category": "stable_embedding",
+      "reason": "documented bounded-evaluation policy validation error"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "InterruptionHandle",
+      "category": "stable_embedding",
+      "reason": "documented monotonic bounded-evaluation interruption input"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "symbol": "ExecutionPolicy::new",
+      "category": "stable_embedding",
+      "reason": "validated constructor available through the stable facade policy re-export"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "symbol": "ExecutionPolicyError::message",
+      "category": "stable_embedding",
+      "reason": "validation detail available through the stable facade error re-export"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "symbol": "ExecutionPolicyError::parameter_code",
+      "category": "stable_embedding",
+      "reason": "validation classification available through the stable facade error re-export"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "symbol": "InterruptionHandle::InterruptionHandle",
+      "category": "stable_embedding",
+      "reason": "constructor available through the stable facade interruption re-export"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "symbol": "InterruptionHandle::is_requested",
+      "category": "stable_embedding",
+      "reason": "monotonic interruption status available through the stable facade re-export"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "symbol": "InterruptionHandle::request",
+      "category": "stable_embedding",
+      "reason": "monotonic interruption request available through the stable facade re-export"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "Engine::call_json",
       "category": "stable_embedding",
       "reason": "documented strict JSON call boundary"

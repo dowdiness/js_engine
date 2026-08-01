@@ -30,6 +30,73 @@ priv enum AnchorKind {
   End // $
 }
 
+///|
+fn regex_utf16_string_chars(input : String) -> Array[Char] {
+  let chars : Array[Char] = []
+  for unit in @runtime.string_to_utf16(input) {
+    chars.push(unit.unsafe_to_char())
+  }
+  chars
+}
+
+///|
+fn regex_chars_to_string(
+  chars : Array[Char],
+  start : Int,
+  end_ : Int,
+  code_units : Bool,
+) -> String {
+  let buf = StringBuilder::new()
+  for i = start; i < end_; i = i + 1 {
+    let ch = chars[i]
+    if code_units {
+      buf.write_string(String::make(1, ch))
+    } else {
+      buf.write_char(ch)
+    }
+  }
+  buf.to_string()
+}
+
+///|
+fn regex_domain_substring(
+  input : String,
+  chars : Array[Char],
+  start : Int,
+  end_ : Int,
+  code_units : Bool,
+) -> String {
+  if code_units {
+    input.unsafe_substring(start~, end=end_)
+  } else {
+    let buf = StringBuilder::new()
+    for i = start; i < end_; i = i + 1 {
+      buf.write_char(chars[i])
+    }
+    buf.to_string()
+  }
+}
+
+///|
+fn regex_append_domain_range(
+  buf : StringBuilder,
+  input : String,
+  chars : Array[Char],
+  start : Int,
+  end_ : Int,
+  code_units : Bool,
+) -> Unit {
+  if start < end_ {
+    if code_units {
+      buf.write_string(input.unsafe_substring(start~, end=end_))
+    } else {
+      for i = start; i < end_; i = i + 1 {
+        buf.write_char(chars[i])
+      }
+    }
+  }
+}
+
 // ---- Regex Parser ----
 
 ///|
@@ -45,9 +112,17 @@ priv struct RegexParser {
 }
 
 ///|
-fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
+fn RegexParser::new(
+  pattern : String,
+  unicode? : Bool = false,
+  code_units? : Bool = false,
+) -> RegexParser {
   {
-    pattern: pattern.to_array(),
+    pattern: if code_units {
+      regex_utf16_string_chars(pattern)
+    } else {
+      pattern.to_array()
+    },
     pos: 0,
     group_count: 0,
     unicode,
@@ -1519,7 +1594,7 @@ fn match_backreference_capture(
   pos : Int,
   flags : RegexFlags,
 ) -> Int? {
-  let cap_chars = captured.to_array()
+  let cap_chars = regex_input_chars(captured, !flags.unicode)
   if pos + cap_chars.length() > input.length() {
     return None
   }
@@ -1643,11 +1718,10 @@ fn regex_exec_single(
       match result {
         Some(end_pos) => {
           if group_idx > 0 && group_idx <= state.captures.length() {
-            let buf = StringBuilder::new()
-            for i = pos; i < end_pos; i = i + 1 {
-              buf.write_char(input[i])
-            }
-            state.set_capture(group_idx, buf.to_string())
+            state.set_capture(
+              group_idx,
+              regex_chars_to_string(input, pos, end_pos, !flags.unicode),
+            )
           }
           Some(end_pos)
         }
@@ -2130,11 +2204,10 @@ fn match_node_candidates(
       for candidate in inner_candidates {
         state.restore(candidate.snapshot)
         if group_idx > 0 && group_idx <= state.captures.length() {
-          let buf = StringBuilder::new()
-          for i = pos; i < candidate.pos; i = i + 1 {
-            buf.write_char(input[i])
-          }
-          state.set_capture(group_idx, buf.to_string())
+          state.set_capture(
+            group_idx,
+            regex_chars_to_string(input, pos, candidate.pos, !flags.unicode),
+          )
         }
         results.push({ pos: candidate.pos, snapshot: state.snapshot() })
         state.restore(saved)
@@ -2367,16 +2440,53 @@ priv struct ParsedRegex {
 }
 
 ///|
-fn parse_regex(
+fn regexp_is_unicode_mode(flags : String) -> Bool {
+  flags.contains("u") || flags.contains("v")
+}
+
+///|
+fn regex_input_chars(input : String, code_units : Bool) -> Array[Char] {
+  if code_units {
+    regex_utf16_string_chars(input)
+  } else {
+    input.to_array()
+  }
+}
+
+///|
+fn regex_match_index_to_code_unit_index(
+  input : String,
+  index : Int,
+  code_units : Bool,
+) -> Int {
+  if code_units {
+    index
+  } else {
+    regexp_char_index_to_code_unit_index(input, index)
+  }
+}
+
+///|
+fn parse_regex_domain(
   pattern : String,
   unicode? : Bool = false,
+  code_units? : Bool = false,
 ) -> ParsedRegex raise Error {
-  let parser = RegexParser::new(pattern, unicode~)
+  let parser = RegexParser::new(pattern, unicode~, code_units~)
   let node = parser.parse()
   let num_groups = count_groups(node)
   let names = parser.group_name_entries.copy()
   names.sort_by(fn(a, b) { a.1.compare(b.1) })
   { node, num_groups, group_names: names }
+}
+
+///|
+/// Parse the source in the historical scalar domain used by public helpers.
+fn parse_regex(
+  pattern : String,
+  unicode? : Bool = false,
+) -> ParsedRegex raise Error {
+  parse_regex_domain(pattern, unicode~, code_units=false)
 }
 
 ///|
@@ -2386,7 +2496,7 @@ fn make_regex_flags(flags : String) -> RegexFlags {
     multiline: flags.contains("m"),
     dot_all: flags.contains("s"),
     sticky: flags.contains("y"),
-    unicode: flags.contains("u"),
+    unicode: regexp_is_unicode_mode(flags),
   }
 }
 
@@ -2397,7 +2507,8 @@ pub fn regex_match_at(
   input : String,
   start_pos : Int,
 ) -> RegexMatch? raise Error {
-  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
+  let unicode = regexp_is_unicode_mode(flags)
+  let parsed = parse_regex(pattern, unicode~)
   let input_chars = input.to_array()
   let rflags = make_regex_flags(flags)
   let state = RegexExecState(parsed.num_groups)
@@ -2415,14 +2526,14 @@ pub fn regex_match_at(
 }
 
 ///|
-pub fn regex_search(
-  pattern : String,
+fn regex_search_parsed(
+  parsed : ParsedRegex,
   flags : String,
   input : String,
-  start_pos? : Int = 0,
-) -> RegexMatch? raise Error {
-  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
-  let input_chars = input.to_array()
+  start_pos : Int,
+  code_units : Bool,
+) -> RegexMatch? {
+  let input_chars = regex_input_chars(input, code_units)
   let rflags = make_regex_flags(flags)
   let is_sticky = flags.contains("y")
   if is_sticky {
@@ -2484,13 +2595,42 @@ pub fn regex_search(
 }
 
 ///|
-pub fn regex_search_all(
+fn regex_search_domain(
   pattern : String,
   flags : String,
   input : String,
+  start_pos : Int,
+  code_units : Bool,
+) -> RegexMatch? raise Error {
+  let parsed = parse_regex_domain(
+    pattern,
+    unicode=regexp_is_unicode_mode(flags),
+    code_units~,
+  )
+  regex_search_parsed(parsed, flags, input, start_pos, code_units)
+}
+
+///|
+pub fn regex_search(
+  pattern : String,
+  flags : String,
+  input : String,
+  start_pos? : Int = 0,
+) -> RegexMatch? raise Error {
+  let parsed = parse_regex(pattern, unicode=regexp_is_unicode_mode(flags))
+  regex_search_parsed(parsed, flags, input, start_pos, false)
+}
+
+///|
+fn regex_search_all_domain(
+  pattern : String,
+  flags : String,
+  input : String,
+  code_units : Bool,
 ) -> Array[RegexMatch] raise Error {
-  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
-  let input_chars = input.to_array()
+  let unicode = regexp_is_unicode_mode(flags)
+  let parsed = parse_regex_domain(pattern, unicode~, code_units~)
+  let input_chars = regex_input_chars(input, code_units)
   let rflags = make_regex_flags(flags)
   let results : Array[RegexMatch] = []
   if has_first_char_bound(parsed.node) && !rflags.sticky {
@@ -2552,6 +2692,15 @@ pub fn regex_search_all(
 }
 
 ///|
+pub fn regex_search_all(
+  pattern : String,
+  flags : String,
+  input : String,
+) -> Array[RegexMatch] raise Error {
+  regex_search_all_domain(pattern, flags, input, false)
+}
+
+///|
 fn regex_match_named_capture(m : RegexMatch, name : String) -> Value {
   let mut selected : Value = Undefined
   let mut selected_version = -1
@@ -2582,15 +2731,20 @@ fn regex_match_named_capture(m : RegexMatch, name : String) -> Value {
 
 ///|
 /// Create an Array value with index, input, and groups properties for RegExp match results
-pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
-  let input_chars = input.to_array()
+fn make_regex_match_array_with_domain(
+  m : RegexMatch,
+  input : String,
+  code_units : Bool,
+  index_is_code_units : Bool,
+) -> Value {
+  let input_chars = regex_input_chars(input, code_units)
   let elements : Array[Value] = []
   // First element: full match
-  let buf = StringBuilder::new()
-  for i = m.start; i < m.end_; i = i + 1 {
-    buf.write_char(input_chars[i])
-  }
-  elements.push(Value::String_(buf.to_string()))
+  elements.push(
+    Value::String_(
+      regex_domain_substring(input, input_chars, m.start, m.end_, code_units),
+    ),
+  )
   // Capture groups
   for cap in m.captures {
     match cap {
@@ -2609,7 +2763,9 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   @runtime.set_array_named_prop(
     arr_data,
     "index",
-    Value::Number(m.start.to_double()),
+    Value::Number(
+      regex_match_index_to_code_unit_index(input, m.start, index_is_code_units).to_double(),
+    ),
   )
   @runtime.set_array_named_prop(arr_data, "input", Value::String_(input))
   // Build groups object if named groups exist
@@ -2653,6 +2809,12 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
 }
 
 ///|
+/// Create an Array value using the historical scalar-domain API.
+pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
+  make_regex_match_array_with_domain(m, input, false, true)
+}
+
+///|
 const REGEXP_ORIGINAL_SOURCE_SYMBOL_ID = -120
 
 ///|
@@ -2660,6 +2822,10 @@ const REGEXP_ORIGINAL_FLAGS_SYMBOL_ID = -121
 
 ///|
 const REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID = -122
+
+///|
+// Engine-private callable matcher retained by each RegExp instance.
+const REGEXP_MATCHER_SYMBOL_ID = -129
 
 ///|
 // Engine-private negative symbol IDs for RegExp String Iterator internal slots.
@@ -2766,13 +2932,12 @@ fn normalize_regexp_flags(flags : String) -> String raise Error {
 }
 
 ///|
-fn validate_regexp_pattern(
+fn parse_validated_regexp(
   pattern : String,
   flags : String,
-) -> Unit raise Error {
-  let _valid : Unit = try {
-    let _parsed = RegexParser::new(pattern, unicode=flags.contains("u")).parse()
-  } catch {
+) -> ParsedRegex raise Error {
+  let unicode = regexp_is_unicode_mode(flags)
+  parse_regex_domain(pattern, unicode~, code_units=!unicode) catch {
     @errors.SyntaxError(message=msg) =>
       raise @errors.SyntaxError(
         message="Invalid regular expression: /" + pattern + "/: " + msg,
@@ -2785,17 +2950,6 @@ fn validate_regexp_pattern(
           e.to_string(),
       )
   }
-  _valid
-}
-
-///|
-fn normalize_and_validate_regexp(
-  pattern : String,
-  flags : String,
-) -> String raise Error {
-  let sorted_flags = normalize_regexp_flags(flags)
-  validate_regexp_pattern(pattern, sorted_flags)
-  sorted_flags
 }
 
 ///|
@@ -2814,6 +2968,7 @@ fn regexp_internal_slot_descriptor() -> PropDescriptor {
 fn set_regexp_internal_slot_descriptors(data : ObjectData) -> Unit {
   data.bag.symbol_descriptors[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   data.bag.symbol_descriptors[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  data.bag.symbol_descriptors[REGEXP_MATCHER_SYMBOL_ID] = regexp_internal_slot_descriptor()
 }
 
 ///|
@@ -2832,14 +2987,68 @@ fn set_regexp_original_source_flags(
   source : String,
   flags : String,
 ) -> Unit raise Error {
-  let sorted_flags = normalize_and_validate_regexp(source, flags)
+  let sorted_flags = normalize_regexp_flags(flags)
+  let parsed = parse_validated_regexp(source, sorted_flags)
   data.bag.symbol_properties[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(
     source,
   )
   data.bag.symbol_properties[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(
     sorted_flags,
   )
+  data.bag.symbol_properties[REGEXP_MATCHER_SYMBOL_ID] = make_regexp_matcher(
+    parsed, sorted_flags,
+  )
   set_regexp_internal_slot_descriptors(data)
+}
+
+///|
+fn make_regexp_matcher_result(
+  m : RegexMatch,
+  input : String,
+  flags : String,
+) -> Value {
+  @runtime.make_array([
+    make_regex_match_array_with_domain(
+      m,
+      input,
+      !regexp_is_unicode_mode(flags),
+      !regexp_is_unicode_mode(flags),
+    ),
+    Value::Number(m.end_.to_double()),
+  ])
+}
+
+///|
+fn make_regexp_matcher(parsed : ParsedRegex, flags : String) -> Value {
+  Value::Object({
+    bag: @runtime.PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      NonConstructableCallable("RegExpMatcher", fn(args) raise {
+        match args {
+          [String_(input), Number(start), ..] =>
+            match
+              regex_search_parsed(
+                parsed,
+                flags,
+                input,
+                start.to_int(),
+                !regexp_is_unicode_mode(flags),
+              ) {
+              Some(m) => make_regexp_matcher_result(m, input, flags)
+              None => Null
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="RegExp matcher capability called with invalid arguments",
+            )
+        }
+      }),
+    ),
+    class_name: "RegExpMatcher",
+    extensible: false,
+    arraybuffer_state: None,
+  })
 }
 
 ///|
@@ -3294,7 +3503,9 @@ fn make_regexp_object_with_proto(
   flags : String,
   prototype : Value,
 ) -> Value raise Error {
-  let sorted_flags = normalize_and_validate_regexp(pattern, flags)
+  let sorted_flags = normalize_regexp_flags(flags)
+  let parsed = parse_validated_regexp(pattern, sorted_flags)
+  let matcher = make_regexp_matcher(parsed, sorted_flags)
   let props : Map[String, Value] = Map([])
   props["lastIndex"] = Value::Number(0.0)
   // RegExp instance state is stored as hidden internal slots. Public accessors
@@ -3302,6 +3513,7 @@ fn make_regexp_object_with_proto(
   let sym_props : Map[Int, Value] = Map([])
   sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
   sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
+  sym_props[REGEXP_MATCHER_SYMBOL_ID] = matcher
 
   // Create descriptor map for the only RegExp instance own property.
   let re_descs : Map[String, PropDescriptor] = Map([])
@@ -3318,6 +3530,7 @@ fn make_regexp_object_with_proto(
   let re_sym_descs : Map[Int, PropDescriptor] = Map([])
   re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  re_sym_descs[REGEXP_MATCHER_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
   Value::Object({
     bag: {
@@ -3426,14 +3639,15 @@ fn regexp_advance_string_index(
     return index + 1.0
   }
   let i = index.to_int()
-  if i < 0 || i + 1 >= input.length() {
+  let units = regex_input_chars(input, true)
+  if i < 0 || i + 1 >= units.length() {
     return index + 1.0
   }
-  let first = input[i].to_int()
+  let first = units[i].to_int()
   if first < 0xD800 || first > 0xDBFF {
     return index + 1.0
   }
-  let second = input[i + 1].to_int()
+  let second = units[i + 1].to_int()
   if second < 0xDC00 || second > 0xDFFF {
     return index + 1.0
   }
@@ -3463,16 +3677,39 @@ fn regexp_char_index_to_code_unit_index(
 }
 
 ///|
+fn regexp_code_unit_index_to_char_index(
+  input : String,
+  code_unit_index : Int,
+) -> Int {
+  if code_unit_index <= 0 {
+    return 0
+  }
+  let chars = input.to_array()
+  let mut units = 0
+  for i, ch in chars {
+    if units >= code_unit_index {
+      return i
+    }
+    let width = if ch.to_int() > 0xFFFF { 2 } else { 1 }
+    if units + width > code_unit_index {
+      return i
+    }
+    units += width
+  }
+  chars.length()
+}
+
+///|
 fn regexp_builtin_exec(
   interp : Interpreter,
   rx : Value,
   input : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let (pat, fl) = match rx {
+  let (fl, matcher) = match rx {
     Object(data) if data.class_name == "RegExp" => {
-      let pat = match regexp_original_source_from_data(data) {
-        Some(s) => s
+      let _ = match regexp_original_source_from_data(data) {
+        Some(_) => ()
         None =>
           raise @errors.TypeError(
             message="RegExp method called on incompatible receiver",
@@ -3480,9 +3717,27 @@ fn regexp_builtin_exec(
       }
       let fl = match regexp_original_flags_from_data(data) {
         Some(s) => s
-        None => ""
+        None =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
       }
-      (pat, fl)
+      let matcher = match
+        data.bag.symbol_properties.get(REGEXP_MATCHER_SYMBOL_ID) {
+        Some(Object(matcher_data)) =>
+          match matcher_data.callable {
+            Some(NonConstructableCallable(_, f)) => f
+            _ =>
+              raise @errors.TypeError(
+                message="RegExp method called on incompatible receiver",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
+      }
+      (fl, matcher)
     }
     _ =>
       raise @errors.TypeError(
@@ -3495,7 +3750,8 @@ fn regexp_builtin_exec(
     interp.get_property(rx, "lastIndex", loc),
     interp,
   )
-  if (has_global || has_sticky) && last_index > input.length().to_double() {
+  if (has_global || has_sticky) &&
+    last_index > @runtime.utf16_length(input).to_double() {
     let _ = interp.set_property(
       rx,
       "lastIndex",
@@ -3505,14 +3761,32 @@ fn regexp_builtin_exec(
     )
     return Null
   }
-  let start = if has_global || has_sticky { last_index.to_int() } else { 0 }
-  match regex_search(pat, fl, input, start_pos=start) {
-    Some(m) => {
+  let start_code_unit = if has_global || has_sticky {
+    last_index.to_int()
+  } else {
+    0
+  }
+  let unicode = regexp_is_unicode_mode(fl)
+  let start = if unicode {
+    regexp_code_unit_index_to_char_index(input, start_code_unit)
+  } else {
+    start_code_unit
+  }
+  match matcher([String_(input), Number(start.to_double())]) {
+    Array(result) if result.elements.length() == 2 => {
+      let match_value = result.elements[0]
+      let end_pos = match result.elements[1] {
+        Number(n) => n.to_int()
+        _ =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
+      }
       if has_global || has_sticky {
-        let last_index = if fl.contains("u") || fl.contains("v") {
-          regexp_char_index_to_code_unit_index(input, m.end_)
+        let last_index = if unicode {
+          regexp_char_index_to_code_unit_index(input, end_pos)
         } else {
-          m.end_
+          end_pos
         }
         let _ = interp.set_property(
           rx,
@@ -3522,9 +3796,9 @@ fn regexp_builtin_exec(
           strict=true,
         )
       }
-      make_regex_match_array(m, input)
+      match_value
     }
-    None => {
+    Null => {
       if has_global || has_sticky {
         let _ = interp.set_property(
           rx,
@@ -3536,6 +3810,10 @@ fn regexp_builtin_exec(
       }
       Null
     }
+    _ =>
+      raise @errors.TypeError(
+        message="RegExp method called on incompatible receiver",
+      )
   }
 }
 
@@ -3713,7 +3991,7 @@ fn regexp_replace_match_from_result(
   let matched = interp.to_js_string(interp.get_property(result, "0", loc))
   let position = regexp_clamp_position(
     interp.get_property(result, "index", loc),
-    input.length(),
+    @runtime.utf16_length(input),
     interp,
   )
   let captures : Array[Value] = []
@@ -3729,7 +4007,7 @@ fn regexp_replace_match_from_result(
     matched,
     captures,
     position,
-    match_length: matched.length(),
+    match_length: @runtime.utf16_length(matched),
     named_captures,
   }
 }
@@ -3755,8 +4033,10 @@ fn regexp_get_substitution(
   named_captures : Value,
   replacement : String,
   interp : Interpreter,
+  code_units : Bool,
 ) -> String raise Error {
-  let input_chars = input.to_array()
+  let input_chars = regex_input_chars(input, code_units)
+  let matched_length = regex_input_chars(matched, code_units).length()
   let repl_chars = replacement.to_array()
   let buf = StringBuilder::new()
   let mut i = 0
@@ -3768,16 +4048,26 @@ fn regexp_get_substitution(
         i += 2
         continue
       } else if next == '`' {
-        for j = 0; j < position && j < input_chars.length(); j = j + 1 {
-          buf.write_char(input_chars[j])
-        }
+        regex_append_domain_range(
+          buf,
+          input,
+          input_chars,
+          0,
+          position.min(input_chars.length()),
+          code_units,
+        )
         i += 2
         continue
       } else if next == '\'' {
-        let start = position + matched.to_array().length()
-        for j = start; j < input_chars.length(); j = j + 1 {
-          buf.write_char(input_chars[j])
-        }
+        let start = position + matched_length
+        regex_append_domain_range(
+          buf,
+          input,
+          input_chars,
+          start,
+          input_chars.length(),
+          code_units,
+        )
         i += 2
         continue
       } else if next >= '0' && next <= '9' {
@@ -3859,6 +4149,7 @@ fn regexp_get_substitution(
 
 ///|
 fn regexp_replace_append(
+  input : String,
   input_chars : Array[Char],
   state : (StringBuilder, Int),
   item : RegExpReplaceMatch,
@@ -3866,11 +4157,14 @@ fn regexp_replace_append(
 ) -> (StringBuilder, Int) {
   let (buf, next_source_position) = state
   if item.position >= next_source_position {
-    for i = next_source_position
-        i < item.position && i < input_chars.length()
-        i = i + 1 {
-      buf.write_char(input_chars[i])
-    }
+    regex_append_domain_range(
+      buf,
+      input,
+      input_chars,
+      next_source_position,
+      item.position.min(input_chars.length()),
+      true,
+    )
     buf.write_string(replacement)
     (buf, item.position + item.match_length)
   } else {
@@ -3898,7 +4192,7 @@ fn regexp_symbol_replace(
   }
   let flags = interp.to_js_string(interp.get_property(this_val, "flags", loc))
   let global = flags.contains("g")
-  let full_unicode = flags.contains("u") || flags.contains("v")
+  let full_unicode = regexp_is_unicode_mode(flags)
   if global {
     let _ = interp.set_property(
       this_val,
@@ -3942,7 +4236,9 @@ fn regexp_symbol_replace(
       }
     }
   }
-  let input_chars = input.to_array()
+  // The result array exposes index/length in UTF-16 code units even when the
+  // matcher itself runs in the Unicode scalar domain.
+  let input_chars = regex_input_chars(input, true)
   let buf = StringBuilder::new()
   let mut next_source_position = 0
   for result in results {
@@ -3973,9 +4269,11 @@ fn regexp_symbol_replace(
         regexp_named_captures_for_substitution(item.named_captures),
         replacement,
         interp,
+        true,
       )
     }
     let (same_buf, next_pos) = regexp_replace_append(
+      input,
       input_chars,
       (buf, next_source_position),
       item,
@@ -3984,9 +4282,14 @@ fn regexp_symbol_replace(
     ignore(same_buf)
     next_source_position = next_pos
   }
-  for i = next_source_position; i < input_chars.length(); i = i + 1 {
-    buf.write_char(input_chars[i])
-  }
+  regex_append_domain_range(
+    buf,
+    input,
+    input_chars,
+    next_source_position,
+    input_chars.length(),
+    true,
+  )
   Value::String_(buf.to_string())
 }
 
@@ -4018,7 +4321,7 @@ fn regexp_symbol_match(
   if !global {
     return regexp_exec_for_symbol_method(interp, this_val, input)
   }
-  let full_unicode = flags.contains("u") || flags.contains("v")
+  let full_unicode = regexp_is_unicode_mode(flags)
   let _ = interp.set_property(
     this_val,
     "lastIndex",
@@ -4112,7 +4415,7 @@ fn regexp_symbol_match_all(
     strict=true,
   )
   let global = flags.contains("g")
-  let full_unicode = flags.contains("u") || flags.contains("v")
+  let full_unicode = regexp_is_unicode_mode(flags)
   regexp_create_string_iterator(
     realm_state, matcher, input, global, full_unicode,
   )
@@ -4187,12 +4490,7 @@ fn regexp_species_constructor(
 
 ///|
 fn regexp_string_slice(input : String, start : Int, end_ : Int) -> String {
-  let buf = StringBuilder::new()
-  for i in start..<end_ {
-    let unit = input[i].to_int()
-    buf.write_char(unit.unsafe_to_char())
-  }
-  buf.to_string()
+  input.unsafe_substring(start~, end=end_)
 }
 
 ///|
@@ -4202,7 +4500,7 @@ fn regexp_split_last_index(
   input : String,
   loc : @token.Loc,
 ) -> Int raise Error {
-  let input_size = input.length()
+  let input_size = @runtime.utf16_length(input)
   let e = regexp_to_length(
     interp.get_property(splitter, "lastIndex", loc),
     interp,
@@ -4228,7 +4526,7 @@ fn regexp_symbol_split(
   let input = if args.length() > 0 { interp.to_js_string(args[0]) } else { "" }
   let c = regexp_species_constructor(interp, this_val, realm_state)
   let flags = interp.to_js_string(interp.get_property(this_val, "flags", loc))
-  let unicode_matching = flags.contains("u") || flags.contains("v")
+  let unicode_matching = regexp_is_unicode_mode(flags)
   let new_flags = if flags.contains("y") { flags } else { flags + "y" }
   let splitter = interp.construct_value(
     c,
@@ -4247,7 +4545,7 @@ fn regexp_symbol_split(
   if limit == 0L {
     return @runtime.make_array(results)
   }
-  let size = input.length()
+  let size = @runtime.utf16_length(input)
   if size == 0 {
     let z = regexp_exec_for_symbol_method(interp, splitter, input)
     return match z {
@@ -4327,13 +4625,21 @@ pub fn string_match_regex(
   pattern : String,
   flags : String,
 ) -> Value {
+  let unicode = regexp_is_unicode_mode(flags)
+  let code_units = !unicode
   if flags.contains("g") {
     // Global match: return array of all matches
-    let matches = regex_search_all(pattern, flags, s) catch { _ => [] }
-    let input_chars = s.to_array()
+    let matches = regex_search_all_domain(pattern, flags, s, code_units) catch {
+      _ => []
+    }
+    let input_chars = regex_input_chars(s, code_units)
     let elements : Array[Value] = []
     for m in matches {
-      elements.push(Value::String_(substring(input_chars, m.start, m.end_)))
+      elements.push(
+        Value::String_(
+          regex_domain_substring(s, input_chars, m.start, m.end_, code_units),
+        ),
+      )
     }
     if elements.length() == 0 {
       return Null
@@ -4341,9 +4647,12 @@ pub fn string_match_regex(
     @runtime.make_array(elements)
   } else {
     // Non-global: return first match with captures (includes index, input, groups)
-    let result = regex_search(pattern, flags, s) catch { _ => None }
+    let result = regex_search_domain(pattern, flags, s, 0, code_units) catch {
+      _ => None
+    }
     match result {
-      Some(m) => make_regex_match_array(m, s)
+      Some(m) =>
+        make_regex_match_array_with_domain(m, s, code_units, code_units)
       None => Null
     }
   }
@@ -4355,9 +4664,16 @@ pub fn string_search_regex(
   pattern : String,
   flags : String,
 ) -> Value {
-  let result = regex_search(pattern, flags, s) catch { _ => None }
+  let unicode = regexp_is_unicode_mode(flags)
+  let code_units = !unicode
+  let result = regex_search_domain(pattern, flags, s, 0, code_units) catch {
+    _ => None
+  }
   match result {
-    Some(m) => Value::Number(m.start.to_double())
+    Some(m) =>
+      Value::Number(
+        regex_match_index_to_code_unit_index(s, m.start, code_units).to_double(),
+      )
     None => Value::Number(-1.0)
   }
 }
@@ -4369,10 +4685,13 @@ pub fn string_replace_regex(
   flags : String,
   replacement : String,
 ) -> Value {
-  let input_chars = s.to_array()
+  let code_units = !regexp_is_unicode_mode(flags)
+  let input_chars = regex_input_chars(s, code_units)
   if flags.contains("g") {
     // Replace all matches
-    let matches = regex_search_all(pattern, flags, s) catch { _ => [] }
+    let matches = regex_search_all_domain(pattern, flags, s, code_units) catch {
+      _ => []
+    }
     if matches.length() == 0 {
       return Value::String_(s)
     }
@@ -4380,33 +4699,50 @@ pub fn string_replace_regex(
     let mut last_end = 0
     for m in matches {
       // Add text before this match
-      for i = last_end; i < m.start; i = i + 1 {
-        buf.write_char(input_chars[i])
-      }
+      regex_append_domain_range(
+        buf,
+        s,
+        input_chars,
+        last_end,
+        m.start,
+        code_units,
+      )
       // Process replacement string (handle $1, $2, etc.)
-      let repl = process_replacement(replacement, input_chars, m)
+      let repl = process_replacement(replacement, s, input_chars, m, code_units)
       buf.write_string(repl)
       last_end = m.end_
     }
     // Add remaining text
-    for i = last_end; i < input_chars.length(); i = i + 1 {
-      buf.write_char(input_chars[i])
-    }
+    regex_append_domain_range(
+      buf,
+      s,
+      input_chars,
+      last_end,
+      input_chars.length(),
+      code_units,
+    )
     Value::String_(buf.to_string())
   } else {
     // Replace first match only
-    let result = regex_search(pattern, flags, s) catch { _ => None }
+    let result = regex_search_domain(pattern, flags, s, 0, code_units) catch {
+      _ => None
+    }
     match result {
       Some(m) => {
         let buf = StringBuilder::new()
-        for i = 0; i < m.start; i = i + 1 {
-          buf.write_char(input_chars[i])
-        }
-        let repl = process_replacement(replacement, input_chars, m)
+        regex_append_domain_range(buf, s, input_chars, 0, m.start, code_units)
+        let repl = process_replacement(
+          replacement, s, input_chars, m, code_units,
+        )
         buf.write_string(repl)
-        for i = m.end_; i < input_chars.length(); i = i + 1 {
-          buf.write_char(input_chars[i])
-        }
+        regex_append_domain_range(
+          buf,
+          s,
+          input_chars,
+          m.end_,
+          input_chars.length(),
+          code_units,
+        )
         Value::String_(buf.to_string())
       }
       None => Value::String_(s)
@@ -4434,41 +4770,74 @@ fn string_replace_regex_func_impl(
   replace_fn : Value,
   interp? : Interpreter? = None,
 ) -> Value raise {
-  let input_chars = s.to_array()
+  let unicode = regexp_is_unicode_mode(flags)
+  let code_units = !unicode
+  let input_chars = regex_input_chars(s, code_units)
   if flags.contains("g") {
     // Replace all matches
-    let matches = regex_search_all(pattern, flags, s) catch { _ => [] }
+    let matches = regex_search_all_domain(pattern, flags, s, code_units) catch {
+      _ => []
+    }
     if matches.length() == 0 {
       return Value::String_(s)
     }
     let buf = StringBuilder::new()
     let mut last_end = 0
     for m in matches {
-      for i = last_end; i < m.start; i = i + 1 {
-        buf.write_char(input_chars[i])
-      }
-      let repl = call_replace_fn(replace_fn, m, input_chars, s, interp~)
+      regex_append_domain_range(
+        buf,
+        s,
+        input_chars,
+        last_end,
+        m.start,
+        code_units,
+      )
+      let repl = call_replace_fn(
+        replace_fn,
+        m,
+        input_chars,
+        s,
+        code_units,
+        interp~,
+      )
       buf.write_string(repl)
       last_end = m.end_
     }
-    for i = last_end; i < input_chars.length(); i = i + 1 {
-      buf.write_char(input_chars[i])
-    }
+    regex_append_domain_range(
+      buf,
+      s,
+      input_chars,
+      last_end,
+      input_chars.length(),
+      code_units,
+    )
     Value::String_(buf.to_string())
   } else {
     // Replace first match only
-    let result = regex_search(pattern, flags, s) catch { _ => None }
+    let result = regex_search_domain(pattern, flags, s, 0, code_units) catch {
+      _ => None
+    }
     match result {
       Some(m) => {
         let buf = StringBuilder::new()
-        for i = 0; i < m.start; i = i + 1 {
-          buf.write_char(input_chars[i])
-        }
-        let repl = call_replace_fn(replace_fn, m, input_chars, s, interp~)
+        regex_append_domain_range(buf, s, input_chars, 0, m.start, code_units)
+        let repl = call_replace_fn(
+          replace_fn,
+          m,
+          input_chars,
+          s,
+          code_units,
+          interp~,
+        )
         buf.write_string(repl)
-        for i = m.end_; i < input_chars.length(); i = i + 1 {
-          buf.write_char(input_chars[i])
-        }
+        regex_append_domain_range(
+          buf,
+          s,
+          input_chars,
+          m.end_,
+          input_chars.length(),
+          code_units,
+        )
         Value::String_(buf.to_string())
       }
       None => Value::String_(s)
@@ -4483,11 +4852,16 @@ fn call_replace_fn(
   m : RegexMatch,
   input_chars : Array[Char],
   input : String,
+  code_units : Bool,
   interp? : Interpreter? = None,
 ) -> String raise {
   let args : Array[Value] = []
   // First arg: full match string
-  args.push(Value::String_(substring(input_chars, m.start, m.end_)))
+  args.push(
+    Value::String_(
+      regex_domain_substring(input, input_chars, m.start, m.end_, code_units),
+    ),
+  )
   // Capture groups
   for cap in m.captures {
     match cap {
@@ -4496,7 +4870,11 @@ fn call_replace_fn(
     }
   }
   // offset (index of match)
-  args.push(Value::Number(m.start.to_double()))
+  args.push(
+    Value::Number(
+      regex_match_index_to_code_unit_index(input, m.start, code_units).to_double(),
+    ),
+  )
   // input string
   args.push(Value::String_(input))
   // groups object (if named groups exist)
@@ -4538,8 +4916,10 @@ fn call_replace_fn(
 ///|
 fn process_replacement(
   replacement : String,
+  input : String,
   input_chars : Array[Char],
   m : RegexMatch,
+  code_units : Bool,
 ) -> String {
   let repl_chars = replacement.to_array()
   let buf = StringBuilder::new()
@@ -4549,23 +4929,38 @@ fn process_replacement(
       let next = repl_chars[i + 1]
       if next == '&' {
         // $& = full match
-        for j = m.start; j < m.end_; j = j + 1 {
-          buf.write_char(input_chars[j])
-        }
+        regex_append_domain_range(
+          buf,
+          input,
+          input_chars,
+          m.start,
+          m.end_,
+          code_units,
+        )
         i += 2
         continue
       } else if next == '`' {
         // $` = portion before match
-        for j = 0; j < m.start; j = j + 1 {
-          buf.write_char(input_chars[j])
-        }
+        regex_append_domain_range(
+          buf,
+          input,
+          input_chars,
+          0,
+          m.start,
+          code_units,
+        )
         i += 2
         continue
       } else if next == '\'' {
         // $' = portion after match
-        for j = m.end_; j < input_chars.length(); j = j + 1 {
-          buf.write_char(input_chars[j])
-        }
+        regex_append_domain_range(
+          buf,
+          input,
+          input_chars,
+          m.end_,
+          input_chars.length(),
+          code_units,
+        )
         i += 2
         continue
       } else if next >= '0' && next <= '9' {

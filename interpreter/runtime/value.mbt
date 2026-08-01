@@ -83,6 +83,7 @@ pub(all) enum Callable {
     String,
     (Interpreter, CallContext, Value, Array[Value]) -> Value raise Error
   )
+  ExecutorCallable(ExecutorCallableData)
   NonConstructableInterpreterCallable(
     String,
     (Interpreter, Array[Value]) -> Value raise Error
@@ -657,6 +658,10 @@ pub impl Show for Value with fn output(self, logger) {
         Some(InterpreterCallable(name, _))
         | Some(InterpreterCallableWithContext(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
+        Some(ExecutorCallable(executable)) =>
+          logger.write_string(
+            "function \{executable.name()}() { [native code] }",
+          )
         Some(NonConstructableInterpreterCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(ConstructorOnlyCallable(name, _)) =>

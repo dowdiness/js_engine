@@ -5,10 +5,11 @@ Date: 2026-07-26
 ## Status
 
 Accepted for staged implementation. Private execution-control state transitions
-and statement/expression dispatch observation are implemented internally. The
-bounded operations, complete execution accounting, stack-depth wiring, and
-public interruption control described here are not available yet. Existing
-operations remain unbounded.
+and statement/expression dispatch observation are implemented internally. One
+public bounded-evaluation slice now provides a validated operation-scoped
+budget/depth policy and host-owned monotonic interruption. Bounded JSON calls,
+bounded queue checkpoints, and complete execution accounting remain deferred.
+Existing unbounded operations retain their compatibility behavior.
 
 ## Context
 
@@ -64,57 +65,17 @@ The policy is passed for each operation; it is not a default captured by the
 Engine and is not mutable Engine configuration. The bounded variants return the
 existing `EngineDiagnostic` model.
 
-The public shape is fixed by this decision:
+The bounded surface exposes opaque policy inputs through validation, uses a
+host-owned monotonic interruption capability, and reports through the existing
+structured-diagnostic model. Exact callable names and signatures remain in
+source-generated API documentation rather than this architecture decision.
 
-```moonbit nocheck
-pub struct ExecutionPolicy
-pub struct ExecutionPolicyError
-pub struct InterruptionHandle
-
-pub fn InterruptionHandle::InterruptionHandle() -> InterruptionHandle
-pub fn InterruptionHandle::request(Self) -> Unit
-pub fn InterruptionHandle::is_requested(Self) -> Bool
-
-pub fn ExecutionPolicy::ExecutionPolicy(
-  step_budget : Int64,
-  stack_depth_limit : Int64,
-  interruption : InterruptionHandle,
-) -> Result[ExecutionPolicy, ExecutionPolicyError]
-
-pub fn ExecutionPolicyError::parameter_code(Self) -> String
-pub fn ExecutionPolicyError::message(Self) -> String
-
-pub fn Engine::eval_bounded(
-  Self,
-  source : String,
-  policy : ExecutionPolicy,
-  source_id? : String,
-) -> Result[Unit, EngineDiagnostic]
-
-pub fn Engine::call_json_bounded(
-  Self,
-  name : String,
-  args : Array[Json],
-  policy : ExecutionPolicy,
-) -> Result[Json, EngineDiagnostic]
-
-pub fn Engine::run_microtask_checkpoint_bounded(
-  Self,
-  policy : ExecutionPolicy,
-) -> Result[Bool, EngineDiagnostic]
-
-pub fn Engine::run_timer_checkpoint_bounded(
-  Self,
-  policy : ExecutionPolicy,
-) -> Result[Unit, EngineDiagnostic]
-```
-
-The three public types are opaque. An `InterruptionHandle` is a shared,
-monotonic request cell: copying the handle or a policy aliases the same request
-state, `request` is idempotent, and a requested handle cannot be cleared. A host
-that needs a clear request creates a new handle and policy. This prevents one
-consumer from withdrawing an interruption already requested by another and
-avoids an active-operation clear race.
+The interruption capability is a shared monotonic request cell: copying the
+capability or a policy aliases the same request state, requesting interruption
+is idempotent, and a requested capability cannot be cleared. A host that needs
+a clear request creates a new capability and policy. This prevents one consumer
+from withdrawing an interruption already requested by another and avoids an
+active-operation clear race.
 
 The existing unbounded `eval`, `call_json`, checkpoint, and diagnostic methods
 retain their current signatures and behavior. `run`, `run_diagnostic`,
