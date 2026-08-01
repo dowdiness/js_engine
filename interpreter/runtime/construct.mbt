@@ -1223,6 +1223,23 @@ fn Interpreter::construct_value_impl(
           }
           func(self, ConstructWithTarget(new_target), Undefined, args)
         }
+        Some(ExecutorCallable(executable)) => {
+          if !executable.is_constructable() {
+            raise @errors.TypeError(
+              message=format_loc_context(
+                executable.name() + " is not a constructor",
+                loc,
+              ),
+            )
+          }
+          self.run_executor_function(
+            executable,
+            ctor,
+            ConstructWithTarget(new_target),
+            Undefined,
+            args,
+          )
+        }
         Some(MethodCallable(name, _)) =>
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
