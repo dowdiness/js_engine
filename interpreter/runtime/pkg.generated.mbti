@@ -79,6 +79,12 @@ pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interprete
 
 pub fn execution_control_failure_code(Error) -> String?
 
+pub fn executor_activation_continue() -> ExecutorActivationStep
+
+pub fn executor_activation_normal(Value) -> ExecutorActivationStep
+
+pub fn executor_activation_return(Value) -> ExecutorActivationStep
+
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
@@ -244,6 +250,10 @@ pub fn make_array_with_prototype(Array[Value], Value) -> Value
 pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : String, length~ : Double, realm_state? : RealmState?) -> Value
 
 pub fn make_canonical_proxy_constructor(RealmState) -> Value
+
+pub fn[T : ExecutorCode] make_executor_arrow_function(Array[String], Environment, Bool, T, rest_param? : String?) -> Value
+
+pub fn[T : ExecutorCode] make_executor_function(String?, Array[String], Environment, Bool, T, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
 
 pub fn make_func(FuncData) -> Value
 
@@ -500,6 +510,7 @@ pub(all) enum Callable {
   MethodCallable(String, (Value, Array[Value]) -> Value raise)
   InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
   InterpreterCallableWithContext(String, (Interpreter, CallContext, Value, Array[Value]) -> Value raise)
+  ExecutorCallable(ExecutorCallableData)
   NonConstructableInterpreterCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ClassConstructor(ClassConstructorData)
@@ -566,6 +577,20 @@ pub(all) struct ExecutionPolicyError {
 }
 pub fn ExecutionPolicyError::message(Self) -> String
 pub fn ExecutionPolicyError::parameter_code(Self) -> String
+
+pub enum ExecutorActivationStep {
+  ExecutorActivationContinue
+  ExecutorActivationNormal(Value)
+  ExecutorActivationReturn(Value)
+}
+
+pub struct ExecutorCallableData {
+  // private fields
+}
+pub fn ExecutorCallableData::is_constructable(Self) -> Bool
+pub fn ExecutorCallableData::length(Self) -> Int
+pub fn ExecutorCallableData::name(Self) -> String
+pub fn ExecutorCallableData::start_frame(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
 
 pub(all) struct FuncData {
   name : String?
@@ -751,6 +776,7 @@ pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDesc
 pub fn Interpreter::own_property_keys(Self, Value) -> Array[Value] raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise
 pub fn Interpreter::perform_eval(Self, String, Environment, Bool, caller_strict? : Bool) -> Value raise
+pub fn Interpreter::prepare_executor_callable_call(Self, ExecutorCallableData, Value, Value, Array[Value]) -> PreparedExecutorActivation raise
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_bounded(Self, Array[@ast.Stmt], ExecutionPolicy) -> Value raise
@@ -831,6 +857,15 @@ pub fn PartialDescriptor::is_accessor(Self) -> Bool
 pub fn PartialDescriptor::is_data(Self) -> Bool
 pub fn PartialDescriptor::is_generic(Self) -> Bool
 pub fn PartialDescriptor::value_only(Value) -> Self
+
+pub struct PreparedExecutorActivation {
+  ctx : ExecContext
+  env : Environment
+  args : Array[Value]
+}
+pub fn PreparedExecutorActivation::arguments(Self) -> ArrayView[Value]
+pub fn PreparedExecutorActivation::context(Self) -> ExecContext
+pub fn PreparedExecutorActivation::environment(Self) -> Environment
 
 pub(all) struct PromiseData {
   mut state : PromiseState
@@ -1097,4 +1132,11 @@ pub(all) struct WellKnownSymbols {
 // Type aliases
 
 // Traits
+pub(open) trait ExecutorActivationFrame {
+  fn step(Self, Interpreter) -> ExecutorActivationStep raise
+}
+
+pub(open) trait ExecutorCode {
+  fn start(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
+}
 

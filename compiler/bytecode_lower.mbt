@@ -1771,10 +1771,12 @@ pub fn BytecodeProgram::run(
     }
     match result {
       BytecodeNormal(value) => value
-      BytecodeReturn(_) =>
+      BytecodeReturn(value) => {
+        ignore(value)
         raise @errors.SyntaxError(
           message="return statement outside of function",
         )
+      }
     }
   })
 }

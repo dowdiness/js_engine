@@ -3772,6 +3772,94 @@ test "RegExp exec observes lastIndex coercion and strict writes" {
 }
 
 ///|
+test "RegExp exec retains parsed matcher semantics across repeated calls" {
+  let src =
+    #|var re = /(?<first>a)(b)/gu;
+    #|var first = re.exec("😀abxab");
+    #|console.log(first.index + ":" + first[0] + ":" + first[1] + ":" + first[2] + ":" + first.groups.first);
+    #|console.log(re.lastIndex);
+    #|var second = re.exec("😀abxab");
+    #|console.log(second.index + ":" + second[0] + ":" + re.lastIndex);
+    #|var sticky = /a/y;
+    #|sticky.lastIndex = 1;
+    #|console.log(sticky.exec("ba")[0] + ":" + sticky.lastIndex);
+    #|sticky.lastIndex = 0;
+    #|console.log(sticky.exec("ba") === null);
+    #|console.log(sticky.lastIndex);
+    #|var dot = /./gu;
+    #|console.log(dot.exec("😀x")[0].length + ":" + dot.lastIndex);
+    #|console.log(dot.exec("😀x")[0] + ":" + dot.lastIndex);
+    #|var boundary = /./uy;
+    #|boundary.lastIndex = 1;
+    #|var boundaryMatch = boundary.exec("😀");
+    #|console.log(boundaryMatch.index + ":" + boundaryMatch[0].length + ":" + boundary.lastIndex);
+    #|var compiled = /x/g;
+    #|console.log(compiled.compile("z", "u") === compiled);
+    #|console.log(compiled.source + ":" + compiled.flags + ":" + compiled.exec("z")[0]);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "2:ab:a:b:a", "4", "5:ab:7", "a:2", "true", "0", "2:2", "x:3", "0:2:2", "true",
+    "z:u:z",
+  ])
+}
+
+///|
+test "RegExp non-unicode matching stays in UTF-16 code-unit space" {
+  let src =
+    #|function describe(match, re) {
+    #|  if (match === null) return "null:" + re.lastIndex;
+    #|  return match[0].charCodeAt(0) + ":" + match.index + ":" + match[0].length + ":" + re.lastIndex;
+    #|}
+    #|var global = /./g;
+    #|var input = "😀x";
+    #|console.log(describe(global.exec(input), global));
+    #|console.log(describe(global.exec(input), global));
+    #|console.log(describe(global.exec(input), global));
+    #|console.log(describe(global.exec(input), global));
+    #|var sticky = /./y;
+    #|sticky.lastIndex = 1;
+    #|console.log(describe(sticky.exec(input), sticky));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "55357:0:1:1", "56832:1:1:2", "120:2:1:3", "null:0", "56832:1:1:2",
+  ])
+}
+
+///|
+test "RegExp compile failure preserves the complete prior matcher state" {
+  let src =
+    #|var re = /a/g;
+    #|try { re.compile("[", "g"); } catch (e) { console.log(e instanceof SyntaxError); }
+    #|console.log(re.source + ":" + re.flags);
+    #|console.log(re.exec("a")[0] + ":" + re.lastIndex);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "a:g", "a:1"])
+}
+
+///|
+test "RegExp private matcher state is invisible to reflective own-key APIs" {
+  let src =
+    #|var re = /a/g;
+    #|console.log(Reflect.ownKeys(re).join(","));
+    #|console.log(Object.getOwnPropertySymbols(re).length);
+    #|var match = re.exec("a");
+    #|console.log(Reflect.ownKeys(match).join(","));
+    #|console.log(Object.getOwnPropertySymbols(match).length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "lastIndex", "0", "0,length,index,input,groups", "0",
+  ])
+}
+
+///|
+test "RegExp prototype exec rejects objects without private matcher" {
+  let src =
+    #|try { RegExp.prototype.exec.call({}); } catch (e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "RegExp Symbol.search saves lastIndex and honors custom exec" {
   let src =
     #|var duringExec;
@@ -7727,6 +7815,17 @@ test "string replace with capture group" {
     #|console.log(result);
   let output = run_output(src)
   json_inspect(output, content=["Smith John"])
+}
+
+///|
+test "unicode regexp replacement keeps UTF-16 result positions" {
+  let src =
+    #|var input = "😀x!";
+    #|console.log(input.replace(/x/u, "Y"));
+    #|console.log(input.replace(/x/u, function(match, offset) { return String(offset); }));
+    #|console.log(input.replace(/x/u, "$`|$'"));
+  let output = run_output(src)
+  json_inspect(output, content=["😀Y!", "😀2!", "😀😀|!!"])
 }
 
 ///|

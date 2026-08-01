@@ -246,6 +246,38 @@ test "activation dispatch enters and releases one accepted root" {
 }
 
 ///|
+test "production root statement enters the closed production seam" {
+  let initial = ActivationDispatchState::ActivationDispatchState()
+  let request = DispatchProgramActivation(
+    DispatchStatementCursor(
+      ctx={ strict: false, current_generator: None },
+      stmts=[@ast.BreakStmt(Some("901"), @token.Loc::default())],
+      env=Environment::new(),
+      production=true,
+    ),
+  )
+  let (waiting_entry, enter_decision) = reduce_activation_dispatch(
+    initial,
+    DispatchStart(request),
+  )
+  let entry_ticket = match enter_decision {
+    DispatchPerform(ticket, DispatchEnterActivation(_)) => ticket
+    _ => fail("expected activation-entry effect")
+  }
+  let (_, run_decision) = reduce_activation_dispatch(
+    waiting_entry,
+    DispatchEffectCompleted(
+      entry_ticket,
+      DispatchProgramAccepted(DispatchActivationCleanup(902)),
+    ),
+  )
+  match run_decision {
+    DispatchPerform(_, DispatchRunProduction(_)) => ()
+    _ => fail("expected admitted root work in production seam")
+  }
+}
+
+///|
 test "accepted call starts parameter progress and resumes its body once" {
   let id = 20
   let initial = ActivationDispatchState::ActivationDispatchState()
@@ -2791,6 +2823,40 @@ fn request_test_continuation_resume(
 }
 
 ///|
+fn request_test_production_continuation_resume(
+  id : Int,
+  continuation : DispatchContinuation,
+  work : DispatchProductionWork,
+  value : Value,
+) -> DispatchEffect raise {
+  let (running, root_ticket) = start_accepted_dispatch_root(id)
+  let (running_value, value_decision) = reduce_activation_dispatch(
+    running,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinueProduction(continuation, work),
+      ),
+    ),
+  )
+  let value_ticket = match value_decision {
+    DispatchPerform(ticket, DispatchRunProduction(_)) => ticket
+    _ => fail("expected production continuation input work")
+  }
+  let (_, resume_decision) = reduce_activation_dispatch(
+    running_value,
+    DispatchEffectCompleted(
+      value_ticket,
+      DispatchWorkCompleted(DispatchNormal(value)),
+    ),
+  )
+  match resume_decision {
+    DispatchPerform(_, effect) => effect
+    _ => fail("expected production continuation resume work")
+  }
+}
+
+///|
 test "binary accessor and parameter continuations retain semantic payloads" {
   let binary = DispatchBinaryResume(
     op=@ast.Add,
@@ -2811,6 +2877,30 @@ test "binary accessor and parameter continuations retain semantic payloads" {
       inspect(right, content="2")
     }
     _ => fail("expected binary semantic resume")
+  }
+  let property_binary = DispatchBinaryResume(
+    op=@ast.Add,
+    left=Number(3.0),
+    loc=@token.Loc::default(),
+  )
+  match
+    request_test_production_continuation_resume(
+      1750,
+      DispatchApplyPropertyBinaryRight(property_binary),
+      DispatchPropertyDeliverAccessorResult(
+        dispatch_test_property_resume(1751),
+        Number(4.0),
+      ),
+      Number(4.0),
+    ) {
+    DispatchRunProduction(
+      DispatchPropertyApplyBinaryRight(found, Number(right))
+    ) => {
+      inspect(found.op == @ast.Add, content="true")
+      inspect(dispatch_test_value_tag(found.left), content="3")
+      inspect(right, content="4")
+    }
+    _ => fail("expected property continuation in production seam")
   }
   let accessor = dispatch_test_property_resume(1700)
   match

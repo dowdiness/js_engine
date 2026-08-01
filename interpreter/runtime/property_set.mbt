@@ -2157,6 +2157,7 @@ pub fn get_bound_func_name(target : Value) -> String {
         Some(MethodCallable(n, _)) => "bound " + n
         Some(InterpreterCallable(n, _))
         | Some(InterpreterCallableWithContext(n, _)) => "bound " + n
+        Some(ExecutorCallable(executable)) => "bound " + executable.name()
         Some(NonConstructableInterpreterCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
@@ -2208,6 +2209,7 @@ pub fn get_func_length(callable : Callable) -> Int {
     MethodCallable(_, _) => 0
     InterpreterCallable(_, _) => 0
     InterpreterCallableWithContext(_, _) => 0
+    ExecutorCallable(executable) => executable.length()
     NonConstructableInterpreterCallable(_, _) => 0
     ConstructorOnlyCallable(_, _) => 0
     ClassConstructor({ ctor_fn, .. }) =>

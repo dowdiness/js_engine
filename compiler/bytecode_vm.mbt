@@ -20,11 +20,17 @@ priv struct BytecodeFrame {
 }
 
 ///|
+priv enum BytecodeFrameStep {
+  BytecodeFrameNormal(Value)
+  BytecodeFrameReturn(Value)
+}
+
+///|
 fn BytecodeFrame::BytecodeFrame(
   func_def : BytecodeFunction,
   env : Environment,
   ctx : ExecContext,
-  direct_args? : Array[Value]? = None,
+  direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let locals = Array::make(func_def.local_names.length(), Value::Undefined)
   match direct_args {
@@ -67,6 +73,69 @@ fn BytecodeFrame::BytecodeFrame(
     ip: 0,
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
+  }
+}
+
+///|
+priv struct BytecodeExecutorCode {
+  func_def : BytecodeFunction
+}
+
+///|
+fn BytecodeExecutorCode::BytecodeExecutorCode(
+  func_def~ : BytecodeFunction,
+) -> BytecodeExecutorCode {
+  { func_def, }
+}
+
+///|
+fn start_bytecode_frame(
+  interp : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  func_def : BytecodeFunction,
+  direct_args : ArrayView[Value]?,
+) -> BytecodeFrame raise Error {
+  let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
+  // needs_own_env=false implies all four hoist calls are provably no-ops.
+  if func_def.needs_own_env {
+    frame.hoist_env_var_bindings(interp)
+    frame.hoist_lexical_bindings()
+    if frame.func_def.env_slot_names.length() > 0 {
+      frame.bind_env_slots()
+    }
+    frame.hoist_function_decls(interp)
+  }
+  frame
+}
+
+///|
+impl @runtime.ExecutorCode for BytecodeExecutorCode with fn start(
+  self,
+  interp,
+  prepared,
+) {
+  let frame = start_bytecode_frame(
+    interp,
+    prepared.context(),
+    prepared.environment(),
+    self.func_def,
+    Some(prepared.arguments()),
+  )
+  frame as &@runtime.ExecutorActivationFrame
+}
+
+///|
+impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
+  self,
+  interp,
+) {
+  // Cross the neutral seam only at completion or an explicit suspension point.
+  // #631 will add the first suspension result; continuing one opcode at a time
+  // would make executor-neutral dispatch part of the bytecode inner loop.
+  match self.step_bytecode(interp) {
+    BytecodeFrameNormal(value) => @runtime.executor_activation_normal(value)
+    BytecodeFrameReturn(value) => @runtime.executor_activation_return(value)
   }
 }
 
@@ -272,14 +341,14 @@ fn make_bytecode_func(
       )
   }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  make_compiled_func(
+  @runtime.make_executor_function(
     func_def.name,
     func_def.params,
     closure,
     strict,
+    BytecodeExecutorCode(func_def~),
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
-    bytecode_func=Some(func_def),
   )
 }
 
@@ -323,34 +392,17 @@ fn make_bytecode_method_func(
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   let method_env = Environment::new(parent=Some(closure))
   method_env.def_builtin("[[HomeObject]]", home_object)
-  make_compiled_func(
+  @runtime.make_executor_function(
     func_def.name,
     func_def.params,
     method_env,
     strict,
+    BytecodeExecutorCode(func_def~),
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
     define_arguments_object=func_def.needs_arguments_object,
-    bytecode_func=Some(func_def),
   )
-}
-
-///|
-fn BytecodeFrame::bind_call_self_name(self : BytecodeFrame) -> Unit raise Error {
-  if self.func_def.call_self_name {
-    match self.func_def.name {
-      Some(name) =>
-        if !self.env.bindings.contains(name) {
-          self.env.def(
-            name,
-            self.env.get("[[BytecodeCallee]]"),
-            FunctionNameBinding,
-          )
-        }
-      None => ()
-    }
-  }
 }
 
 ///|
@@ -365,59 +417,6 @@ fn bytecode_ext_params_from_names(params : Array[String]) -> Array[@ast.Param] {
     })
   }
   ext_params
-}
-
-///|
-fn bind_bytecode_arrow_params(
-  env : Environment,
-  params : Array[String],
-  rest_param : String?,
-  args : Array[Value],
-) -> Unit raise Error {
-  bind_simple_params(env, params, args)
-  match rest_param {
-    Some(name) => {
-      let rest_elements : Array[Value] = []
-      for i = params.length(); i < args.length(); i = i + 1 {
-        rest_elements.push(args[i])
-      }
-      env.def_parameter(name, @runtime.make_array(rest_elements))
-    }
-    None => ()
-  }
-}
-
-///|
-fn call_bytecode_arrow_func(
-  interp : Interpreter,
-  args : Array[Value],
-  func_def : BytecodeFunction,
-  closure : Environment,
-  strict : Bool,
-) -> Value raise Error {
-  let saved_in_default = interp.in_nonarrow_param_default_eval
-  interp.in_nonarrow_param_default_eval = false
-  let result : Value = try {
-    let func_env = Environment::new(parent=Some(closure))
-    func_env.is_var_scope = true
-    let func_ctx : ExecContext = { strict, current_generator: None }
-    bind_bytecode_arrow_params(
-      func_env,
-      func_def.params,
-      func_def.rest_param,
-      args,
-    )
-    match run_bytecode_function(interp, func_ctx, func_env, func_def) {
-      BytecodeNormal(value) | BytecodeReturn(value) => value
-    }
-  } catch {
-    err => {
-      interp.in_nonarrow_param_default_eval = saved_in_default
-      raise err
-    }
-  }
-  interp.in_nonarrow_param_default_eval = saved_in_default
-  result
 }
 
 ///|
@@ -444,17 +443,12 @@ fn make_bytecode_arrow_func(
       )
   }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  let realm_state = match closure.interpreter_context {
-    Some(interp) => Some(interp.realm_state)
-    None => closure.realm_state
-  }
-  @runtime.make_interp_method_func(
-    name="",
-    length=func_def.params.length(),
-    realm_state~,
-    fn(interp, _this_val, args) raise {
-      call_bytecode_arrow_func(interp, args, func_def, closure, strict)
-    },
+  @runtime.make_executor_arrow_function(
+    func_def.params,
+    closure,
+    strict,
+    BytecodeExecutorCode(func_def~),
+    rest_param=func_def.rest_param,
   )
 }
 
@@ -464,28 +458,32 @@ fn run_bytecode_function(
   ctx : ExecContext,
   env : Environment,
   func_def : BytecodeFunction,
-  direct_args? : Array[Value]? = None,
+  direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeRunResult raise Error {
-  let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
-  // needs_own_env=false implies all four hoist calls are provably no-ops.
-  if func_def.needs_own_env {
-    frame.hoist_env_var_bindings(interp)
-    frame.hoist_lexical_bindings()
-    if frame.func_def.env_slot_names.length() > 0 {
-      frame.bind_env_slots()
-    }
-    frame.hoist_function_decls(interp)
-    frame.bind_call_self_name()
+  let frame = start_bytecode_frame(interp, ctx, env, func_def, direct_args)
+  match frame.step_bytecode(interp) {
+    BytecodeFrameNormal(value) => BytecodeNormal(value)
+    BytecodeFrameReturn(value) => BytecodeReturn(value)
   }
+}
+
+///|
+fn BytecodeFrame::step_bytecode(
+  frame : BytecodeFrame,
+  interp : Interpreter,
+) -> BytecodeFrameStep raise Error {
   let code = frame.func_def.code
   let code_len = code.length()
+  guard frame.ip < code_len else {
+    return BytecodeFrameNormal(frame.completion)
+  }
   let stack = frame.stack
   let locals = frame.locals
-  let mut ip = frame.ip
-  let mut completion = frame.completion
-  while ip < code_len {
-    let instr = code[ip]
-    ip += 1
+  let env = frame.env
+  let ctx = frame.ctx
+  while frame.ip < code_len {
+    let instr = code[frame.ip]
+    frame.ip += 1
     match instr {
       LoadConst(value) => stack.push(value)
       LoadUndefined => stack.push(Value::Undefined)
@@ -544,11 +542,11 @@ fn run_bytecode_function(
       }
       SetCompletion =>
         match stack.pop() {
-          Some(value) => completion = value
+          Some(value) => frame.completion = value
           None =>
             raise @errors.InternalError(message="bytecode stack underflow")
         }
-      SetCompletionValue(value) => completion = value
+      SetCompletionValue(value) => frame.completion = value
       Pop =>
         match stack.pop() {
           Some(_) => ()
@@ -611,7 +609,7 @@ fn run_bytecode_function(
       MakeTemplateObject(strings) => {
         let site_key = frame.func_def.template_cache_key_prefix +
           ":" +
-          (ip - 1).to_string()
+          (frame.ip - 1).to_string()
         stack.push(interp.get_cached_tagged_template_object(site_key, strings))
       }
       MakeRegExp(pattern, flags) =>
@@ -667,7 +665,7 @@ fn run_bytecode_function(
           ),
         )
       }
-      Jump(target) => ip = target
+      Jump(target) => frame.ip = target
       JumpIfFalse(target) => {
         let cond = match stack.pop() {
           Some(value) => value
@@ -675,32 +673,32 @@ fn run_bytecode_function(
             raise @errors.InternalError(message="bytecode stack underflow")
         }
         if !@runtime.is_truthy(cond) {
-          ip = target
+          frame.ip = target
         }
       }
       JumpIfFalseKeep(target) => {
         let cond = frame.peek()
         if !@runtime.is_truthy(cond) {
-          ip = target
+          frame.ip = target
         }
       }
       JumpIfTrueKeep(target) => {
         let cond = frame.peek()
         if @runtime.is_truthy(cond) {
-          ip = target
+          frame.ip = target
         }
       }
       JumpIfNotNullishKeep(target) =>
         match frame.peek() {
           Null | Undefined => ()
-          _ => ip = target
+          _ => frame.ip = target
         }
       BeginOptionalChain => frame.optional_chain_short_circuited = false
       MarkOptionalChainShortCircuit =>
         frame.optional_chain_short_circuited = true
       JumpIfNotOptionalChainShortCircuitKeep(target) =>
         if !frame.optional_chain_short_circuited {
-          ip = target
+          frame.ip = target
         }
       EndOptionalChain => frame.optional_chain_short_circuited = false
       StartForIn => {
@@ -719,7 +717,7 @@ fn run_bytecode_function(
         let state = frame.for_in_iters[frame.for_in_iters.length() - 1]
         if state.index >= state.keys.length() {
           let _ = frame.for_in_iters.pop()
-          ip = target
+          frame.ip = target
         } else {
           let key = state.keys[state.index]
           state.index += 1
@@ -1039,14 +1037,12 @@ fn run_bytecode_function(
         let ctor = frame.pop()
         stack.push(interp.construct_value(ctor, args, loc))
       }
-      Return => return BytecodeReturn(frame.pop())
+      Return => return BytecodeFrameReturn(frame.pop())
       Throw => {
         let value = frame.pop()
         @runtime.raise_js_exception(value)
       }
     }
   }
-  frame.ip = ip
-  frame.completion = completion
-  BytecodeNormal(completion)
+  BytecodeFrameNormal(frame.completion)
 }

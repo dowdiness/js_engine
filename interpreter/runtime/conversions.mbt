@@ -60,6 +60,7 @@ pub fn call_callable_direct(
             | Some(BoundFunc(_, _, _))
             | Some(InterpreterCallable(_, _))
             | Some(InterpreterCallableWithContext(_, _))
+            | Some(ExecutorCallable(_))
             | Some(NonConstructableInterpreterCallable(_, _))
             | Some(ClassConstructor(_)) =>
               raise @errors.TypeError(

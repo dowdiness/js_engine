@@ -205,6 +205,18 @@ pub fn bench_property_chain() -> BenchResult raise {
 }
 
 ///|
+fn bench_regexp_retained_matcher() -> BenchResult raise {
+  verify(REGEXP_RETAINED_MATCHER_SRC, "512")
+  run_bench(
+    "regexp/retained_matcher",
+    Component,
+    { warmup: 3, iterations: 20, group_size: 1 },
+    fn() raise { let _ = @lib.run(REGEXP_RETAINED_MATCHER_SRC) },
+    stage=Execution,
+  )
+}
+
+///|
 pub fn bench_array_map_filter() -> BenchResult raise {
   verify(ARRAY_MAP_FILTER_SRC, "334")
   run_bench(
@@ -615,6 +627,7 @@ pub fn run_component() -> Array[BenchResult] raise {
     bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
+    bench_regexp_retained_matcher(),
   ]
 }
 
@@ -680,6 +693,7 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("exec/arithmetic_loop", "component", "execution"),
     ("exec/object_construction", "component", "execution"),
     ("exec/string_ops", "component", "execution"),
+    ("regexp/retained_matcher", "component", "execution"),
     ("pipeline/exec/lex", "workflow", "frontend"),
     ("pipeline/exec/parse", "workflow", "frontend"),
     ("pipeline/exec/evaluate", "workflow", "execution"),
