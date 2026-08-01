@@ -47,10 +47,11 @@ stack-safety-test:
 	moon test --target "$(TARGET)" $$release \
 		interpreter/stack_safety_test.mbt \
 		interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt \
+		interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt \
 		interpreter/runtime/execution_control_dispatch_wbtest.mbt && \
 	(cd integration/external_consumer && \
 		moon check --target "$(TARGET)" . && \
-		moon test --target "$(TARGET)" $$release stack_safety_test.mbt)
+		moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt)
 
 # Check the permanent gate's source, Make, and workflow contract.
 stack-safety-validate:

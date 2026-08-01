@@ -8,6 +8,8 @@ WORKFLOW="$ROOT_DIR/.github/workflows/adoption.yml"
 DEVELOPMENT_DOC="$ROOT_DIR/docs/development.md"
 CONSUMER_PACKAGE="$ROOT_DIR/integration/external_consumer/moon.pkg"
 CONSUMER_SUITE="$ROOT_DIR/integration/external_consumer/stack_safety_test.mbt"
+BOUNDED_SUITE="$ROOT_DIR/integration/external_consumer/bounded_eval_test.mbt"
+ACTIVATION_SUITE="$ROOT_DIR/interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt"
 DEFERRED_SUITE="$ROOT_DIR/interpreter/stack_safety_deferred_test.mbt"
 CHECK_ONLY=false
 
@@ -28,6 +30,8 @@ fail() {
 [[ -f "$DEVELOPMENT_DOC" ]] || fail 'development documentation is missing'
 [[ -f "$CONSUMER_PACKAGE" ]] || fail 'external-consumer package manifest is missing'
 [[ -f "$CONSUMER_SUITE" ]] || fail 'external-consumer stack-safety suite is missing'
+[[ -f "$BOUNDED_SUITE" ]] || fail 'bounded external-consumer suite is missing'
+[[ -f "$ACTIVATION_SUITE" ]] || fail 'numeric activation cleanup suite is missing'
 
 grep -Fq 'stack-safety-test' "$MAKEFILE" ||
   fail 'focused stack-safety Make target is missing'
@@ -45,6 +49,28 @@ grep -Fq 'stack-safety:' "$WORKFLOW" ||
   fail 'focused stack-safety workflow job is missing'
 grep -Eq 'run: make stack-safety-test TARGET=.*PROFILE=' "$WORKFLOW" ||
   fail 'workflow does not invoke the focused Make target with its matrix profile'
+aggregator_count=$(grep -c '^  stack-safety-required:$' "$WORKFLOW" || true)
+[[ "$aggregator_count" -eq 1 ]] ||
+  fail 'workflow must define exactly one stack-safety-required job'
+aggregator_block=$(awk '
+  /^  stack-safety-required:/ { in_aggregator=1; next }
+  in_aggregator && /^  [^ ]/ { exit }
+  in_aggregator { print }
+' "$WORKFLOW")
+[[ -n "$aggregator_block" ]] ||
+  fail 'stack-safety-required job body is missing'
+if ! grep -Fq '    needs: [stack-safety]' <<<"$aggregator_block"; then
+  fail 'stack-safety-required must need the stack-safety matrix job'
+fi
+if ! grep -Fq '    if: always()' <<<"$aggregator_block"; then
+  fail 'stack-safety-required must run with if: always()'
+fi
+if ! grep -Fq '          STACK_SAFETY_RESULT: ${{ needs.stack-safety.result }}' <<<"$aggregator_block"; then
+  fail 'stack-safety-required does not expose needs.stack-safety.result to its shell'
+fi
+if ! grep -Fq 'test "$STACK_SAFETY_RESULT" = success' <<<"$aggregator_block"; then
+  fail 'stack-safety-required does not fail closed on non-success results'
+fi
 grep -Fq 'make stack-safety-test TARGET=<native|js|wasm|wasm-gc> PROFILE=<debug|release>' "$DEVELOPMENT_DOC" ||
   fail 'development documentation omits the exact stack-safety command syntax'
 if grep -Fq '`PROFILE=debug` is the default' "$DEVELOPMENT_DOC"; then
@@ -79,8 +105,10 @@ fi
 selected_suites=(
   "$ROOT_DIR/interpreter/stack_safety_test.mbt"
   "$ROOT_DIR/interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt"
+  "$ACTIVATION_SUITE"
   "$ROOT_DIR/interpreter/runtime/execution_control_dispatch_wbtest.mbt"
   "$CONSUMER_SUITE"
+  "$BOUNDED_SUITE"
 )
 for suite in "${selected_suites[@]}"; do
   [[ -f "$suite" ]] || fail "selected stack-safety suite is missing: ${suite#"$ROOT_DIR/"}"
@@ -92,14 +120,15 @@ done
 for suite in \
   'interpreter/stack_safety_test.mbt' \
   'interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt' \
+  'interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt' \
   'interpreter/runtime/execution_control_dispatch_wbtest.mbt'; do
   grep -Fq "$suite" "$MAKEFILE" ||
     fail "focused Make target omits the $suite suite"
 done
 grep -Fq '(cd integration/external_consumer' "$MAKEFILE" ||
   fail 'focused Make target omits the external-consumer suite'
-grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt' "$MAKEFILE" ||
-  fail 'focused Make target does not select the external-consumer suite'
+grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt' "$MAKEFILE" ||
+  fail 'focused Make target does not select both external-consumer suites'
 
 [[ -f "$DEFERRED_SUITE" ]] || fail 'deferred #608 suite is missing'
 grep -Fq '#skip("blocked by #608 runtime evaluator stack safety")' "$DEFERRED_SUITE" ||
@@ -179,16 +208,20 @@ copy_fixture() {
   local fixture=$1
   mkdir -p \
     "$fixture/.github/workflows" \
+    "$fixture/docs" \
     "$fixture/interpreter/runtime" \
     "$fixture/integration/external_consumer"
   cp "$MAKEFILE" "$fixture/Makefile"
   cp "$WORKFLOW" "$fixture/.github/workflows/adoption.yml"
+  cp "$DEVELOPMENT_DOC" "$fixture/docs/development.md"
   cp "$CONSUMER_PACKAGE" "$fixture/integration/external_consumer/moon.pkg"
   cp "$CONSUMER_SUITE" "$fixture/integration/external_consumer/stack_safety_test.mbt"
+  cp "$BOUNDED_SUITE" "$fixture/integration/external_consumer/bounded_eval_test.mbt"
   cp "$ROOT_DIR/interpreter/stack_safety_test.mbt" "$fixture/interpreter/stack_safety_test.mbt"
   cp \
     "$ROOT_DIR/interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt" \
     "$fixture/interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt"
+  cp "$ACTIVATION_SUITE" "$fixture/interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt"
   cp \
     "$ROOT_DIR/interpreter/runtime/execution_control_dispatch_wbtest.mbt" \
     "$fixture/interpreter/runtime/execution_control_dispatch_wbtest.mbt"
@@ -245,5 +278,38 @@ awk '
 ' "$fixture/.github/workflows/adoption.yml" > "$fixture/adoption.yml.tmp"
 mv "$fixture/adoption.yml.tmp" "$fixture/.github/workflows/adoption.yml"
 expect_fixture_failure "$fixture" 'decoy-pair'
+
+fixture="$GATE_TMP_ROOT/missing-aggregator"
+copy_fixture "$fixture"
+awk '
+  /^  stack-safety-required:/ { in_aggregator=1; next }
+  in_aggregator && /^  [^ ]/ { in_aggregator=0 }
+  !in_aggregator { print }
+' "$fixture/.github/workflows/adoption.yml" > "$fixture/adoption.yml.tmp"
+mv "$fixture/adoption.yml.tmp" "$fixture/.github/workflows/adoption.yml"
+expect_fixture_failure "$fixture" 'missing-aggregator'
+
+fixture="$GATE_TMP_ROOT/weak-aggregator"
+copy_fixture "$fixture"
+awk '
+  /^  stack-safety-required:/ { in_aggregator=1 }
+  in_aggregator && $0 == "    if: always()" {
+    print "    if: success()"
+    next
+  }
+  { print }
+' "$fixture/.github/workflows/adoption.yml" > "$fixture/adoption.yml.tmp"
+mv "$fixture/adoption.yml.tmp" "$fixture/.github/workflows/adoption.yml"
+expect_fixture_failure "$fixture" 'weak-aggregator'
+
+fixture="$GATE_TMP_ROOT/missing-bounded-suite"
+copy_fixture "$fixture"
+sed -i 's/ stack_safety_test.mbt bounded_eval_test.mbt/ stack_safety_test.mbt/' "$fixture/Makefile"
+expect_fixture_failure "$fixture" 'missing-bounded-suite'
+
+fixture="$GATE_TMP_ROOT/missing-activation-suite"
+copy_fixture "$fixture"
+sed -i '/activation_dispatch_numeric_activation_wbtest.mbt/d' "$fixture/Makefile"
+expect_fixture_failure "$fixture" 'missing-activation-suite'
 
 echo 'stack-safety gate validation: ok'
