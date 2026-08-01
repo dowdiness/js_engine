@@ -22,6 +22,29 @@ fn receiver_recursion_sealed_fixture(
 }
 
 ///|
+fn receiver_recursion_computed_sealed_fixture(
+  source_identity? : String? = None,
+) -> (Interpreter, Array[@ast.Stmt], TrustedReceiverRecursionRegistry) raise {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = source_identity
+  let stmts = @parser.parse(
+      "function step(n){if(n===0)return this[\"marker\"];return 1+this[\"step\"](n-1);}" +
+      "let receiver={[\"marker\"]:0,[\"step\"]:step};receiver[\"step\"](256);",
+    ).stmts
+  let preflight = match
+    interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected callback-free computed receiver preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
+  let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
+  let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
+  (interp, stmts, registry)
+}
+
+///|
 fn receiver_recursion_rejection(
   action : () -> Unit raise InvalidActivationDispatchShell,
 ) -> String {
@@ -73,6 +96,58 @@ test "receiver recursion trust seals the exact object and UserFunc identities" {
     }
     _ => fail("trusted callee must retain its UserFunc capability")
   }
+}
+
+///|
+test "receiver recursion trust seals computed-literal key locations" {
+  let (interp, _, registry) = receiver_recursion_computed_sealed_fixture()
+  match registry.plan.recipe.marker_property_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic =>
+      fail("expected computed marker property provenance")
+  }
+  match registry.plan.recipe.property_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic => fail("expected computed property provenance")
+  }
+  match registry.plan.recipe.marker_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic =>
+      fail("expected computed marker access provenance")
+  }
+  match registry.plan.recipe.recursive_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic =>
+      fail("expected computed recursive access provenance")
+  }
+  match registry.plan.recipe.root_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic => fail("expected computed root access provenance")
+  }
+  ignore(registry.require_receiver(interp))
+}
+
+///|
+test "receiver recursion trust rejects computed body key location drift" {
+  let (body_interp, _, body_registry) = receiver_recursion_computed_sealed_fixture()
+  guard body_registry.trusted.callee
+    is Object({ callable: Some(UserFunc(body_data)), .. }) else {
+    fail("expected the sealed computed UserFunc")
+  }
+  let shifted_body = match
+    @parser.parse(
+      "function step(n){\n\nif(n===0)return this[\"marker\"];return 1+this[\"step\"](n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body
+    _ => fail("expected an equivalent computed function declaration")
+  }
+  body_data.body[0] = shifted_body[0]
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(body_registry.require_receiver(body_interp))
+    }),
+    content="rejected",
+  )
 }
 
 ///|

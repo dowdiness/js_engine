@@ -44,7 +44,8 @@ test "execution stack safety: computed-literal own-data receiver recursion at de
       "let receiver={[\"marker\"]:0,[\"step\"]:step};receiver[\"step\"](256);",
     ) {
     Value::Number(256.0) => ()
-    other => fail("expected computed receiver recursion 256, got " + other.to_string())
+    other =>
+      fail("expected computed receiver recursion 256, got " + other.to_string())
   }
 }
 
