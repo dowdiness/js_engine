@@ -276,6 +276,18 @@ awk '
 mv "$fixture/adoption.yml.tmp" "$fixture/.github/workflows/adoption.yml"
 expect_fixture_failure "$fixture" 'decoy-pair'
 
+fixture="$GATE_TMP_ROOT/missing-engine-comma-workload"
+copy_fixture "$fixture"
+sed -i '/nested_comma_source(512, "7")/d' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-comma-workload'
+
+fixture="$GATE_TMP_ROOT/missing-facade-comma-workload"
+copy_fixture "$fixture"
+sed -i '/nested_comma_source(512, "7")/d' \
+  "$fixture/integration/external_consumer/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-facade-comma-workload'
+
 fixture="$GATE_TMP_ROOT/missing-aggregator"
 copy_fixture "$fixture"
 awk '
