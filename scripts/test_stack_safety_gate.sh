@@ -5,6 +5,7 @@ SCRIPT_PATH=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")
 ROOT_DIR=${STACK_SAFETY_GATE_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 MAKEFILE="$ROOT_DIR/Makefile"
 WORKFLOW="$ROOT_DIR/.github/workflows/adoption.yml"
+DEVELOPMENT_DOC="$ROOT_DIR/docs/development.md"
 CONSUMER_PACKAGE="$ROOT_DIR/integration/external_consumer/moon.pkg"
 CONSUMER_SUITE="$ROOT_DIR/integration/external_consumer/stack_safety_test.mbt"
 DEFERRED_SUITE="$ROOT_DIR/interpreter/stack_safety_deferred_test.mbt"
@@ -24,6 +25,7 @@ fail() {
 
 [[ -f "$MAKEFILE" ]] || fail 'Makefile is missing'
 [[ -f "$WORKFLOW" ]] || fail 'adoption workflow is missing'
+[[ -f "$DEVELOPMENT_DOC" ]] || fail 'development documentation is missing'
 [[ -f "$CONSUMER_PACKAGE" ]] || fail 'external-consumer package manifest is missing'
 [[ -f "$CONSUMER_SUITE" ]] || fail 'external-consumer stack-safety suite is missing'
 
@@ -31,10 +33,23 @@ grep -Fq 'stack-safety-test' "$MAKEFILE" ||
   fail 'focused stack-safety Make target is missing'
 grep -Fq 'PROFILE' "$MAKEFILE" ||
   fail 'focused stack-safety Make target lacks profile selection'
+grep -Fq '$(origin TARGET)' "$MAKEFILE" ||
+  fail 'focused Make target does not require a command-line TARGET'
+grep -Fq '$(origin PROFILE)' "$MAKEFILE" ||
+  fail 'focused Make target does not require a command-line PROFILE'
+grep -Fq 'native|js|wasm|wasm-gc' "$MAKEFILE" ||
+  fail 'focused Make target does not validate the four supported targets'
+grep -Fq 'PROFILE must be debug or release' "$MAKEFILE" ||
+  fail 'focused Make target does not validate debug/release profiles'
 grep -Fq 'stack-safety:' "$WORKFLOW" ||
   fail 'focused stack-safety workflow job is missing'
 grep -Eq 'run: make stack-safety-test TARGET=.*PROFILE=' "$WORKFLOW" ||
   fail 'workflow does not invoke the focused Make target with its matrix profile'
+grep -Fq 'make stack-safety-test TARGET=<native|js|wasm|wasm-gc> PROFILE=<debug|release>' "$DEVELOPMENT_DOC" ||
+  fail 'development documentation omits the exact stack-safety command syntax'
+if grep -Fq '`PROFILE=debug` is the default' "$DEVELOPMENT_DOC"; then
+  fail 'development documentation still claims a stack-safety profile default'
+fi
 
 expected_pairs=$(printf '%s\n' \
   'native debug' \
@@ -132,6 +147,33 @@ chmod +x "$fake_moon"
 if PATH="$fake_moon_dir:$PATH" make -s -C "$ROOT_DIR" stack-safety-test TARGET=native PROFILE=debug >/dev/null 2>&1; then
   fail 'Make target masked an engine-suite failure with external-consumer success'
 fi
+
+# Contract regressions: missing and unknown command-line values must be
+# rejected before the first MoonBit invocation.
+contract_moon_dir="$GATE_TMP_ROOT/contract-moon"
+mkdir -p "$contract_moon_dir"
+contract_moon="$contract_moon_dir/moon"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'printf invoked > "$MOON_MARKER"' \
+  'exit 0' > "$contract_moon"
+chmod +x "$contract_moon"
+expect_rejected_without_moon() {
+  local label=$1
+  shift
+  local marker="$GATE_TMP_ROOT/$label.moon-invoked"
+  if MOON_MARKER="$marker" PATH="$contract_moon_dir:$PATH" \
+    make -s -C "$ROOT_DIR" stack-safety-test "$@" >/dev/null 2>&1; then
+    fail "Make target accepted invalid $label contract input"
+  fi
+  if [[ -e "$marker" ]]; then
+    fail "Make target invoked MoonBit for invalid $label contract input"
+  fi
+}
+expect_rejected_without_moon missing-target PROFILE=debug
+expect_rejected_without_moon missing-profile TARGET=native
+expect_rejected_without_moon unknown-target TARGET=decoy PROFILE=debug
+expect_rejected_without_moon unknown-profile TARGET=native PROFILE=profiling
 
 copy_fixture() {
   local fixture=$1

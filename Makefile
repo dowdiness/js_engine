@@ -7,7 +7,6 @@ COMPAT_TABLE_ARCHIVE_URL ?= https://api.github.com/repos/compat-table/compat-tab
 COMPAT_TABLE_RESULTS ?= compat-table-results.json
 COMPAT_TABLE_SUMMARY ?= compat-table-summary.md
 COMPAT_TABLE_TIMEOUT_MS ?= 5000
-TARGET ?= native
 
 # Build the JS engine
 build:
@@ -18,17 +17,29 @@ test:
 	moon test
 
 # Check and test the standalone stable-facade consumer against this checkout.
+external-consumer-test: TARGET ?= native
 external-consumer-test:
 	cd integration/external_consumer && \
 		moon check --target $(TARGET) . && \
 		moon test --target $(TARGET) .
 
 # Run only the permanent stack-safety gate for one target and profile.
-# PROFILE is either debug (the default) or release; CI invokes both profiles
-# for native, js, wasm, and wasm-gc without host stack overrides.
-PROFILE ?= debug
+# TARGET and PROFILE must be supplied explicitly; CI invokes both profiles for
+# native, js, wasm, and wasm-gc without host stack overrides.
 stack-safety-test:
-	@case "$(PROFILE)" in \
+	@if [ "$(origin TARGET)" != "command line" ]; then \
+		echo "TARGET must be supplied on the stack-safety-test command line" >&2; \
+		exit 2; \
+	fi; \
+	if [ "$(origin PROFILE)" != "command line" ]; then \
+		echo "PROFILE must be supplied on the stack-safety-test command line" >&2; \
+		exit 2; \
+	fi; \
+	case "$(TARGET)" in \
+		native|js|wasm|wasm-gc) ;; \
+		*) echo "TARGET must be native, js, wasm, or wasm-gc (got $(TARGET))" >&2; exit 2;; \
+	esac; \
+	case "$(PROFILE)" in \
 		debug) release=;; \
 		release) release=--release;; \
 		*) echo "PROFILE must be debug or release (got $(PROFILE))" >&2; exit 2;; \
