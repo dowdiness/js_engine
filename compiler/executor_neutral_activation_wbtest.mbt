@@ -820,6 +820,47 @@ test "ordinary bytecode call normalizes fallthrough and arrow expression results
 }
 
 ///|
+test "bytecode construct recursion reaches the synchronous constructor boundary" {
+  let source = "function Step(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Step(n - 1); " +
+    "this.value = child.value + 1; }\n" +
+    "new Step(320).value;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_construct = false
+  for instr in lowered.main.code {
+    match instr {
+      Construct(_, _) => saw_root_construct = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_construct)
+  let mut saw_step_child = false
+  let mut saw_child_construct = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "Step" => {
+        saw_step_child = true
+        for instr in child.code {
+          match instr {
+            Construct(_, _) => saw_child_construct = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_step_child)
+  assert_true(saw_child_construct)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "executor-neutral bytecode activation preserves construct and new.target" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
