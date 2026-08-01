@@ -328,6 +328,110 @@ fn Engine::eval_runtime_failure(
 }
 
 ///|
+fn Engine::bounded_eval_guardrail_failure(
+  self : Engine,
+  kind : String,
+  message : String,
+  source_id : String?,
+) -> EngineDiagnostic {
+  make_engine_diagnostic(
+    failure_kind_code=kind,
+    message~,
+    operation_code="eval",
+    phase_code="execute",
+    source_identity=source_id,
+    engine_integrity=EngineIntegrity::Unknown,
+    retained_effects=RetainedEffects::MayRemain,
+    pending_jobs=self.pending_jobs_snapshot(),
+  )
+}
+
+///|
+fn bounded_eval_guardrail_message(kind : String) -> String {
+  match kind {
+    "interrupted" => "Execution interrupted"
+    "execution-limit" => "Execution limit exceeded"
+    "stack-depth-limit" => @runtime.stack_depth_limit_message()
+    _ => "Execution guardrail rejected the operation"
+  }
+}
+
+///|
+/// Evaluate source under one explicitly supplied, operation-scoped policy.
+/// Parsing remains outside the control carrier; all existing unbounded Engine
+/// entry points retain their current behavior and signatures.
+pub fn Engine::eval_bounded(
+  self : Engine,
+  source : String,
+  policy : @runtime.ExecutionPolicy,
+  source_id? : String,
+) -> Result[Unit, EngineDiagnostic] {
+  let program = @parser.parse(source) catch {
+    err =>
+      return Err(
+        self.eval_failure(
+          "parse-error",
+          err.to_string(),
+          "parse",
+          source_id,
+          RetainedEffects::None,
+        ),
+      )
+  }
+  let observed = @runtime.observe_source_failure(self.interp.realm_state, fn() raise {
+    ignore(
+      @runtime.with_source_identity(self.interp.realm_state, source_id, fn() raise {
+        self.interp.run_bounded(program.stmts, policy)
+      }),
+    )
+  })
+  match observed {
+    Ok(_) => Ok(())
+    Err(failure) => {
+      let failure_source = match failure.source_identity() {
+        Some(identity) => Some(identity)
+        None => source_id
+      }
+      let cause = failure.cause()
+      match @runtime.execution_control_failure_code(cause) {
+        Some(kind) =>
+          Err(
+            self.bounded_eval_guardrail_failure(
+              kind,
+              bounded_eval_guardrail_message(kind),
+              failure_source,
+            ),
+          )
+        None =>
+          match cause {
+            @runtime.JsException(value) =>
+              if @runtime.is_engine_stack_depth_error(value) {
+                Err(
+                  self.bounded_eval_guardrail_failure(
+                    "stack-depth-limit",
+                    @runtime.stack_depth_limit_message(),
+                    failure_source,
+                  ),
+                )
+              } else {
+                Err(
+                  self.eval_failure(
+                    "javascript-exception",
+                    value.to_string(),
+                    "execute",
+                    failure_source,
+                    RetainedEffects::MayRemain,
+                  ),
+                )
+              }
+            err => Err(self.eval_runtime_failure(err, failure_source))
+          }
+      }
+    }
+  }
+}
+
+///|
 /// Evaluate source while returning operation-aware failure details atomically.
 pub fn Engine::eval_diagnostic(
   self : Engine,

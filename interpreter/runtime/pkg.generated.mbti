@@ -77,6 +77,8 @@ pub fn eval_this_value(Environment) -> Value raise
 
 pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
+pub fn execution_control_failure_code(Error) -> String?
+
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_continue() -> ExecutorActivationStep
@@ -212,6 +214,8 @@ pub fn is_array(Value) -> Bool raise
 pub fn is_callable(Value) -> Bool
 
 pub fn is_constructor_value(Value) -> Bool
+
+pub fn is_engine_stack_depth_error(Value) -> Bool
 
 pub fn is_es_whitespace_cp(Int) -> Bool
 
@@ -374,6 +378,8 @@ pub fn setup_async_generator_function_constructor(Environment, well_known_symbol
 pub fn setup_generator_function_constructor(Environment, Value, well_known_symbols~ : WellKnownSymbols) -> Unit
 
 pub fn sort_property_keys(Map[String, Value]) -> Array[String]
+
+pub fn stack_depth_limit_message() -> String
 
 pub fn stamp_function_realm(Value, realm_state? : RealmState?) -> Value
 
@@ -562,6 +568,17 @@ pub(all) struct ExecContext {
   strict : Bool
   current_generator : GeneratorObject?
 }
+
+pub(all) struct ExecutionPolicy {
+  // private fields
+}
+pub fn ExecutionPolicy::new(Int64, Int64, InterruptionHandle) -> Result[Self, ExecutionPolicyError]
+
+pub(all) struct ExecutionPolicyError {
+  // private fields
+}
+pub fn ExecutionPolicyError::message(Self) -> String
+pub fn ExecutionPolicyError::parameter_code(Self) -> String
 
 pub enum ExecutorActivationStep {
   ExecutorActivationContinue
@@ -769,6 +786,7 @@ pub fn Interpreter::perform_eval(Self, String, Environment, Bool, caller_strict?
 pub fn Interpreter::prepare_executor_callable_call(Self, ExecutorCallableData, Value, Value, Array[Value]) -> PreparedExecutorActivation raise
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
+pub fn Interpreter::run_bounded(Self, Array[@ast.Stmt], ExecutionPolicy) -> Value raise
 pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise
 pub fn Interpreter::run_executor_activation_coordinator(Self, &ExecutorActivationFrame) -> ExecutorActivationStep raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
@@ -790,6 +808,13 @@ pub fn Interpreter::typeof_compiled_name(Self, ExecContext, Environment, String)
 pub fn Interpreter::update_compiled_name(Self, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> Value raise
 pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
 pub fn Interpreter::with_active_value(Self, () -> Value raise) -> Value raise
+
+pub(all) struct InterruptionHandle {
+  // private fields
+}
+pub fn InterruptionHandle::InterruptionHandle() -> Self
+pub fn InterruptionHandle::is_requested(Self) -> Bool
+pub fn InterruptionHandle::request(Self) -> Unit
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
