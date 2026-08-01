@@ -69,14 +69,7 @@ fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorActivationCallFrame {
-  {
-    callee,
-    this_value,
-    args: args.copy(),
-    loc,
-    requested: false,
-    result: None,
-  }
+  { callee, this_value, args: args.copy(), loc, requested: false, result: None }
 }
 
 ///|
@@ -157,7 +150,8 @@ impl ExecutorCode for ExecutorActivationCallCode with fn start(
     this_value=self.this_value,
     args=self.args,
     loc=self.loc,
-  ) as &ExecutorActivationFrame
+  )
+  as &ExecutorActivationFrame
 }
 
 ///|
@@ -307,11 +301,12 @@ test "activation coordinator resumes one child result and normalizes it" {
     constructable=false,
   )
   let root = ExecutorActivationCallFrame(
-    callee=child,
-    this_value=Undefined,
-    args=[Number(1.0)],
-    loc=@token.Loc::default(),
-  ) as &ExecutorActivationFrame
+      callee=child,
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
   match interp.run_executor_activation_coordinator(root) {
     ExecutorActivationReturn(value) => inspect(value.to_string(), content="7")
     _ => fail("coordinator must return the root frame's child result")
@@ -333,11 +328,12 @@ test "activation coordinator unwinds child errors and restores dynamic state" {
     constructable=false,
   )
   let root = ExecutorActivationCallFrame(
-    callee=child,
-    this_value=Undefined,
-    args=[],
-    loc=@token.Loc::default(),
-  ) as &ExecutorActivationFrame
+      callee=child,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
   interp.in_nonarrow_param_default_eval = true
   let caught : Error? = try {
     let _ = interp.run_executor_activation_coordinator(root)
@@ -380,22 +376,21 @@ test "activation coordinator rejects depth before child preparation" {
     constructable=false,
   )
   let root = ExecutorActivationCallFrame(
-    callee=middle_value,
-    this_value=Undefined,
-    args=[],
-    loc=@token.Loc::default(),
-  ) as &ExecutorActivationFrame
+      callee=middle_value,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
   let control = ExecutionControl(
     remaining_steps=100,
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
-  let outcome = try {
-    interp.with_execution_control(control, () => {
-      let _ = interp.run_executor_activation_coordinator(root)
-      "completed"
-    })
-  } catch {
+  let outcome = interp.with_execution_control(control, () => {
+    let _ = interp.run_executor_activation_coordinator(root)
+    "completed"
+  }) catch {
     ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
     _ => "other-error"
   }
