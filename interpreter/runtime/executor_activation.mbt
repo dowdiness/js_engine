@@ -11,6 +11,38 @@ pub enum ExecutorActivationStep {
   ExecutorActivationContinue
   ExecutorActivationNormal(Value)
   ExecutorActivationReturn(Value)
+  ExecutorActivationCall(ExecutorCallRequest)
+}
+
+///|
+// A closed ordinary-call request. Runtime owns the request fields and the
+// coordinator is the only code that may inspect them; executors only create a
+// request and later consume its one-shot result through their frame.
+pub struct ExecutorCallRequest {
+  priv callee : Value
+  priv this_value : Value
+  priv args : Array[Value]
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorCallRequest::ExecutorCallRequest(
+  callee~ : Value,
+  this_value~ : Value,
+  args~ : Array[Value],
+  loc~ : @token.Loc,
+) -> ExecutorCallRequest {
+  { callee, this_value, args: args.copy(), loc }
+}
+
+///|
+pub fn executor_activation_call(
+  callee : Value,
+  this_value : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationCall(ExecutorCallRequest(callee~, this_value~, args~, loc~))
 }
 
 ///|
@@ -68,6 +100,7 @@ pub fn PreparedExecutorActivation::arguments(
 ///|
 pub(open) trait ExecutorActivationFrame {
   fn step(Self, Interpreter) -> ExecutorActivationStep raise Error
+  fn deliver_call_result(Self, Value) -> Unit raise Error
 }
 
 ///|
@@ -125,6 +158,225 @@ pub fn ExecutorCallableData::start_frame(
 }
 
 ///|
+priv struct ExecutorActivationCleanup {
+  observation : ActivationObservationToken
+  cleared_realm : ClearedActiveCalleeRealmScope
+  active_realm : ActiveCalleeRealmValueScope
+  saved_in_default : Bool
+  saved_param_default_conflicts : @set.Set[String]?
+}
+
+///|
+priv struct ExecutorActivationStackEntry {
+  frame : &ExecutorActivationFrame
+  kind : ExecutorCallableKind?
+  cleanup : ExecutorActivationCleanup?
+}
+
+///|
+fn Interpreter::restore_executor_activation_resources(
+  self : Interpreter,
+  cleared_realm : ClearedActiveCalleeRealmScope,
+  active_realm : ActiveCalleeRealmValueScope,
+  saved_in_default : Bool,
+  saved_param_default_conflicts : @set.Set[String]?,
+  failure : Error?,
+) -> Unit {
+  self.in_nonarrow_param_default_eval = saved_in_default
+  self.param_default_eval_var_conflicts = saved_param_default_conflicts
+  finish_active_callee_realm_value(self.realm_state, active_realm, failure~)
+  finish_cleared_active_callee_realm(self.realm_state, cleared_realm)
+}
+
+///|
+fn Interpreter::finish_executor_activation(
+  self : Interpreter,
+  cleanup : ExecutorActivationCleanup,
+  failure : Error?,
+) -> Unit raise Error {
+  self.restore_executor_activation_resources(
+    cleanup.cleared_realm,
+    cleanup.active_realm,
+    cleanup.saved_in_default,
+    cleanup.saved_param_default_conflicts,
+    failure,
+  )
+  cleanup.observation.release() catch {
+    InvalidActivationObservationTransition(message) =>
+      raise @errors.InternalError(
+        message="executor activation release is invalid: " + message,
+      )
+  }
+}
+
+///|
+fn reject_executor_activation_observation(
+  attempt : ActivationEntryAttempt,
+) -> Unit raise Error {
+  attempt.reject() catch {
+    InvalidActivationObservationTransition(message) =>
+      raise @errors.InternalError(
+        message="executor activation rejection is invalid: " + message,
+      )
+  }
+}
+
+///|
+fn release_rejected_executor_activation_observation(
+  attempt : ActivationEntryAttempt,
+) -> Unit raise Error {
+  attempt.release_after_rejection() catch {
+    InvalidActivationObservationTransition(message) =>
+      raise @errors.InternalError(
+        message="executor rejected activation release is invalid: " + message,
+      )
+  }
+}
+
+///|
+fn Interpreter::start_executor_activation(
+  self : Interpreter,
+  executable : ExecutorCallableData,
+  request : ExecutorCallRequest,
+) -> ExecutorActivationStackEntry raise Error {
+  let observation = observe_activation_entry(
+    self.execution_control_activation_observation_port(),
+  )
+  let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.realm_state,
+    request.callee,
+  )
+  let saved_in_default = self.in_nonarrow_param_default_eval
+  let saved_param_default_conflicts = self.param_default_eval_var_conflicts
+  self.in_nonarrow_param_default_eval = false
+  self.param_default_eval_var_conflicts = None
+  let setup : Result[&ExecutorActivationFrame, Error] = Ok(
+    {
+      let prepared = self.prepare_executor_callable_call(
+        executable,
+        request.callee,
+        request.this_value,
+        request.args,
+      )
+      executable.start_frame(self, prepared)
+    },
+  ) catch {
+    error => Err(error)
+  }
+  match setup {
+    Err(error) => {
+      reject_executor_activation_observation(observation)
+      self.restore_executor_activation_resources(
+        cleared_realm,
+        active_realm,
+        saved_in_default,
+        saved_param_default_conflicts,
+        Some(error),
+      )
+      release_rejected_executor_activation_observation(observation)
+      raise error
+    }
+    Ok(frame) => {
+      let accepted = observation.accept()
+      {
+        frame,
+        kind: Some(executable.kind),
+        cleanup: Some({
+          observation: accepted,
+          cleared_realm,
+          active_realm,
+          saved_in_default,
+          saved_param_default_conflicts,
+        }),
+      }
+    }
+  }
+}
+
+///|
+fn Interpreter::complete_executor_child(
+  self : Interpreter,
+  stack : Array[ExecutorActivationStackEntry],
+  step : ExecutorActivationStep,
+) -> Unit raise Error {
+  let entry = stack.pop().unwrap()
+  let completion = match entry.kind {
+    Some(kind) => executor_call_completion(kind, step)
+    None => Undefined
+  }
+  match entry.cleanup {
+    Some(cleanup) => self.finish_executor_activation(cleanup, None)
+    None => ()
+  }
+  let parent = stack[stack.length() - 1].frame
+  parent.deliver_call_result(completion)
+}
+
+///|
+// Drive one root executor frame and every exact executor-backed ordinary call
+// it requests. The root is top-level script state and therefore has no
+// activation observation or cleanup record of its own.
+pub fn Interpreter::run_executor_activation_coordinator(
+  self : Interpreter,
+  root : &ExecutorActivationFrame,
+) -> ExecutorActivationStep raise Error {
+  let stack : Array[ExecutorActivationStackEntry] = [
+    { frame: root, kind: None, cleanup: None },
+  ]
+  try {
+    while true {
+      guard !stack.is_empty() else {
+        return ExecutorActivationNormal(Undefined)
+      }
+      let index = stack.length() - 1
+      let frame = stack[index].frame
+      match frame.step(self) {
+        ExecutorActivationContinue => ()
+        ExecutorActivationNormal(value) =>
+          if index == 0 {
+            return ExecutorActivationNormal(value)
+          } else {
+            self.complete_executor_child(stack, ExecutorActivationNormal(value))
+          }
+        ExecutorActivationReturn(value) =>
+          if index == 0 {
+            return ExecutorActivationReturn(value)
+          } else {
+            self.complete_executor_child(stack, ExecutorActivationReturn(value))
+          }
+        ExecutorActivationCall(request) =>
+          match request.callee {
+            Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+              stack.push(self.start_executor_activation(executable, request))
+            _ => {
+              let value = self.call_value(
+                request.callee,
+                request.this_value,
+                request.args,
+                request.loc,
+              )
+              frame.deliver_call_result(value)
+            }
+          }
+      }
+    }
+  } catch {
+    error => {
+      while stack.length() > 1 {
+        let entry = stack.pop().unwrap()
+        match entry.cleanup {
+          Some(cleanup) => self.finish_executor_activation(cleanup, Some(error))
+          None => ()
+        }
+      }
+      raise error
+    }
+  }
+  ExecutorActivationNormal(Undefined)
+}
+
+///|
 // Prepare an ordinary call without entering executor code. This is the
 // hand-off used by a managed dispatcher: runtime owns observable activation
 // semantics, while the caller may push the private frame returned by
@@ -167,6 +419,15 @@ fn Interpreter::drive_executor_activation(
       ExecutorActivationContinue => ()
       ExecutorActivationNormal(value) => return ExecutorActivationNormal(value)
       ExecutorActivationReturn(value) => return ExecutorActivationReturn(value)
+      ExecutorActivationCall(request) => {
+        let value = self.call_value(
+          request.callee,
+          request.this_value,
+          request.args,
+          request.loc,
+        )
+        frame.deliver_call_result(value)
+      }
     }
   }
   ExecutorActivationNormal(Undefined)
@@ -280,12 +541,14 @@ fn executor_call_completion(
         ExecutorActivationContinue => Undefined
         ExecutorActivationNormal(_) => Undefined
         ExecutorActivationReturn(value) => value
+        ExecutorActivationCall(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
         ExecutorActivationContinue => Undefined
         ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
           value
+        ExecutorActivationCall(_) => Undefined
       }
   }
 }
@@ -301,7 +564,8 @@ fn executor_construct_completion(
       ) => value
     ExecutorActivationContinue
     | ExecutorActivationNormal(_)
-    | ExecutorActivationReturn(_) => instance
+    | ExecutorActivationReturn(_)
+    | ExecutorActivationCall(_) => instance
   }
 }
 

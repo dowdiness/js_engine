@@ -17,12 +17,14 @@ priv struct BytecodeFrame {
   mut ip : Int
   mut completion : Value
   mut optional_chain_short_circuited : Bool
+  mut pending_call_result : Bool
 }
 
 ///|
 priv enum BytecodeFrameStep {
   BytecodeFrameNormal(Value)
   BytecodeFrameReturn(Value)
+  BytecodeFrameSuspended(@runtime.ExecutorActivationStep)
 }
 
 ///|
@@ -73,6 +75,7 @@ fn BytecodeFrame::BytecodeFrame(
     ip: 0,
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
+    pending_call_result: false,
   }
 }
 
@@ -136,7 +139,22 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
   match self.step_bytecode(interp) {
     BytecodeFrameNormal(value) => @runtime.executor_activation_normal(value)
     BytecodeFrameReturn(value) => @runtime.executor_activation_return(value)
+    BytecodeFrameSuspended(step) => step
   }
+}
+
+///|
+impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_call_result(
+  self,
+  value,
+) {
+  guard self.pending_call_result else {
+    raise @errors.InternalError(
+      message="bytecode call result has no pending consumer",
+    )
+  }
+  self.pending_call_result = false
+  self.stack.push(value)
 }
 
 ///|
@@ -461,9 +479,20 @@ fn run_bytecode_function(
   direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeRunResult raise Error {
   let frame = start_bytecode_frame(interp, ctx, env, func_def, direct_args)
-  match frame.step_bytecode(interp) {
-    BytecodeFrameNormal(value) => BytecodeNormal(value)
-    BytecodeFrameReturn(value) => BytecodeReturn(value)
+  match
+    interp.run_executor_activation_coordinator(
+      frame as &@runtime.ExecutorActivationFrame,
+    ) {
+    @runtime.ExecutorActivationNormal(value) => BytecodeNormal(value)
+    @runtime.ExecutorActivationReturn(value) => BytecodeReturn(value)
+    @runtime.ExecutorActivationContinue =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned continue",
+      )
+    @runtime.ExecutorActivationCall(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending call",
+      )
   }
 }
 
@@ -1008,7 +1037,10 @@ fn BytecodeFrame::step_bytecode(
       Call(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
-        stack.push(interp.call_value(callee, Value::Undefined, args, loc))
+        frame.pending_call_result = true
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
+        )
       }
       CallWithReceiver(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
