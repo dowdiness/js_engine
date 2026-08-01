@@ -1060,10 +1060,7 @@ test "bytecode construct spread depth rejection releases before a later leaf" {
     Err(_) => fail("expected a valid bounded policy")
   }
   let caught : Error? = try {
-    let _ = interp.run_bounded(
-      @parser.parse("invokeDepth();").stmts,
-      policy,
-    )
+    let _ = interp.run_bounded(@parser.parse("invokeDepth();").stmts, policy)
     None
   } catch {
     error => Some(error)
