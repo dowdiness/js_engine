@@ -25,6 +25,8 @@ priv enum ProgramCleanupOwner {
   RejectedGetterCall
   AcceptedProxyCall
   RejectedProxyCall
+  AcceptedReceiverCall
+  RejectedReceiverCall
   PropertyAccessCleanup
 }
 
@@ -170,6 +172,22 @@ fn DispatchProxyCallRealmCleanup::DispatchProxyCallRealmCleanup(
 }
 
 ///|
+priv struct DispatchReceiverCallRealmCleanup {
+  cleared_realm : ClearedActiveCalleeRealmScope
+  active_realm : ActiveCalleeRealmValueScope
+  parameter_gate : SimpleUserFuncParameterGateScope
+}
+
+///|
+fn DispatchReceiverCallRealmCleanup::DispatchReceiverCallRealmCleanup(
+  cleared_realm~ : ClearedActiveCalleeRealmScope,
+  active_realm~ : ActiveCalleeRealmValueScope,
+  parameter_gate~ : SimpleUserFuncParameterGateScope,
+) -> DispatchReceiverCallRealmCleanup {
+  { cleared_realm, active_realm, parameter_gate }
+}
+
+///|
 priv enum DispatchActivationObservation {
   AcceptedActivationObservation(ActivationObservationToken)
   RejectedActivationObservation(ActivationEntryAttempt)
@@ -182,10 +200,12 @@ priv enum DispatchShellCleanupResources {
   DispatchNumericRootRealmCleanup(FunctionRealmProtos)
   DispatchGetterRootRealmCleanup(FunctionRealmProtos)
   DispatchProxyRootRealmCleanup(FunctionRealmProtos)
+  DispatchReceiverRootRealmCleanup(FunctionRealmProtos)
   DispatchDeniedActivationCleanup
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
   DispatchGetterRealmCleanup(DispatchGetterCallRealmCleanup)
   DispatchProxyRealmCleanup(DispatchProxyCallRealmCleanup)
+  DispatchReceiverRealmCleanup(DispatchReceiverCallRealmCleanup)
   DispatchPropertyRealmCleanup(ClearedActiveCalleeRealmScope)
 }
 
@@ -215,6 +235,9 @@ priv struct PrimitiveProgramDispatchShell {
   proxy_root_preflight : ProxyGetRecursionPreflight?
   proxy_root_stmts : Array[@ast.Stmt]?
   mut proxy_registry : TrustedProxyGetRecursionRegistry?
+  receiver_root_preflight : ReceiverRecursionPreflight?
+  receiver_root_stmts : Array[@ast.Stmt]?
+  mut receiver_registry : TrustedReceiverRecursionRegistry?
   activation_observation_port : ActivationObservationPort
   mut next_cleanup_id : Int
 }
@@ -231,6 +254,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   proxy_root_preflight? : ProxyGetRecursionPreflight? = None,
   proxy_root_stmts? : Array[@ast.Stmt]? = None,
   proxy_registry? : TrustedProxyGetRecursionRegistry? = None,
+  receiver_root_preflight? : ReceiverRecursionPreflight? = None,
+  receiver_root_stmts? : Array[@ast.Stmt]? = None,
+  receiver_registry? : TrustedReceiverRecursionRegistry? = None,
   // The shell lifecycle is policy-free; admitted production roots inject the
   // execution-control port explicitly below.
   activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
@@ -251,6 +277,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     proxy_root_preflight,
     proxy_root_stmts: proxy_root_stmts.map(stmts => stmts.copy()),
     proxy_registry,
+    receiver_root_preflight,
+    receiver_root_stmts: receiver_root_stmts.map(stmts => stmts.copy()),
+    receiver_registry,
     activation_observation_port,
     next_cleanup_id: 0,
   }
@@ -346,6 +375,8 @@ fn activation_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
     | RejectedGetterCall
     | AcceptedProxyCall
     | RejectedProxyCall
+    | AcceptedReceiverCall
+    | RejectedReceiverCall
     | PropertyAccessCleanup => false
   }
 }
@@ -359,11 +390,13 @@ fn activation_cleanup_owner_matches(
     (AcceptedProgram, true)
     | (AcceptedNumericCall, true)
     | (AcceptedGetterCall, true)
-    | (AcceptedProxyCall, true) => true
+    | (AcceptedProxyCall, true)
+    | (AcceptedReceiverCall, true) => true
     (RejectedProgram, false)
     | (RejectedNumericCall, false)
     | (RejectedGetterCall, false)
-    | (RejectedProxyCall, false) => true
+    | (RejectedProxyCall, false)
+    | (RejectedReceiverCall, false) => true
     _ => false
   }
 }
@@ -434,7 +467,10 @@ fn PrimitiveProgramDispatchShell::reject_denied_managed_activation(
   error : Error,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   match owner {
-    RejectedNumericCall | RejectedGetterCall | RejectedProxyCall => ()
+    RejectedNumericCall
+    | RejectedGetterCall
+    | RejectedProxyCall
+    | RejectedReceiverCall => ()
     _ =>
       invalid_activation_dispatch_shell(
         "denied activation requires a rejected call owner",
@@ -583,6 +619,38 @@ fn PrimitiveProgramDispatchShell::push_proxy_call_cleanup(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::push_receiver_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchReceiverRootRealmCleanup(previous_realm_protos),
+    capabilities: None,
+    observation: None,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_receiver_call_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  owner : ProgramCleanupOwner,
+  resources : DispatchReceiverCallRealmCleanup,
+  observation : DispatchActivationObservation?,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchReceiverRealmCleanup(resources),
+    capabilities: None,
+    observation,
+  })
+}
+
+///|
 fn PrimitiveProgramDispatchShell::push_property_cleanup(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -615,6 +683,22 @@ fn PrimitiveProgramDispatchShell::start_property(
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   let cleanup = self.begin_property_scope()
   DispatchWorkSuspended(DispatchSuspendProperty(cleanup, work, consumer))
+}
+
+///|
+fn PrimitiveProgramDispatchShell::start_receiver_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+  continuation : DispatchContinuation,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_receiver_registry()
+  let _ = registry.require_call(
+    self.interp,
+    request.callee,
+    request.this_value,
+    request.args,
+  )
+  DispatchWorkSuspended(DispatchSuspendCall(request, continuation))
 }
 
 ///|
@@ -783,6 +867,10 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.proxy_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
+    DispatchReceiverRootRealmCleanup(previous_realm_protos) => {
+      self.receiver_registry = None
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchDeniedActivationCleanup => ()
     DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
@@ -813,6 +901,20 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       )
     }
     DispatchProxyRealmCleanup(resources) => {
+      self.interp.finish_simple_user_func_parameter_gate(
+        resources.parameter_gate,
+      )
+      finish_active_callee_realm_value(
+        self.interp.realm_state,
+        resources.active_realm,
+        failure~,
+      )
+      finish_cleared_active_callee_realm(
+        self.interp.realm_state,
+        resources.cleared_realm,
+      )
+    }
+    DispatchReceiverRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
       )
@@ -959,6 +1061,32 @@ fn PrimitiveProgramDispatchShell::require_proxy_registry(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::require_receiver_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedReceiverRecursionRegistry raise InvalidActivationDispatchShell {
+  match self.receiver_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "receiver activation requires a sealed runtime registry",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::receiver_root_stmts_or_fail(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[@ast.Stmt] raise InvalidActivationDispatchShell {
+  match self.receiver_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "receiver root statements were not retained by admission",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1060,24 +1188,29 @@ fn PrimitiveProgramDispatchShell::enter_program(
           self.numeric_root_preflight,
           self.getter_root_preflight,
           self.proxy_root_preflight,
+          self.receiver_root_preflight,
         ) {
-        (Some(preflight), None, None, None) =>
+        (Some(preflight), None, None, None, None) =>
           self.complete_control_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        (None, Some(preflight), None, None) =>
+        (None, Some(preflight), None, None, None) =>
           self.complete_numeric_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        (None, None, Some(_), None) => {
+        (None, None, Some(_), None, None) => {
           self.push_getter_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, None, Some(_)) => {
+        (None, None, None, Some(_), None) => {
           self.push_proxy_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, None, None) => {
+        (None, None, None, None, Some(_)) => {
+          self.push_receiver_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None, None, None, None) => {
           self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
@@ -1348,15 +1481,122 @@ fn PrimitiveProgramDispatchShell::enter_proxy_call(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::enter_receiver_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_receiver_registry()
+  guard request.loc == registry.plan.recipe.root_member_loc ||
+    request.loc == registry.plan.recipe.recursive_call_loc else {
+    invalid_activation_dispatch_shell(
+      "receiver activation call location escaped the sealed syntax recipe",
+    )
+  }
+  let _ = registry.require_call(
+    self.interp,
+    request.callee,
+    request.this_value,
+    request.args,
+  )
+  guard request.args.length() == 1 else {
+    invalid_activation_dispatch_shell(
+      "receiver activation requires exactly one argument",
+    )
+  }
+  guard request.callee is Object(callee_object) &&
+    callee_object.callable is Some(UserFunc(data)) else {
+    invalid_activation_dispatch_shell(
+      "receiver activation lost its exact UserFunc provenance",
+    )
+  }
+  let id = self.reserve_program_cleanup_id()
+  let observation = match self.begin_managed_activation_observation() {
+    Ok(attempt) => attempt
+    Err(error) =>
+      return self.reject_denied_managed_activation(
+        id,
+        RejectedReceiverCall,
+        error,
+      )
+  }
+  let cleared_realm = begin_cleared_active_callee_realm(self.interp.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.interp.realm_state,
+    request.callee,
+  )
+  let parameter_gate = self.interp.begin_simple_user_func_parameter_gate()
+  let setup : Result[PreparedUserFuncActivation, Error] = Ok(
+    self.interp.prepare_user_func_activation(
+      request.callee,
+      request.this_value,
+      request.args,
+      data,
+      throw_type_error_source=UsePreResolvedThrowTypeError(
+        registry.throw_type_error,
+      ),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  let resources = DispatchReceiverCallRealmCleanup(
+    cleared_realm~,
+    active_realm~,
+    parameter_gate~,
+  )
+  match setup {
+    Ok(prepared) => {
+      let token = accept_managed_activation_observation(observation)
+      self.push_receiver_call_cleanup(
+        id,
+        AcceptedReceiverCall,
+        resources,
+        Some(AcceptedActivationObservation(token)),
+      )
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id),
+        DispatchCallBody(
+          DispatchStatementCursor(
+            ctx=prepared.ctx,
+            stmts=data.body,
+            env=prepared.env,
+            production=true,
+          ),
+        ),
+      )
+    }
+    Err(error) => {
+      reject_managed_activation_observation(observation)
+      self.push_receiver_call_cleanup(
+        id,
+        RejectedReceiverCall,
+        resources,
+        Some(RejectedActivationObservation(observation)),
+      )
+      DispatchActivationRejected(
+        DispatchRejectedEntryCleanup(id),
+        dispatch_entry_rejection(error),
+      )
+    }
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::enter_managed_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  match (self.numeric_registry, self.getter_registry, self.proxy_registry) {
-    (Some(_), None, None) => self.enter_numeric_call(request)
-    (None, Some(_), None) => self.enter_getter_call(request)
-    (None, None, Some(_)) => self.enter_proxy_call(request)
-    (None, None, None) =>
+  match
+    (
+      self.numeric_registry,
+      self.getter_registry,
+      self.proxy_registry,
+      self.receiver_registry,
+    ) {
+    (Some(_), None, None, None) => self.enter_numeric_call(request)
+    (None, Some(_), None, None) => self.enter_getter_call(request)
+    (None, None, Some(_), None) => self.enter_proxy_call(request)
+    (None, None, None, Some(_)) => self.enter_receiver_call(request)
+    (None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed call requires one sealed runtime registry",
       )
@@ -1688,6 +1928,143 @@ fn PrimitiveProgramDispatchShell::proxy_root_stmts_or_fail(
     None =>
       invalid_activation_dispatch_shell(
         "Proxy get root statements were not retained by admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_receiver_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  preflight : ReceiverRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  guard physical_equal(step.env, self.interp.global) &&
+    receiver_recursion_root_statement_matches(
+      preflight.plan,
+      step.index,
+      step.stmt,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "receiver root statement no longer matches exact admission",
+    )
+  }
+  match step.index {
+    0 => self.execute_statement_with_legacy_adapter(step)
+    1 => {
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          let registry = self.interp.seal_receiver_recursion_registry(
+            preflight,
+            self.receiver_root_stmts_or_fail(),
+          )
+          self.receiver_registry = Some(registry)
+        }
+        _ => ()
+      }
+      result
+    }
+    2 => {
+      match self.observe_managed_execution_steps(3) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let registry = self.require_receiver_registry()
+      let receiver = registry.require_receiver(self.interp)
+      let request = DispatchCallRequest(
+        callee=registry.trusted.callee,
+        this_value=receiver,
+        args=[Number(preflight.plan.initial_argument)],
+        loc=preflight.plan.recipe.root_member_loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendContinueProduction(
+          DispatchDeliverCallResult,
+          DispatchReceiverStartCall(request, DispatchDeliverCallResult),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "receiver root statement index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn receiver_recursion_parameter_value(
+  env : Environment,
+  name : String,
+) -> Double raise InvalidActivationDispatchShell {
+  match env.bindings.get(name) {
+    Some(binding) if binding.initialized &&
+      binding.kind == LetBinding &&
+      binding.is_parameter =>
+      match binding.value {
+        Number(value) => value
+        _ =>
+          invalid_activation_dispatch_shell(
+            "receiver recursion parameter is not a number",
+          )
+      }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "receiver recursion parameter lost its activation provenance",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_receiver_body_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  registry : TrustedReceiverRecursionRegistry,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let trusted = registry.trusted
+  let plan = registry.plan
+  guard receiver_recursion_body_statement_matches(plan, step.index, step.stmt) &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, trusted.closure) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.env.bindings.get("this") is Some(this_binding) &&
+    this_binding.initialized &&
+    receiver_recursion_value_identity(trusted.receiver, this_binding.value) else {
+    invalid_activation_dispatch_shell(
+      "receiver body statement lost its activation provenance",
+    )
+  }
+  match step.index {
+    0 => self.execute_statement_with_legacy_adapter(step)
+    1 => {
+      let argument = Number(
+        receiver_recursion_parameter_value(step.env, plan.parameter) -
+        NUMERIC_RECURSION_STEP,
+      )
+      let request = DispatchCallRequest(
+        callee=trusted.callee,
+        this_value=trusted.receiver,
+        args=[argument],
+        loc=plan.recipe.recursive_call_loc,
+      )
+      let binary = DispatchBinaryResume(
+        op=@ast.Add,
+        left=Number(NUMERIC_RECURSION_STEP),
+        loc=plan.recipe.recursive_add_loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendContinueProduction(
+          DispatchCompleteReturn,
+          DispatchReceiverStartCall(
+            request,
+            DispatchApplyPropertyBinaryRight(binary),
+          ),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "receiver body statement index is outside exact admission",
       )
   }
 }
@@ -2189,24 +2566,38 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
   if activation_dispatch_leaf_statement_is_admissible(step.stmt) {
     return self.execute_statement_with_legacy_adapter(step)
   }
-  match (self.getter_root_preflight, self.proxy_root_preflight) {
-    (Some(preflight), None) =>
+  match
+    (
+      self.getter_root_preflight,
+      self.proxy_root_preflight,
+      self.receiver_root_preflight,
+    ) {
+    (Some(preflight), None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_getter_root_statement(step, preflight)
       } else {
         self.execute_getter_body_statement(step, self.require_getter_registry())
       }
-    (None, Some(preflight)) =>
+    (None, Some(preflight), None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_proxy_root_statement(step, preflight)
       } else {
         self.execute_proxy_body_statement(step, self.require_proxy_registry())
       }
-    (None, None) =>
+    (None, None, Some(preflight)) =>
+      if physical_equal(step.env, self.interp.global) {
+        self.execute_receiver_root_statement(step, preflight)
+      } else {
+        self.execute_receiver_body_statement(
+          step,
+          self.require_receiver_registry(),
+        )
+      }
+    (None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed statement is outside admitted execution",
       )
-    (Some(_), Some(_)) =>
+    _ =>
       invalid_activation_dispatch_shell(
         "managed statement cannot select multiple admissions",
       )
@@ -2277,6 +2668,8 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
       self.capture_numeric_callee(token)
     DispatchNumericStartCapturedCall(token, argument, loc) =>
       self.start_captured_numeric_call(token, argument, loc)
+    DispatchReceiverStartCall(request, continuation) =>
+      self.start_receiver_call(request, continuation)
     DispatchNumericApplyBinaryRight(binary, right) =>
       self.apply_numeric_binary(binary, right)
     DispatchPropertyStart(work, consumer) => self.start_property(work, consumer)
@@ -2392,6 +2785,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
     self.numeric_root_preflight is Some(_) ||
     self.getter_root_preflight is Some(_) ||
     self.proxy_root_preflight is Some(_) ||
+    self.receiver_root_preflight is Some(_) ||
     activation_dispatch_leaf_program_is_admissible(stmts)
   try {
     let completion = self.drive(
@@ -2572,6 +2966,28 @@ fn Interpreter::run_activation_dispatch_proxy_program(
 }
 
 ///|
+fn Interpreter::run_activation_dispatch_receiver_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : ReceiverRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    receiver_root_preflight=Some(preflight),
+    receiver_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.receiver_registry is None else {
+    invalid_activation_dispatch_shell(
+      "receiver registry outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
 fn Interpreter::run_activation_dispatch_root_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -2589,6 +3005,8 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_getter_program(stmts, ctx, preflight)
     ActivationDispatchProxyRoot(preflight) =>
       self.run_activation_dispatch_proxy_program(stmts, ctx, preflight)
+    ActivationDispatchReceiverRoot(preflight) =>
+      self.run_activation_dispatch_receiver_program(stmts, ctx, preflight)
   }
 }
 

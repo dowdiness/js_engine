@@ -8,6 +8,7 @@ priv enum ActivationDispatchManagedRoot {
   ActivationDispatchNumericRoot(NumericRecursionPreflight)
   ActivationDispatchGetterRoot(GetterRecursionPreflight)
   ActivationDispatchProxyRoot(ProxyGetRecursionPreflight)
+  ActivationDispatchReceiverRoot(ReceiverRecursionPreflight)
 }
 
 ///|
@@ -46,7 +47,17 @@ fn Interpreter::classify_activation_dispatch_root_program(
                     ActivationDispatchManagedRoot(
                       ActivationDispatchProxyRoot(preflight),
                     )
-                  None => ActivationDispatchLegacyRoot
+                  None =>
+                    match
+                      self.preflight_dispatchable_receiver_recursion_program(
+                        stmts,
+                      ) {
+                      Some(preflight) =>
+                        ActivationDispatchManagedRoot(
+                          ActivationDispatchReceiverRoot(preflight),
+                        )
+                      None => ActivationDispatchLegacyRoot
+                    }
                 }
             }
         }
