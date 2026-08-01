@@ -980,12 +980,14 @@ test "bytecode construct spread drains iterator effects once before entry" {
     "iterable[Symbol.iterator] = function() { log = log + 'i'; " +
     "var index = 0; var iterator = { next: function() { " +
     "log = log + 'n'; if (index === 0) { index = 1; " +
-    "return { value: 7, done: false }; } return { done: true }; } }; " +
+    "var result = { done: false }; Object.defineProperty(result, 'value', " +
+    "{ get: function() { log = log + 'v'; return 7; } }); " +
+    "return result; } return { done: true }; } }; " +
     "iterator.return = function() { iterator_return_calls = " +
     "iterator_return_calls + 1; log = log + 'r'; }; return iterator; }; " +
     "return iterable; }\n" +
     "var value = new (log = log + 'c', C)(...makeIterable());\n" +
-    "value.value === 7 && entered === 1 && log === 'cainnb' && " +
+    "value.value === 7 && entered === 1 && log === 'cainvnb' && " +
     "iterator_return_calls === 0;"
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
@@ -1016,6 +1018,98 @@ test "bytecode construct spread iterator abrupt preserves identity" {
     ).stmts,
   )
   inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode construct spread throw releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {};\n" +
+    "function Inner() { throw marker; }\n" +
+    "function Outer() { new Inner(...[]); }\n" +
+    "function invokeThrow() { new Outer(...[]); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf(...[]).value; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invokeThrow(); } catch (error) { caught = error === marker; } " +
+      "caught ? laterLeaf() : -1;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode construct spread depth rejection releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var innerEntered = 0;\n" +
+    "function Inner() { innerEntered = innerEntered + 1; }\n" +
+    "function Outer() { new Inner(...[]); }\n" +
+    "function invokeDepth() { new Outer(...[]); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf(...[]).value; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.run_bounded(
+      @parser.parse("invokeDepth();").stmts,
+      policy,
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected a classified JavaScript depth exception, got " +
+        error.to_string(),
+      )
+    None => fail("bounded spread constructor must be rejected before entry")
+  }
+  let result = interp.run(
+    @parser.parse("innerEntered === 0 ? laterLeaf() : -1;").stmts,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode construct spread preserves bound proxy native and arrow fallbacks" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "function C(x) { this.x = x; }\n" +
+    "var Bound = C.bind(null, 4);\n" +
+    "var proxyCalls = 0;\n" +
+    "var ProxyCtor = new Proxy(C, { construct: function(target, args) { " +
+    "proxyCalls = proxyCalls + 1; return { x: args[0] + 1 }; } });\n" +
+    "var arrow = () => 1;\n" +
+    "var boundValue = new Bound(...[]);\n" +
+    "var proxyValue = new ProxyCtor(...[5]);\n" +
+    "var nativeValue = new Object(...[7]);\n" +
+    "function invokeArrow() { new arrow(...[]); }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var nonConstructableError = false; " +
+      "try { invokeArrow(); } catch (error) { " +
+      "nonConstructableError = error instanceof TypeError; } " +
+      "boundValue.x + proxyValue.x + proxyCalls + Number(nativeValue) + " +
+      "(nonConstructableError ? 1 : 0);",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="19")
 }
 
 ///|
