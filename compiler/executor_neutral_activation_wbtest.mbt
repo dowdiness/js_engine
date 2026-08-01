@@ -903,9 +903,8 @@ test "bytecode construct evaluates operands once before suspended entry" {
   let source = "var log = ''; var entered = 0;\n" +
     "function C(a, b) { entered = entered + 1; log = log + 'b'; " +
     "this.value = a + b; }\n" +
-    "function ctor() { log = log + 'c'; return C; }\n" +
     "function arg(value) { log = log + value; return 1; }\n" +
-    "var Target = ctor(); new Target(arg('a'), arg('z'));\n" +
+    "new (log = log + 'c', C)(arg('a'), arg('z'));\n" +
     "log + ':' + entered;"
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
@@ -932,6 +931,56 @@ test "bytecode construct abrupt argument prevents suspended body entry" {
     ).stmts,
   )
   inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode nested constructor throw releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {};\n" +
+    "function Inner() { throw marker; }\n" +
+    "function Outer() { new Inner(); }\n" +
+    "function invokeThrow() { new Outer(); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf().value; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invokeThrow(); } catch (error) { caught = error === marker; } " +
+      "caught ? laterLeaf() : -1;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode constructor depth rejection releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var innerEntered = 0;\n" +
+    "function Inner() { innerEntered = innerEntered + 1; }\n" +
+    "function Outer() { new Inner(); }\n" +
+    "function invokeDepth() { new Outer(); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf().value; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let result = interp.run_bounded(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invokeDepth(); } catch (error) { caught = true; } " +
+      "caught && innerEntered === 0 ? laterLeaf() : -1;",
+    ).stmts,
+    policy,
+  )
+  inspect(result.to_string(), content="42")
 }
 
 ///|
