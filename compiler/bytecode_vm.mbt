@@ -1063,7 +1063,10 @@ fn BytecodeFrame::step_bytecode(
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
         let receiver = frame.pop()
-        stack.push(interp.call_value(callee, receiver, args, loc))
+        frame.pending_call_result = true
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_call(callee, receiver, args, loc),
+        )
       }
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
