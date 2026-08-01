@@ -1054,7 +1054,10 @@ fn BytecodeFrame::step_bytecode(
       CallSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
-        stack.push(interp.call_value(callee, Value::Undefined, args, loc))
+        frame.pending_call_result = true
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
+        )
       }
       CallSpreadWithReceiver(loc) => {
         let args = frame.pop_dynamic_args()
