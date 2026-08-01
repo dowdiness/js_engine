@@ -55,6 +55,19 @@ test "ordinary bytecode recursive calls complete at finite depth" {
 }
 
 ///|
+test "bytecode receiver recursion reaches the synchronous call boundary" {
+  let interp = @interpreter.new_interpreter()
+  let depth = 320
+  let source = "var receiver = { count: function(n) { " +
+    "if (n === 0) return 0; return this.count(n - 1) + 1; } };\n" +
+    "receiver.count(" +
+    depth.to_string() +
+    ");"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "ordinary bytecode mutual calls complete at deep finite depth" {
   let interp = @interpreter.new_interpreter()
   let source = "function even(n) { if (n === 0) return true; return odd(n - 1); }\n" +
