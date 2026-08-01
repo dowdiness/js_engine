@@ -44,6 +44,7 @@ pub struct Engine {
 }
 pub fn Engine::Engine(annex_b? : Bool) -> Self
 pub fn Engine::call_json(Self, String, Array[Json]) -> Json raise EngineError
+pub fn Engine::call_json_bounded(Self, String, Array[Json], @runtime.ExecutionPolicy) -> Result[Json, EngineDiagnostic]
 pub fn Engine::call_json_diagnostic(Self, String, Array[Json]) -> Result[Json, EngineDiagnostic]
 pub fn Engine::eval(Self, String) -> Unit raise EngineError
 pub fn Engine::eval_bounded(Self, String, @runtime.ExecutionPolicy, source_id? : String) -> Result[Unit, EngineDiagnostic]

@@ -493,6 +493,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending call",
       )
+    @runtime.ExecutorActivationConstruct(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending construct",
+      )
   }
 }
 
@@ -1071,7 +1075,10 @@ fn BytecodeFrame::step_bytecode(
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let ctor = frame.pop()
-        stack.push(interp.construct_value(ctor, args, loc))
+        frame.pending_call_result = true
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_construct(ctor, args, loc),
+        )
       }
       ConstructSpread(loc) => {
         let args = frame.pop_dynamic_args()

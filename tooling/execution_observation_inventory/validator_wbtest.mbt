@@ -85,6 +85,21 @@ test "validator accepts distinct accounting entries with one final owner" {
 }
 
 ///|
+test "validator accepts contract-excluded host JSON conversion" {
+  let first =
+    #|{"id":"statement","accounting_entry_id":"host-json-conversion-entry","operation_family":"statement dispatch","current_accounting_owner":"json bridge","intended_final_accounting_owner":"json bridge exclusion","status":"bounded-by-proof","owning_implementation_or_issue":"json bridge","focused_evidence":["fixture.mbt#anchor"],"entry_category":"direct host JSON conversion","contract_observation_category":"host-json-conversion","duplicate_charge_risk":"conversion must remain unobserved","public_facade_evidence_required":false}
+  match
+    validate_manifest_text(
+      six_family_manifest(first),
+      "host-json-conversion.json",
+    ) {
+    Ok(_) => ()
+    Err(message) =>
+      fail("contract-excluded host JSON conversion should validate: " + message)
+  }
+}
+
+///|
 test "validator rejects missing accounting owner" {
   let manifest = six_family_manifest(
     "{\"id\":\"statement\",\"operation_family\":\"statement dispatch\"}",

@@ -219,12 +219,12 @@ a second diagnostic model.
 The [execution guardrail contract](decisions/engine-execution-guardrail-contract.md)
 now selects operation-scoped bounded APIs and fixes step, stack-depth,
 interruption, queue, and diagnostic semantics.
-Stage 4 implementation is in progress.
-The private execution-control state transitions and
-statement/expression dispatch observation are implemented
-internally; the bounded public operations, complete execution
-accounting, stack-depth wiring, public interruption control,
-and acceptance tests remain pending.
+Stage 4 implementation is in progress. Private execution-control state,
+statement/expression observations, the public policy and interruption handle,
+and bounded evaluation are implemented. The bounded JSON-call slice now covers
+lookup and target execution through the stable facade on all four targets.
+Bounded queue checkpoints, complete activation/native-loop accounting, and the
+permanent final acceptance gate remain pending.
 
 ### 3. Inject host-owned JSON data — implemented
 
