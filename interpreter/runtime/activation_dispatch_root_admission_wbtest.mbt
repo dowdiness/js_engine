@@ -13,6 +13,8 @@ fn root_admission_test_kind(
     ActivationDispatchManagedRoot(ActivationDispatchNumericRoot(_)) => "numeric"
     ActivationDispatchManagedRoot(ActivationDispatchGetterRoot(_)) => "getter"
     ActivationDispatchManagedRoot(ActivationDispatchProxyRoot(_)) => "proxy"
+    ActivationDispatchManagedRoot(ActivationDispatchReceiverRoot(_)) =>
+      "receiver"
     ActivationDispatchLegacyRoot => "legacy"
   }
 }
@@ -25,6 +27,12 @@ test "Interpreter run uses one closed root admission seam" {
       ("outer: try { break outer; } finally { 1; } 9;", "control", 9.0),
       (
         "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", "numeric", 256.0,
+      ),
+      (
+        "function step(n){if(n===0)return this.marker;return 1+this.step(n-1);}" +
+        "let receiver={marker:0,step:step};receiver.step(256);",
+        "receiver",
+        256.0,
       ),
       (getter_recursion_trust_test_source(), "getter", 256.0),
       (proxy_get_recursion_exact_source(), "proxy", 256.0),
