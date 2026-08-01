@@ -372,18 +372,17 @@ fn seeded_inventory_row(
 }
 
 ///|
-fn assert_seeded_unobserved_issue_row(
+fn assert_observed_queue_row(
   rows : Array[Map[String, Json]],
   id : String,
-  issue : String,
+  owner : String,
 ) -> Unit raise {
   let row = seeded_inventory_row(rows, id)
   let status : String = @json.from_json(row["status"])
-  let owner : String = @json.from_json(row["owning_implementation_or_issue"])
-  let tracking : String = @json.from_json(row["tracking_issue"])
-  assert_eq(status, "unobserved")
-  assert_eq(owner, issue)
-  assert_eq(tracking, issue)
+  let actual_owner : String = @json.from_json(row["owning_implementation_or_issue"])
+  assert_eq(status, "observed-exactly-once")
+  assert_eq(actual_owner, owner)
+  assert_true(row.get("tracking_issue") is None)
 }
 
 ///|
@@ -406,5 +405,9 @@ test "seeded queue accounting distinguishes implemented and tracked rows" {
     microtask_owner, "interpreter/runtime/promise_core.mbt#Interpreter::run_microtasks_observed",
   )
   assert_true(microtask.get("tracking_issue") is None)
-  assert_seeded_unobserved_issue_row(rows, "timer-policy-queue-entry", "#750")
+  assert_observed_queue_row(
+    rows,
+    "timer-policy-queue-entry",
+    "interpreter/runtime/promise_core.mbt#Interpreter::run_timers_observed",
+  )
 }
