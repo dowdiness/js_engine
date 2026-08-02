@@ -50,6 +50,14 @@ fn expect_timer_guardrail(
 }
 
 ///|
+const TIMER_CALLBACK_ACTIVATION_SOURCE =
+  #|function callback(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + callback(n - 1);
+  #|}
+  #|setTimeout(callback, 0, 256);
+
+///|
 test "empty bounded timer checkpoint succeeds with zero budget" {
   let engine = @js_engine.Engine()
   match
@@ -60,6 +68,49 @@ test "empty bounded timer checkpoint succeeds with zero budget" {
     Err(diagnostic) => fail(diagnostic.message())
   }
   assert_false(engine.has_pending_timers())
+}
+
+///|
+test "timer callback activation is charged once at the direct call boundary" {
+  // This exact numeric-recursion shape is the only source-level timer
+  // callback admitted by the existing call_value activation owner. Legacy
+  // UserFunc/ArrowFunc callbacks remain the #608/#745 residual path.
+  let rejected = @js_engine.Engine()
+  assert_true(
+    rejected.eval_diagnostic(
+      TIMER_CALLBACK_ACTIVATION_SOURCE,
+      source_id="timer-callback-activation.js",
+    )
+    is Ok(_),
+  )
+  let diagnostic = expect_timer_guardrail(
+    rejected.run_timer_checkpoint_bounded(
+      bounded_timer_policy(1000L, 0L, @js_engine.InterruptionHandle()),
+    ),
+    "stack-depth-limit",
+    "timer-callback",
+    @js_engine.PendingJobs::None,
+  )
+  ignore(diagnostic)
+  assert_false(rejected.has_pending_timers())
+
+  let accepted = @js_engine.Engine()
+  assert_true(
+    accepted.eval_diagnostic(
+      TIMER_CALLBACK_ACTIVATION_SOURCE,
+      source_id="timer-callback-activation.js",
+    )
+    is Ok(_),
+  )
+  match
+    accepted.run_timer_checkpoint_bounded(
+      bounded_timer_policy(100000L, 257L, @js_engine.InterruptionHandle()),
+    ) {
+    Ok(_) => ()
+    Err(diagnostic) =>
+      fail("one callback activation should fit the finite boundary: " + diagnostic.message())
+  }
+  assert_false(accepted.has_pending_timers())
 }
 
 ///|
