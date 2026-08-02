@@ -224,8 +224,10 @@ statement/expression observations, the public policy and interruption handle,
 and bounded evaluation are implemented. The bounded JSON-call slice covers
 lookup and target execution, and the bounded microtask-checkpoint slice now
 observes queue dispatch before selection and preserves at-most-once FIFO state.
-The bounded timer checkpoint, complete activation/native-loop accounting, and
-the permanent final acceptance gate remain pending.
+The bounded timer-checkpoint slice now observes queue dispatch before commit
+and preserves at-most-once queue state while reusing the existing callback and
+following-microtask observation paths. Complete activation/native-loop/
+diagnostic accounting and the permanent final acceptance gate remain pending.
 
 ### 3. Inject host-owned JSON data — implemented
 
