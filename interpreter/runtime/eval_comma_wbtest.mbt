@@ -82,6 +82,68 @@ fn comma_test_recorder(
 }
 
 ///|
+fn comma_test_interrupting_recorder(
+  interp : Interpreter,
+  events : Array[String],
+  interruption : ExecutionInterruptionRequest,
+) -> Unit raise Error {
+  let recorder : Value = make_object(
+    Map([]),
+    Null,
+    Some(
+      NonConstructableCallable("comma-test-interrupting-recorder", args => {
+        match args {
+          [String_(label)] => {
+            events.push(label)
+            interruption.request()
+            Undefined
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="comma interruption recorder received the wrong arguments",
+            )
+        }
+      }),
+    ),
+    "Function",
+    Map([]),
+    true,
+  )
+  interp.global.def("record", recorder, VarBinding)
+}
+
+///|
+fn comma_test_throwing_recorder(
+  interp : Interpreter,
+  events : Array[String],
+  sentinel : Error,
+) -> Unit raise Error {
+  let recorder : Value = make_object(
+    Map([]),
+    Null,
+    Some(
+      NonConstructableCallable("comma-test-throwing-recorder", args => {
+        match args {
+          [String_("throw")] => raise sentinel
+          [String_(label)] => {
+            events.push(label)
+            Undefined
+          }
+          _ =>
+            raise @errors.TypeError(
+              message="comma throwing recorder received the wrong arguments",
+            )
+        }
+      }),
+    ),
+    "Function",
+    Map([]),
+    true,
+  )
+  interp.global.def("record", recorder, VarBinding)
+}
+
+///|
 fn comma_test_resuming_generator(
   interp : Interpreter,
 ) -> GeneratorObject raise Error {
@@ -384,4 +446,71 @@ test "direct comma budget rejects before the next leaf effect and later leaf suc
         "later leaf failed after comma budget rejection: " + other.to_string(),
       )
   }
+}
+
+///|
+test "nested direct comma interruption stops before the next scheduled effect" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let interruption = ExecutionInterruptionRequest()
+  comma_test_interrupting_recorder(interp, events, interruption)
+  let loc = comma_test_loc()
+  let expr = comma_test_comma(
+    comma_test_comma(
+      comma_test_record_call("left", loc),
+      comma_test_record_call("nested-right", loc),
+      loc,
+    ),
+    comma_test_record_call("root-right", loc),
+    loc,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption~,
+  )
+  let failure = try {
+    let _ = comma_test_eval_with_control(
+      interp,
+      expr,
+      { strict: false, current_generator: None },
+      control,
+    )
+    "completed"
+  } catch {
+    ExecutionControlError(Interrupted) => "interrupted"
+    _ => "wrong-failure"
+  }
+  inspect(failure, content="interrupted")
+  json_inspect(events, content=["left"])
+  match comma_test_eval(interp, comma_test_number(9.0, loc)) {
+    Number(value) if value == 9.0 => ()
+    other => fail("later leaf failed after interruption: " + other.to_string())
+  }
+}
+
+///|
+test "nested direct comma abrupt completion stops all later worklist effects" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel : Error = @errors.RangeError(message="nested comma sentinel")
+  comma_test_throwing_recorder(interp, events, sentinel)
+  let loc = comma_test_loc()
+  let expr = comma_test_comma(
+    comma_test_comma(
+      comma_test_record_call("left", loc),
+      comma_test_record_call("throw", loc),
+      loc,
+    ),
+    comma_test_record_call("root-right", loc),
+    loc,
+  )
+  let preserved = try {
+    let _ = comma_test_eval(interp, expr)
+    false
+  } catch {
+    error => physical_equal(error, sentinel)
+  }
+  assert_true(preserved)
+  json_inspect(events, content=["left"])
 }
