@@ -72,7 +72,10 @@ pub(all) enum Callable {
   )
   NonConstructableCallable(String, (Array[Value]) -> Value raise Error) // like NativeCallable but throws on new
   BoundFunc(Value, Value, Array[Value]) // (target, this_val, bound_args)
-  FuncCallMethod(Value) // .call proxy: captures target function
+  // .call proxy captures a target function. `Undefined` is reserved for the
+  // exact Function.prototype.call intrinsic; fallback proxies always capture
+  // a callable object.
+  FuncCallMethod(Value)
   FuncApplyMethod(Value) // .apply proxy: captures target function
   MethodCallable(String, (Value, Array[Value]) -> Value raise Error) // this-aware native method
   InterpreterCallable(

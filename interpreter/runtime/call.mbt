@@ -800,6 +800,70 @@ fn Interpreter::eval_call(
 }
 
 ///|
+priv enum CallForwardingDecision {
+  Forward(Value, Value, Array[Value])
+  NotForwarded
+}
+
+///|
+fn call_forwarding_args(args : Array[Value]) -> Array[Value] {
+  let call_args : Array[Value] = []
+  for i = 1; i < args.length(); i = i + 1 {
+    call_args.push(args[i])
+  }
+  call_args
+}
+
+///|
+fn call_forwarding_decision(
+  callee : Value,
+  this_val : Value,
+  args : Array[Value],
+) -> CallForwardingDecision {
+  match callee {
+    Object(data) =>
+      match data.callable {
+        // `FuncCallMethod(Undefined)` is the runtime-owned identity for the
+        // exact Function.prototype.call intrinsic. Fallback `.call` wrappers
+        // capture callable Objects, so their target can never be Undefined.
+        Some(FuncCallMethod(Undefined)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          Forward(this_val, call_this, call_forwarding_args(args))
+        }
+        Some(FuncCallMethod(target)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          Forward(target, call_this, call_forwarding_args(args))
+        }
+        _ => NotForwarded
+      }
+    _ => NotForwarded
+  }
+}
+
+///|
+fn resolve_call_forwarding(
+  callee : Value,
+  this_val : Value,
+  args : Array[Value],
+) -> (Value, Value, Array[Value]) {
+  let mut current_callee = callee
+  let mut current_this_val = this_val
+  let mut current_args = args
+  for ;; {
+    match
+      call_forwarding_decision(current_callee, current_this_val, current_args) {
+      Forward(next_callee, next_this_val, next_args) => {
+        current_callee = next_callee
+        current_this_val = next_this_val
+        current_args = next_args
+      }
+      NotForwarded => break
+    }
+  }
+  (current_callee, current_this_val, current_args)
+}
+
+///|
 pub fn Interpreter::call_value(
   self : Interpreter,
   callee : Value,
@@ -807,14 +871,24 @@ pub fn Interpreter::call_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
+  let (current_callee, current_this_val, current_args) = resolve_call_forwarding(
+    callee, this_val, args,
+  )
   match
-    self.preflight_direct_numeric_recursion_call(callee, this_val, args, loc) {
+    self.preflight_direct_numeric_recursion_call(
+      current_callee, current_this_val, current_args, loc,
+    ) {
     Some(preflight) => {
       let registry = self.seal_direct_numeric_recursion_registry(
-        preflight, callee, this_val, args, loc,
+        preflight, current_callee, current_this_val, current_args, loc,
       )
       let completion = self.run_activation_dispatch_numeric_call(
-        DispatchCallRequest(callee~, this_value=this_val, args~, loc~),
+        DispatchCallRequest(
+          callee=current_callee,
+          this_value=current_this_val,
+          args=current_args,
+          loc~,
+        ),
         registry,
       )
       return activation_dispatch_root_value(completion) catch {
@@ -839,12 +913,14 @@ pub fn Interpreter::call_value(
   // absent). Checks every packed realm slot so it is safe even when
   // stamp_function_realm_with sets slots independently or when a non-function
   // override is active.
-  if realm_fast_path_allowed(callee, self.realm_state) {
-    self.call_value_impl(callee, this_val, args, loc)
+  if realm_fast_path_allowed(current_callee, self.realm_state) {
+    self.call_value_impl(current_callee, current_this_val, current_args, loc)
   } else {
     self.with_active_value(fn() raise {
-      with_active_callee_realm_value(self.realm_state, callee, fn() raise {
-        self.call_value_impl(callee, this_val, args, loc)
+      with_active_callee_realm_value(self.realm_state, current_callee, fn() raise {
+        self.call_value_impl(
+          current_callee, current_this_val, current_args, loc,
+        )
       })
     })
   }
@@ -1330,14 +1406,8 @@ fn Interpreter::call_value_impl(
           }
           self.call_value(target, bound_this, all_args, loc)
         }
-        Some(FuncCallMethod(target)) => {
-          let call_this = if args.length() > 0 { args[0] } else { Undefined }
-          let call_args : Array[Value] = []
-          for i = 1; i < args.length(); i = i + 1 {
-            call_args.push(args[i])
-          }
-          self.call_value(target, call_this, call_args, loc)
-        }
+        Some(FuncCallMethod(_)) =>
+          raise @errors.TypeError(message="is not a function")
         Some(FuncApplyMethod(target)) => {
           let call_this = if args.length() > 0 { args[0] } else { Undefined }
           let call_args : Array[Value] = []
