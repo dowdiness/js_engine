@@ -291,6 +291,21 @@ test "timer policy later rejection does not restore discarded cancellation" {
 }
 
 ///|
+test "timer policy safety limit completes without another observation" {
+  let queue = @priority_queue.PriorityQueue([
+    timer_policy_test_task(1, 0, 0),
+    timer_policy_test_task(2, 1, 1),
+  ])
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 1)
+  inspect(policy.readiness() is TimerQueueObservationRequired, content="true")
+  let _ = policy.commit_next()
+  policy.callback_succeeded()
+  policy.checkpoint_succeeded()
+  inspect(policy.readiness() is TimerQueueSafetyLimit, content="true")
+  inspect(queue.length(), content="1")
+}
+
+///|
 test "timer policy rejects invalid transitions" {
   let queue = @priority_queue.PriorityQueue([timer_policy_test_task(1, 0, 0)])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
