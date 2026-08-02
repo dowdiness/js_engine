@@ -39,6 +39,20 @@ test "execution stack safety: self recursion at depth 256" {
 }
 
 ///|
+// RED on current main: native debug completes depth 50 and terminates at 51;
+// the production target is the same direct ordinary constructor at depth 1024.
+test "RED: recursive constructor activation at depth 1024" {
+  match
+    run(
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new Node(1024).value;",
+    ) {
+    Value::Number(1024.0) => ()
+    other => fail("expected constructor value 1024, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: ordinary own-data receiver recursion at depth 256" {
   match
     run(
