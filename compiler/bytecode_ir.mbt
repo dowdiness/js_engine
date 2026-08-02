@@ -93,6 +93,7 @@ priv enum BytecodeInstr {
   SetForInComputed(@token.Loc)
   AssignPattern(@ast.Pattern)
   PreparePropertyCall(String, @token.Loc)
+  PreparePlainPropertyCall(String, @token.Loc)
   PrepareComputedCall(@token.Loc)
   PrepareSuperPropertyCall(String, @token.Loc)
   PrepareSuperComputedCall(@token.Loc)

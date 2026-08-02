@@ -7,6 +7,227 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+fn assert_plain_member_call_lowering(
+  code : Array[BytecodeInstr],
+  context : String,
+) -> Bool raise Error {
+  let mut saw_prepare = false
+  let mut saw_receiver_call = false
+  for instr in code {
+    match instr {
+      PreparePlainPropertyCall("step", _) => saw_prepare = true
+      CallWithReceiver(_, _) => saw_receiver_call = true
+      _ => ()
+    }
+  }
+  guard saw_prepare else {
+    fail(context + " must use PreparePlainPropertyCall")
+  }
+  guard saw_receiver_call else {
+    fail(context + " must retain CallWithReceiver")
+  }
+  true
+}
+
+///|
+fn legacy_property_prepare_count(code : Array[BytecodeInstr]) -> Int {
+  let mut count = 0
+  for instr in code {
+    match instr {
+      PreparePropertyCall(_, _) => count += 1
+      _ => ()
+    }
+  }
+  count
+}
+
+///|
+fn assert_grouped_optional_member_source_for_wb(
+  source : String,
+) -> Unit raise Error {
+  let program = @parser.parse(source)
+  guard program.stmts.length() == 1 else {
+    fail("grouped optional member fixture must contain one statement")
+  }
+  match program.stmts[0] {
+    @ast.ExprStmt(
+      @ast.ChainMember(
+        @ast.OptionalCall(
+          @ast.Grouping(@ast.Member(@ast.Ident("receiver", _), "step", _), _),
+          _,
+          _
+        ),
+        "next",
+        _
+      ),
+      _
+    ) => ()
+    _ =>
+      fail(
+        "grouped optional member fixture must parse as ChainMember(OptionalCall(Grouping(Member)))",
+      )
+  }
+}
+
+///|
+test "plain static member calls use suspended preparation at root and recursion" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.step();"
+  let lowered = parse_bytecode_for_wb(source)
+  assert_true(
+    assert_plain_member_call_lowering(
+      lowered.main.code,
+      "root plain member call",
+    ),
+  )
+  let mut saw_recursive_plain_call = false
+  for child in lowered.main.children {
+    if assert_plain_member_call_lowering(
+        child.code,
+        "recursive plain member call",
+      ) {
+      saw_recursive_plain_call = true
+    }
+  }
+  assert_true(saw_recursive_plain_call)
+}
+
+///|
+test "plain preparation leaves optional chain and tagged producers on legacy opcode" {
+  let prefix = "var receiver = { step: function() {} };"
+  let plain = parse_bytecode_for_wb(prefix + "receiver.step();")
+  let optional = parse_bytecode_for_wb(prefix + "receiver?.step();")
+  let optional_callee = parse_bytecode_for_wb(prefix + "receiver?.step?.();")
+  let grouped_source = "(receiver.step)?.().next;"
+  assert_grouped_optional_member_source_for_wb(grouped_source)
+  let grouped = parse_bytecode_for_wb(prefix + grouped_source)
+  let chain = parse_bytecode_for_wb(prefix + "receiver?.step.next();")
+  let tagged = parse_bytecode_for_wb(prefix + "receiver.step`tag`;")
+  let mut saw_plain = false
+  for instr in plain.main.code {
+    match instr {
+      PreparePlainPropertyCall("step", _) => saw_plain = true
+      _ => ()
+    }
+  }
+  assert_true(saw_plain)
+  assert_true(legacy_property_prepare_count(optional.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(optional_callee.main.code) >= 1)
+  let mut grouped_receiver_call = false
+  let mut grouped_plain_prepare = false
+  for instr in grouped.main.code {
+    match instr {
+      CallWithReceiver(_, _) => grouped_receiver_call = true
+      PreparePlainPropertyCall(_, _) => grouped_plain_prepare = true
+      _ => ()
+    }
+  }
+  assert_true(grouped_receiver_call)
+  assert_false(grouped_plain_prepare)
+  assert_eq(legacy_property_prepare_count(grouped.main.code), 1)
+  assert_true(legacy_property_prepare_count(chain.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(tagged.main.code) >= 1)
+}
+
+///|
+test "bytecode static accessor-prepared receiver calls suspend property preparation" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.step();"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "plain accessor-prepared receiver calls preserve order and receiver identity" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var receiver = { get step() {" +
+    "trace = trace + 'g';" +
+    "return function(value) {" +
+    "trace = trace + (this === receiver ? 'c' : 'x');" +
+    "return trace + ':' + value;" +
+    "};" +
+    "} };" +
+    "receiver.step(trace = trace + 'a');",
+  )
+  inspect(result.to_string(), content="gac:ga")
+}
+
+///|
+test "plain accessor-prepared non-callable result evaluates arguments before TypeError" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var trace = '';" +
+      "var receiver = { get step() { trace = trace + 'g'; return 1; } };" +
+      "function argument() { trace = trace + 'a'; return 7; }" +
+      "receiver.step(argument());",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) =>
+      match @runtime.js_error_to_value_with_env(error, Some(interp.global)) {
+        Object(data) => inspect(data.class_name, content="TypeError")
+        _ => fail("expected a JavaScript TypeError object")
+      }
+    None => fail("non-callable receiver call must throw")
+  }
+  let trace = interp.global.get("trace")
+  inspect(trace.to_string(), content="ga")
+}
+
+///|
+test "plain accessor-prepared getter throw skips arguments and final call" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var marker = {}; var trace = ''; var reads = 0;" +
+      "var receiver = { get step() {" +
+      "trace = trace + 'g'; reads = reads + 1;" +
+      "if (reads === 1) throw marker;" +
+      "return function() { trace = trace + 'c'; };" +
+      "} };" +
+      "function argument() { trace = trace + 'a'; return 7; }" +
+      "receiver.step(argument());",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("getter throw must propagate to the caller")
+  }
+  let trace = interp.global.get("trace")
+  inspect(trace.to_string(), content="g")
+  let reads = interp.global.get("reads")
+  inspect(reads.to_string(), content="1")
+}
+
+///|
 test "RED: static own accessor reads lower through GetProperty" {
   let source = "let remaining = 320;" +
     "let receiver = { get x() {" +
@@ -74,7 +295,7 @@ test "static property lowering keeps non-read property families residual" {
     "function child() {}; child(...base); new C(); eval('base.x');",
   )
   let mut saw_get = false
-  let mut saw_prepare = false
+  let mut saw_plain_prepare = false
   let mut saw_computed = false
   let mut saw_assign_read = false
   let mut saw_set = false
@@ -88,7 +309,7 @@ test "static property lowering keeps non-read property families residual" {
   for instr in lowered.main.code {
     match instr {
       GetProperty("x", _) => saw_get = true
-      PreparePropertyCall("x", _) => saw_prepare = true
+      PreparePlainPropertyCall("x", _) => saw_plain_prepare = true
       GetComputed(_) => saw_computed = true
       ReadPropertyForAssign("x", _) => saw_assign_read = true
       SetProperty("x", _) => saw_set = true
@@ -103,7 +324,7 @@ test "static property lowering keeps non-read property families residual" {
     }
   }
   assert_true(saw_get)
-  assert_true(saw_prepare)
+  assert_true(saw_plain_prepare)
   assert_true(saw_computed)
   assert_true(saw_assign_read)
   assert_true(saw_set)
@@ -130,6 +351,29 @@ test "bytecode static own accessor mutual recursion completes deeply" {
     "return 1 + left.x;" +
     "} };" +
     "left.x;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode plain static accessor receiver calls mutually recurse deeply" {
+  let source = "let remaining = 320;" +
+    "let left = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = right.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "let right = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = left.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "left.step();"
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
     source,
@@ -928,7 +1172,7 @@ test "bytecode frame accepts one pending activation result" {
     strict: false,
     current_generator: None,
   })
-  frame.pending_activation_result = true
+  frame.pending_activation_result = Some(PushValue)
   @runtime.ExecutorActivationFrame::deliver_activation_result(
     frame,
     Number(7.0),
@@ -956,6 +1200,29 @@ test "bytecode frame accepts one pending activation result" {
     _ => fail("duplicate activation result delivery must be rejected")
   }
   inspect(frame.stack.length(), content="1")
+}
+
+///|
+test "bytecode frame delivers an owned receiver with a plain property result" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("0;")
+  let frame = BytecodeFrame(program.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  let receiver = Value::String_("receiver")
+  let callee = Value::String_("callee")
+  frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
+  @runtime.ExecutorActivationFrame::deliver_activation_result(frame, callee)
+  inspect(frame.stack.length(), content="2")
+  match frame.stack[0] {
+    String_(value) => inspect(value, content="receiver")
+    _ => fail("plain property delivery must push the receiver first")
+  }
+  match frame.stack[1] {
+    String_(value) => inspect(value, content="callee")
+    _ => fail("plain property delivery must push the callee second")
+  }
 }
 
 ///|
