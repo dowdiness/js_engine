@@ -403,7 +403,7 @@ fn constructor_recursion_body_statement_matches(
           @ast.Binary(
             @ast.Gt,
             @ast.Ident(condition_parameter, _),
-            @ast.NumberLit(base, @token.LexForm::LexNormal, _),
+            @ast.NumberLit(base, @token.LexForm::LexNormal, condition_loc),
             _
           ),
           @ast.Block(
@@ -418,11 +418,15 @@ fn constructor_recursion_body_statement_matches(
                       @ast.Binary(
                         @ast.Sub,
                         @ast.Ident(subtract_parameter, _),
-                        @ast.NumberLit(decrement, @token.LexForm::LexNormal, _),
+                        @ast.NumberLit(
+                          decrement,
+                          @token.LexForm::LexNormal,
+                          subtract_loc
+                        ),
                         _
                       ),
                     ],
-                    _
+                    construct_loc
                   ),
                   _
                 ),
@@ -436,16 +440,22 @@ fn constructor_recursion_body_statement_matches(
         ) =>
           condition_parameter == plan.functions[function_index].parameter &&
           base == 0.0 &&
+          condition_loc == plan.functions[function_index].condition_loc &&
           child_property == plan.functions[function_index].child_property &&
           recursive_callee == plan.functions[function_index].recursive_callee &&
           subtract_parameter == plan.functions[function_index].parameter &&
-          decrement == 1.0
+          decrement == 1.0 &&
+          subtract_loc == plan.functions[function_index].subtract_loc &&
+          construct_loc == plan.functions[function_index].construct_loc
         _ => false
       }
     2 =>
       match (plan.functions[function_index].terminal, stmt) {
-        (ConstructorRecursionReturn, @ast.ReturnStmt(_, _)) => true
-        (ConstructorRecursionThrow, @ast.ThrowStmt(_, _)) => true
+        (ConstructorRecursionReturn, @ast.ReturnStmt(Some(expr), _)) =>
+          constructor_recursion_terminal_expr_is_admissible(expr)
+        (ConstructorRecursionReturn, @ast.ReturnStmt(None, _)) => true
+        (ConstructorRecursionThrow, @ast.ThrowStmt(expr, _)) =>
+          constructor_recursion_terminal_expr_is_admissible(expr)
         _ => false
       }
     _ => false
