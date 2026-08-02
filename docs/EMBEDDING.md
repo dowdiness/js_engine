@@ -73,9 +73,8 @@ advanced/internal because they accept or return a raw `Interpreter`.
 They install one fresh operation-scoped policy around the currently observed
 runtime paths and return structured guardrail diagnostics. They do
 **not** claim complete execution accounting, protection from every native or
-host loop, rollback, process isolation, or security against hostile
-JavaScript. Hosts must discard an Engine after an `Unknown` or `Discard`
-guardrail failure.
+host loop, rollback, or process isolation. Hosts must discard an Engine after
+an `Unknown` or `Discard` guardrail failure.
 
 `Engine::call_json_bounded` keeps one policy across global lookup, lookup
 getters, direct host-JSON argument copying, target execution, and direct result
