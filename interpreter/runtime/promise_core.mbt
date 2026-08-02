@@ -374,6 +374,7 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
 ///|
 /// Failure phase retained for the stable root facade's diagnostic adapter.
 pub enum TimerRunFailurePhase {
+  TimerQueueDispatch
   TimerCallback
   IntervalCallback
   MicrotaskCheckpoint
@@ -418,16 +419,44 @@ pub fn Interpreter::run_timers_observed(
   self : Interpreter,
 ) -> Result[Unit, TimerRunFailure] raise Error {
   with_cleared_active_callee_realm(self.realm_state, fn() raise {
-    let policy = TimerQueuePolicy(
-      self.host.timer_queue,
-      self.host.cancelled_timer_ids,
-      self.host.timer_insertion_counter,
-      TIMER_SAFETY_LIMIT,
-    )
+    let mut policy = TimerQueuePolicyCore(TIMER_SAFETY_LIMIT)
     while true {
-      let timer = match policy.select_next() {
+      match policy.readiness(self.host.timer_queue.is_empty()) {
+        TimerQueueEmpty | TimerQueueSafetyLimit => break
+        TimerQueueObservationRequired => ()
+      }
+      self.observe_execution_step() catch {
+        error => {
+          let _ = policy.reject_dispatch_observation(
+            self.host.timer_queue.is_empty(),
+          )
+          return Err(
+            TimerRunFailure(
+              error,
+              TimerRunFailurePhase::TimerQueueDispatch,
+              None,
+            ),
+          )
+        }
+      }
+      policy = policy.accept_dispatch_observation(
+        self.host.timer_queue.is_empty(),
+      )
+      let popped = match self.host.timer_queue.pop() {
         Some(timer) => timer
-        None => break
+        None =>
+          invalid_timer_queue_policy_transition(
+            "accepted observation requires a queued timer",
+          )
+      }
+      let cancelled = self.host.cancelled_timer_ids.contains(popped.id)
+      let (next_policy, commit_decision) = policy.commit_popped(
+        popped, cancelled,
+      )
+      policy = next_policy
+      let timer = match commit_decision {
+        TimerQueueDiscardCommitted => continue
+        TimerQueueRunCommitted(timer) => timer
       }
       // Execute the timer callback
       let loc = @token.Loc::default()
@@ -437,7 +466,7 @@ pub fn Interpreter::run_timers_observed(
       match call_result {
         Ok(_) => ()
         Err(failure) => {
-          policy.callback_failed()
+          let _ = policy.callback_failed()
           let phase = if timer.is_interval {
             TimerRunFailurePhase::IntervalCallback
           } else {
@@ -448,11 +477,11 @@ pub fn Interpreter::run_timers_observed(
           )
         }
       }
-      policy.callback_succeeded()
+      policy = policy.callback_succeeded()
       // Microtask checkpoint after each task (per WHATWG event loop spec)
       let microtask_result = self.run_microtasks_observed() catch {
         e => {
-          policy.checkpoint_failed()
+          let _ = policy.checkpoint_failed()
           return Err(
             TimerRunFailure(e, TimerRunFailurePhase::MicrotaskCheckpoint, None),
           )
@@ -461,7 +490,7 @@ pub fn Interpreter::run_timers_observed(
       match microtask_result {
         Ok(_) => ()
         Err(failure) => {
-          policy.checkpoint_failed()
+          let _ = policy.checkpoint_failed()
           return Err(
             TimerRunFailure(
               failure.cause(),
@@ -471,9 +500,26 @@ pub fn Interpreter::run_timers_observed(
           )
         }
       }
-      policy.checkpoint_succeeded()
+      let cancelled = self.host.cancelled_timer_ids.contains(timer.id)
+      let insertion_order = self.host.timer_insertion_counter.val
+      let (next_policy, checkpoint_decision) = policy.checkpoint_succeeded(
+        cancelled, insertion_order,
+      )
+      policy = next_policy
+      match checkpoint_decision {
+        TimerQueueDoNotRequeue => ()
+        TimerQueueRequeue(timer) => {
+          self.host.timer_insertion_counter.val = insertion_order + 1
+          self.host.timer_queue.push(timer)
+        }
+      }
     }
-    policy.complete_run()
+    let (_, clear_cancellations) = policy.complete_run(
+      self.host.timer_queue.is_empty(),
+    )
+    if clear_cancellations {
+      self.host.cancelled_timer_ids.clear()
+    }
     Ok(())
   }) catch {
     e => raise e

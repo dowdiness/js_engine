@@ -1013,6 +1013,7 @@ pub fn Engine::run_microtask_checkpoint_bounded(
 ///|
 fn timer_failure_phase_code(phase : @runtime.TimerRunFailurePhase) -> String {
   match phase {
+    @runtime.TimerRunFailurePhase::TimerQueueDispatch => "timer-queue-dispatch"
     @runtime.TimerRunFailurePhase::TimerCallback => "timer-callback"
     @runtime.TimerRunFailurePhase::IntervalCallback => "interval-callback"
     @runtime.TimerRunFailurePhase::MicrotaskCheckpoint =>
@@ -1035,6 +1036,49 @@ fn timer_dispatch_diagnostic(err : Error) -> EngineDiagnostic {
 }
 
 ///|
+fn Engine::timer_checkpoint_failure_diagnostic(
+  self : Engine,
+  failure : @runtime.TimerRunFailure,
+) -> EngineDiagnostic {
+  let error = failure.cause()
+  let guardrail_kind = match @runtime.execution_control_failure_code(error) {
+    Some(kind) => Some(kind)
+    None =>
+      match error {
+        @runtime.JsException(value) if @runtime.is_engine_stack_depth_error(
+            value,
+          ) => Some("stack-depth-limit")
+        _ => None
+      }
+  }
+  let phase = timer_failure_phase_code(failure.phase())
+  match guardrail_kind {
+    Some(kind) =>
+      make_engine_diagnostic(
+        failure_kind_code=kind,
+        message=execution_guardrail_message(kind),
+        operation_code="timer-checkpoint",
+        phase_code=phase,
+        source_identity=failure.source_identity(),
+        engine_integrity=EngineIntegrity::Discard,
+        retained_effects=RetainedEffects::MayRemain,
+        pending_jobs=self.pending_jobs_snapshot(),
+      )
+    None =>
+      runtime_engine_diagnostic(
+        error,
+        operation="timer-checkpoint",
+        phase~,
+        source_identity=failure.source_identity(),
+        javascript_integrity=EngineIntegrity::Discard,
+        javascript_effects=RetainedEffects::MayRemain,
+        javascript_jobs=self.pending_jobs_snapshot(),
+        internal_integrity=EngineIntegrity::Discard,
+      )
+  }
+}
+
+///|
 /// Run a timer checkpoint while returning operation-aware failure details.
 pub fn Engine::run_timer_checkpoint_diagnostic(
   self : Engine,
@@ -1044,21 +1088,25 @@ pub fn Engine::run_timer_checkpoint_diagnostic(
   }
   match observed {
     Ok(_) => Ok(())
-    Err(failure) => {
-      let phase = timer_failure_phase_code(failure.phase())
-      Err(
-        runtime_engine_diagnostic(
-          failure.cause(),
-          operation="timer-checkpoint",
-          phase~,
-          source_identity=failure.source_identity(),
-          javascript_integrity=EngineIntegrity::Discard,
-          javascript_effects=RetainedEffects::MayRemain,
-          javascript_jobs=self.pending_jobs_snapshot(),
-          internal_integrity=EngineIntegrity::Discard,
-        ),
-      )
-    }
+    Err(failure) => Err(self.timer_checkpoint_failure_diagnostic(failure))
+  }
+}
+
+///|
+/// Run one timer checkpoint under a fresh operation-scoped execution policy.
+/// Queue dispatch, callbacks, and timer-following microtasks share this scope.
+pub fn Engine::run_timer_checkpoint_bounded(
+  self : Engine,
+  policy : @runtime.ExecutionPolicy,
+) -> Result[Unit, EngineDiagnostic] {
+  let observed = self.interp.with_execution_policy(policy, () => {
+    self.interp.run_timers_observed()
+  }) catch {
+    err => return Err(timer_dispatch_diagnostic(err))
+  }
+  match observed {
+    Ok(_) => Ok(())
+    Err(failure) => Err(self.timer_checkpoint_failure_diagnostic(failure))
   }
 }
 

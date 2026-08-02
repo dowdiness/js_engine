@@ -237,15 +237,14 @@
       "operation_family": "timer policy",
       "entry_category": "timer and interval queue inspection, pop, cancellation filtering, and drain progress",
       "contract_observation_category": "dispatch-point",
-      "current_accounting_owner": "interpreter/runtime/promise_core.mbt#Interpreter::run_timers_observed and interpreter/runtime/timer_policy.mbt#TimerQueuePolicy::select_next",
+      "current_accounting_owner": "interpreter/runtime/promise_core.mbt#Interpreter::run_timers_observed",
       "intended_final_accounting_owner": "timer-policy-dispatch",
-      "status": "unobserved",
-      "duplicate_charge_risk": "select_next pops and filters entries, including cancelled entries, before callback execution and the drain loop has no observe_execution_step; future queue-dispatch observation must not double-charge callback activation or queue progress.",
-      "owning_implementation_or_issue": "#750",
-      "tracking_issue": "#750",
-      "focused_evidence": ["interpreter/runtime/timer_policy.mbt#TimerQueuePolicy::select_next", "interpreter/runtime/promise_core.mbt#Interpreter::run_timers_observed", "interpreter/runtime/execution_control.mbt#Interpreter::observe_execution_step"],
+      "status": "observed-exactly-once",
+      "duplicate_charge_risk": "TimerQueuePolicyCore::readiness performs only empty and safety-limit detection; run_timers_observed observes exactly once before accepting and committing the popped timer, while call_value activation remains a distinct accounting category owned by the activation audit.",
+      "owning_implementation_or_issue": "interpreter/runtime/promise_core.mbt#Interpreter::run_timers_observed",
+      "focused_evidence": ["interpreter/runtime/timer_policy.mbt#TimerQueuePolicyCore::readiness", "interpreter/runtime/timer_policy.mbt#TimerQueuePolicyCore::accept_dispatch_observation", "interpreter/runtime/timer_policy.mbt#TimerQueuePolicyCore::commit_popped", "interpreter/runtime/timer_policy.mbt#TimerQueuePolicyCore::reject_dispatch_observation", "interpreter/runtime/promise_core.mbt#Interpreter::run_timers_observed", "interpreter/runtime/execution_control.mbt#Interpreter::observe_execution_step", "integration/external_consumer/bounded_timer_checkpoint_test.mbt#zero bounded timer budget retains a pending timeout"],
       "public_facade_evidence_required": true,
-      "public_facade_evidence": ["engine_diagnostic.mbt#Engine::run_timer_checkpoint_diagnostic"]
+      "public_facade_evidence": ["engine_diagnostic.mbt#Engine::run_timer_checkpoint_bounded"]
     },
     {
       "id": "timer-policy-bookkeeping",

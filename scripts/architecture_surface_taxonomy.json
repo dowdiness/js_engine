@@ -213,6 +213,12 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "Engine::run_timer_checkpoint_bounded",
+      "category": "stable_embedding",
+      "reason": "documented operation-scoped bounded Engine timer checkpoint"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "run",
       "category": "stable_embedding",
       "reason": "documented library entry point for script execution"

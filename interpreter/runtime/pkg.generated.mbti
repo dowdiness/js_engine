@@ -1103,6 +1103,7 @@ pub fn TimerRunFailure::phase(Self) -> TimerRunFailurePhase
 pub fn TimerRunFailure::source_identity(Self) -> String?
 
 pub enum TimerRunFailurePhase {
+  TimerQueueDispatch
   TimerCallback
   IntervalCallback
   MicrotaskCheckpoint

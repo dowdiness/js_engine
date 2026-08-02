@@ -56,7 +56,7 @@ or experimental execution paths and are not used by this guide.
 |---|---|
 | **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` |
 | **Stable diagnostics** | `run_diagnostic`; `Engine::eval_diagnostic`, `Engine::call_json_diagnostic`, `Engine::run_microtask_checkpoint_diagnostic`, `Engine::run_timer_checkpoint_diagnostic`; `EngineDiagnostic` and its accessors; `EngineIntegrity`, `RetainedEffects`, `PendingJobs`; `SourceLocation`, `SourcePosition` |
-| **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
+| **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`, `Engine::run_timer_checkpoint_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
 | **Compatibility** | `run_module`, `run_modules` |
 | **Advanced/internal** | `run_compiled`, `run_with_event_loop`, `has_pending_microtasks`, `has_pending_timers`, `run_microtask_checkpoint`, `run_timer_checkpoint` |
 
@@ -67,14 +67,14 @@ advanced/internal because they accept or return a raw `Interpreter`.
 
 ## Staged Stage 4 bounded operations
 
-`Engine::eval_bounded`, `Engine::call_json_bounded`, and
-`Engine::run_microtask_checkpoint_bounded` are staged Stage 4 availability
-slices. They install one fresh operation-scoped policy around the currently
-observed runtime paths and return structured guardrail diagnostics. They do
+`Engine::eval_bounded`, `Engine::call_json_bounded`,
+`Engine::run_microtask_checkpoint_bounded`, and
+`Engine::run_timer_checkpoint_bounded` are staged Stage 4 availability slices.
+They install one fresh operation-scoped policy around the currently observed
+runtime paths and return structured guardrail diagnostics. They do
 **not** claim complete execution accounting, protection from every native or
-host loop, rollback, process isolation, or security against hostile
-JavaScript. Hosts must discard an Engine after an `Unknown` or `Discard`
-guardrail failure.
+host loop, rollback, or process isolation. Hosts must discard an Engine after
+an `Unknown` or `Discard` guardrail failure.
 
 `Engine::call_json_bounded` keeps one policy across global lookup, lookup
 getters, direct host-JSON argument copying, target execution, and direct result
