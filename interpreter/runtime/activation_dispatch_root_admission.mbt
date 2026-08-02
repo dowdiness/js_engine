@@ -5,6 +5,7 @@
 priv enum ActivationDispatchManagedRoot {
   ActivationDispatchLeafRoot
   ActivationDispatchControlRoot(ControlLifecyclePreflight)
+  ActivationDispatchConstructorRoot(ConstructorRecursionPreflight)
   ActivationDispatchNumericRoot(NumericRecursionPreflight)
   ActivationDispatchGetterRoot(GetterRecursionPreflight)
   ActivationDispatchProxyRoot(ProxyGetRecursionPreflight)
@@ -30,43 +31,53 @@ fn Interpreter::classify_activation_dispatch_root_program(
       Some(preflight) =>
         ActivationDispatchManagedRoot(ActivationDispatchControlRoot(preflight))
       None =>
-        match self.preflight_dispatchable_numeric_recursion_program(stmts) {
+        match self.preflight_dispatchable_constructor_recursion_program(stmts) {
           Some(preflight) =>
             ActivationDispatchManagedRoot(
-              ActivationDispatchNumericRoot(preflight),
+              ActivationDispatchConstructorRoot(preflight),
             )
           None =>
-            match self.preflight_dispatchable_getter_recursion_program(stmts) {
+            match self.preflight_dispatchable_numeric_recursion_program(stmts) {
               Some(preflight) =>
                 ActivationDispatchManagedRoot(
-                  ActivationDispatchGetterRoot(preflight),
+                  ActivationDispatchNumericRoot(preflight),
                 )
               None =>
                 match
-                  self.preflight_dispatchable_proxy_get_recursion_program(stmts) {
+                  self.preflight_dispatchable_getter_recursion_program(stmts) {
                   Some(preflight) =>
                     ActivationDispatchManagedRoot(
-                      ActivationDispatchProxyRoot(preflight),
+                      ActivationDispatchGetterRoot(preflight),
                     )
                   None =>
                     match
-                      self.preflight_dispatchable_mutual_receiver_recursion_program(
+                      self.preflight_dispatchable_proxy_get_recursion_program(
                         stmts,
                       ) {
                       Some(preflight) =>
                         ActivationDispatchManagedRoot(
-                          ActivationDispatchMutualReceiverRoot(preflight),
+                          ActivationDispatchProxyRoot(preflight),
                         )
                       None =>
                         match
-                          self.preflight_dispatchable_receiver_recursion_program(
+                          self.preflight_dispatchable_mutual_receiver_recursion_program(
                             stmts,
                           ) {
                           Some(preflight) =>
                             ActivationDispatchManagedRoot(
-                              ActivationDispatchReceiverRoot(preflight),
+                              ActivationDispatchMutualReceiverRoot(preflight),
                             )
-                          None => ActivationDispatchLegacyRoot
+                          None =>
+                            match
+                              self.preflight_dispatchable_receiver_recursion_program(
+                                stmts,
+                              ) {
+                              Some(preflight) =>
+                                ActivationDispatchManagedRoot(
+                                  ActivationDispatchReceiverRoot(preflight),
+                                )
+                              None => ActivationDispatchLegacyRoot
+                            }
                         }
                     }
                 }

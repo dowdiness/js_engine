@@ -10,6 +10,8 @@ fn root_admission_test_kind(
   match admission {
     ActivationDispatchManagedRoot(ActivationDispatchLeafRoot) => "leaf"
     ActivationDispatchManagedRoot(ActivationDispatchControlRoot(_)) => "control"
+    ActivationDispatchManagedRoot(ActivationDispatchConstructorRoot(_)) =>
+      "constructor"
     ActivationDispatchManagedRoot(ActivationDispatchNumericRoot(_)) => "numeric"
     ActivationDispatchManagedRoot(ActivationDispatchGetterRoot(_)) => "getter"
     ActivationDispatchManagedRoot(ActivationDispatchProxyRoot(_)) => "proxy"
@@ -43,6 +45,12 @@ test "Interpreter run uses one closed root admission seam" {
       ("outer: try { break outer; } finally { 1; } 9;", "control", 9.0),
       (
         "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", "numeric", 256.0,
+      ),
+      (
+        "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+        "new Node(1024).value;",
+        "constructor",
+        1024.0,
       ),
       (
         "function step(n){if(n===0)return this.marker;return 1+this.step(n-1);}" +

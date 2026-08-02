@@ -27,6 +27,8 @@ priv enum ProgramCleanupOwner {
   RejectedProxyCall
   AcceptedReceiverCall
   RejectedReceiverCall
+  AcceptedConstructorCall
+  RejectedConstructorCall
   PropertyAccessCleanup
 }
 
@@ -179,6 +181,22 @@ priv struct DispatchReceiverCallRealmCleanup {
 }
 
 ///|
+priv struct DispatchConstructorCallRealmCleanup {
+  cleared_realm : ClearedActiveCalleeRealmScope
+  active_realm : ActiveCalleeRealmValueScope
+  parameter_gate : SimpleUserFuncParameterGateScope
+}
+
+///|
+fn DispatchConstructorCallRealmCleanup::DispatchConstructorCallRealmCleanup(
+  cleared_realm~ : ClearedActiveCalleeRealmScope,
+  active_realm~ : ActiveCalleeRealmValueScope,
+  parameter_gate~ : SimpleUserFuncParameterGateScope,
+) -> DispatchConstructorCallRealmCleanup {
+  { cleared_realm, active_realm, parameter_gate }
+}
+
+///|
 fn DispatchReceiverCallRealmCleanup::DispatchReceiverCallRealmCleanup(
   cleared_realm~ : ClearedActiveCalleeRealmScope,
   active_realm~ : ActiveCalleeRealmValueScope,
@@ -201,11 +219,13 @@ priv enum DispatchShellCleanupResources {
   DispatchGetterRootRealmCleanup(FunctionRealmProtos)
   DispatchProxyRootRealmCleanup(FunctionRealmProtos)
   DispatchReceiverRootRealmCleanup(FunctionRealmProtos)
+  DispatchConstructorRootRealmCleanup(FunctionRealmProtos)
   DispatchDeniedActivationCleanup
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
   DispatchGetterRealmCleanup(DispatchGetterCallRealmCleanup)
   DispatchProxyRealmCleanup(DispatchProxyCallRealmCleanup)
   DispatchReceiverRealmCleanup(DispatchReceiverCallRealmCleanup)
+  DispatchConstructorRealmCleanup(DispatchConstructorCallRealmCleanup)
   DispatchPropertyRealmCleanup(ClearedActiveCalleeRealmScope)
 }
 
@@ -241,6 +261,9 @@ priv struct PrimitiveProgramDispatchShell {
   mutual_receiver_root_preflight : MutualReceiverRecursionPreflight?
   mutual_receiver_root_stmts : Array[@ast.Stmt]?
   mut mutual_receiver_registry : TrustedMutualReceiverRecursionRegistry?
+  constructor_root_preflight : ConstructorRecursionPreflight?
+  constructor_root_stmts : Array[@ast.Stmt]?
+  mut constructor_registry : TrustedConstructorRecursionRegistry?
   activation_observation_port : ActivationObservationPort
   mut next_cleanup_id : Int
 }
@@ -263,6 +286,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   mutual_receiver_root_preflight? : MutualReceiverRecursionPreflight? = None,
   mutual_receiver_root_stmts? : Array[@ast.Stmt]? = None,
   mutual_receiver_registry? : TrustedMutualReceiverRecursionRegistry? = None,
+  constructor_root_preflight? : ConstructorRecursionPreflight? = None,
+  constructor_root_stmts? : Array[@ast.Stmt]? = None,
+  constructor_registry? : TrustedConstructorRecursionRegistry? = None,
   // The shell lifecycle is policy-free; admitted production roots inject the
   // execution-control port explicitly below.
   activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
@@ -291,6 +317,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
       stmts.copy()
     }),
     mutual_receiver_registry,
+    constructor_root_preflight,
+    constructor_root_stmts: constructor_root_stmts.map(stmts => stmts.copy()),
+    constructor_registry,
     activation_observation_port,
     next_cleanup_id: 0,
   }
@@ -388,6 +417,8 @@ fn activation_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
     | RejectedProxyCall
     | AcceptedReceiverCall
     | RejectedReceiverCall
+    | AcceptedConstructorCall
+    | RejectedConstructorCall
     | PropertyAccessCleanup => false
   }
 }
@@ -402,12 +433,14 @@ fn activation_cleanup_owner_matches(
     | (AcceptedNumericCall, true)
     | (AcceptedGetterCall, true)
     | (AcceptedProxyCall, true)
-    | (AcceptedReceiverCall, true) => true
+    | (AcceptedReceiverCall, true)
+    | (AcceptedConstructorCall, true) => true
     (RejectedProgram, false)
     | (RejectedNumericCall, false)
     | (RejectedGetterCall, false)
     | (RejectedProxyCall, false)
-    | (RejectedReceiverCall, false) => true
+    | (RejectedReceiverCall, false)
+    | (RejectedConstructorCall, false) => true
     _ => false
   }
 }
@@ -481,7 +514,8 @@ fn PrimitiveProgramDispatchShell::reject_denied_managed_activation(
     RejectedNumericCall
     | RejectedGetterCall
     | RejectedProxyCall
-    | RejectedReceiverCall => ()
+    | RejectedReceiverCall
+    | RejectedConstructorCall => ()
     _ =>
       invalid_activation_dispatch_shell(
         "denied activation requires a rejected call owner",
@@ -656,6 +690,38 @@ fn PrimitiveProgramDispatchShell::push_receiver_call_cleanup(
     id,
     owner,
     resources: DispatchReceiverRealmCleanup(resources),
+    capabilities: None,
+    observation,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_constructor_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchConstructorRootRealmCleanup(previous_realm_protos),
+    capabilities: None,
+    observation: None,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_constructor_call_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  owner : ProgramCleanupOwner,
+  resources : DispatchConstructorCallRealmCleanup,
+  observation : DispatchActivationObservation?,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchConstructorRealmCleanup(resources),
     capabilities: None,
     observation,
   })
@@ -899,6 +965,10 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.mutual_receiver_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
+    DispatchConstructorRootRealmCleanup(previous_realm_protos) => {
+      self.constructor_registry = None
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchDeniedActivationCleanup => ()
     DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
@@ -943,6 +1013,20 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       )
     }
     DispatchReceiverRealmCleanup(resources) => {
+      self.interp.finish_simple_user_func_parameter_gate(
+        resources.parameter_gate,
+      )
+      finish_active_callee_realm_value(
+        self.interp.realm_state,
+        resources.active_realm,
+        failure~,
+      )
+      finish_cleared_active_callee_realm(
+        self.interp.realm_state,
+        resources.cleared_realm,
+      )
+    }
+    DispatchConstructorRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
       )
@@ -1141,6 +1225,32 @@ fn PrimitiveProgramDispatchShell::mutual_receiver_root_stmts_or_fail(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::require_constructor_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedConstructorRecursionRegistry raise InvalidActivationDispatchShell {
+  match self.constructor_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "constructor activation requires a sealed runtime registry",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::constructor_root_stmts_or_fail(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[@ast.Stmt] raise InvalidActivationDispatchShell {
+  match self.constructor_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "constructor root statements were not retained by admission",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1215,6 +1325,23 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::complete_constructor_root_preparation(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  cursor : DispatchStatementCursor,
+  previous_realm_protos : FunctionRealmProtos,
+  preflight : ConstructorRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  self.push_constructor_root_cleanup(id, previous_realm_protos)
+  let registry = self.interp.seal_constructor_recursion_registry(
+    preflight,
+    cursor.stmts,
+  )
+  self.constructor_registry = Some(registry)
+  DispatchProgramAccepted(DispatchActivationCleanup(id))
+}
+
+///|
 fn PrimitiveProgramDispatchShell::enter_program(
   self : PrimitiveProgramDispatchShell,
   cursor : DispatchStatementCursor,
@@ -1236,47 +1363,58 @@ fn PrimitiveProgramDispatchShell::enter_program(
   }
   match setup {
     Ok(_) =>
-      match
-        (
-          self.control_root_preflight,
-          self.numeric_root_preflight,
-          self.getter_root_preflight,
-          self.proxy_root_preflight,
-          self.receiver_root_preflight,
-          self.mutual_receiver_root_preflight,
-        ) {
-        (Some(preflight), None, None, None, None, None) =>
-          self.complete_control_root_preparation(
+      match self.constructor_root_preflight {
+        Some(preflight) =>
+          self.complete_constructor_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        (None, Some(preflight), None, None, None, None) =>
-          self.complete_numeric_root_preparation(
-            id, cursor, previous_realm_protos, preflight,
-          )
-        (None, None, Some(_), None, None, None) => {
-          self.push_getter_root_cleanup(id, previous_realm_protos)
-          DispatchProgramAccepted(DispatchActivationCleanup(id))
-        }
-        (None, None, None, Some(_), None, None) => {
-          self.push_proxy_root_cleanup(id, previous_realm_protos)
-          DispatchProgramAccepted(DispatchActivationCleanup(id))
-        }
-        (None, None, None, None, Some(_), None) => {
-          self.push_receiver_root_cleanup(id, previous_realm_protos)
-          DispatchProgramAccepted(DispatchActivationCleanup(id))
-        }
-        (None, None, None, None, None, Some(_)) => {
-          self.push_receiver_root_cleanup(id, previous_realm_protos)
-          DispatchProgramAccepted(DispatchActivationCleanup(id))
-        }
-        (None, None, None, None, None, None) => {
-          self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
-          DispatchProgramAccepted(DispatchActivationCleanup(id))
-        }
-        _ =>
-          invalid_activation_dispatch_shell(
-            "program cannot own multiple activation admissions",
-          )
+        None =>
+          match
+            (
+              self.control_root_preflight,
+              self.numeric_root_preflight,
+              self.getter_root_preflight,
+              self.proxy_root_preflight,
+              self.receiver_root_preflight,
+              self.mutual_receiver_root_preflight,
+            ) {
+            (Some(preflight), None, None, None, None, None) =>
+              self.complete_control_root_preparation(
+                id, cursor, previous_realm_protos, preflight,
+              )
+            (None, Some(preflight), None, None, None, None) =>
+              self.complete_numeric_root_preparation(
+                id, cursor, previous_realm_protos, preflight,
+              )
+            (None, None, Some(_), None, None, None) => {
+              self.push_getter_root_cleanup(id, previous_realm_protos)
+              DispatchProgramAccepted(DispatchActivationCleanup(id))
+            }
+            (None, None, None, Some(_), None, None) => {
+              self.push_proxy_root_cleanup(id, previous_realm_protos)
+              DispatchProgramAccepted(DispatchActivationCleanup(id))
+            }
+            (None, None, None, None, Some(_), None) => {
+              self.push_receiver_root_cleanup(id, previous_realm_protos)
+              DispatchProgramAccepted(DispatchActivationCleanup(id))
+            }
+            (None, None, None, None, None, Some(_)) => {
+              self.push_receiver_root_cleanup(id, previous_realm_protos)
+              DispatchProgramAccepted(DispatchActivationCleanup(id))
+            }
+            (None, None, None, None, None, None) => {
+              self.push_program_cleanup(
+                id,
+                AcceptedProgram,
+                previous_realm_protos,
+              )
+              DispatchProgramAccepted(DispatchActivationCleanup(id))
+            }
+            _ =>
+              invalid_activation_dispatch_shell(
+                "program cannot own multiple activation admissions",
+              )
+          }
       }
     Err(error) => {
       self.push_program_cleanup(id, RejectedProgram, previous_realm_protos)
@@ -1723,6 +1861,129 @@ fn PrimitiveProgramDispatchShell::enter_mutual_receiver_call(
       self.push_receiver_call_cleanup(
         id,
         RejectedReceiverCall,
+        resources,
+        Some(RejectedActivationObservation(observation)),
+      )
+      DispatchActivationRejected(
+        DispatchRejectedEntryCleanup(id),
+        dispatch_entry_rejection(error),
+      )
+    }
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::enter_constructor_activation(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchConstructRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_constructor_registry()
+  let trusted = match request.ctor {
+    Object(_) => registry.require_function(self.interp, registry.plan.root_name)
+    _ =>
+      invalid_activation_dispatch_shell(
+        "constructor activation lost its direct UserFunc value",
+      )
+  }
+  let mut selected = trusted
+  for candidate in registry.functions {
+    if constructor_recursion_value_identity(candidate.callee, request.ctor) {
+      selected = candidate
+    }
+  }
+  guard constructor_recursion_value_identity(selected.callee, request.ctor) else {
+    invalid_activation_dispatch_shell(
+      "constructor activation requested an unsealed callable",
+    )
+  }
+  guard request.args.length() == 1 && request.args[0] is Number(_) else {
+    invalid_activation_dispatch_shell(
+      "constructor activation requires one fixed numeric argument",
+    )
+  }
+  let mut location_matches = request.loc == registry.plan.root_member_loc
+  for function in registry.functions {
+    if request.loc == function.plan.construct_loc {
+      location_matches = true
+    }
+  }
+  guard location_matches else {
+    invalid_activation_dispatch_shell(
+      "constructor activation escaped the sealed source recipe",
+    )
+  }
+  let id = self.reserve_program_cleanup_id()
+  let observation = match self.begin_managed_activation_observation() {
+    Ok(attempt) => attempt
+    Err(error) =>
+      return self.reject_denied_managed_activation(
+        id,
+        RejectedConstructorCall,
+        error,
+      )
+  }
+  let cleared_realm = begin_cleared_active_callee_realm(self.interp.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.interp.realm_state,
+    request.ctor,
+  )
+  let parameter_gate = self.interp.begin_simple_user_func_parameter_gate()
+  let receiver = make_constructor_instance(selected.prototype, "Object")
+  let setup : Result[PreparedUserFuncActivation, Error] = Ok(
+    {
+      let prepared = self.interp.prepare_user_func_activation(
+        request.ctor,
+        receiver,
+        request.args,
+        match request.ctor {
+          Object({ callable: Some(UserFunc(data)), .. }) => data
+          _ =>
+            raise @errors.TypeError(
+              message="constructor activation lost its UserFunc payload",
+            )
+        },
+        throw_type_error_source=UsePreResolvedThrowTypeError(
+          registry.throw_type_error,
+        ),
+      )
+      prepared.env.assign("<new.target>", request.ctor)
+      prepared
+    },
+  ) catch {
+    error => Err(error)
+  }
+  let resources = DispatchConstructorCallRealmCleanup(
+    cleared_realm~,
+    active_realm~,
+    parameter_gate~,
+  )
+  match setup {
+    Ok(prepared) => {
+      let token = accept_managed_activation_observation(observation)
+      self.push_constructor_call_cleanup(
+        id,
+        AcceptedConstructorCall,
+        resources,
+        Some(AcceptedActivationObservation(token)),
+      )
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id),
+        DispatchConstructorCall(
+          DispatchStatementCursor(
+            ctx=prepared.ctx,
+            stmts=selected.body,
+            env=prepared.env,
+            production=true,
+          ),
+          receiver,
+        ),
+      )
+    }
+    Err(error) => {
+      reject_managed_activation_observation(observation)
+      self.push_constructor_call_cleanup(
+        id,
+        RejectedConstructorCall,
         resources,
         Some(RejectedActivationObservation(observation)),
       )
@@ -2383,6 +2644,213 @@ fn PrimitiveProgramDispatchShell::execute_mutual_receiver_body_statement(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::execute_constructor_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  preflight : ConstructorRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  guard physical_equal(step.env, self.interp.global) else {
+    invalid_activation_dispatch_shell(
+      "constructor root statement lost its global environment",
+    )
+  }
+  let declaration_count = preflight.plan.functions.length()
+  if step.index < declaration_count {
+    guard constructor_recursion_root_statement_matches(
+      preflight.plan,
+      step.index,
+      step.stmt,
+    ) else {
+      invalid_activation_dispatch_shell(
+        "constructor declaration no longer matches exact admission",
+      )
+    }
+    let result = self.execute_statement_with_legacy_adapter(step)
+    if step.index + 1 == declaration_count {
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          let registry = self.interp.seal_constructor_recursion_registry(
+            preflight,
+            self.constructor_root_stmts_or_fail(),
+          )
+          self.constructor_registry = Some(registry)
+        }
+        _ => ()
+      }
+    }
+    return result
+  }
+  guard step.index == declaration_count &&
+    constructor_recursion_root_expression_matches(preflight.plan, step.stmt) else {
+    invalid_activation_dispatch_shell(
+      "constructor root expression no longer matches exact admission",
+    )
+  }
+  match self.observe_managed_execution_steps(1) {
+    Some(completion) => return DispatchWorkCompleted(completion)
+    None => ()
+  }
+  let registry = self.require_constructor_registry()
+  let root = registry.require_root_function(self.interp)
+  let request = DispatchConstructRequest(
+    ctor=root.callee,
+    args=[Number(preflight.plan.initial_argument)],
+    loc=preflight.plan.root_member_loc,
+  )
+  let property = DispatchPropertyGetResume(
+    target=Undefined,
+    property_key=String_(preflight.plan.value_property),
+    receiver=Undefined,
+    loc=preflight.plan.root_member_loc,
+  )
+  DispatchWorkSuspended(
+    DispatchSuspendContinueProduction(
+      DispatchDeliverCallResult,
+      DispatchConstructStart(request, DispatchApplyConstructProperty(property)),
+    ),
+  )
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_constructor_body_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_constructor_registry()
+  let mut selected : TrustedConstructorRecursionFunction? = None
+  for function_index, function in registry.functions {
+    if constructor_recursion_body_statement_matches(
+        registry.plan,
+        function_index,
+        step.index,
+        step.stmt,
+      ) {
+      selected = Some(function)
+    }
+  }
+  let function = match selected {
+    Some(found) => found
+    None =>
+      invalid_activation_dispatch_shell(
+        "constructor body statement no longer matches exact admission",
+      )
+  }
+  guard step.env.parent is Some(parent) &&
+    physical_equal(parent, function.closure) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.env.bindings.get("this") is Some(this_binding) &&
+    this_binding.initialized else {
+    invalid_activation_dispatch_shell(
+      "constructor body lost its activation environment",
+    )
+  }
+  match step.index {
+    0 => self.execute_statement_with_legacy_adapter(step)
+    1 => {
+      let condition = match step.stmt {
+        @ast.IfStmt(condition, _, None, _) => condition
+        _ =>
+          invalid_activation_dispatch_shell(
+            "constructor body conditional changed after admission",
+          )
+      }
+      let condition_result : Result[Value, Error] = Ok(
+        self.interp.eval_expr(step.ctx, condition, step.env),
+      ) catch {
+        error => Err(error)
+      }
+      match condition_result {
+        Err(error) =>
+          DispatchWorkCompleted(dispatch_work_error_completion(error))
+        Ok(value) if !is_truthy(value) =>
+          DispatchWorkCompleted(DispatchNormal(Undefined))
+        Ok(_) => {
+          let argument_value = match
+            step.env.bindings.get(function.plan.parameter) {
+            Some(binding) if binding.initialized => binding.value
+            _ =>
+              return invalid_activation_dispatch_shell(
+                "constructor parameter binding was lost",
+              )
+          }
+          let argument = match argument_value {
+            Number(value) => Number(value - 1.0)
+            _ =>
+              return invalid_activation_dispatch_shell(
+                "constructor parameter is no longer numeric",
+              )
+          }
+          let callee = registry.require_function(
+            self.interp,
+            function.plan.recursive_callee,
+          )
+          let this_value = this_binding.value
+          let request = DispatchConstructRequest(
+            ctor=callee.callee,
+            args=[argument],
+            loc=function.plan.construct_loc,
+          )
+          let assign = DispatchConstructAssignResume(
+            target=this_value,
+            property=function.plan.child_property,
+            loc=function.plan.construct_loc,
+            strict=step.ctx.strict,
+          )
+          DispatchWorkSuspended(
+            DispatchSuspendContinueProduction(
+              DispatchDeliverCallResult,
+              DispatchConstructStart(
+                request,
+                DispatchAssignConstructResult(assign),
+              ),
+            ),
+          )
+        }
+      }
+    }
+    2 => self.execute_statement_with_legacy_adapter(step)
+    _ =>
+      invalid_activation_dispatch_shell(
+        "constructor body statement index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::start_constructor(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchConstructRequest,
+  continuation : DispatchContinuation,
+) -> DispatchEffectResult {
+  ignore(self)
+  DispatchWorkSuspended(DispatchSuspendConstruct(request, continuation))
+}
+
+///|
+fn PrimitiveProgramDispatchShell::assign_constructor_result(
+  self : PrimitiveProgramDispatchShell,
+  assign : DispatchConstructAssignResume,
+  value : Value,
+) -> DispatchEffectResult {
+  let result : Result[Value, Error] = Ok(
+    self.interp.set_property(
+      assign.target,
+      assign.property,
+      value,
+      assign.loc,
+      strict=assign.strict,
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  match result {
+    Ok(_) => DispatchWorkCompleted(DispatchNormal(Undefined))
+    Err(error) => DispatchWorkCompleted(dispatch_work_error_completion(error))
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_getter_root_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
@@ -2881,24 +3349,31 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
   }
   match
     (
+      self.constructor_root_preflight,
       self.getter_root_preflight,
       self.proxy_root_preflight,
       self.receiver_root_preflight,
       self.mutual_receiver_root_preflight,
     ) {
-    (Some(preflight), None, None, None) =>
+    (Some(preflight), None, None, None, None) =>
+      if physical_equal(step.env, self.interp.global) {
+        self.execute_constructor_root_statement(step, preflight)
+      } else {
+        self.execute_constructor_body_statement(step)
+      }
+    (None, Some(preflight), None, None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_getter_root_statement(step, preflight)
       } else {
         self.execute_getter_body_statement(step, self.require_getter_registry())
       }
-    (None, Some(preflight), None, None) =>
+    (None, None, Some(preflight), None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_proxy_root_statement(step, preflight)
       } else {
         self.execute_proxy_body_statement(step, self.require_proxy_registry())
       }
-    (None, None, Some(preflight), None) =>
+    (None, None, None, Some(preflight), None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_receiver_root_statement(step, preflight)
       } else {
@@ -2907,13 +3382,13 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
           self.require_receiver_registry(),
         )
       }
-    (None, None, None, Some(preflight)) =>
+    (None, None, None, None, Some(preflight)) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_mutual_receiver_root_statement(step, preflight)
       } else {
         self.execute_mutual_receiver_body_statement(step)
       }
-    (None, None, None, None) =>
+    (None, None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed statement is outside admitted execution",
       )
@@ -2990,6 +3465,10 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
       self.start_captured_numeric_call(token, argument, loc)
     DispatchReceiverStartCall(request, continuation) =>
       self.start_receiver_call(request, continuation)
+    DispatchConstructStart(request, continuation) =>
+      self.start_constructor(request, continuation)
+    DispatchConstructAssignResult(assign, value) =>
+      self.assign_constructor_result(assign, value)
     DispatchNumericApplyBinaryRight(binary, right) =>
       self.apply_numeric_binary(binary, right)
     DispatchPropertyStart(work, consumer) => self.start_property(work, consumer)
@@ -3015,6 +3494,8 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.enter_program(cursor)
     DispatchEnterActivation(DispatchCallActivation(request)) =>
       self.enter_managed_call(request)
+    DispatchEnterActivation(DispatchConstructActivation(request)) =>
+      self.enter_constructor_activation(request)
     DispatchRunProduction(work) => self.perform_production_work(work)
     DispatchRun(DispatchExecuteStatement(_))
     | DispatchRun(DispatchAdvanceLoop(_))
@@ -3024,6 +3505,12 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     | DispatchRun(DispatchResumeContinuation(DispatchCompleteReturn, _))
     | DispatchRun(DispatchResumeContinuation(DispatchCompleteThrow, _))
     | DispatchRun(DispatchResumeContinuation(DispatchDeliverCallResult, _))
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchApplyConstructProperty(_), _)
+    )
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchAssignConstructResult(_), _)
+    )
     | DispatchRun(DispatchResumeContinuation(DispatchApplyBinaryRight(_), _))
     | DispatchRun(
       DispatchResumeContinuation(DispatchApplyPropertyBinaryRight(_), _)
@@ -3102,6 +3589,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
       }
   }
   let production = self.control_root_preflight is Some(_) ||
+    self.constructor_root_preflight is Some(_) ||
     self.numeric_root_preflight is Some(_) ||
     self.getter_root_preflight is Some(_) ||
     self.proxy_root_preflight is Some(_) ||
@@ -3215,6 +3703,28 @@ fn Interpreter::run_activation_dispatch_numeric_program(
   guard shell.numeric_registry is None else {
     invalid_activation_dispatch_shell(
       "numeric registry outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
+fn Interpreter::run_activation_dispatch_constructor_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : ConstructorRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    constructor_root_preflight=Some(preflight),
+    constructor_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.constructor_registry is None else {
+    invalid_activation_dispatch_shell(
+      "constructor registry outlived its root activation",
     )
   }
   completion
@@ -3342,6 +3852,8 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_leaf_program(stmts, ctx)
     ActivationDispatchControlRoot(preflight) =>
       self.run_activation_dispatch_control_program(stmts, ctx, preflight)
+    ActivationDispatchConstructorRoot(preflight) =>
+      self.run_activation_dispatch_constructor_program(stmts, ctx, preflight)
     ActivationDispatchNumericRoot(preflight) =>
       self.run_activation_dispatch_numeric_program(stmts, ctx, preflight)
     ActivationDispatchGetterRoot(preflight) =>
