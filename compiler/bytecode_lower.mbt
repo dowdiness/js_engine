@@ -1836,7 +1836,10 @@ fn BytecodeBuilder::compile_switch(
       Some(cond) => {
         let _ = self.emit(Dup)
         self.compile_expr(cond)
-        let _ = self.emit(BinaryOp(EqEqEq, @token.Loc::default()))
+        let _ = self.emit_with_source_locations(
+          BinaryOp(EqEqEq, @token.Loc::default()),
+          [(Operator, bytecode_expr_loc(cond))],
+        )
         let no_match = self.emit(JumpIfFalse(-1))
         let _ = self.emit(Pop)
         case_jumps[i] = self.emit(Jump(-1))
@@ -1895,10 +1898,12 @@ fn BytecodeBuilder::compile_for_in_identifier(
   )
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
-  let _ = self.emit(StartForIn)
+  let _ = self.emit_with_source_locations(StartForIn, [
+    (Iterator, bytecode_expr_loc(obj_expr)),
+  ])
   let loop_pos = self.code.length()
   let done_jump = self.emit(ForInNext(-1))
-  self.compile_identifier_store(name)
+  self.compile_identifier_store(name, loc)
   let _ = self.emit(Pop)
   let labels = self.take_pending_loop_labels()
   self.push_loop_context(labels, cleanup_for_in=true)
@@ -1941,10 +1946,14 @@ fn BytecodeBuilder::compile_for_in_pattern(
   )
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
-  let _ = self.emit(StartForIn)
+  let _ = self.emit_with_source_locations(StartForIn, [(Iterator, loc)])
   let loop_pos = self.code.length()
   let done_jump = self.emit(ForInNext(-1))
-  let _ = self.emit(AssignPattern(pattern))
+  let _ = self.emit_with_source_locations(AssignPattern(pattern), [
+    (BindingAccess, loc),
+    (MemberAccess, loc),
+    (Iterator, loc),
+  ])
   let _ = self.emit(Pop)
   let labels = self.take_pending_loop_labels()
   self.push_loop_context(labels, cleanup_for_in=true)
@@ -1969,12 +1978,17 @@ fn BytecodeBuilder::compile_for_in_expr_target_store(
   match target {
     Member(obj, prop, loc) => {
       self.compile_expr(obj)
-      let _ = self.emit(SetForInProperty(prop, loc))
+      let _ = self.emit_with_source_locations(SetForInProperty(prop, loc), [
+        (MemberAccess, loc),
+      ])
     }
     ComputedMember(obj, key, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
-      let _ = self.emit(SetForInComputed(loc))
+      let _ = self.emit_with_source_locations(SetForInComputed(loc), [
+        (MemberAccess, loc),
+        (PropertyKey, loc),
+      ])
     }
     _ => bytecode_reject(ForInAssignmentTarget, bytecode_expr_loc(target))
   }
@@ -1997,7 +2011,9 @@ fn BytecodeBuilder::compile_for_in_expr(
   )
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
-  let _ = self.emit(StartForIn)
+  let _ = self.emit_with_source_locations(StartForIn, [
+    (Iterator, bytecode_expr_loc(obj_expr)),
+  ])
   let loop_pos = self.code.length()
   let done_jump = self.emit(ForInNext(-1))
   self.compile_for_in_expr_target_store(target)
@@ -2065,7 +2081,11 @@ fn BytecodeBuilder::compile_stmt_body(
     DestructureDecl(VarKind, pattern, init, loc) => {
       bytecode_validate_destructure_assignment_pattern(pattern, loc)
       self.compile_expr(init)
-      let _ = self.emit(AssignPattern(pattern))
+      let _ = self.emit_with_source_locations(AssignPattern(pattern), [
+        (BindingAccess, loc),
+        (MemberAccess, loc),
+        (Iterator, loc),
+      ])
       let _ = self.emit(Pop)
       if declaration_updates_completion {
         self.emit_undefined_completion()
@@ -2593,24 +2613,34 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
     OptionalMember(obj, prop, loc) => {
       self.compile_expr(obj)
       self.emit_optional_null_guard(end_jumps)
-      let _ = self.emit(GetProperty(prop, loc))
+      let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
+        (MemberAccess, loc),
+      ])
     }
     OptionalComputedMember(obj, key, loc) => {
       self.compile_expr(obj)
       self.emit_optional_null_guard(end_jumps)
       self.compile_expr(key)
-      let _ = self.emit(GetComputed(loc))
+      let _ = self.emit_with_source_locations(GetComputed(loc), [
+        (MemberAccess, loc),
+        (PropertyKey, loc),
+      ])
     }
     ChainMember(obj, prop, loc) => {
       self.compile_optional_chain_expr_body(obj, end_jumps)
       self.emit_chain_short_circuit_guard(end_jumps)
-      let _ = self.emit(GetProperty(prop, loc))
+      let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
+        (MemberAccess, loc),
+      ])
     }
     ChainComputedMember(obj, key, loc) => {
       self.compile_optional_chain_expr_body(obj, end_jumps)
       self.emit_chain_short_circuit_guard(end_jumps)
       self.compile_expr(key)
-      let _ = self.emit(GetComputed(loc))
+      let _ = self.emit_with_source_locations(GetComputed(loc), [
+        (MemberAccess, loc),
+        (PropertyKey, loc),
+      ])
     }
     OptionalCall(callee, args, loc) => {
       // Peel grouping wrappers to recover member receivers for receiver binding,
@@ -2973,16 +3003,21 @@ fn BytecodeBuilder::compile_chain_computed_call(
 fn BytecodeBuilder::compile_identifier_load(
   self : BytecodeBuilder,
   name : String,
-) -> Unit {
+  loc : @token.Loc,
+) -> Unit raise Error {
   match (self.local_slot(name), self.env_slot(name)) {
     (Some(slot), _) => {
       let _ = self.emit(LoadLocal(slot))
     }
     (_, Some(slot)) => {
-      let _ = self.emit(LoadEnvSlot(slot))
+      let _ = self.emit_with_source_locations(LoadEnvSlot(slot), [
+        (BindingAccess, loc),
+      ])
     }
     _ => {
-      let _ = self.emit(LoadName(name))
+      let _ = self.emit_with_source_locations(LoadName(name), [
+        (BindingAccess, loc),
+      ])
     }
   }
 }
@@ -2991,16 +3026,21 @@ fn BytecodeBuilder::compile_identifier_load(
 fn BytecodeBuilder::compile_identifier_store(
   self : BytecodeBuilder,
   name : String,
-) -> Unit {
+  loc : @token.Loc,
+) -> Unit raise Error {
   match (self.local_slot(name), self.env_slot(name)) {
     (Some(slot), _) => {
       let _ = self.emit(StoreLocal(slot))
     }
     (_, Some(slot)) => {
-      let _ = self.emit(StoreEnvSlot(slot))
+      let _ = self.emit_with_source_locations(StoreEnvSlot(slot), [
+        (BindingAccess, loc),
+      ])
     }
     _ => {
-      let _ = self.emit(StoreName(name))
+      let _ = self.emit_with_source_locations(StoreName(name), [
+        (BindingAccess, loc),
+      ])
     }
   }
 }
@@ -3009,16 +3049,21 @@ fn BytecodeBuilder::compile_identifier_store(
 fn BytecodeBuilder::compile_identifier_compound_load(
   self : BytecodeBuilder,
   name : String,
-) -> Unit {
+  loc : @token.Loc,
+) -> Unit raise Error {
   match (self.local_slot(name), self.env_slot(name)) {
     (Some(slot), _) => {
       let _ = self.emit(LoadLocal(slot))
     }
     (_, Some(slot)) => {
-      let _ = self.emit(LoadEnvSlot(slot))
+      let _ = self.emit_with_source_locations(LoadEnvSlot(slot), [
+        (BindingAccess, loc),
+      ])
     }
     _ => {
-      let _ = self.emit(LoadAssignmentName(name))
+      let _ = self.emit_with_source_locations(LoadAssignmentName(name), [
+        (BindingAccess, loc),
+      ])
     }
   }
 }
@@ -3031,7 +3076,7 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
   value : @ast.Expr,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  self.compile_identifier_compound_load(name)
+  self.compile_identifier_compound_load(name, loc)
   let keep_current = match op {
     LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
@@ -3048,7 +3093,7 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
   }
   let _ = self.emit(Pop)
   self.compile_expr(value)
-  self.compile_identifier_store(name)
+  self.compile_identifier_store(name, loc)
   match op {
     LogicalAndAssign =>
       self.patch(keep_current, JumpIfFalseKeep(self.code.length()))
@@ -3071,7 +3116,10 @@ fn BytecodeBuilder::compile_property_logical_assign(
   loc : @token.Loc,
 ) -> Unit raise Error {
   self.compile_expr(obj)
-  let _ = self.emit(ReadPropertyForAssign(prop, member_loc))
+  let _ = self.emit_with_source_locations(
+    ReadPropertyForAssign(prop, member_loc),
+    [(MemberAccess, member_loc)],
+  )
   let keep_current = match op {
     LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
@@ -3088,7 +3136,9 @@ fn BytecodeBuilder::compile_property_logical_assign(
   }
   let _ = self.emit(Pop)
   self.compile_expr(value)
-  let _ = self.emit(SetProperty(prop, loc))
+  let _ = self.emit_with_source_locations(SetProperty(prop, loc), [
+    (MemberAccess, loc),
+  ])
   let end_jump = self.emit(Jump(-1))
   match op {
     LogicalAndAssign =>
@@ -3115,7 +3165,10 @@ fn BytecodeBuilder::compile_computed_logical_assign(
 ) -> Unit raise Error {
   self.compile_expr(obj)
   self.compile_expr(key)
-  let _ = self.emit(ReadComputedForAssign(member_loc))
+  let _ = self.emit_with_source_locations(ReadComputedForAssign(member_loc), [
+    (MemberAccess, member_loc),
+    (PropertyKey, member_loc),
+  ])
   let keep_current = match op {
     LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
@@ -3132,7 +3185,10 @@ fn BytecodeBuilder::compile_computed_logical_assign(
   }
   let _ = self.emit(Pop)
   self.compile_expr(value)
-  let _ = self.emit(SetComputed(loc))
+  let _ = self.emit_with_source_locations(SetComputed(loc), [
+    (MemberAccess, loc),
+    (PropertyKey, loc),
+  ])
   let end_jump = self.emit(Jump(-1))
   match op {
     LogicalAndAssign =>
@@ -3171,10 +3227,12 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
           Add
         }
       }
-      self.compile_identifier_compound_load(name)
+      self.compile_identifier_compound_load(name, loc)
       self.compile_expr(value)
-      let _ = self.emit(BinaryOp(bin_op, loc))
-      self.compile_identifier_store(name)
+      let _ = self.emit_with_source_locations(BinaryOp(bin_op, loc), [
+        (Operator, loc),
+      ])
+      self.compile_identifier_store(name, loc)
     }
   }
 }
@@ -3209,10 +3267,17 @@ fn BytecodeBuilder::compile_property_compound_assign(
     }
   }
   self.compile_expr(obj)
-  let _ = self.emit(ReadPropertyForAssign(prop, member_loc))
+  let _ = self.emit_with_source_locations(
+    ReadPropertyForAssign(prop, member_loc),
+    [(MemberAccess, member_loc)],
+  )
   self.compile_expr(value)
-  let _ = self.emit(BinaryOp(bin_op, loc))
-  let _ = self.emit(SetProperty(prop, loc))
+  let _ = self.emit_with_source_locations(BinaryOp(bin_op, loc), [
+    (Operator, loc),
+  ])
+  let _ = self.emit_with_source_locations(SetProperty(prop, loc), [
+    (MemberAccess, loc),
+  ])
 }
 
 ///|
@@ -3246,10 +3311,18 @@ fn BytecodeBuilder::compile_computed_compound_assign(
   }
   self.compile_expr(obj)
   self.compile_expr(key)
-  let _ = self.emit(ReadComputedForAssign(member_loc))
+  let _ = self.emit_with_source_locations(ReadComputedForAssign(member_loc), [
+    (MemberAccess, member_loc),
+    (PropertyKey, member_loc),
+  ])
   self.compile_expr(value)
-  let _ = self.emit(BinaryOp(bin_op, loc))
-  let _ = self.emit(SetComputed(loc))
+  let _ = self.emit_with_source_locations(BinaryOp(bin_op, loc), [
+    (Operator, loc),
+  ])
+  let _ = self.emit_with_source_locations(SetComputed(loc), [
+    (MemberAccess, loc),
+    (PropertyKey, loc),
+  ])
 }
 
 ///|
@@ -3609,14 +3682,20 @@ fn BytecodeBuilder::compile_object_lit(
       match prop.kind {
         Spread => {
           self.compile_expr(prop.key)
-          let _ = self.emit(ObjectSpread(loc))
+          let spread_loc = bytecode_expr_loc(prop.key)
+          let _ = self.emit_with_source_locations(ObjectSpread(loc), [
+            (Spread, spread_loc),
+          ])
           continue
         }
         Init => ()
         Get | Set => {
           if prop.computed {
             self.compile_expr(prop.key)
-            let _ = self.emit(ToObjectLiteralPropertyKey)
+            let _ = self.emit_with_source_locations(
+              ToObjectLiteralPropertyKey,
+              [(PropertyKey, bytecode_expr_loc(prop.key))],
+            )
             self.compile_object_method(prop, computed_key_on_stack=true)
             match prop.kind {
               Get => {
@@ -3658,7 +3737,10 @@ fn BytecodeBuilder::compile_object_lit(
       if prop.is_method {
         if prop.computed {
           self.compile_expr(prop.key)
-          let _ = self.emit(ToObjectLiteralPropertyKey)
+          let _ = self.emit_with_source_locations(
+            ToObjectLiteralPropertyKey,
+            [(PropertyKey, bytecode_expr_loc(prop.key))],
+          )
           self.compile_object_method(prop, computed_key_on_stack=true)
           let _ = self.emit(ObjectSetComputed)
           continue
@@ -3688,7 +3770,9 @@ fn BytecodeBuilder::compile_object_lit(
       }
       if prop.computed {
         self.compile_expr(prop.key)
-        let _ = self.emit(ToObjectLiteralPropertyKey)
+        let _ = self.emit_with_source_locations(ToObjectLiteralPropertyKey, [
+          (PropertyKey, bytecode_expr_loc(prop.key)),
+        ])
         bytecode_reject_object_data_property_super(prop.value)
         self.compile_expr(prop.value)
         let _ = self.emit(ObjectSetComputed)
@@ -3913,9 +3997,11 @@ fn BytecodeBuilder::compile_expr_body(
           ", col " +
           loc.col.to_string(),
       )
-    ThisExpr(_) => {
+    ThisExpr(loc) => {
       self.has_this = true
-      let _ = self.emit(LoadThis)
+      let _ = self.emit_with_source_locations(LoadThis, [
+        (BindingAccess, loc),
+      ])
     }
     NewTargetExpr(_) => {
       self.has_new_target = true
@@ -3924,60 +4010,84 @@ fn BytecodeBuilder::compile_expr_body(
     SuperCall(_, loc) => bytecode_reject(SuperCall, loc)
     SuperMember(prop, loc) => {
       self.has_this = true
-      let _ = self.emit(LoadSuperProperty(prop, loc))
+      let _ = self.emit_with_source_locations(LoadSuperProperty(prop, loc), [
+        (SuperMemberAccess, loc),
+      ])
     }
     SuperComputedMember(key, loc) => {
       self.has_this = true
       // GetThisBinding precedes evaluation of the computed key. Pop preserves
       // the existing LoadSuperComputed stack contract (key only).
-      let _ = self.emit(LoadThis)
+      let _ = self.emit_with_source_locations(LoadThis, [
+        (BindingAccess, loc),
+      ])
       let _ = self.emit(Pop)
       self.compile_expr(key)
-      let _ = self.emit(LoadSuperComputed(loc))
+      let _ = self.emit_with_source_locations(LoadSuperComputed(loc), [
+        (SuperMemberAccess, loc),
+        (PropertyKey, loc),
+      ])
     }
     SuperMemberAssign(_, _, loc) | SuperComputedAssign(_, _, loc) =>
       bytecode_reject(SuperAssignment, loc)
-    Ident(name, _) => self.compile_identifier_load(name)
+    Ident(name, loc) => self.compile_identifier_load(name, loc)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
     Binary(NullishCoalesce, left, right, _) =>
       self.compile_nullish_coalesce(left, right)
-    Unary(Delete, Member(obj, prop, _), _) => {
+    Unary(Delete, Member(obj, prop, member_loc), _) => {
       self.compile_expr(obj)
-      let _ = self.emit(DeleteProperty(prop))
+      let _ = self.emit_with_source_locations(DeleteProperty(prop), [
+        (MemberAccess, member_loc),
+      ])
     }
-    Unary(Delete, ComputedMember(obj, key, _), _) => {
+    Unary(Delete, ComputedMember(obj, key, member_loc), _) => {
       self.compile_expr(obj)
       self.compile_expr(key)
-      let _ = self.emit(DeleteComputed)
+      let _ = self.emit_with_source_locations(DeleteComputed, [
+        (MemberAccess, member_loc),
+        (PropertyKey, member_loc),
+      ])
     }
-    Unary(Delete, Ident(name, _), _) =>
+    Unary(Delete, Ident(name, ident_loc), _) =>
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(_), _) | (_, Some(_)) => {
           let _ = self.emit(LoadConst(Value::Bool(false)))
         }
         _ => {
-          let _ = self.emit(DeleteName(name))
+          let _ = self.emit_with_source_locations(DeleteName(name), [
+            (BindingAccess, ident_loc),
+          ])
         }
       }
     Unary(Delete, _, loc) => bytecode_reject(DeleteNonPropertyOperator, loc)
-    Unary(Typeof, Ident(name, _), loc) =>
+    Unary(Typeof, Ident(name, ident_loc), loc) =>
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(slot), _) => {
           let _ = self.emit(LoadLocal(slot))
-          let _ = self.emit(UnaryValueOp(Typeof, loc))
+          let _ = self.emit_with_source_locations(UnaryValueOp(Typeof, loc), [
+            (Operator, loc),
+          ])
         }
         (_, Some(slot)) => {
-          let _ = self.emit(LoadEnvSlot(slot))
-          let _ = self.emit(UnaryValueOp(Typeof, loc))
+          let _ = self.emit_with_source_locations(LoadEnvSlot(slot), [
+            (BindingAccess, ident_loc),
+          ])
+          let _ = self.emit_with_source_locations(UnaryValueOp(Typeof, loc), [
+            (Operator, loc),
+          ])
         }
         _ => {
-          let _ = self.emit(TypeofName(name))
+          let _ = self.emit_with_source_locations(TypeofName(name), [
+            (BindingAccess, ident_loc),
+          ])
         }
       }
     Unary(Typeof, operand, loc) => {
       self.compile_expr(operand)
-      let _ = self.emit(UnaryValueOp(Typeof, loc))
+      let _ = self.emit_with_source_locations(UnaryValueOp(Typeof, loc), [
+        (Operator, loc),
+      ])
     }
     Unary(Void, operand, _) => {
       self.compile_expr(operand)
@@ -3986,7 +4096,9 @@ fn BytecodeBuilder::compile_expr_body(
     }
     Unary(op, operand, loc) => {
       self.compile_expr(operand)
-      let _ = self.emit(UnaryValueOp(op, loc))
+      let _ = self.emit_with_source_locations(UnaryValueOp(op, loc), [
+        (Operator, loc),
+      ])
     }
     Ternary(cond, then_expr, else_expr, _) => {
       self.compile_expr(cond)
@@ -4000,7 +4112,9 @@ fn BytecodeBuilder::compile_expr_body(
     Binary(op, left, right, loc) => {
       self.compile_expr(left)
       self.compile_expr(right)
-      let _ = self.emit(BinaryOp(op, loc))
+      let _ = self.emit_with_source_locations(BinaryOp(op, loc), [
+        (Operator, loc),
+      ])
     }
     Comma(left, right, _) => {
       self.compile_expr_for_effect(left)
@@ -4026,7 +4140,9 @@ fn BytecodeBuilder::compile_expr_body(
         } else {
           ""
         }
-        let _ = self.emit(AppendTemplate(tail_cooked))
+        let _ = self.emit_with_source_locations(AppendTemplate(tail_cooked), [
+          (Operator, bytecode_expr_loc(expr)),
+        ])
       }
     }
     TaggedTemplate(Member(obj, prop, member_loc), quasis, exprs, loc) => {
@@ -4070,35 +4186,58 @@ fn BytecodeBuilder::compile_expr_body(
     DestructureAssign(pattern, value, loc) => {
       bytecode_validate_destructure_assignment_pattern(pattern, loc)
       self.compile_expr(value)
-      let _ = self.emit(AssignPattern(pattern))
+      let _ = self.emit_with_source_locations(AssignPattern(pattern), [
+        (BindingAccess, loc),
+        (MemberAccess, loc),
+        (Iterator, loc),
+      ])
     }
-    Assign(name, value, _) => {
+    Assign(name, value, loc) => {
       self.compile_expr(value)
       if bytecode_is_anonymous_function_definition(value) {
         let _ = self.emit(SetFunctionName(name))
       }
-      self.compile_identifier_store(name)
+      self.compile_identifier_store(name, loc)
     }
-    UpdateExpr(op, Ident(name, _), prefix, loc) =>
+    UpdateExpr(op, Ident(name, ident_loc), prefix, loc) =>
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(slot), _) => {
-          let _ = self.emit(UpdateLocal(slot, op, prefix))
+          let _ = self.emit_with_source_locations(
+            UpdateLocal(slot, op, prefix),
+            [(BindingAccess, ident_loc), (Operator, loc)],
+          )
         }
         (_, Some(slot)) => {
-          let _ = self.emit(UpdateEnvSlot(slot, op, prefix))
+          let _ = self.emit_with_source_locations(
+            UpdateEnvSlot(slot, op, prefix),
+            [(BindingAccess, ident_loc), (Operator, loc)],
+          )
         }
         _ => {
-          let _ = self.emit(UpdateName(name, op, prefix, loc))
+          let _ = self.emit_with_source_locations(
+            UpdateName(name, op, prefix, loc),
+            [(BindingAccess, ident_loc), (Operator, loc)],
+          )
         }
       }
     UpdateExpr(op, Member(obj, prop, member_loc), prefix, loc) => {
       self.compile_expr(obj)
-      let _ = self.emit(UpdateProperty(prop, op, prefix, member_loc, loc))
+      let _ = self.emit_with_source_locations(
+        UpdateProperty(prop, op, prefix, member_loc, loc),
+        [(MemberAccess, member_loc), (Operator, loc)],
+      )
     }
     UpdateExpr(op, ComputedMember(obj, key, member_loc), prefix, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
-      let _ = self.emit(UpdateComputed(op, prefix, member_loc, loc))
+      let _ = self.emit_with_source_locations(
+        UpdateComputed(op, prefix, member_loc, loc),
+        [
+          (MemberAccess, member_loc),
+          (PropertyKey, member_loc),
+          (Operator, loc),
+        ],
+      )
     }
     UpdateExpr(_, target, _, loc) =>
       match target {
@@ -4196,7 +4335,10 @@ fn BytecodeBuilder::compile_expr_body(
             }
             SpreadExpr(inner, loc) => {
               self.compile_expr(inner)
-              let _ = self.emit(ArrayPushSpread(loc))
+              let _ = self.emit_with_source_locations(ArrayPushSpread(loc), [
+                (Spread, loc),
+                (Iterator, loc),
+              ])
             }
             _ => {
               self.compile_expr(element)
@@ -4222,17 +4364,24 @@ fn BytecodeBuilder::compile_expr_body(
         }
       }
     }
-    Member(Ident("console", _), prop, _) => {
-      let _ = self.emit(LoadConsoleMember(prop))
+    Member(Ident("console", _), prop, loc) => {
+      let _ = self.emit_with_source_locations(LoadConsoleMember(prop), [
+        (MemberAccess, loc),
+      ])
     }
     Member(obj, prop, loc) => {
       self.compile_expr(obj)
-      let _ = self.emit(GetProperty(prop, loc))
+      let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
+        (MemberAccess, loc),
+      ])
     }
     ComputedMember(obj, key, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
-      let _ = self.emit(GetComputed(loc))
+      let _ = self.emit_with_source_locations(GetComputed(loc), [
+        (MemberAccess, loc),
+        (PropertyKey, loc),
+      ])
     }
     OptionalMember(obj, prop, loc) =>
       self.compile_optional_member(obj, prop, loc)
@@ -4244,13 +4393,18 @@ fn BytecodeBuilder::compile_expr_body(
     MemberAssign(obj, prop, value, loc) => {
       self.compile_expr(obj)
       self.compile_expr(value)
-      let _ = self.emit(SetProperty(prop, loc))
+      let _ = self.emit_with_source_locations(SetProperty(prop, loc), [
+        (MemberAccess, loc),
+      ])
     }
     ComputedAssign(obj, key, value, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
       self.compile_expr(value)
-      let _ = self.emit(SetComputed(loc))
+      let _ = self.emit_with_source_locations(SetComputed(loc), [
+        (MemberAccess, loc),
+        (PropertyKey, loc),
+      ])
     }
     NewExpr(callee, args, loc) => {
       self.compile_expr(callee)
@@ -4318,8 +4472,10 @@ fn BytecodeBuilder::compile_expr_body(
           )
         _ => self.compile_optional_plain_call(callee, args, loc)
       }
-    Call(Member(Ident("console", _), prop, _), args, loc) => {
-      let _ = self.emit(LoadConsoleMember(prop))
+    Call(Member(Ident("console", _), prop, member_loc), args, loc) => {
+      let _ = self.emit_with_source_locations(LoadConsoleMember(prop), [
+        (MemberAccess, member_loc),
+      ])
       self.emit_call(args, loc)
     }
     Call(SuperMember(prop, member_loc), args, loc) => {
@@ -4331,7 +4487,9 @@ fn BytecodeBuilder::compile_expr_body(
       self.has_this = true
       // GetThisBinding precedes evaluation of the computed key. Pop preserves
       // PrepareSuperComputedCall's existing key-only stack contract.
-      let _ = self.emit(LoadThis)
+      let _ = self.emit_with_source_locations(LoadThis, [
+        (BindingAccess, member_loc),
+      ])
       let _ = self.emit(Pop)
       self.compile_expr(key)
       self.emit_super_computed_call_prepare(member_loc)

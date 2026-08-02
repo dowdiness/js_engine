@@ -1379,6 +1379,7 @@ test "bytecode gets this before computed super read and call keys" {
         }
         stage = 0
       }
+      ObserveStatement(_) | ObserveExpression(_) => ()
       _ => stage = 0
     }
   }
