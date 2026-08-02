@@ -17,7 +17,7 @@ priv struct BytecodeFrame {
   mut ip : Int
   mut completion : Value
   mut optional_chain_short_circuited : Bool
-  mut pending_call_result : Bool
+  mut pending_activation_result : Bool
 }
 
 ///|
@@ -75,7 +75,7 @@ fn BytecodeFrame::BytecodeFrame(
     ip: 0,
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
-    pending_call_result: false,
+    pending_activation_result: false,
   }
 }
 
@@ -144,16 +144,16 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
 }
 
 ///|
-impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_call_result(
+impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activation_result(
   self,
   value,
 ) {
-  guard self.pending_call_result else {
+  guard self.pending_activation_result else {
     raise @errors.InternalError(
-      message="bytecode call result has no pending consumer",
+      message="bytecode activation result has no pending consumer",
     )
   }
-  self.pending_call_result = false
+  self.pending_activation_result = false
   self.stack.push(value)
 }
 
@@ -496,6 +496,10 @@ fn run_bytecode_function(
     @runtime.ExecutorActivationConstruct(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending construct",
+      )
+    @runtime.ExecutorActivationPropertyGet(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending property get",
       )
   }
 }
@@ -926,7 +930,10 @@ fn BytecodeFrame::step_bytecode(
       DeclareFunction(_, _) => ()
       GetProperty(prop, loc) => {
         let obj = frame.pop()
-        stack.push(interp.get_property(obj, prop, loc))
+        frame.pending_activation_result = true
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_property_get(obj, prop, loc),
+        )
       }
       GetComputed(loc) => {
         let key = frame.pop()
@@ -1041,7 +1048,7 @@ fn BytecodeFrame::step_bytecode(
       Call(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
-        frame.pending_call_result = true
+        frame.pending_activation_result = true
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
         )
@@ -1050,7 +1057,7 @@ fn BytecodeFrame::step_bytecode(
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.pending_call_result = true
+        frame.pending_activation_result = true
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, receiver, args, loc),
         )
@@ -1058,7 +1065,7 @@ fn BytecodeFrame::step_bytecode(
       CallSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
-        frame.pending_call_result = true
+        frame.pending_activation_result = true
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
         )
@@ -1067,7 +1074,7 @@ fn BytecodeFrame::step_bytecode(
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.pending_call_result = true
+        frame.pending_activation_result = true
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, receiver, args, loc),
         )
@@ -1075,7 +1082,7 @@ fn BytecodeFrame::step_bytecode(
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let ctor = frame.pop()
-        frame.pending_call_result = true
+        frame.pending_activation_result = true
         return BytecodeFrameSuspended(
           @runtime.executor_activation_construct(ctor, args, loc),
         )
@@ -1083,7 +1090,7 @@ fn BytecodeFrame::step_bytecode(
       ConstructSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let ctor = frame.pop()
-        frame.pending_call_result = true
+        frame.pending_activation_result = true
         return BytecodeFrameSuspended(
           @runtime.executor_activation_construct(ctor, args, loc),
         )
