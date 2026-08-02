@@ -4284,7 +4284,7 @@ fn BytecodeBuilder::compile_expr(
       )
     Call(Member(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
-      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      let _ = self.emit(PreparePlainPropertyCall(prop, member_loc))
       self.emit_call_with_receiver(args, loc)
     }
     Call(ComputedMember(obj, key, member_loc), args, loc) => {

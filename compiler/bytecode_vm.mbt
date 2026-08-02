@@ -5,6 +5,12 @@ priv struct BytecodeForInState {
 }
 
 ///|
+priv enum BytecodeActivationResultDestination {
+  PushValue
+  PushReceiverAndValue(Value)
+}
+
+///|
 priv struct BytecodeFrame {
   func_def : BytecodeFunction
   stack : Array[Value]
@@ -17,7 +23,7 @@ priv struct BytecodeFrame {
   mut ip : Int
   mut completion : Value
   mut optional_chain_short_circuited : Bool
-  mut pending_activation_result : Bool
+  mut pending_activation_result : BytecodeActivationResultDestination?
 }
 
 ///|
@@ -75,7 +81,7 @@ fn BytecodeFrame::BytecodeFrame(
     ip: 0,
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
-    pending_activation_result: false,
+    pending_activation_result: None,
   }
 }
 
@@ -148,13 +154,21 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
   self,
   value,
 ) {
-  guard self.pending_activation_result else {
-    raise @errors.InternalError(
-      message="bytecode activation result has no pending consumer",
-    )
+  let destination = match self.pending_activation_result {
+    Some(destination) => destination
+    None =>
+      raise @errors.InternalError(
+        message="bytecode activation result has no pending consumer",
+      )
   }
-  self.pending_activation_result = false
-  self.stack.push(value)
+  self.pending_activation_result = None
+  match destination {
+    PushValue => self.stack.push(value)
+    PushReceiverAndValue(receiver) => {
+      self.stack.push(receiver)
+      self.stack.push(value)
+    }
+  }
 }
 
 ///|
@@ -930,7 +944,7 @@ fn BytecodeFrame::step_bytecode(
       DeclareFunction(_, _) => ()
       GetProperty(prop, loc) => {
         let obj = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_property_get(obj, prop, loc),
         )
@@ -1010,6 +1024,13 @@ fn BytecodeFrame::step_bytecode(
         stack.push(obj)
         stack.push(callee)
       }
+      PreparePlainPropertyCall(prop, loc) => {
+        let receiver = frame.pop()
+        frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_property_get(receiver, prop, loc),
+        )
+      }
       PrepareComputedCall(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
@@ -1048,7 +1069,7 @@ fn BytecodeFrame::step_bytecode(
       Call(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
         )
@@ -1057,7 +1078,7 @@ fn BytecodeFrame::step_bytecode(
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, receiver, args, loc),
         )
@@ -1065,7 +1086,7 @@ fn BytecodeFrame::step_bytecode(
       CallSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
         )
@@ -1074,7 +1095,7 @@ fn BytecodeFrame::step_bytecode(
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_call(callee, receiver, args, loc),
         )
@@ -1082,7 +1103,7 @@ fn BytecodeFrame::step_bytecode(
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let ctor = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_construct(ctor, args, loc),
         )
@@ -1090,7 +1111,7 @@ fn BytecodeFrame::step_bytecode(
       ConstructSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let ctor = frame.pop()
-        frame.pending_activation_result = true
+        frame.pending_activation_result = Some(PushValue)
         return BytecodeFrameSuspended(
           @runtime.executor_activation_construct(ctor, args, loc),
         )
