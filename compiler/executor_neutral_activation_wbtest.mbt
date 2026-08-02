@@ -83,9 +83,10 @@ test "captured FuncCallMethod forwarding remains non-recursive" {
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
     "delete Function.prototype.call;" +
-    "function target(value){return value;} target.call(null,5);",
+    "function f(n){if(n===0)return 0;return 1+f.call(undefined,n-1);}" +
+    "f.call(undefined,1024);",
   )
-  inspect(result.to_string(), content="5")
+  inspect(result.to_string(), content="1024")
 }
 
 ///|
