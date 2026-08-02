@@ -7,6 +7,81 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+fn assert_legacy_plain_member_call_lowering(
+  code : Array[BytecodeInstr],
+  context : String,
+) -> Bool raise Error {
+  let mut saw_prepare = false
+  let mut saw_receiver_call = false
+  for instr in code {
+    match instr {
+      PreparePropertyCall("step", _) => saw_prepare = true
+      CallWithReceiver(_, _) => saw_receiver_call = true
+      _ => ()
+    }
+  }
+  guard saw_prepare else {
+    fail(context + " must retain PreparePropertyCall")
+  }
+  guard saw_receiver_call else {
+    fail(context + " must retain CallWithReceiver")
+  }
+  true
+}
+
+///|
+test "RED: plain static member calls retain synchronous preparation at root and recursion" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.step();"
+  let lowered = parse_bytecode_for_wb(source)
+  assert_true(
+    assert_legacy_plain_member_call_lowering(
+      lowered.main.code,
+      "root plain member call",
+    ),
+  )
+  let mut saw_recursive_plain_call = false
+  for child in lowered.main.children {
+    if assert_legacy_plain_member_call_lowering(
+      child.code,
+      "recursive plain member call",
+    ) {
+      saw_recursive_plain_call = true
+    }
+  }
+  assert_true(saw_recursive_plain_call)
+}
+
+///|
+// Pre-fix provenance: the exact plain member-call source still routes both
+// property preparation and final receiver invocation synchronously. This is
+// expected to fail at the recorded host-stack boundary until production
+// lowering and delivery ownership are migrated. On this unmodified
+// post-#741 main, native passes at remaining=248 and SIGSEGVs at 249; JS
+// passes at 70 and raises RangeError at 71.
+test "RED: plain static accessor-prepared receiver call reaches synchronous boundary" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.step();"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "RED: static own accessor reads lower through GetProperty" {
   let source = "let remaining = 320;" +
     "let receiver = { get x() {" +
