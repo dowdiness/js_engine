@@ -9,11 +9,20 @@ import {
 // Values
 pub fn parse(String) -> @ast.Program raise
 
+pub fn parse_diagnostic(String) -> Result[@ast.Program, ParseFailure]
+
 pub fn parse_tokens(Array[@token.Token], source? : String) -> @ast.Program raise
 
 // Errors
 
 // Types and methods
+pub struct ParseFailure {
+  cause_ : Error
+  span_ : @token.SourceSpan?
+}
+pub fn ParseFailure::message(Self) -> String
+pub fn ParseFailure::source_span(Self) -> @token.SourceSpan?
+
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   source : String

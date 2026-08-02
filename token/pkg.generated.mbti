@@ -26,6 +26,13 @@ pub(all) struct Loc {
 pub fn Loc::default() -> Self
 pub impl Show for Loc
 
+pub struct SourceSpan {
+  start_ : Loc
+  end_ : Loc
+} derive(Eq, @debug.Debug)
+pub fn SourceSpan::end(Self) -> Loc
+pub fn SourceSpan::start(Self) -> Loc
+
 pub(all) struct Token {
   kind : TokenKind
   loc : Loc
@@ -36,6 +43,7 @@ pub(all) struct Token {
 pub fn Token::Token(TokenKind, Loc, String, lex_form? : LexForm, end_offset? : Int) -> Self
 pub fn Token::eof(Loc) -> Self
 pub fn Token::new(TokenKind, Loc, String, lex_form? : LexForm, end_offset? : Int) -> Self
+pub fn Token::source_span(Self, String) -> SourceSpan?
 pub impl Show for Token
 
 pub(all) enum TokenKind {

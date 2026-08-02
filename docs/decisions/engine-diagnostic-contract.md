@@ -5,8 +5,10 @@ Date: 2026-07-24
 ## Status
 
 Accepted and implemented by the root facade's additive detailed operations.
-The existing `EngineError` surface remains unchanged. Source locations remain
-absent until trustworthy parser/runtime location propagation is implemented.
+The existing `EngineError` surface remains unchanged. Parser failures raised
+through the located expectation boundary carry a source range; parser failures
+outside that boundary and runtime failures remain locationless until trustworthy
+propagation is implemented for those paths.
 
 ## Context
 
@@ -262,20 +264,23 @@ failure comes from generated code, a host callback, an internal invariant, or
 another source that cannot be attributed faithfully, source identity and
 location are omitted as appropriate.
 
-Today, parser failures are converted to strings and runtime JavaScript errors
-and thrown values do not carry a structured source location through the
-`Engine` boundary. The first implementation must therefore omit unavailable
-locations. It must not parse line or column text out of messages, inspect a
+The parser now materializes semantic source spans for failures raised through
+its located expectation boundary. Detailed `eval`, bounded `eval`, and one-shot
+`run` operations translate those spans into the stable coordinate model. Lexer
+failures, parser failures not yet raised through that boundary, runtime
+JavaScript errors, and thrown values still omit unavailable locations. The
+implementation must not parse line or column text out of messages, inspect a
 target-specific stack string, or guess from the current instruction. Later
-location work requires the parser and runtime to preserve structured positions
-explicitly.
+location work requires each remaining producer to preserve structured
+positions explicitly.
 
 ## Current failure matrix
 
-This table maps every current path into the future portable fields. "Dynamic"
-means the diagnostic must snapshot the actual state; it is not a fixed
-property of the kind. Locations are omitted today for all rows because the
-current `Engine` boundary does not retain a trustworthy structured location.
+This table maps every current path into the portable fields. "Dynamic" means
+the diagnostic must snapshot the actual state; it is not a fixed property of
+the kind. Parse failures raised through the located expectation boundary carry
+a location; all other rows omit locations until their producers retain
+trustworthy structured ranges.
 
 | Current failure path | Kind | Operation | Phase | Source identity | Engine integrity | Retained effects | Pending jobs | Evidence |
 |---|---|---|---|---|---|---|---|---|

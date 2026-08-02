@@ -66,6 +66,34 @@ test "external consumer can call the bounded eval facade" {
 }
 
 ///|
+test "bounded eval preserves parser source ranges" {
+  let engine = @js_engine.Engine()
+  let result = engine.eval_bounded(
+    "let =",
+    policy(256L, 8L, @js_engine.InterruptionHandle()),
+    source_id="bounded-parse.js",
+  )
+  match result {
+    Ok(_) => fail("expected bounded parse failure")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="parse-error")
+      inspect(diagnostic.phase_code(), content="parse")
+      guard diagnostic.source_location() is Some(location) else {
+        fail("expected bounded parser source location")
+      }
+      let start = location.start()
+      json_inspect([start.line(), start.column(), start.offset()], content=[
+        1, 5, 4,
+      ])
+      guard location.end() is Some(end) else {
+        fail("expected bounded parser source range end")
+      }
+      json_inspect([end.line(), end.column(), end.offset()], content=[1, 6, 5])
+    }
+  }
+}
+
+///|
 test "bounded eval preserves a finite exact result below the depth limit" {
   let engine = @js_engine.Engine()
   let interruption = @js_engine.InterruptionHandle()

@@ -78,6 +78,7 @@ fn EngineDiagnostic::EngineDiagnostic(
   operation_code~ : String,
   phase_code~ : String,
   source_identity~ : String?,
+  source_location? : SourceLocation? = None,
   engine_integrity~ : EngineIntegrity,
   retained_effects~ : RetainedEffects,
   pending_jobs~ : PendingJobs,
@@ -88,7 +89,7 @@ fn EngineDiagnostic::EngineDiagnostic(
     operation_code_: operation_code,
     phase_code_: phase_code,
     source_identity_: source_identity,
-    source_location_: None,
+    source_location_: source_location,
     engine_integrity_: engine_integrity,
     retained_effects_: retained_effects,
     pending_jobs_: pending_jobs,
@@ -296,6 +297,7 @@ fn Engine::eval_failure(
   phase : String,
   source_id : String?,
   effects : RetainedEffects,
+  source_location? : SourceLocation? = None,
 ) -> EngineDiagnostic {
   EngineDiagnostic(
     failure_kind_code=kind,
@@ -303,10 +305,29 @@ fn Engine::eval_failure(
     operation_code="eval",
     phase_code=phase,
     source_identity=source_id,
+    source_location~,
     engine_integrity=EngineIntegrity::Reusable,
     retained_effects=effects,
     pending_jobs=self.pending_jobs_snapshot(),
   )
+}
+
+///|
+/// Translate the parser's semantic source span into the stable facade types.
+fn parse_failure_location(failure : @parser.ParseFailure) -> SourceLocation? {
+  match failure.source_span() {
+    None => None
+    Some(span) => {
+      let span_start = span.start()
+      let span_end = span.end()
+      Some(
+        SourceLocation(
+          SourcePosition(span_start.line, span_start.col, span_start.offset),
+          Some(SourcePosition(span_end.line, span_end.col, span_end.offset)),
+        ),
+      )
+    }
+  }
 }
 
 ///|
@@ -366,15 +387,17 @@ pub fn Engine::eval_bounded(
   policy : @runtime.ExecutionPolicy,
   source_id? : String,
 ) -> Result[Unit, EngineDiagnostic] {
-  let program = @parser.parse(source) catch {
-    err =>
+  let program = match @parser.parse_diagnostic(source) {
+    Ok(program) => program
+    Err(failure) =>
       return Err(
         self.eval_failure(
           "parse-error",
-          err.to_string(),
+          failure.message(),
           "parse",
           source_id,
           RetainedEffects::None,
+          source_location=parse_failure_location(failure),
         ),
       )
   }
@@ -438,15 +461,17 @@ pub fn Engine::eval_diagnostic(
   source : String,
   source_id? : String,
 ) -> Result[Unit, EngineDiagnostic] {
-  let program = @parser.parse(source) catch {
-    err =>
+  let program = match @parser.parse_diagnostic(source) {
+    Ok(program) => program
+    Err(failure) =>
       return Err(
         self.eval_failure(
           "parse-error",
-          err.to_string(),
+          failure.message(),
           "parse",
           source_id,
           RetainedEffects::None,
+          source_location=parse_failure_location(failure),
         ),
       )
   }
@@ -489,6 +514,7 @@ fn make_engine_diagnostic(
   operation_code~ : String,
   phase_code~ : String,
   source_identity~ : String?,
+  source_location? : SourceLocation? = None,
   engine_integrity~ : EngineIntegrity,
   retained_effects~ : RetainedEffects,
   pending_jobs~ : PendingJobs,
@@ -499,6 +525,7 @@ fn make_engine_diagnostic(
     operation_code~,
     phase_code~,
     source_identity~,
+    source_location~,
     engine_integrity~,
     retained_effects~,
     pending_jobs~,
@@ -1137,15 +1164,17 @@ pub fn run_diagnostic(
   annex_b? : Bool = false,
 ) -> Result[(Array[String], String), EngineDiagnostic] {
   let interp = @interpreter.new_interpreter(annex_b~)
-  let program = @parser.parse(source) catch {
-    err =>
+  let program = match @parser.parse_diagnostic(source) {
+    Ok(program) => program
+    Err(failure) =>
       return Err(
         make_engine_diagnostic(
           failure_kind_code="parse-error",
-          message=err.to_string(),
+          message=failure.message(),
           operation_code="run",
           phase_code="parse",
           source_identity=source_id,
+          source_location=parse_failure_location(failure),
           engine_integrity=EngineIntegrity::NotApplicable,
           retained_effects=RetainedEffects::None,
           pending_jobs=PendingJobs::Unknown,

@@ -1633,6 +1633,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let name = name_buf.to_string()
       let raw = "#" + name
       tokens.push(@token.Token(PrivateName(name), loc, raw))
+      astral_count += name.length() - name.char_length()
       offset = start_offset
       col += col_offset
       continue
