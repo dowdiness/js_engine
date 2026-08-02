@@ -170,7 +170,7 @@ fn expect_parse_ok(source : String) -> Unit raise Error {
 }
 
 ///|
-test "parse diagnostic preserves a token span and legacy error surface" {
+test "parse diagnostic preserves a source span and legacy error surface" {
   match @parser.parse_diagnostic("let =") {
     Ok(_) => fail("expected parse diagnostic failure")
     Err(failure) => {
@@ -180,10 +180,14 @@ test "parse diagnostic preserves a token span and legacy error surface" {
       )
       match failure.source_span() {
         None => fail("expected parser token span")
-        Some((start, end_offset)) =>
-          json_inspect([start.line, start.col, start.offset, end_offset], content=[
-            1, 5, 4, 5,
-          ])
+        Some(span) => {
+          let start = span.start()
+          let end = span.end()
+          json_inspect(
+            [start.line, start.col, start.offset, end.line, end.col, end.offset],
+            content=[1, 5, 4, 1, 6, 5],
+          )
+        }
       }
     }
   }

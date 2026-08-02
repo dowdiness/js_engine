@@ -147,10 +147,11 @@ facade. The first structured-diagnostic delivery now covers its current failure
 categories. New diagnostic kinds must follow that decision's evolution rules
 rather than being treated as automatically source-compatible.
 
-Token-attributable parser failures now preserve structured source ranges across
-detailed `eval`, bounded `eval`, and one-shot `run`. Lexer failures, parser
-failures outside the located expectation boundary, and runtime failures remain
-locationless until their producers retain equally trustworthy ranges.
+Parser failures raised through the located expectation boundary now preserve
+structured source ranges across detailed `eval`, bounded `eval`, and one-shot
+`run`. Lexer failures, parser failures outside that boundary, and runtime
+failures remain locationless until their producers retain equally trustworthy
+ranges.
 
 ### Completed baseline — v0.6.0 release
 

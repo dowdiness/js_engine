@@ -16,6 +16,23 @@ pub fn Loc::default() -> Loc noraise {
 }
 
 ///|
+/// A half-open source range expressed in JavaScript source coordinates.
+pub struct SourceSpan {
+  start_ : Loc
+  end_ : Loc
+} derive(Eq, Debug)
+
+///|
+pub fn SourceSpan::start(self : SourceSpan) -> Loc {
+  self.start_
+}
+
+///|
+pub fn SourceSpan::end(self : SourceSpan) -> Loc {
+  self.end_
+}
+
+///|
 pub(all) enum LexForm {
   LexNormal
   StringLegacyOctalEscape
@@ -214,4 +231,30 @@ pub fn Token::new(
 ///|
 pub fn Token::eof(loc : Loc) -> Token noraise {
   Token(EOF, loc, "", end_offset=loc.offset)
+}
+
+///|
+/// Resolve this token's half-open source range. Offsets are UTF-16 code units,
+/// columns count Unicode scalar values, and CRLF is treated as one line break.
+/// Returns `None` when the token offsets do not describe a slice of `source`.
+pub fn Token::source_span(self : Token, source : String) -> SourceSpan? {
+  guard source.get_view(start=self.loc.offset, end=self.end_offset)
+    is Some(token_source) else {
+    return None
+  }
+  let (line, col, _) = token_source.fold(
+    init=(self.loc.line, self.loc.col, false),
+    (state, char) => {
+      let (line, col, previous_was_cr) = state
+      if previous_was_cr && char == '\n' {
+        (line, col, false)
+      } else {
+        match char.to_int() {
+          0x0A | 0x0D | 0x2028 | 0x2029 => (line + 1, 1, char == '\r')
+          _ => (line, col + 1, false)
+        }
+      }
+    },
+  )
+  Some({ start_: self.loc, end_: { line, col, offset: self.end_offset } })
 }

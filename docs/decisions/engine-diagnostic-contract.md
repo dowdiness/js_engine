@@ -5,9 +5,9 @@ Date: 2026-07-24
 ## Status
 
 Accepted and implemented by the root facade's additive detailed operations.
-The existing `EngineError` surface remains unchanged. Detailed parse failures
-carry a source range when the parser can attribute the failure to a specific
-token; other parser and runtime locations remain absent until trustworthy
+The existing `EngineError` surface remains unchanged. Parser failures raised
+through the located expectation boundary carry a source range; parser failures
+outside that boundary and runtime failures remain locationless until trustworthy
 propagation is implemented for those paths.
 
 ## Context
@@ -264,9 +264,9 @@ failure comes from generated code, a host callback, an internal invariant, or
 another source that cannot be attributed faithfully, source identity and
 location are omitted as appropriate.
 
-The parser now preserves token ranges for failures raised through its located
-expectation boundary. Detailed `eval`, bounded `eval`, and one-shot `run`
-operations translate those ranges into the stable coordinate model. Lexer
+The parser now materializes semantic source spans for failures raised through
+its located expectation boundary. Detailed `eval`, bounded `eval`, and one-shot
+`run` operations translate those spans into the stable coordinate model. Lexer
 failures, parser failures not yet raised through that boundary, runtime
 JavaScript errors, and thrown values still omit unavailable locations. The
 implementation must not parse line or column text out of messages, inspect a
@@ -278,8 +278,9 @@ positions explicitly.
 
 This table maps every current path into the portable fields. "Dynamic" means
 the diagnostic must snapshot the actual state; it is not a fixed property of
-the kind. Token-attributable parse failures carry a location; all other rows
-omit locations until their producers retain trustworthy structured ranges.
+the kind. Parse failures raised through the located expectation boundary carry
+a location; all other rows omit locations until their producers retain
+trustworthy structured ranges.
 
 | Current failure path | Kind | Operation | Phase | Source identity | Engine integrity | Retained effects | Pending jobs | Evidence |
 |---|---|---|---|---|---|---|---|---|

@@ -46,18 +46,18 @@ fn is_reserved_word(name : String) -> Bool {
 }
 
 ///|
-/// A parser failure with an optional trustworthy token range.
+/// A parser failure with an optional trustworthy source span.
 pub struct ParseFailure {
   cause_ : Error
-  token_ : @token.Token?
+  span_ : @token.SourceSpan?
 }
 
 ///|
 fn ParseFailure::ParseFailure(
   cause : Error,
-  token : @token.Token?,
+  span : @token.SourceSpan?,
 ) -> ParseFailure {
-  { cause_: cause, token_: token }
+  { cause_: cause, span_: span }
 }
 
 ///|
@@ -66,8 +66,8 @@ pub fn ParseFailure::message(self : ParseFailure) -> String {
 }
 
 ///|
-pub fn ParseFailure::source_span(self : ParseFailure) -> (@token.Loc, Int)? {
-  self.token_.map(token => (token.loc, token.end_offset))
+pub fn ParseFailure::source_span(self : ParseFailure) -> @token.SourceSpan? {
+  self.span_
 }
 
 ///|
@@ -427,7 +427,9 @@ pub fn parse_diagnostic(source : String) -> Result[@ast.Program, ParseFailure] {
   }
   Ok(parse_tokens_located(tokens, source~)) catch {
     LocatedSyntaxError(message~, token~) =>
-      Err(ParseFailure(@errors.SyntaxError(message~), Some(token)))
+      Err(
+        ParseFailure(@errors.SyntaxError(message~), token.source_span(source)),
+      )
     error => Err(ParseFailure(error, None))
   }
 }

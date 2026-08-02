@@ -313,43 +313,17 @@ fn Engine::eval_failure(
 }
 
 ///|
-/// Convert a lexer token's exclusive UTF-16 offset into the public coordinate
-/// convention while preserving scalar-based line columns.
-fn source_position_after(
-  source : String,
-  start : SourcePosition,
-  end_offset : Int,
-) -> SourcePosition {
-  let (line, column, _) = source
-    .view(start_offset=start.offset(), end_offset~)
-    .fold(init=(start.line(), start.column(), false), (state, char) => {
-      let (line, column, previous_was_cr) = state
-      if previous_was_cr && char == '\n' {
-        (line, column, false)
-      } else {
-        match char.to_int() {
-          0x0A | 0x0D | 0x2028 | 0x2029 => (line + 1, 1, char == '\r')
-          _ => (line, column + 1, false)
-        }
-      }
-    })
-  SourcePosition(line, column, end_offset)
-}
-
-///|
-/// Translate parser-owned token coordinates into the stable facade types.
-fn parse_failure_location(
-  source : String,
-  failure : @parser.ParseFailure,
-) -> SourceLocation? {
+/// Translate the parser's semantic source span into the stable facade types.
+fn parse_failure_location(failure : @parser.ParseFailure) -> SourceLocation? {
   match failure.source_span() {
     None => None
-    Some((loc, end_offset)) => {
-      let start = SourcePosition(loc.line, loc.col, loc.offset)
+    Some(span) => {
+      let span_start = span.start()
+      let span_end = span.end()
       Some(
         SourceLocation(
-          start,
-          Some(source_position_after(source, start, end_offset)),
+          SourcePosition(span_start.line, span_start.col, span_start.offset),
+          Some(SourcePosition(span_end.line, span_end.col, span_end.offset)),
         ),
       )
     }
@@ -423,7 +397,7 @@ pub fn Engine::eval_bounded(
           "parse",
           source_id,
           RetainedEffects::None,
-          source_location=parse_failure_location(source, failure),
+          source_location=parse_failure_location(failure),
         ),
       )
   }
@@ -497,7 +471,7 @@ pub fn Engine::eval_diagnostic(
           "parse",
           source_id,
           RetainedEffects::None,
-          source_location=parse_failure_location(source, failure),
+          source_location=parse_failure_location(failure),
         ),
       )
   }
@@ -1200,7 +1174,7 @@ pub fn run_diagnostic(
           operation_code="run",
           phase_code="parse",
           source_identity=source_id,
-          source_location=parse_failure_location(source, failure),
+          source_location=parse_failure_location(failure),
           engine_integrity=EngineIntegrity::NotApplicable,
           retained_effects=RetainedEffects::None,
           pending_jobs=PendingJobs::Unknown,
