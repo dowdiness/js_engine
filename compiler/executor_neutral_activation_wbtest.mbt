@@ -42,6 +42,34 @@ fn legacy_property_prepare_count(code : Array[BytecodeInstr]) -> Int {
 }
 
 ///|
+fn assert_grouped_optional_member_source_for_wb(
+  source : String,
+) -> Unit raise Error {
+  let program = @parser.parse(source)
+  guard program.stmts.length() == 1 else {
+    fail("grouped optional member fixture must contain one statement")
+  }
+  match program.stmts[0] {
+    @ast.ExprStmt(
+      @ast.ChainMember(
+        @ast.OptionalCall(
+          @ast.Grouping(@ast.Member(@ast.Ident("receiver", _), "step", _), _),
+          _,
+          _
+        ),
+        "next",
+        _
+      ),
+      _
+    ) => ()
+    _ =>
+      fail(
+        "grouped optional member fixture must parse as ChainMember(OptionalCall(Grouping(Member)))",
+      )
+  }
+}
+
+///|
 test "plain static member calls use suspended preparation at root and recursion" {
   let source = "let remaining = 320;" +
     "let receiver = { get step() {" +
@@ -76,7 +104,9 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
   let plain = parse_bytecode_for_wb(prefix + "receiver.step();")
   let optional = parse_bytecode_for_wb(prefix + "receiver?.step();")
   let optional_callee = parse_bytecode_for_wb(prefix + "receiver?.step?.();")
-  let grouped = parse_bytecode_for_wb(prefix + "receiver.step?.();")
+  let grouped_source = "(receiver.step)?.().next;"
+  assert_grouped_optional_member_source_for_wb(grouped_source)
+  let grouped = parse_bytecode_for_wb(prefix + grouped_source)
   let chain = parse_bytecode_for_wb(prefix + "receiver?.step.next();")
   let tagged = parse_bytecode_for_wb(prefix + "receiver.step`tag`;")
   let mut saw_plain = false
@@ -89,7 +119,18 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
   assert_true(saw_plain)
   assert_true(legacy_property_prepare_count(optional.main.code) >= 1)
   assert_true(legacy_property_prepare_count(optional_callee.main.code) >= 1)
-  assert_true(legacy_property_prepare_count(grouped.main.code) >= 1)
+  let mut grouped_receiver_call = false
+  let mut grouped_plain_prepare = false
+  for instr in grouped.main.code {
+    match instr {
+      CallWithReceiver(_, _) => grouped_receiver_call = true
+      PreparePlainPropertyCall(_, _) => grouped_plain_prepare = true
+      _ => ()
+    }
+  }
+  assert_true(grouped_receiver_call)
+  assert_false(grouped_plain_prepare)
+  assert_eq(legacy_property_prepare_count(grouped.main.code), 1)
   assert_true(legacy_property_prepare_count(chain.main.code) >= 1)
   assert_true(legacy_property_prepare_count(tagged.main.code) >= 1)
 }
@@ -131,42 +172,59 @@ test "plain accessor-prepared receiver calls preserve order and receiver identit
 ///|
 test "plain accessor-prepared non-callable result evaluates arguments before TypeError" {
   let interp = @interpreter.new_interpreter()
-  let _ = run_executor_neutral_bytecode(
-    interp,
-    "var trace = '';" +
-    "var receiver = { get step() { trace = trace + 'g'; return 1; } };" +
-    "function argument() { trace = trace + 'a'; return 7; }",
-  )
-  let result = interp.run(
-    @parser.parse(
-      "try { receiver.step(argument()); } catch (error) {" +
-      "trace = trace + (error instanceof TypeError ? 't' : 'x');" +
-      "}" +
-      "trace;",
-    ).stmts,
-  )
-  inspect(result.to_string(), content="gat")
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var trace = '';" +
+      "var receiver = { get step() { trace = trace + 'g'; return 1; } };" +
+      "function argument() { trace = trace + 'a'; return 7; }" +
+      "receiver.step(argument());",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) =>
+      match @runtime.js_error_to_value_with_env(error, Some(interp.global)) {
+        Object(data) => inspect(data.class_name, content="TypeError")
+        _ => fail("expected a JavaScript TypeError object")
+      }
+    None => fail("non-callable receiver call must throw")
+  }
+  let trace = interp.global.get("trace")
+  inspect(trace.to_string(), content="ga")
 }
 
 ///|
 test "plain accessor-prepared getter throw skips arguments and final call" {
   let interp = @interpreter.new_interpreter()
-  let _ = run_executor_neutral_bytecode(
-    interp,
-    "var marker = {}; var trace = '';" +
-    "var receiver = { get step() { trace = trace + 'g'; throw marker; } };" +
-    "function argument() { trace = trace + 'a'; return 7; }" +
-    "function finalCall() { trace = trace + 'c'; }",
-  )
-  let result = interp.run(
-    @parser.parse(
-      "try { receiver.step(argument()); } catch (error) {" +
-      "trace = trace + (error === marker ? 't' : 'x');" +
-      "}" +
-      "trace;",
-    ).stmts,
-  )
-  inspect(result.to_string(), content="gt")
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var marker = {}; var trace = ''; var reads = 0;" +
+      "var receiver = { get step() {" +
+      "trace = trace + 'g'; reads = reads + 1;" +
+      "if (reads === 1) throw marker;" +
+      "return function() { trace = trace + 'c'; };" +
+      "} };" +
+      "function argument() { trace = trace + 'a'; return 7; }" +
+      "receiver.step(argument());",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("getter throw must propagate to the caller")
+  }
+  let trace = interp.global.get("trace")
+  inspect(trace.to_string(), content="g")
+  let reads = interp.global.get("reads")
+  inspect(reads.to_string(), content="1")
 }
 
 ///|
@@ -293,6 +351,29 @@ test "bytecode static own accessor mutual recursion completes deeply" {
     "return 1 + left.x;" +
     "} };" +
     "left.x;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode plain static accessor receiver calls mutually recurse deeply" {
+  let source = "let remaining = 320;" +
+    "let left = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = right.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "let right = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = left.step();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "left.step();"
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
     source,
