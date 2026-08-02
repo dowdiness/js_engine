@@ -151,13 +151,168 @@ priv enum BytecodeInstr {
 
 ///|
 fn bytecode_instruction_contract(
-  _instr : BytecodeInstr,
+  instr : BytecodeInstr,
+) -> BytecodeInstructionContract {
+  match instr {
+    LoadConst(_)
+    | LoadUndefined
+    | LoadNewTarget
+    | LoadLocal(_)
+    | StoreLocal(_)
+    | DefineBinding(_, _, _)
+    | DefineLocal(_, _)
+    | DefineEnvSlot(_, _)
+    | SetCompletion
+    | SetCompletionValue(_)
+    | Pop
+    | Dup
+    | Jump(_)
+    | JumpIfFalse(_)
+    | JumpIfFalseKeep(_)
+    | JumpIfTrueKeep(_)
+    | JumpIfNotNullishKeep(_)
+    | BeginOptionalChain
+    | MarkOptionalChainShortCircuit
+    | JumpIfNotOptionalChainShortCircuitKeep(_)
+    | EndOptionalChain
+    | ForInNext(_)
+    | EndForIn
+    | MakeArray(_)
+    | MakeArrayWithHoles(_, _)
+    | StartArray
+    | ArrayPushValue
+    | ArrayPushHole
+    | StartArgs
+    | ArgPushValue
+    | MakeObject(_)
+    | StartObject
+    | ObjectSetStatic(_)
+    | ObjectSetStaticGetter(_)
+    | ObjectSetStaticSetter(_)
+    | ObjectSetComputedGetter
+    | ObjectSetComputedSetter
+    | ObjectSetComputed
+    | ObjectSetProto
+    | SetFunctionName(_)
+    | DeclareFunction(_, _)
+    | DropPropertyAssignReference
+    | DropComputedAssignReference
+    | Return => bytecode_contract(false, false, [])
+    LoadThis
+    | LoadName(_)
+    | LoadAssignmentName(_)
+    | StoreName(_)
+    | LoadEnvSlot(_)
+    | StoreEnvSlot(_)
+    | TypeofName(_)
+    | DeleteName(_) => bytecode_contract(true, false, [BindingAccess])
+    LoadDirectEvalCallee =>
+      bytecode_contract(true, false, [BindingAccess, DirectEval])
+    LoadConsoleMember(_) => bytecode_contract(true, false, [MemberAccess])
+    LoadSuperProperty(_, _) =>
+      bytecode_contract(true, true, [SuperMemberAccess])
+    LoadSuperComputed(_) =>
+      bytecode_contract(true, true, [SuperMemberAccess, PropertyKey])
+    BinaryOp(op, _) => bytecode_binary_contract(op)
+    UnaryValueOp(op, _) => bytecode_unary_contract(op)
+    DeleteProperty(_) => bytecode_contract(true, true, [MemberAccess])
+    DeleteComputed => bytecode_contract(true, true, [MemberAccess, PropertyKey])
+    AppendTemplate(_) => bytecode_contract(true, true, [Operator])
+    MakeTemplateObject(_) => bytecode_contract(false, false, [])
+    MakeRegExp(_, _) => bytecode_contract(true, false, [])
+    UpdateName(_, _, _, _) | UpdateLocal(_, _, _) | UpdateEnvSlot(_, _, _) =>
+      bytecode_contract(true, true, [BindingAccess, Operator])
+    UpdateProperty(_, _, _, _, _) =>
+      bytecode_contract(true, true, [MemberAccess, Operator])
+    UpdateComputed(_, _, _, _) =>
+      bytecode_contract(true, true, [MemberAccess, PropertyKey, Operator])
+    StartForIn => bytecode_contract(true, true, [Iterator])
+    ArrayPushSpread(_) | ArgPushSpread(_) =>
+      bytecode_contract(true, true, [Spread, Iterator])
+    ToObjectLiteralPropertyKey => bytecode_contract(true, true, [PropertyKey])
+    ObjectSpread(_) => bytecode_contract(true, true, [Spread])
+    MakeFunction(_)
+    | MakeNamedFunction(_, _)
+    | MakeMethodFunction(_)
+    | MakeComputedMethodFunction(_)
+    | MakeArrowFunction(_) => bytecode_contract(true, false, [])
+    GetProperty(_, _)
+    | ReadPropertyForAssign(_, _)
+    | SetProperty(_, _)
+    | SetForInProperty(_, _)
+    | PreparePropertyCall(_, _)
+    | PreparePlainPropertyCall(_, _) =>
+      bytecode_contract(true, true, [MemberAccess])
+    GetComputed(_)
+    | ReadComputedForAssign(_)
+    | SetComputed(_)
+    | SetForInComputed(_)
+    | PrepareComputedCall(_) =>
+      bytecode_contract(true, true, [MemberAccess, PropertyKey])
+    AssignPattern(_) =>
+      bytecode_contract(true, true, [BindingAccess, MemberAccess, Iterator])
+    PrepareSuperPropertyCall(_, _) =>
+      bytecode_contract(true, true, [SuperMemberAccess])
+    PrepareSuperComputedCall(_) =>
+      bytecode_contract(true, true, [SuperMemberAccess, PropertyKey])
+    CallDirectEval(_) => bytecode_contract(true, true, [DirectEval, Call])
+    Call(_, _)
+    | CallWithReceiver(_, _)
+    | CallSpread(_)
+    | CallSpreadWithReceiver(_) => bytecode_contract(true, true, [Call])
+    Construct(_, _) | ConstructSpread(_) =>
+      bytecode_contract(true, true, [Construct])
+    Throw => bytecode_contract(true, false, [Throw])
+  }
+}
+
+///|
+fn bytecode_contract(
+  may_raise_js : Bool,
+  may_invoke_guest : Bool,
+  required_source_roles : Array[SourcePointRole],
 ) -> BytecodeInstructionContract {
   {
-    may_raise_js: false,
-    may_invoke_guest: false,
-    required_source_roles: [],
+    may_raise_js,
+    may_invoke_guest,
+    required_source_roles,
     observation_barrier: NotObservationBarrier,
+  }
+}
+
+///|
+fn bytecode_binary_contract(op : @ast.BinOp) -> BytecodeInstructionContract {
+  match op {
+    EqEqEq | NotEqEq | And | Or | NullishCoalesce =>
+      bytecode_contract(false, false, [Operator])
+    Add
+    | Sub
+    | Mul
+    | Div
+    | Mod
+    | EqEq
+    | NotEq
+    | Lt
+    | Gt
+    | LtEq
+    | GtEq
+    | BitAnd
+    | BitOr
+    | BitXor
+    | LShift
+    | RShift
+    | URShift
+    | Exp
+    | In
+    | Instanceof => bytecode_contract(true, true, [Operator])
+  }
+}
+
+///|
+fn bytecode_unary_contract(op : @ast.UnaryOp) -> BytecodeInstructionContract {
+  match op {
+    Not | Typeof | Void | Delete => bytecode_contract(false, false, [Operator])
+    Neg | Pos | BitNot => bytecode_contract(true, true, [Operator])
   }
 }
 
