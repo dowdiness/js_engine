@@ -1710,6 +1710,8 @@ fn compile_bytecode_function(
     env_var_hoist_names=env_var_hoist_names,
     template_cache_key_prefix=template_cache_key_prefix,
     code=builder.code,
+    source_points=builder.source_points,
+    instruction_sources=builder.instruction_sources,
     children=builder.children,
   )
 }

@@ -5,6 +5,32 @@ using @runtime {type Binding}
 let empty_bytecode_env_slots : Array[Binding] = []
 
 ///|
+priv struct SourcePointId(Int) derive(Eq, Debug)
+
+///|
+priv enum SourcePointRole {
+  StatementEntry
+  ExpressionEntry
+  BindingAccess
+  MemberAccess
+  SuperMemberAccess
+  PropertyKey
+  Operator
+  Call
+  Construct
+  Throw
+  Spread
+  DirectEval
+  Iterator
+} derive(Eq, Debug)
+
+///|
+priv struct SourcePoint {
+  role : SourcePointRole
+  loc : @token.Loc
+} derive(Eq, Debug)
+
+///|
 priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
@@ -138,6 +164,8 @@ priv struct BytecodeFunction {
   env_var_hoist_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
+  source_points : Array[SourcePoint]
+  instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
 }
 
@@ -157,6 +185,8 @@ fn BytecodeFunction::BytecodeFunction(
   env_var_hoist_names~ : Array[String],
   template_cache_key_prefix~ : String,
   code~ : Array[BytecodeInstr],
+  source_points? : Array[SourcePoint] = [],
+  instruction_sources? : Array[Array[SourcePointId]] = [],
   children~ : Array[BytecodeFunction],
 ) -> BytecodeFunction {
   {
@@ -174,6 +204,8 @@ fn BytecodeFunction::BytecodeFunction(
     env_var_hoist_names,
     template_cache_key_prefix,
     code,
+    source_points,
+    instruction_sources,
     children,
   }
 }
@@ -181,6 +213,8 @@ fn BytecodeFunction::BytecodeFunction(
 ///|
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
+  source_points : Array[SourcePoint]
+  instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
   local_names : Array[String]
   local_indices : Map[String, Int]
@@ -250,6 +284,8 @@ fn BytecodeBuilder::BytecodeBuilder(
 ) -> BytecodeBuilder {
   {
     code: [],
+    source_points: [],
+    instruction_sources: [],
     children: [],
     local_names: plan.names,
     local_indices: plan.indices,
@@ -269,6 +305,29 @@ fn BytecodeBuilder::BytecodeBuilder(
 fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
   let idx = self.code.length()
   self.code.push(instr)
+  self.instruction_sources.push([])
+  idx
+}
+
+///|
+fn BytecodeBuilder::allocate_source_point(
+  self : BytecodeBuilder,
+  role : SourcePointRole,
+  loc : @token.Loc,
+) -> SourcePointId {
+  let id = SourcePointId(self.source_points.length())
+  self.source_points.push({ role, loc })
+  id
+}
+
+///|
+fn BytecodeBuilder::emit_with_sources(
+  self : BytecodeBuilder,
+  instr : BytecodeInstr,
+  sources : Array[SourcePointId],
+) -> Int {
+  let idx = self.emit(instr)
+  self.instruction_sources[idx] = sources
   idx
 }
 
