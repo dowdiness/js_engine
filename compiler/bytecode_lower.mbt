@@ -2023,6 +2023,16 @@ fn BytecodeBuilder::compile_stmt(
   stmt : @ast.Stmt,
   declaration_updates_completion? : Bool = true,
 ) -> Unit raise Error {
+  self.emit_statement_observation(bytecode_stmt_loc(stmt))
+  self.compile_stmt_body(stmt, declaration_updates_completion~)
+}
+
+///|
+fn BytecodeBuilder::compile_stmt_body(
+  self : BytecodeBuilder,
+  stmt : @ast.Stmt,
+  declaration_updates_completion? : Bool = true,
+) -> Unit raise Error {
   match stmt {
     ExprStmt(expr, _) => self.compile_expr_for_completion(expr)
     VarDecl(kind, name, init, _) => {
@@ -2330,8 +2340,8 @@ fn BytecodeBuilder::compile_for_init(
 ) -> Unit raise Error {
   match stmt {
     ExprStmt(expr, _) => {
-      self.compile_expr(expr)
-      let _ = self.emit(Pop)
+      self.emit_statement_observation(bytecode_stmt_loc(stmt))
+      self.compile_expr_for_effect(expr)
     }
     VarDecl(_, _, _, _) | StmtList(_, _) => self.compile_stmt(stmt)
     _ => {
@@ -3756,6 +3766,7 @@ fn BytecodeBuilder::compile_expr_for_effect(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {
+  self.emit_expression_observation(bytecode_expr_loc(expr))
   // Only elide expressions whose evaluation cannot throw or trigger user code.
   // Identifier references, calls, member expressions, and object/array/function
   // literals still use the value path and discard the result.
@@ -3771,7 +3782,7 @@ fn BytecodeBuilder::compile_expr_for_effect(
       self.compile_expr_for_effect(right)
     }
     _ => {
-      self.compile_expr(expr)
+      self.compile_expr_body(expr)
       let _ = self.emit(Pop)
     }
   }
@@ -3782,6 +3793,7 @@ fn BytecodeBuilder::compile_expr_for_completion(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {
+  self.emit_expression_observation(bytecode_expr_loc(expr))
   match expr {
     NumberLit(n, _, _) => self.emit_completion_value(Value::Number(n))
     StringLit(s, _, _, _) => self.emit_completion_value(Value::String_(s))
@@ -3794,7 +3806,7 @@ fn BytecodeBuilder::compile_expr_for_completion(
       self.compile_expr_for_completion(right)
     }
     _ => {
-      self.compile_expr(expr)
+      self.compile_expr_body(expr)
       let _ = self.emit(SetCompletion)
     }
   }
@@ -3802,6 +3814,15 @@ fn BytecodeBuilder::compile_expr_for_completion(
 
 ///|
 fn BytecodeBuilder::compile_expr(
+  self : BytecodeBuilder,
+  expr : @ast.Expr,
+) -> Unit raise Error {
+  self.emit_expression_observation(bytecode_expr_loc(expr))
+  self.compile_expr_body(expr)
+}
+
+///|
+fn BytecodeBuilder::compile_expr_body(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {

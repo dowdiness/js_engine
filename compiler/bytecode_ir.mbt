@@ -47,6 +47,8 @@ priv struct BytecodeInstructionContract {
 
 ///|
 priv enum BytecodeInstr {
+  ObserveStatement(SourcePointId)
+  ObserveExpression(SourcePointId)
   LoadConst(Value)
   LoadUndefined
   LoadThis
@@ -154,6 +156,20 @@ fn bytecode_instruction_contract(
   instr : BytecodeInstr,
 ) -> BytecodeInstructionContract {
   match instr {
+    ObserveStatement(_) =>
+      {
+        may_raise_js: false,
+        may_invoke_guest: false,
+        required_source_roles: [StatementEntry],
+        observation_barrier: StatementObservationBarrier,
+      }
+    ObserveExpression(_) =>
+      {
+        may_raise_js: false,
+        may_invoke_guest: false,
+        required_source_roles: [ExpressionEntry],
+        observation_barrier: ExpressionObservationBarrier,
+      }
     LoadConst(_)
     | LoadUndefined
     | LoadNewTarget
@@ -393,6 +409,15 @@ fn BytecodeFunction::BytecodeFunction(
 }
 
 ///|
+fn BytecodeFunction::resolve_source_point(
+  self : BytecodeFunction,
+  id : SourcePointId,
+) -> SourcePoint {
+  let SourcePointId(index) = id
+  self.source_points[index]
+}
+
+///|
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
   source_points : Array[SourcePoint]
@@ -511,6 +536,49 @@ fn BytecodeBuilder::emit_with_sources(
   let idx = self.emit(instr)
   self.instruction_sources[idx] = sources
   idx
+}
+
+///|
+fn BytecodeBuilder::emit_with_source_locations(
+  self : BytecodeBuilder,
+  instr : BytecodeInstr,
+  source_locations : Array[(SourcePointRole, @token.Loc)],
+) -> Int raise Error {
+  let required = bytecode_instruction_contract(instr).required_source_roles
+  guard required.length() == source_locations.length() else {
+    raise @errors.InternalError(
+      message="bytecode instruction source-role count mismatch",
+    )
+  }
+  let sources : Array[SourcePointId] = []
+  for index, required_role in required {
+    let (actual_role, loc) = source_locations[index]
+    guard actual_role == required_role else {
+      raise @errors.InternalError(
+        message="bytecode instruction source-role order mismatch",
+      )
+    }
+    sources.push(self.allocate_source_point(actual_role, loc))
+  }
+  self.emit_with_sources(instr, sources)
+}
+
+///|
+fn BytecodeBuilder::emit_statement_observation(
+  self : BytecodeBuilder,
+  loc : @token.Loc,
+) -> Unit {
+  let source_id = self.allocate_source_point(StatementEntry, loc)
+  let _ = self.emit_with_sources(ObserveStatement(source_id), [source_id])
+}
+
+///|
+fn BytecodeBuilder::emit_expression_observation(
+  self : BytecodeBuilder,
+  loc : @token.Loc,
+) -> Unit {
+  let source_id = self.allocate_source_point(ExpressionEntry, loc)
+  let _ = self.emit_with_sources(ObserveExpression(source_id), [source_id])
 }
 
 ///|
