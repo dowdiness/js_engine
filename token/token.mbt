@@ -23,6 +23,11 @@ pub struct SourceSpan {
 } derive(Eq, Debug)
 
 ///|
+fn SourceSpan::SourceSpan(start : Loc, end : Loc) -> SourceSpan {
+  { start_: start, end_: end }
+}
+
+///|
 pub fn SourceSpan::start(self : SourceSpan) -> Loc {
   self.start_
 }
@@ -256,5 +261,5 @@ pub fn Token::source_span(self : Token, source : String) -> SourceSpan? {
       }
     },
   )
-  Some({ start_: self.loc, end_: { line, col, offset: self.end_offset } })
+  Some(SourceSpan(self.loc, { line, col, offset: self.end_offset }))
 }
