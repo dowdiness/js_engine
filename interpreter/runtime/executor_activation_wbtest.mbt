@@ -35,6 +35,22 @@ priv struct ExecutorActivationThrowFrame {
 }
 
 ///|
+priv struct ExecutorActivationStartErrorCode {
+  error : Error
+}
+
+///|
+priv struct ExecutorActivationValueCode {
+  starts : Ref[Int]
+  value : Value
+}
+
+///|
+priv struct ExecutorActivationValueFrame {
+  value : Value
+}
+
+///|
 priv struct ExecutorActivationCallCode {
   callee : Value
   this_value : Value
@@ -47,6 +63,15 @@ priv struct ExecutorActivationCallFrame {
   callee : Value
   this_value : Value
   args : Array[Value]
+  loc : @token.Loc
+  mut requested : Bool
+  mut result : Value?
+}
+
+///|
+priv struct ExecutorActivationPropertyGetFrame {
+  target : Value
+  property_name : String
   loc : @token.Loc
   mut requested : Bool
   mut result : Value?
@@ -73,6 +98,15 @@ fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
 }
 
 ///|
+fn ExecutorActivationPropertyGetFrame::ExecutorActivationPropertyGetFrame(
+  target~ : Value,
+  property_name~ : String,
+  loc~ : @token.Loc,
+) -> ExecutorActivationPropertyGetFrame {
+  { target, property_name, loc, requested: false, result: None }
+}
+
+///|
 fn ExecutorActivationThrowFrame::ExecutorActivationThrowFrame(
   error~ : Error,
 ) -> ExecutorActivationThrowFrame {
@@ -80,10 +114,297 @@ fn ExecutorActivationThrowFrame::ExecutorActivationThrowFrame(
 }
 
 ///|
+fn ExecutorActivationStartErrorCode::ExecutorActivationStartErrorCode(
+  error~ : Error,
+) -> ExecutorActivationStartErrorCode {
+  { error, }
+}
+
+///|
+fn ExecutorActivationValueCode::ExecutorActivationValueCode(
+  starts~ : Ref[Int],
+  value~ : Value,
+) -> ExecutorActivationValueCode {
+  { starts, value }
+}
+
+///|
+fn ExecutorActivationValueFrame::ExecutorActivationValueFrame(
+  value~ : Value,
+) -> ExecutorActivationValueFrame {
+  { value, }
+}
+
+///|
 fn ExecutorActivationTestFrame::ExecutorActivationTestFrame(
   steps : Ref[Int],
 ) -> ExecutorActivationTestFrame {
   { steps, }
+}
+
+///|
+fn make_direct_property_getter_target(
+  getter : Value,
+  arraybuffer_state : ArrayBufferState?,
+  internal_slot? : (InternalSlotKey, Value),
+  host_slot? : (Int, Value),
+) -> Value {
+  let bag = PropertyBag::PropertyBag()
+  bag.descriptors["x"] = {
+    writable: false,
+    enumerable: true,
+    configurable: true,
+    getter: Some(getter),
+    setter: None,
+    is_accessor: true,
+  }
+  match internal_slot {
+    Some((key, value)) => bag.internal_slots[key] = value
+    None => ()
+  }
+  match host_slot {
+    Some((key, value)) => bag.host_slots[key] = value
+    None => ()
+  }
+  Object({
+    bag,
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state,
+  })
+}
+
+///|
+fn install_executor_activation_probe(
+  interp : Interpreter,
+  events : Array[String],
+  reject : Error?,
+) -> Unit {
+  let observer = make_object(
+    Map([]),
+    Null,
+    Some(
+      NonConstructableCallable("executor-probe", args => {
+        match args {
+          [String_(operation)] if operation == EXECUTION_CONTROL_ACTIVATION => {
+            let realm = if interp.realm_state.active_overrides.val is None {
+              "cleared"
+            } else {
+              "outer"
+            }
+            events.push("attempt:" + realm)
+            match reject {
+              Some(error) => raise error
+              None => Undefined
+            }
+          }
+          [String_(operation)] if operation == EXECUTION_CONTROL_RELEASE => {
+            let realm = if interp.realm_state.active_overrides.val is None {
+              "cleared"
+            } else {
+              "outer"
+            }
+            events.push("release:" + realm)
+            Undefined
+          }
+          _ => Undefined
+        }
+      }),
+    ),
+    "Object",
+    Map([]),
+    true,
+  )
+  interp.global.bindings[EXECUTION_CONTROL_BINDING] = {
+    value: observer,
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+}
+
+///|
+test "static property getter admission rejects mutable exotic state" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let steps : Ref[Int] = { val: 0 }
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationTestCode(starts~, steps~),
+    constructable=false,
+  )
+  let ordinary = make_direct_property_getter_target(getter, None)
+  guard direct_executor_property_getter(ordinary, "x") is Some(_) else {
+    fail("ordinary object getter should be admitted")
+  }
+  let with_arraybuffer = make_direct_property_getter_target(
+    getter,
+    Some(ArrayBufferState::ArrayBufferState()),
+  )
+  assert_true(direct_executor_property_getter(with_arraybuffer, "x") is None)
+  let with_internal_slot = make_direct_property_getter_target(
+    getter,
+    None,
+    internal_slot=(StringData, String_("state")),
+  )
+  assert_true(direct_executor_property_getter(with_internal_slot, "x") is None)
+  let with_host_slot = make_direct_property_getter_target(
+    getter,
+    None,
+    host_slot=(1, Number(1.0)),
+  )
+  assert_true(direct_executor_property_getter(with_host_slot, "x") is None)
+}
+
+///|
+test "static property getter exotic fallback runs once and preserves identity" {
+  let interp = Interpreter::new()
+  let sentinel = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let starts : Ref[Int] = { val: 0 }
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=sentinel),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(
+    getter,
+    Some(ArrayBufferState::ArrayBufferState()),
+  )
+  let root = ExecutorActivationPropertyGetFrame(
+      target~,
+      property_name="x",
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(value) =>
+      assert_true(physical_equal(value, sentinel))
+    _ => fail("exotic property fallback must return the getter value")
+  }
+  inspect(starts.val, content="1")
+}
+
+///|
+test "property activation lifecycle nests outer scope around inner call" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let starts : Ref[Int] = { val: 0 }
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(9.0)),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(getter, None)
+  dispatch_shell_test_install_realm_sentinel(interp, 59)
+  let root = ExecutorActivationPropertyGetFrame(
+      target~,
+      property_name="x",
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(value) => inspect(value.to_string(), content="9")
+    _ => fail("property getter must complete normally")
+  }
+  inspect(starts.val, content="1")
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+  dispatch_shell_test_expect_realm_sentinel(interp, 59)
+}
+
+///|
+test "property activation setup rejection releases its outer scope" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let sentinel : Error = @errors.TypeError(message="property setup sentinel")
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationStartErrorCode(error=sentinel),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(getter, None)
+  dispatch_shell_test_install_realm_sentinel(interp, 61)
+  let root = ExecutorActivationPropertyGetFrame(
+      target~,
+      property_name="x",
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("property setup failure must propagate")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+  dispatch_shell_test_expect_realm_sentinel(interp, 61)
+}
+
+///|
+test "property activation denied observation restores scope without release" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel : Error = @errors.TypeError(
+    message="property observation sentinel",
+  )
+  install_executor_activation_probe(interp, events, Some(sentinel))
+  let starts : Ref[Int] = { val: 0 }
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(11.0)),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(getter, None)
+  dispatch_shell_test_install_realm_sentinel(interp, 63)
+  let root = ExecutorActivationPropertyGetFrame(
+      target~,
+      property_name="x",
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("property observation denial must propagate")
+  }
+  inspect(starts.val, content="0")
+  json_inspect(events, content=["attempt:cleared"])
+  dispatch_shell_test_expect_realm_sentinel(interp, 63)
 }
 
 ///|
@@ -123,7 +444,7 @@ impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn deliver_call_result(
+impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn deliver_activation_result(
   _self,
   _value,
 ) {
@@ -137,6 +458,25 @@ impl ExecutorCode for ExecutorActivationThrowCode with fn start(
   _prepared,
 ) {
   ExecutorActivationThrowFrame(error=self.error) as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorCode for ExecutorActivationStartErrorCode with fn start(
+  self,
+  _interp,
+  _prepared,
+) {
+  raise self.error
+}
+
+///|
+impl ExecutorCode for ExecutorActivationValueCode with fn start(
+  self,
+  _interp,
+  _prepared,
+) {
+  self.starts.val += 1
+  ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
 }
 
 ///|
@@ -174,13 +514,45 @@ impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_call_result(
+impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_activation_result(
   self,
   value,
 ) {
   guard self.requested && self.result is None else {
     raise @errors.InternalError(
       message="test call frame received a duplicate result",
+    )
+  }
+  self.result = Some(value)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_property_get(self.target, self.property_name, self.loc)
+  } else {
+    match self.result {
+      Some(value) => executor_activation_return(value)
+      None =>
+        raise @errors.InternalError(
+          message="test property frame resumed without a result",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deliver_activation_result(
+  self,
+  value,
+) {
+  guard self.requested && self.result is None else {
+    raise @errors.InternalError(
+      message="test property frame received a duplicate result",
     )
   }
   self.result = Some(value)
@@ -195,7 +567,23 @@ impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn deliver_call_result(
+impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn deliver_activation_result(
+  _self,
+  _value,
+) {
+  ()
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn step(
+  self,
+  _interp,
+) {
+  executor_activation_return(self.value)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn deliver_activation_result(
   _self,
   _value,
 ) {
@@ -405,4 +793,111 @@ test "activation coordinator rejects depth before child preparation" {
   inspect(outcome, content="stack-depth-limit")
   inspect(starts.val, content="0")
   inspect(control.active_depth(), content="0")
+}
+
+///|
+test "property activation rejects depth before body and releases for later leaf" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(7.0)),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(getter, None)
+  dispatch_shell_test_install_realm_sentinel(interp, 47)
+  interp.in_nonarrow_param_default_eval = true
+  let rejected_control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let rejected = interp.with_execution_control(rejected_control, () => {
+    let root = ExecutorActivationPropertyGetFrame(
+        target~,
+        property_name="x",
+        loc=@token.Loc::default(),
+      )
+      as &ExecutorActivationFrame
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      "completed"
+    } catch {
+      ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+      _ => "other-error"
+    }
+  })
+  inspect(rejected, content="stack-depth-limit")
+  inspect(starts.val, content="0")
+  inspect(rejected_control.active_depth(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 47)
+  assert_true(interp.in_nonarrow_param_default_eval)
+  let accepted_control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let accepted = interp.with_execution_control(accepted_control, () => {
+    let root = ExecutorActivationPropertyGetFrame(
+        target~,
+        property_name="x",
+        loc=@token.Loc::default(),
+      )
+      as &ExecutorActivationFrame
+    match interp.run_executor_activation_coordinator(root) {
+      ExecutorActivationReturn(value) => value
+      _ => Undefined
+    }
+  })
+  inspect(accepted.to_string(), content="7")
+  inspect(starts.val, content="1")
+  inspect(accepted_control.active_depth(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 47)
+  assert_true(interp.in_nonarrow_param_default_eval)
+}
+
+///|
+test "property activation abrupt getter restores outer realm and depth" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.TypeError(message="property getter sentinel")
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(getter, None)
+  dispatch_shell_test_install_realm_sentinel(interp, 53)
+  interp.in_nonarrow_param_default_eval = true
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let caught = interp.with_execution_control(control, () => {
+    let root = ExecutorActivationPropertyGetFrame(
+        target~,
+        property_name="x",
+        loc=@token.Loc::default(),
+      )
+      as &ExecutorActivationFrame
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      None
+    } catch {
+      error => Some(error)
+    }
+  })
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("property getter must propagate its abrupt completion")
+  }
+  inspect(control.active_depth(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 53)
+  assert_true(interp.in_nonarrow_param_default_eval)
 }
