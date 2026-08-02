@@ -7,7 +7,7 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
-fn assert_legacy_plain_member_call_lowering(
+fn assert_plain_member_call_lowering(
   code : Array[BytecodeInstr],
   context : String,
 ) -> Bool raise Error {
@@ -15,13 +15,13 @@ fn assert_legacy_plain_member_call_lowering(
   let mut saw_receiver_call = false
   for instr in code {
     match instr {
-      PreparePropertyCall("step", _) => saw_prepare = true
+      PreparePlainPropertyCall("step", _) => saw_prepare = true
       CallWithReceiver(_, _) => saw_receiver_call = true
       _ => ()
     }
   }
   guard saw_prepare else {
-    fail(context + " must retain PreparePropertyCall")
+    fail(context + " must use PreparePlainPropertyCall")
   }
   guard saw_receiver_call else {
     fail(context + " must retain CallWithReceiver")
@@ -30,7 +30,19 @@ fn assert_legacy_plain_member_call_lowering(
 }
 
 ///|
-test "RED: plain static member calls retain synchronous preparation at root and recursion" {
+fn legacy_property_prepare_count(code : Array[BytecodeInstr]) -> Int {
+  let mut count = 0
+  for instr in code {
+    match instr {
+      PreparePropertyCall(_, _) => count += 1
+      _ => ()
+    }
+  }
+  count
+}
+
+///|
+test "plain static member calls use suspended preparation at root and recursion" {
   let source = "let remaining = 320;" +
     "let receiver = { get step() {" +
     "if (remaining === 0) return function() { return 0; };" +
@@ -41,17 +53,17 @@ test "RED: plain static member calls retain synchronous preparation at root and 
     "receiver.step();"
   let lowered = parse_bytecode_for_wb(source)
   assert_true(
-    assert_legacy_plain_member_call_lowering(
+    assert_plain_member_call_lowering(
       lowered.main.code,
       "root plain member call",
     ),
   )
   let mut saw_recursive_plain_call = false
   for child in lowered.main.children {
-    if assert_legacy_plain_member_call_lowering(
-      child.code,
-      "recursive plain member call",
-    ) {
+    if assert_plain_member_call_lowering(
+        child.code,
+        "recursive plain member call",
+      ) {
       saw_recursive_plain_call = true
     }
   }
@@ -59,13 +71,31 @@ test "RED: plain static member calls retain synchronous preparation at root and 
 }
 
 ///|
-// Pre-fix provenance: the exact plain member-call source still routes both
-// property preparation and final receiver invocation synchronously. This is
-// expected to fail at the recorded host-stack boundary until production
-// lowering and delivery ownership are migrated. On this unmodified
-// post-#741 main, native passes at remaining=248 and SIGSEGVs at 249; JS
-// passes at 70 and raises RangeError at 71.
-test "RED: plain static accessor-prepared receiver call reaches synchronous boundary" {
+test "plain preparation leaves optional chain and tagged producers on legacy opcode" {
+  let prefix = "var receiver = { step: function() {} };"
+  let plain = parse_bytecode_for_wb(prefix + "receiver.step();")
+  let optional = parse_bytecode_for_wb(prefix + "receiver?.step();")
+  let optional_callee = parse_bytecode_for_wb(prefix + "receiver?.step?.();")
+  let grouped = parse_bytecode_for_wb(prefix + "receiver.step?.();")
+  let chain = parse_bytecode_for_wb(prefix + "receiver?.step.next();")
+  let tagged = parse_bytecode_for_wb(prefix + "receiver.step`tag`;")
+  let mut saw_plain = false
+  for instr in plain.main.code {
+    match instr {
+      PreparePlainPropertyCall("step", _) => saw_plain = true
+      _ => ()
+    }
+  }
+  assert_true(saw_plain)
+  assert_true(legacy_property_prepare_count(optional.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(optional_callee.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(grouped.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(chain.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(tagged.main.code) >= 1)
+}
+
+///|
+test "bytecode static accessor-prepared receiver calls suspend property preparation" {
   let source = "let remaining = 320;" +
     "let receiver = { get step() {" +
     "if (remaining === 0) return function() { return 0; };" +
@@ -79,6 +109,64 @@ test "RED: plain static accessor-prepared receiver call reaches synchronous boun
     source,
   )
   inspect(result.to_string(), content="320")
+}
+
+///|
+test "plain accessor-prepared receiver calls preserve order and receiver identity" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var receiver = { get step() {" +
+    "trace = trace + 'g';" +
+    "return function(value) {" +
+    "trace = trace + (this === receiver ? 'c' : 'x');" +
+    "return trace + ':' + value;" +
+    "};" +
+    "} };" +
+    "receiver.step(trace = trace + 'a');",
+  )
+  inspect(result.to_string(), content="gac:ga")
+}
+
+///|
+test "plain accessor-prepared non-callable result evaluates arguments before TypeError" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var trace = '';" +
+    "var receiver = { get step() { trace = trace + 'g'; return 1; } };" +
+    "function argument() { trace = trace + 'a'; return 7; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "try { receiver.step(argument()); } catch (error) {" +
+      "trace = trace + (error instanceof TypeError ? 't' : 'x');" +
+      "}" +
+      "trace;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="gat")
+}
+
+///|
+test "plain accessor-prepared getter throw skips arguments and final call" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var trace = '';" +
+    "var receiver = { get step() { trace = trace + 'g'; throw marker; } };" +
+    "function argument() { trace = trace + 'a'; return 7; }" +
+    "function finalCall() { trace = trace + 'c'; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "try { receiver.step(argument()); } catch (error) {" +
+      "trace = trace + (error === marker ? 't' : 'x');" +
+      "}" +
+      "trace;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="gt")
 }
 
 ///|
@@ -149,7 +237,7 @@ test "static property lowering keeps non-read property families residual" {
     "function child() {}; child(...base); new C(); eval('base.x');",
   )
   let mut saw_get = false
-  let mut saw_prepare = false
+  let mut saw_plain_prepare = false
   let mut saw_computed = false
   let mut saw_assign_read = false
   let mut saw_set = false
@@ -163,7 +251,7 @@ test "static property lowering keeps non-read property families residual" {
   for instr in lowered.main.code {
     match instr {
       GetProperty("x", _) => saw_get = true
-      PreparePropertyCall("x", _) => saw_prepare = true
+      PreparePlainPropertyCall("x", _) => saw_plain_prepare = true
       GetComputed(_) => saw_computed = true
       ReadPropertyForAssign("x", _) => saw_assign_read = true
       SetProperty("x", _) => saw_set = true
@@ -178,7 +266,7 @@ test "static property lowering keeps non-read property families residual" {
     }
   }
   assert_true(saw_get)
-  assert_true(saw_prepare)
+  assert_true(saw_plain_prepare)
   assert_true(saw_computed)
   assert_true(saw_assign_read)
   assert_true(saw_set)
@@ -1003,7 +1091,7 @@ test "bytecode frame accepts one pending activation result" {
     strict: false,
     current_generator: None,
   })
-  frame.pending_activation_result = true
+  frame.pending_activation_result = Some(PushValue)
   @runtime.ExecutorActivationFrame::deliver_activation_result(
     frame,
     Number(7.0),
@@ -1031,6 +1119,29 @@ test "bytecode frame accepts one pending activation result" {
     _ => fail("duplicate activation result delivery must be rejected")
   }
   inspect(frame.stack.length(), content="1")
+}
+
+///|
+test "bytecode frame delivers an owned receiver with a plain property result" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("0;")
+  let frame = BytecodeFrame(program.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  let receiver = Value::String_("receiver")
+  let callee = Value::String_("callee")
+  frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
+  @runtime.ExecutorActivationFrame::deliver_activation_result(frame, callee)
+  inspect(frame.stack.length(), content="2")
+  match frame.stack[0] {
+    String_(value) => inspect(value, content="receiver")
+    _ => fail("plain property delivery must push the receiver first")
+  }
+  match frame.stack[1] {
+    String_(value) => inspect(value, content="callee")
+    _ => fail("plain property delivery must push the callee second")
+  }
 }
 
 ///|

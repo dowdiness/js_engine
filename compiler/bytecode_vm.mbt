@@ -1026,9 +1026,7 @@ fn BytecodeFrame::step_bytecode(
       }
       PreparePlainPropertyCall(prop, loc) => {
         let receiver = frame.pop()
-        frame.pending_activation_result = Some(
-          PushReceiverAndValue(receiver),
-        )
+        frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
         return BytecodeFrameSuspended(
           @runtime.executor_activation_property_get(receiver, prop, loc),
         )
