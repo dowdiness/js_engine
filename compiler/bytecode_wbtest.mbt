@@ -341,13 +341,13 @@ test "structured equivalence records current pending queue policy" {
 }
 
 ///|
-test "structured equivalence represents current step and deferred activation limits" {
+test "RED: structured equivalence requires bytecode step observation" {
   match structured_step_limit_comparison_for_wb("1 + 2;") {
-    ObservableMismatch(ControlStopped(expected), Completed(_)) => {
-      assert_true(expected.point is DispatchStepObservation)
-      assert_true(expected.failure is ExecutionLimit)
+    Equivalent(ControlStopped(observation)) => {
+      assert_true(observation.point is DispatchStepObservation)
+      assert_true(observation.failure is ExecutionLimit)
     }
-    _ => fail("expected typed bytecode step-observation gap")
+    _ => fail("bytecode must stop at the same typed step observation")
   }
   let activation = synthetic_control_outcome_for_wb(
     ActivationObservation,
