@@ -7,6 +7,49 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn source_table_has_role_for_wb(
+  source_points : Array[SourcePoint],
+  role : SourcePointRole,
+) -> Bool {
+  for source_point in source_points {
+    if source_point.role == role {
+      return true
+    }
+  }
+  false
+}
+
+///|
+test "RED: bytecode functions own typed source tables" {
+  let src =
+    #|function failer() { throw 1; }
+    #|failer();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = bytecode.main.children[0]
+  guard bytecode.main.source_points.length() > 0 else {
+    abort("root function must own source points")
+  }
+  guard child.source_points.length() > 0 else {
+    abort("nested function must own source points")
+  }
+  assert_true(
+    source_table_has_role_for_wb(bytecode.main.source_points, StatementEntry),
+  )
+  assert_true(
+    source_table_has_role_for_wb(bytecode.main.source_points, ExpressionEntry),
+  )
+  assert_true(source_table_has_role_for_wb(bytecode.main.source_points, Call))
+  assert_true(source_table_has_role_for_wb(child.source_points, StatementEntry))
+  assert_true(
+    source_table_has_role_for_wb(child.source_points, ExpressionEntry),
+  )
+  assert_true(source_table_has_role_for_wb(child.source_points, Throw))
+}
+
+///|
 fn assert_bytecode_internal_error_for_wb(
   stmts : Array[@ast.Stmt],
   expected_message : String,
@@ -384,15 +427,13 @@ test "RED: bounded bytecode observes nested branch loop and interruption entries
   )
   assert_control_stopped_equivalently_for_wb(
     structured_execution_policy_comparison_for_wb(
-      "if (false) { console.log('bad'); } else { 7; }",
-      3L,
+      "if (false) { console.log('bad'); } else { 7; }", 3L,
     ),
     ExecutionLimit,
   )
   assert_control_stopped_equivalently_for_wb(
     structured_execution_policy_comparison_for_wb(
-      "var i = 0; while (i < 2) { i++; } i;",
-      8L,
+      "var i = 0; while (i < 2) { i++; } i;", 8L,
     ),
     ExecutionLimit,
   )
