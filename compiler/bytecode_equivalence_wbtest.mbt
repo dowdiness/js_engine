@@ -141,6 +141,7 @@ priv enum ExecutionControlPoint {
 
 ///|
 priv enum ExecutionControlFailure {
+  Interrupted
   StackDepthLimit
   ExecutionLimit
 }
@@ -309,7 +310,28 @@ fn observe_execution(
           })
         EquivalenceControlSignal(point, failure) =>
           ControlStopped({ point, failure, effects })
-        _ => RuntimeFailed(runtime_defect(stage, error, effects))
+        _ =>
+          match @runtime.execution_control_failure_code(error) {
+            Some("interrupted") =>
+              ControlStopped({
+                point: DispatchStepObservation,
+                failure: Interrupted,
+                effects,
+              })
+            Some("stack-depth-limit") =>
+              ControlStopped({
+                point: ActivationObservation,
+                failure: StackDepthLimit,
+                effects,
+              })
+            Some("execution-limit") =>
+              ControlStopped({
+                point: DispatchStepObservation,
+                failure: ExecutionLimit,
+                effects,
+              })
+            _ => RuntimeFailed(runtime_defect(stage, error, effects))
+          }
       }
     }
   }
@@ -434,8 +456,9 @@ fn same_control_failure(
   right : ExecutionControlFailure,
 ) -> Bool {
   match (left, right) {
-    (StackDepthLimit, StackDepthLimit) | (ExecutionLimit, ExecutionLimit) =>
-      true
+    (Interrupted, Interrupted)
+    | (StackDepthLimit, StackDepthLimit)
+    | (ExecutionLimit, ExecutionLimit) => true
     _ => false
   }
 }
@@ -591,6 +614,40 @@ fn structured_step_limit_comparison_for_wb(src : String) -> EquivalenceResult {
   let tree_interp = @interpreter.new_interpreter()
   install_step_limit_observer(tree_interp)
   let expected = observe_tree_source_with_interpreter(tree_interp, src)
+  reduce_equivalence(Some(expected), actual)
+}
+
+///|
+fn execution_policy_for_equivalence_wb(
+  step_budget : Int64,
+  interrupted : Bool,
+) -> @runtime.ExecutionPolicy raise Error {
+  let interruption = @runtime.InterruptionHandle()
+  if interrupted {
+    interruption.request()
+  }
+  match @runtime.ExecutionPolicy::new(step_budget, 100000L, interruption) {
+    Ok(policy) => policy
+    Err(error) => fail(error.message())
+  }
+}
+
+///|
+fn structured_execution_policy_comparison_for_wb(
+  src : String,
+  step_budget : Int64,
+  interrupted? : Bool = false,
+) -> EquivalenceResult raise Error {
+  let bytecode_interp = @interpreter.new_interpreter()
+  let actual = bytecode_interp.with_execution_policy(
+    execution_policy_for_equivalence_wb(step_budget, interrupted),
+    () => observe_bytecode_source_with_interpreter(bytecode_interp, src),
+  )
+  let tree_interp = @interpreter.new_interpreter()
+  let expected = tree_interp.with_execution_policy(
+    execution_policy_for_equivalence_wb(step_budget, interrupted),
+    () => observe_tree_source_with_interpreter(tree_interp, src),
+  )
   reduce_equivalence(Some(expected), actual)
 }
 

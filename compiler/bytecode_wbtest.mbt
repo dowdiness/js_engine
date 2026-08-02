@@ -363,6 +363,50 @@ test "RED: structured equivalence requires bytecode step observation" {
 }
 
 ///|
+fn assert_control_stopped_equivalently_for_wb(
+  result : EquivalenceResult,
+  failure : ExecutionControlFailure,
+) -> Unit raise Error {
+  match result {
+    Equivalent(ControlStopped(observation)) => {
+      assert_true(observation.point is DispatchStepObservation)
+      assert_true(same_control_failure(observation.failure, failure))
+    }
+    _ => fail("bytecode and tree walker must stop at the same control point")
+  }
+}
+
+///|
+test "RED: bounded bytecode observes nested branch loop and interruption entries" {
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb("1 + 2;", 2L),
+    ExecutionLimit,
+  )
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb(
+      "if (false) { console.log('bad'); } else { 7; }",
+      3L,
+    ),
+    ExecutionLimit,
+  )
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb(
+      "var i = 0; while (i < 2) { i++; } i;",
+      8L,
+    ),
+    ExecutionLimit,
+  )
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb(
+      "1 + 2;",
+      100L,
+      interrupted=true,
+    ),
+    Interrupted,
+  )
+}
+
+///|
 test "bytecode uses local slots for function params and vars" {
   let src =
     #|function f(a) {
