@@ -53,6 +53,68 @@ test "RED: recursive constructor activation at depth 1024" {
 }
 
 ///|
+test "execution stack safety: mutual constructor activation at depth 1024" {
+  match
+    run(
+      "function A(n){this.value=n;if(n>0){this.child=new B(n-1);}}" +
+      "function B(n){this.value=n;if(n>0){this.child=new A(n-1);}}" +
+      "new A(1024).value;",
+    ) {
+    Value::Number(1024.0) => ()
+    other =>
+      fail("expected mutual constructor value 1024, got " + other.to_string())
+  }
+}
+
+///|
+test "ordinary constructor return replacement stays exact" {
+  match
+    run(
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}" +
+      "return {value:n};}" +
+      "new Node(4).value;",
+    ) {
+    Value::Number(4.0) => ()
+    other => fail("expected object return value 4, got " + other.to_string())
+  }
+  match
+    run(
+      "function Plain(n){this.value=n;if(n>0){this.child=new Plain(n-1);}" +
+      "return n;}" +
+      "new Plain(4).value;",
+    ) {
+    Value::Number(4.0) => ()
+    other =>
+      fail("expected primitive fallback value 4, got " + other.to_string())
+  }
+}
+
+///|
+test "ordinary constructor throw releases activation state" {
+  let interp = Interpreter::new()
+  let source = "function Boom(n){this.value=n;if(n>0){this.child=new Boom(n-1);}" +
+    "throw n;}new Boom(2).value;"
+  let failed = try {
+    ignore(interp.run(@parser.parse(source).stmts))
+    false
+  } catch {
+    _ => true
+  }
+  guard failed else { fail("expected the admitted constructor to throw") }
+  match
+    interp.run(
+      @parser.parse(
+        "function Safe(n){this.value=n;if(n>0){this.child=new Safe(n-1);}}" +
+        "new Safe(0).value;",
+      ).stmts,
+    ) {
+    Value::Number(0.0) => ()
+    other =>
+      fail("expected a later shallow construction, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: ordinary own-data receiver recursion at depth 256" {
   match
     run(
