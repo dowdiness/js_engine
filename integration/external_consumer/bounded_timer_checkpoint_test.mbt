@@ -195,6 +195,36 @@ test "timer-following microtasks share the bounded timer control" {
 }
 
 ///|
+test "finite timer-following microtask consumes the shared remaining budget" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|setTimeout(() => {
+      #|  events.push("timer");
+      #|  queueMicrotask(() => {
+      #|    events.push("micro-start");
+      #|    events.push("micro-finish");
+      #|  });
+      #|}, 0);
+      #|function snapshot() { return events; }
+    ),
+  )
+  ignore(
+    expect_timer_guardrail(
+      engine.run_timer_checkpoint_bounded(
+        bounded_timer_policy(15L, 100L, @js_engine.InterruptionHandle()),
+      ),
+      "execution-limit",
+      "timer-microtask-checkpoint",
+      @js_engine.PendingJobs::None,
+    ),
+  )
+  json_inspect(engine.call_json("snapshot", []), content=["timer", "micro-start"])
+  assert_false(engine.has_pending_timers())
+}
+
+///|
 test "failed timer-following microtask does not re-register an interval" {
   let engine = @js_engine.Engine()
   engine.eval(
