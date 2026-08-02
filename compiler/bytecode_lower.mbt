@@ -2282,7 +2282,9 @@ fn BytecodeBuilder::compile_stmt_body(
     ContinueStmt(label, _) => self.emit_loop_continue(label)
     ThrowStmt(expr, _) => {
       self.compile_expr(expr)
-      let _ = self.emit(Throw)
+      let _ = self.emit_with_source_locations(Throw, [
+        (Throw, bytecode_stmt_loc(stmt)),
+      ])
     }
     TryCatchStmt(_, _, _, _, loc) => bytecode_reject(TryCatchStatement, loc)
     LabeledStmt(label, body, _) => {
@@ -2387,7 +2389,10 @@ fn BytecodeBuilder::compile_dynamic_args(
     match arg {
       SpreadExpr(inner, loc) => {
         self.compile_expr(inner)
-        let _ = self.emit(ArgPushSpread(loc))
+        let _ = self.emit_with_source_locations(ArgPushSpread(loc), [
+          (Spread, loc),
+          (Iterator, loc),
+        ])
       }
       _ => {
         self.compile_expr(arg)
@@ -2418,9 +2423,11 @@ fn BytecodeBuilder::emit_call(
   loc : @token.Loc,
 ) -> Unit raise Error {
   if self.compile_call_args(args) {
-    let _ = self.emit(CallSpread(loc))
+    let _ = self.emit_with_source_locations(CallSpread(loc), [(Call, loc)])
   } else {
-    let _ = self.emit(Call(args.length(), loc))
+    let _ = self.emit_with_source_locations(Call(args.length(), loc), [
+      (Call, loc),
+    ])
   }
 }
 
@@ -2431,9 +2438,14 @@ fn BytecodeBuilder::emit_call_with_receiver(
   loc : @token.Loc,
 ) -> Unit raise Error {
   if self.compile_call_args(args) {
-    let _ = self.emit(CallSpreadWithReceiver(loc))
+    let _ = self.emit_with_source_locations(CallSpreadWithReceiver(loc), [
+      (Call, loc),
+    ])
   } else {
-    let _ = self.emit(CallWithReceiver(args.length(), loc))
+    let _ = self.emit_with_source_locations(
+      CallWithReceiver(args.length(), loc),
+      [(Call, loc)],
+    )
   }
 }
 
@@ -2444,9 +2456,13 @@ fn BytecodeBuilder::emit_construct(
   loc : @token.Loc,
 ) -> Unit raise Error {
   if self.compile_call_args(args) {
-    let _ = self.emit(ConstructSpread(loc))
+    let _ = self.emit_with_source_locations(ConstructSpread(loc), [
+      (Construct, loc),
+    ])
   } else {
-    let _ = self.emit(Construct(args.length(), loc))
+    let _ = self.emit_with_source_locations(Construct(args.length(), loc), [
+      (Construct, loc),
+    ])
   }
 }
 
