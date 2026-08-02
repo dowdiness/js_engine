@@ -864,8 +864,8 @@
     {
       "path": "interpreter/stdlib/builtins_function.mbt",
       "pattern_id": "runtime-callable-type",
-      "allowed_count": 19,
-      "fingerprint": "19:1241:38162:577877",
+      "allowed_count": 20,
+      "fingerprint": "20:1318:159538:239414",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -873,8 +873,8 @@
     {
       "path": "interpreter/stdlib/builtins_function.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 11,
-      "fingerprint": "11:379:722367:969948",
+      "allowed_count": 13,
+      "fingerprint": "13:494:560293:863881",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"

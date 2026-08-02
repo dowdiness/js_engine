@@ -545,26 +545,39 @@ pub fn Interpreter::run_executor_activation_coordinator(
           } else {
             self.complete_executor_child(stack, ExecutorActivationReturn(value))
           }
-        ExecutorActivationCall(request) =>
-          match request.callee {
-            Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+        ExecutorActivationCall(request) => {
+          let (forwarded_callee, forwarded_this_value, forwarded_args) = resolve_call_forwarding(
+            request.callee,
+            request.this_value,
+            request.args,
+          )
+          match forwarded_callee {
+            Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
+              let forwarded_request = ExecutorCallRequest(
+                callee=forwarded_callee,
+                this_value=forwarded_this_value,
+                args=forwarded_args,
+                loc=request.loc,
+              )
               stack.push(
                 self.start_executor_activation(
                   executable,
-                  ExecutorStartCall(request),
+                  ExecutorStartCall(forwarded_request),
                   None,
                 ),
               )
+            }
             _ => {
               let value = self.call_value(
-                request.callee,
-                request.this_value,
-                request.args,
+                forwarded_callee,
+                forwarded_this_value,
+                forwarded_args,
                 request.loc,
               )
               frame.deliver_activation_result(value)
             }
           }
+        }
         ExecutorActivationConstruct(request) =>
           match direct_executor_constructor_with_data_prototype(request.ctor) {
             Some(executable) =>

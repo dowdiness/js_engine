@@ -7,6 +7,100 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+test "Function.prototype.call forwarding recursion stays off the host stack" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "function f(n){if(n===0)return 0;return 1+f.call(undefined,n-1);}" +
+    "f.call(undefined,1024);",
+  )
+  inspect(result.to_string(), content="1024")
+}
+
+///|
+test "Function.prototype.call preserves ordinary return and receiver" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "function target(value){return this.base+value;}" +
+    "target.call({base:4},3);",
+  )
+  inspect(result.to_string(), content="7")
+}
+
+///|
+test "Function.prototype.call preserves guest throw identity" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp, "var marker={}; function target(){throw marker;} target.call(undefined);",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("Function.prototype.call must propagate the guest throw")
+  }
+}
+
+///|
+test "Function.prototype.call does not admit a user replacement" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "function target(){return 1;}" +
+    "target.call=function(){return 2;}; target.call(null);",
+  )
+  inspect(result.to_string(), content="2")
+}
+
+///|
+test "detached Function.prototype.call rejects a non-callable receiver" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp, "var detached=Function.prototype.call; detached({},1);",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      match value {
+        Object(data) => inspect(data.class_name, content="TypeError")
+        _ => fail("detached call must raise an object TypeError")
+      }
+    Some(error) =>
+      fail("detached call raised a non-JavaScript error: " + error.to_string())
+    None => fail("detached call must reject its non-callable receiver")
+  }
+}
+
+///|
+test "captured FuncCallMethod forwarding remains non-recursive" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "delete Function.prototype.call;" +
+    "function f(n){if(n===0)return 0;return 1+f.call(undefined,n-1);}" +
+    "f.call(undefined,1024);",
+  )
+  inspect(result.to_string(), content="1024")
+}
+
+///|
+test "Function.prototype.call preserves name length and source identity" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let call=Function.prototype.call;" +
+    "call.name === 'call' && call.length === 1 &&" +
+    "call.toString() === 'function call() { [native code] }';",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 fn assert_plain_member_call_lowering(
   code : Array[BytecodeInstr],
   context : String,

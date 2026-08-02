@@ -25,6 +25,24 @@ fn make_function_prototype(realm_state : @runtime.RealmState) -> Value {
 }
 
 ///|
+/// The exact Function.prototype.call intrinsic uses the existing
+/// `FuncCallMethod` representation with the reserved Undefined target. The
+/// runtime call shell recognizes this identity before ordinary `.call`
+/// forwarding; fallback wrappers always capture a callable Object.
+fn make_function_prototype_call(realm_state : @runtime.RealmState) -> Value {
+  let call_func = @runtime.make_native_func(
+    name="call",
+    length=1,
+    realm_state=Some(realm_state),
+    _args => Undefined,
+  )
+  guard call_func is Object(data) else {
+    abort("Function.prototype.call factory must return an Object")
+  }
+  Object({ ..data, callable: Some(FuncCallMethod(Undefined)) })
+}
+
+///|
 // §20.2.1.1.1 step 27a: wire result.prototype.constructor = result so the
 // constructed function's prototype correctly back-references the function.
 fn wire_constructor_to_prototype(proto : Value, result : Value) -> Unit {
@@ -165,24 +183,9 @@ fn setup_function_builtins(
     },
   )
 
-  // Function.prototype.call - placeholder (actual implementation in interpreter)
-  func_proto_props["call"] = @runtime.make_interp_method_func(
-    name="call",
-    length=1,
-    fn(interp, this_val, args) raise {
-      let loc = @token.Loc::default()
-      let call_this : Value = if args.length() > 0 {
-        args[0]
-      } else {
-        Undefined
-      }
-      let call_args : Array[Value] = []
-      for i = 1; i < args.length(); i = i + 1 {
-        call_args.push(args[i])
-      }
-      interp.call_value(this_val, call_this, call_args, loc)
-    },
-  )
+  // Function.prototype.call uses a reserved FuncCallMethod identity so
+  // forwarding can stay iterative in Interpreter::call_value.
+  func_proto_props["call"] = make_function_prototype_call(realm_state)
 
   // Function.prototype.apply — §20.2.3.1
   func_proto_props["apply"] = @runtime.make_interp_method_func(
