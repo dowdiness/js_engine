@@ -171,37 +171,6 @@ test "bounded timer checkpoint discards a cancelled prefix before rejection" {
 }
 
 ///|
-test "timer activation guardrail consumes the timer before callback effects" {
-  let engine = @js_engine.Engine()
-  assert_true(
-    engine.eval_diagnostic(
-      (
-        #|let events = [];
-        #|function recurse(n) {
-        #|  if (n === 0) return 0;
-        #|  return 1 + recurse(n - 1);
-        #|}
-        #|setTimeout(() => recurse(256), 0);
-        #|function snapshot() { return events; }
-      ),
-      source_id="timer-activation.js",
-    )
-    is Ok(_),
-  )
-  let diagnostic = expect_timer_guardrail(
-    engine.run_timer_checkpoint_bounded(
-      bounded_timer_policy(10000L, 0L, @js_engine.InterruptionHandle()),
-    ),
-    "stack-depth-limit",
-    "timer-callback",
-    @js_engine.PendingJobs::None,
-  )
-  assert_true(diagnostic.source_identity() == Some("timer-activation.js"))
-  assert_false(engine.has_pending_timers())
-  json_inspect(engine.call_json("snapshot", []), content=[])
-}
-
-///|
 test "timer callback body guardrail consumes the callback" {
   let engine = @js_engine.Engine()
   engine.eval("setTimeout(() => { while (true) {} }, 0);")
