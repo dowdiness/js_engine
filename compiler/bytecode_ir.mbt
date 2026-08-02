@@ -31,6 +31,21 @@ priv struct SourcePoint {
 } derive(Eq, Debug)
 
 ///|
+priv enum BytecodeObservationBarrierKind {
+  NotObservationBarrier
+  StatementObservationBarrier
+  ExpressionObservationBarrier
+} derive(Eq, Debug)
+
+///|
+priv struct BytecodeInstructionContract {
+  may_raise_js : Bool
+  may_invoke_guest : Bool
+  required_source_roles : Array[SourcePointRole]
+  observation_barrier : BytecodeObservationBarrierKind
+} derive(Eq, Debug)
+
+///|
 priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
@@ -132,6 +147,18 @@ priv enum BytecodeInstr {
   ConstructSpread(@token.Loc)
   Return
   Throw
+}
+
+///|
+fn bytecode_instruction_contract(
+  _instr : BytecodeInstr,
+) -> BytecodeInstructionContract {
+  {
+    may_raise_js: false,
+    may_invoke_guest: false,
+    required_source_roles: [],
+    observation_barrier: NotObservationBarrier,
+  }
 }
 
 ///|

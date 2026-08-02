@@ -20,6 +20,51 @@ fn source_table_has_role_for_wb(
 }
 
 ///|
+fn assert_instruction_contract_for_wb(
+  instr : BytecodeInstr,
+  may_raise_js : Bool,
+  may_invoke_guest : Bool,
+  required_source_roles : Array[SourcePointRole],
+) -> Unit raise Error {
+  let contract = bytecode_instruction_contract(instr)
+  assert_eq(contract.may_raise_js, may_raise_js)
+  assert_eq(contract.may_invoke_guest, may_invoke_guest)
+  assert_eq(contract.required_source_roles, required_source_roles)
+  assert_true(contract.observation_barrier is NotObservationBarrier)
+}
+
+///|
+test "RED: bytecode instruction contracts retain semantic source roles" {
+  let loc = @token.Loc::default()
+  assert_instruction_contract_for_wb(Throw, true, false, [Throw])
+  assert_instruction_contract_for_wb(Call(0, loc), true, true, [Call])
+  assert_instruction_contract_for_wb(CallDirectEval(loc), true, true, [
+    DirectEval,
+    Call,
+  ])
+  assert_instruction_contract_for_wb(
+    PreparePlainPropertyCall("method", loc),
+    true,
+    true,
+    [MemberAccess, Call],
+  )
+  assert_instruction_contract_for_wb(
+    PrepareSuperComputedCall(loc),
+    true,
+    true,
+    [SuperMemberAccess, PropertyKey, Call],
+  )
+  assert_instruction_contract_for_wb(ArgPushSpread(loc), true, true, [
+    Spread,
+    Iterator,
+  ])
+  assert_instruction_contract_for_wb(BinaryOp(Add, loc), true, true, [Operator])
+  assert_instruction_contract_for_wb(LoadName("binding"), true, false, [
+    BindingAccess,
+  ])
+}
+
+///|
 test "RED: bytecode functions own typed source tables" {
   let src =
     #|function failer() { throw 1; }
