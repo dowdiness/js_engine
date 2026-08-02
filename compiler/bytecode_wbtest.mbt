@@ -95,6 +95,51 @@ test "RED: bytecode functions own typed source tables" {
 }
 
 ///|
+fn instruction_source_roles_for_wb(
+  function : BytecodeFunction,
+  instruction_index : Int,
+) -> Array[SourcePointRole] {
+  function.instruction_sources[instruction_index].map(source_id =>
+    function.resolve_source_point(source_id).role
+  )
+}
+
+///|
+fn assert_function_instruction_sources_for_wb(
+  function : BytecodeFunction,
+) -> Unit raise Error {
+  assert_eq(function.instruction_sources.length(), function.code.length())
+  for instruction_index, instruction in function.code {
+    let expected = bytecode_instruction_contract(instruction).required_source_roles
+    let actual = instruction_source_roles_for_wb(function, instruction_index)
+    assert_eq(actual, expected)
+  }
+  for child in function.children {
+    assert_function_instruction_sources_for_wb(child)
+  }
+}
+
+///|
+test "RED: lowered instructions satisfy their source contracts" {
+  let src =
+    #|function invoke(object, key, values) {
+    #|  object.value = object[key] + 1;
+    #|  object[key]++;
+    #|  var property;
+    #|  for (property in object) {
+    #|    if (property) break;
+    #|  }
+    #|  return object.method(...values);
+    #|}
+    #|invoke({ value: 0, method: function(x) { return x; } }, "value", [1]);
+    #|eval("1");
+    #|throw 1;
+    #|
+  let bytecode = parse_bytecode_for_wb(src)
+  assert_function_instruction_sources_for_wb(bytecode.main)
+}
+
+///|
 fn assert_bytecode_internal_error_for_wb(
   stmts : Array[@ast.Stmt],
   expected_message : String,
