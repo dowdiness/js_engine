@@ -36,7 +36,7 @@ focused and core evidence that #619 also requires.
 | Finite-below-limit execution and engine-owned exhaustion at the logical activation boundary | Production-admitted exact slice (policy pending) | #617 | Required after #617 lands; pending before then |
 | Shallow release-profile controls for unchanged legacy behavior | Legacy compatibility control | #619 | Required |
 | The #616 mixed call-plus-expression generator (`"0,"` repeated 263 times, followed by `"7"`) with the recursive `step(256, ...)` wrapper, expected guest value `263` | #608 residual; deferred public graduation evidence | #608 | Deferred; absent from the required set |
-| The success-valued 512-comma runtime case (`"0,"` repeated 512 times, followed by `"7"`), expected guest value `7` | #608 residual; deferred public graduation evidence | #608 | Deferred; absent from the required set |
+| The success-valued 512-comma runtime case (`"0,"` repeated 512 times, followed by `"7"`), expected guest value `7` | Production-admitted direct-comma expression slice | #772 | Required |
 
 ## Supporting required evidence outside the public workload classes
 
@@ -56,10 +56,10 @@ inventing a second depth or source that could drift from the gate.
 
 The post-parse 512-level traversal and the success-valued 512-comma runtime
 case are deliberately different workloads. #614 owns the former's early-error
-phase evidence. #608 owns the latter's complete runtime evaluation, and also
-owns the exact mixed workload until its dynamic call and expression paths are
-production-admitted. Passing post-parse validation does not graduate either
-runtime workload.
+phase evidence. #772 owns the latter's direct-comma runtime evaluation, which
+is required by #619. #608 still owns the exact mixed workload until its
+dynamic call and expression paths are production-admitted. Passing post-parse
+validation does not graduate that mixed runtime workload.
 
 ## Gate and independence rules
 
