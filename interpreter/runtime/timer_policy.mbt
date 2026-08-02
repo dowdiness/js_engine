@@ -1,18 +1,8 @@
-// Private queue-policy core for timer and interval dispatch.
-// It owns queue selection and bookkeeping transitions, but never invokes the
-// JavaScript callback stored in a TimerTask.
+// Private decision core for timer and interval dispatch. Queue inspection,
+// mutation, cancellation lookup, and callback execution stay in the shell.
 
 ///|
 const TIMER_SAFETY_LIMIT = 10000
-
-///|
-priv enum TimerQueuePolicyPhase {
-  TimerQueueReady
-  TimerQueueSelected(TimerTask)
-  TimerQueueCallbackSucceeded(TimerTask)
-  TimerQueueFailed
-  TimerQueueCompleted
-}
 
 ///|
 priv enum TimerQueueReadiness {
@@ -22,50 +12,55 @@ priv enum TimerQueueReadiness {
 }
 
 ///|
-priv struct TimerQueuePolicy {
-  queue : @priority_queue.PriorityQueue[TimerTask]
-  cancelled_timer_ids : Map[Int, Bool]
-  insertion_counter : Ref[Int]
-  safety_limit : Int
-  mut iterations : Int
-  mut phase : TimerQueuePolicyPhase
-}
-
-///|
-fn TimerQueuePolicy::TimerQueuePolicy(
-  queue : @priority_queue.PriorityQueue[TimerTask],
-  cancelled_timer_ids : Map[Int, Bool],
-  insertion_counter : Ref[Int],
-  safety_limit : Int,
-) -> TimerQueuePolicy {
-  {
-    queue,
-    cancelled_timer_ids,
-    insertion_counter,
-    safety_limit,
-    iterations: 0,
-    phase: TimerQueueReady,
-  }
-}
-
-///|
 fn[T] invalid_timer_queue_policy_transition(operation : String) -> T raise {
   fail("invalid timer queue policy transition: " + operation)
 }
 
 ///|
-fn TimerQueuePolicy::readiness(
-  self : TimerQueuePolicy,
+priv enum TimerQueueCorePhase {
+  TimerQueueCoreReady
+  TimerQueueCoreCommitRequired
+  TimerQueueCoreSelected(TimerTask)
+  TimerQueueCoreCallbackSucceeded(TimerTask)
+  TimerQueueCoreFailed
+  TimerQueueCoreCompleted
+}
+
+///|
+priv enum TimerQueueCommitDecision {
+  TimerQueueDiscardCommitted
+  TimerQueueRunCommitted(TimerTask)
+}
+
+///|
+priv enum TimerQueueCheckpointDecision {
+  TimerQueueDoNotRequeue
+  TimerQueueRequeue(TimerTask)
+}
+
+///|
+priv struct TimerQueuePolicyCore {
+  safety_limit : Int
+  iterations : Int
+  phase : TimerQueueCorePhase
+}
+
+///|
+fn TimerQueuePolicyCore::TimerQueuePolicyCore(
+  safety_limit : Int,
+) -> TimerQueuePolicyCore {
+  { safety_limit, iterations: 0, phase: TimerQueueCoreReady }
+}
+
+///|
+fn TimerQueuePolicyCore::readiness(
+  self : TimerQueuePolicyCore,
+  queue_is_empty : Bool,
 ) -> TimerQueueReadiness raise {
-  match self.phase {
-    TimerQueueReady => ()
-    TimerQueueSelected(_)
-    | TimerQueueCallbackSucceeded(_)
-    | TimerQueueFailed
-    | TimerQueueCompleted =>
-      invalid_timer_queue_policy_transition("readiness requires Ready")
+  guard self.phase is TimerQueueCoreReady else {
+    invalid_timer_queue_policy_transition("readiness requires Ready")
   }
-  if self.queue.is_empty() {
+  if queue_is_empty {
     TimerQueueEmpty
   } else if self.iterations >= self.safety_limit {
     TimerQueueSafetyLimit
@@ -75,11 +70,27 @@ fn TimerQueuePolicy::readiness(
 }
 
 ///|
-fn TimerQueuePolicy::reject_dispatch_observation(
-  self : TimerQueuePolicy,
-) -> Unit raise {
-  match self.readiness() {
-    TimerQueueObservationRequired => ()
+fn TimerQueuePolicyCore::accept_dispatch_observation(
+  self : TimerQueuePolicyCore,
+  queue_is_empty : Bool,
+) -> TimerQueuePolicyCore raise {
+  match self.readiness(queue_is_empty) {
+    TimerQueueObservationRequired =>
+      { ..self, phase: TimerQueueCoreCommitRequired }
+    TimerQueueEmpty | TimerQueueSafetyLimit =>
+      invalid_timer_queue_policy_transition(
+        "accept_dispatch_observation requires ObservationRequired",
+      )
+  }
+}
+
+///|
+fn TimerQueuePolicyCore::reject_dispatch_observation(
+  self : TimerQueuePolicyCore,
+  queue_is_empty : Bool,
+) -> TimerQueuePolicyCore raise {
+  match self.readiness(queue_is_empty) {
+    TimerQueueObservationRequired => self
     TimerQueueEmpty | TimerQueueSafetyLimit =>
       invalid_timer_queue_policy_transition(
         "reject_dispatch_observation requires ObservationRequired",
@@ -88,38 +99,42 @@ fn TimerQueuePolicy::reject_dispatch_observation(
 }
 
 ///|
-fn TimerQueuePolicy::commit_next(self : TimerQueuePolicy) -> TimerTask? raise {
-  match self.readiness() {
-    TimerQueueObservationRequired => ()
-    TimerQueueEmpty | TimerQueueSafetyLimit =>
-      invalid_timer_queue_policy_transition(
-        "commit_next requires ObservationRequired",
-      )
+fn TimerQueuePolicyCore::commit_popped(
+  self : TimerQueuePolicyCore,
+  timer : TimerTask,
+  cancelled : Bool,
+) -> (TimerQueuePolicyCore, TimerQueueCommitDecision) raise {
+  guard self.phase is TimerQueueCoreCommitRequired else {
+    invalid_timer_queue_policy_transition(
+      "commit_popped requires CommitRequired",
+    )
   }
-  self.iterations = self.iterations + 1
-  let timer = match self.queue.pop() {
-    Some(timer) => timer
-    None =>
-      invalid_timer_queue_policy_transition(
-        "commit_next requires a non-empty queue",
-      )
-  }
-  if self.cancelled_timer_ids.contains(timer.id) {
-    None
+  let iterations = self.iterations + 1
+  if cancelled {
+    (
+      { ..self, iterations, phase: TimerQueueCoreReady },
+      TimerQueueDiscardCommitted,
+    )
   } else {
-    self.phase = TimerQueueSelected(timer)
-    Some(timer)
+    (
+      { ..self, iterations, phase: TimerQueueCoreSelected(timer) },
+      TimerQueueRunCommitted(timer),
+    )
   }
 }
 
 ///|
-fn TimerQueuePolicy::callback_succeeded(self : TimerQueuePolicy) -> Unit raise {
+fn TimerQueuePolicyCore::callback_succeeded(
+  self : TimerQueuePolicyCore,
+) -> TimerQueuePolicyCore raise {
   match self.phase {
-    TimerQueueSelected(timer) => self.phase = TimerQueueCallbackSucceeded(timer)
-    TimerQueueReady
-    | TimerQueueCallbackSucceeded(_)
-    | TimerQueueFailed
-    | TimerQueueCompleted =>
+    TimerQueueCoreSelected(timer) =>
+      { ..self, phase: TimerQueueCoreCallbackSucceeded(timer) }
+    TimerQueueCoreReady
+    | TimerQueueCoreCommitRequired
+    | TimerQueueCoreCallbackSucceeded(_)
+    | TimerQueueCoreFailed
+    | TimerQueueCoreCompleted =>
       invalid_timer_queue_policy_transition(
         "callback_succeeded requires Selected",
       )
@@ -127,55 +142,65 @@ fn TimerQueuePolicy::callback_succeeded(self : TimerQueuePolicy) -> Unit raise {
 }
 
 ///|
-fn TimerQueuePolicy::callback_failed(self : TimerQueuePolicy) -> Unit raise {
+fn TimerQueuePolicyCore::callback_failed(
+  self : TimerQueuePolicyCore,
+) -> TimerQueuePolicyCore raise {
   match self.phase {
-    TimerQueueSelected(_) => self.phase = TimerQueueFailed
-    TimerQueueReady
-    | TimerQueueCallbackSucceeded(_)
-    | TimerQueueFailed
-    | TimerQueueCompleted =>
+    TimerQueueCoreSelected(_) => { ..self, phase: TimerQueueCoreFailed }
+    TimerQueueCoreReady
+    | TimerQueueCoreCommitRequired
+    | TimerQueueCoreCallbackSucceeded(_)
+    | TimerQueueCoreFailed
+    | TimerQueueCoreCompleted =>
       invalid_timer_queue_policy_transition("callback_failed requires Selected")
   }
 }
 
 ///|
-fn TimerQueuePolicy::checkpoint_succeeded(
-  self : TimerQueuePolicy,
-) -> Unit raise {
+fn TimerQueuePolicyCore::checkpoint_succeeded(
+  self : TimerQueuePolicyCore,
+  cancelled : Bool,
+  insertion_order : Int,
+) -> (TimerQueuePolicyCore, TimerQueueCheckpointDecision) raise {
   let timer = match self.phase {
-    TimerQueueCallbackSucceeded(timer) => timer
-    TimerQueueReady
-    | TimerQueueSelected(_)
-    | TimerQueueFailed
-    | TimerQueueCompleted =>
+    TimerQueueCoreCallbackSucceeded(timer) => timer
+    TimerQueueCoreReady
+    | TimerQueueCoreCommitRequired
+    | TimerQueueCoreSelected(_)
+    | TimerQueueCoreFailed
+    | TimerQueueCoreCompleted =>
       invalid_timer_queue_policy_transition(
         "checkpoint_succeeded requires CallbackSucceeded",
       )
   }
-  if timer.is_interval && !self.cancelled_timer_ids.contains(timer.id) {
-    let order = self.insertion_counter.val
-    self.insertion_counter.val = order + 1
-    self.queue.push({
+  let decision = if timer.is_interval && !cancelled {
+    TimerQueueRequeue({
       id: timer.id,
       callback: timer.callback,
       args: timer.args,
       delay: timer.delay + timer.period,
       period: timer.period,
       is_interval: true,
-      insertion_order: order,
+      insertion_order,
     })
+  } else {
+    TimerQueueDoNotRequeue
   }
-  self.phase = TimerQueueReady
+  ({ ..self, phase: TimerQueueCoreReady }, decision)
 }
 
 ///|
-fn TimerQueuePolicy::checkpoint_failed(self : TimerQueuePolicy) -> Unit raise {
+fn TimerQueuePolicyCore::checkpoint_failed(
+  self : TimerQueuePolicyCore,
+) -> TimerQueuePolicyCore raise {
   match self.phase {
-    TimerQueueCallbackSucceeded(_) => self.phase = TimerQueueFailed
-    TimerQueueReady
-    | TimerQueueSelected(_)
-    | TimerQueueFailed
-    | TimerQueueCompleted =>
+    TimerQueueCoreCallbackSucceeded(_) =>
+      { ..self, phase: TimerQueueCoreFailed }
+    TimerQueueCoreReady
+    | TimerQueueCoreCommitRequired
+    | TimerQueueCoreSelected(_)
+    | TimerQueueCoreFailed
+    | TimerQueueCoreCompleted =>
       invalid_timer_queue_policy_transition(
         "checkpoint_failed requires CallbackSucceeded",
       )
@@ -183,17 +208,12 @@ fn TimerQueuePolicy::checkpoint_failed(self : TimerQueuePolicy) -> Unit raise {
 }
 
 ///|
-fn TimerQueuePolicy::complete_run(self : TimerQueuePolicy) -> Unit raise {
-  match self.phase {
-    TimerQueueReady => ()
-    TimerQueueSelected(_)
-    | TimerQueueCallbackSucceeded(_)
-    | TimerQueueFailed
-    | TimerQueueCompleted =>
-      invalid_timer_queue_policy_transition("complete_run requires Ready")
+fn TimerQueuePolicyCore::complete_run(
+  self : TimerQueuePolicyCore,
+  queue_is_empty : Bool,
+) -> (TimerQueuePolicyCore, Bool) raise {
+  guard self.phase is TimerQueueCoreReady else {
+    invalid_timer_queue_policy_transition("complete_run requires Ready")
   }
-  if self.queue.is_empty() {
-    self.cancelled_timer_ids.clear()
-  }
-  self.phase = TimerQueueCompleted
+  ({ ..self, phase: TimerQueueCoreCompleted }, queue_is_empty)
 }

@@ -19,6 +19,115 @@ fn timer_policy_test_task(
 }
 
 ///|
+// Test-only imperative shell. Production queue/map/counter mutation lives in
+// run_timers_observed; this harness exercises the same pure policy decisions.
+priv struct TimerQueuePolicy {
+  queue : @priority_queue.PriorityQueue[TimerTask]
+  cancelled_timer_ids : Map[Int, Bool]
+  insertion_counter : Ref[Int]
+  mut core : TimerQueuePolicyCore
+}
+
+///|
+fn TimerQueuePolicy::TimerQueuePolicy(
+  queue : @priority_queue.PriorityQueue[TimerTask],
+  cancelled_timer_ids : Map[Int, Bool],
+  insertion_counter : Ref[Int],
+  safety_limit : Int,
+) -> TimerQueuePolicy {
+  {
+    queue,
+    cancelled_timer_ids,
+    insertion_counter,
+    core: TimerQueuePolicyCore(safety_limit),
+  }
+}
+
+///|
+fn TimerQueuePolicy::readiness(
+  self : TimerQueuePolicy,
+) -> TimerQueueReadiness raise {
+  self.core.readiness(self.queue.is_empty())
+}
+
+///|
+fn TimerQueuePolicy::reject_dispatch_observation(
+  self : TimerQueuePolicy,
+) -> Unit raise {
+  self.core = self.core.reject_dispatch_observation(self.queue.is_empty())
+}
+
+///|
+fn TimerQueuePolicy::commit_next(self : TimerQueuePolicy) -> TimerTask? raise {
+  self.core = self.core.accept_dispatch_observation(self.queue.is_empty())
+  let timer = match self.queue.pop() {
+    Some(timer) => timer
+    None =>
+      invalid_timer_queue_policy_transition(
+        "accepted observation requires a queued timer",
+      )
+  }
+  let (core, decision) = self.core.commit_popped(
+    timer,
+    self.cancelled_timer_ids.contains(timer.id),
+  )
+  self.core = core
+  match decision {
+    TimerQueueDiscardCommitted => None
+    TimerQueueRunCommitted(timer) => Some(timer)
+  }
+}
+
+///|
+fn TimerQueuePolicy::callback_succeeded(self : TimerQueuePolicy) -> Unit raise {
+  self.core = self.core.callback_succeeded()
+}
+
+///|
+fn TimerQueuePolicy::callback_failed(self : TimerQueuePolicy) -> Unit raise {
+  self.core = self.core.callback_failed()
+}
+
+///|
+fn TimerQueuePolicy::checkpoint_succeeded(
+  self : TimerQueuePolicy,
+) -> Unit raise {
+  let insertion_order = self.insertion_counter.val
+  let cancelled = match self.core.phase {
+    TimerQueueCoreCallbackSucceeded(timer) =>
+      self.cancelled_timer_ids.contains(timer.id)
+    _ => false
+  }
+  let (core, decision) = self.core.checkpoint_succeeded(
+    cancelled, insertion_order,
+  )
+  self.core = core
+  match decision {
+    TimerQueueDoNotRequeue => ()
+    TimerQueueRequeue(timer) => {
+      self.insertion_counter.val = insertion_order + 1
+      self.queue.push(timer)
+    }
+  }
+}
+
+///|
+fn TimerQueuePolicy::checkpoint_failed(self : TimerQueuePolicy) -> Unit raise {
+  self.core = self.core.checkpoint_failed()
+}
+
+///|
+fn TimerQueuePolicy::complete_run(self : TimerQueuePolicy) -> Unit raise {
+  let (core, clear_cancellations) = self.core.complete_run(
+    self.queue.is_empty(),
+  )
+  self.core = core
+  if clear_cancellations {
+    self.cancelled_timer_ids.clear()
+  }
+}
+
+///|
 fn timer_policy_test_id(task : TimerTask?) -> Int raise {
   match task {
     Some(task) => task.id
