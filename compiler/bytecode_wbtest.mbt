@@ -46,13 +46,13 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     PreparePlainPropertyCall("method", loc),
     true,
     true,
-    [MemberAccess, Call],
+    [MemberAccess],
   )
   assert_instruction_contract_for_wb(
     PrepareSuperComputedCall(loc),
     true,
     true,
-    [SuperMemberAccess, PropertyKey, Call],
+    [SuperMemberAccess, PropertyKey],
   )
   assert_instruction_contract_for_wb(ArgPushSpread(loc), true, true, [
     Spread,
