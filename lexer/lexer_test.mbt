@@ -844,6 +844,18 @@ test "loc.offset: token after astral identifier is UTF-16-correct" {
 }
 
 ///|
+test "loc.offset: token after astral private identifier is UTF-16-correct" {
+  // #𝒜 occupies 3 UTF-16 units; after the following space, x starts at 4.
+  let src = "#𝒜 x"
+  let toks = @lexer.tokenize(src)
+  inspect(toks[1].loc.offset, content="4")
+  inspect(
+    src.unsafe_substring(start=toks[1].loc.offset, end=toks[1].end_offset),
+    content="x",
+  )
+}
+
+///|
 test "loc.offset: token after astral char in string is UTF-16-correct" {
   // "𝒜" spans 4 UTF-16 units (opening quote + 2-unit surrogate pair + closing quote).
   // The x identifier must start at UTF-16 offset 5 (4 for string + 1 for space).

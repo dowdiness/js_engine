@@ -46,6 +46,44 @@ fn is_reserved_word(name : String) -> Bool {
 }
 
 ///|
+/// A parser failure with an optional trustworthy token range.
+pub struct ParseFailure {
+  cause_ : Error
+  token_ : @token.Token?
+}
+
+///|
+fn ParseFailure::ParseFailure(
+  cause : Error,
+  token : @token.Token?,
+) -> ParseFailure {
+  { cause_: cause, token_: token }
+}
+
+///|
+pub fn ParseFailure::message(self : ParseFailure) -> String {
+  self.cause_.to_string()
+}
+
+///|
+pub fn ParseFailure::source_span(self : ParseFailure) -> (@token.Loc, Int)? {
+  self.token_.map(token => (token.loc, token.end_offset))
+}
+
+///|
+priv suberror LocatedParserError {
+  LocatedSyntaxError(message~ : String, token~ : @token.Token)
+} derive(Debug)
+
+///|
+fn[T] located_syntax_error(
+  token : @token.Token,
+  message : String,
+) -> T raise Error {
+  raise LocatedSyntaxError(message~, token~)
+}
+
+///|
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   source : String
@@ -172,8 +210,9 @@ fn Parser::expect(
     self.advance()
   } else {
     let tok = self.peek()
-    raise @errors.SyntaxError(
-      message="Expected \{kind}, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+    located_syntax_error(
+      tok,
+      "Expected \{kind}, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
     )
   }
 }
@@ -187,8 +226,9 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       // Since the lexer now emits them as Ident tokens, reject them here.
       if is_reserved_word(name) {
         let tok = self.peek()
-        raise @errors.SyntaxError(
-          message="Unexpected reserved word '\{name}' at line \{tok.loc.line}, col \{tok.loc.col}",
+        located_syntax_error(
+          tok,
+          "Unexpected reserved word '\{name}' at line \{tok.loc.line}, col \{tok.loc.col}",
         )
       }
       let _ = self.advance()
@@ -228,8 +268,9 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
         "yield"
       } else {
         let tok = self.peek()
-        raise @errors.SyntaxError(
-          message="Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+        located_syntax_error(
+          tok,
+          "Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
         )
       }
     Static => {
@@ -238,8 +279,9 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
     }
     _ => {
       let tok = self.peek()
-      raise @errors.SyntaxError(
-        message="Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+      located_syntax_error(
+        tok,
+        "Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
       )
     }
   }
@@ -298,8 +340,9 @@ fn Parser::expect_ident_name(self : Parser) -> String raise Error {
       tok.raw
     }
     _ =>
-      raise @errors.SyntaxError(
-        message="Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
+      located_syntax_error(
+        tok,
+        "Expected identifier, got \{tok.kind} at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
 }
@@ -354,7 +397,7 @@ fn Parser::is_async_generator(self : Parser) -> Bool {
 }
 
 ///|
-pub fn parse_tokens(
+fn parse_tokens_located(
   tokens : Array[@token.Token],
   source? : String = "",
 ) -> @ast.Program raise Error {
@@ -364,6 +407,29 @@ pub fn parse_tokens(
     stmts.push(parser.parse_stmt())
   }
   { stmts, }
+}
+
+///|
+pub fn parse_tokens(
+  tokens : Array[@token.Token],
+  source? : String = "",
+) -> @ast.Program raise Error {
+  parse_tokens_located(tokens, source~) catch {
+    LocatedSyntaxError(message~, token=_) => raise @errors.SyntaxError(message~)
+    error => raise error
+  }
+}
+
+///|
+pub fn parse_diagnostic(source : String) -> Result[@ast.Program, ParseFailure] {
+  let tokens = @lexer.tokenize(source) catch {
+    error => return Err(ParseFailure(error, None))
+  }
+  Ok(parse_tokens_located(tokens, source~)) catch {
+    LocatedSyntaxError(message~, token~) =>
+      Err(ParseFailure(@errors.SyntaxError(message~), Some(token)))
+    error => Err(ParseFailure(error, None))
+  }
 }
 
 ///|

@@ -179,11 +179,12 @@ pub impl Show for Token with fn output(self, logger) {
 }
 
 ///|
-/// `end_offset` is the exclusive byte offset in the original source string at
-/// which this token ends. When -1 (the default for call sites that don't track
-/// source position, e.g. tests), it is derived as `loc.offset + raw.length()`,
-/// which is correct for all tokens whose `raw` field is the verbatim source
-/// slice. The lexer always supplies an explicit value.
+/// `end_offset` is the exclusive UTF-16 code-unit offset in the original source
+/// string at which this token ends. When -1 (the default for call sites that
+/// don't track source position, e.g. tests), it is derived as
+/// `loc.offset + raw.length()`, which is correct for all tokens whose `raw`
+/// field is the verbatim source slice. The lexer always supplies an explicit
+/// value.
 pub fn Token::Token(
   kind : TokenKind,
   loc : Loc,

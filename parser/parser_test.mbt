@@ -170,6 +170,37 @@ fn expect_parse_ok(source : String) -> Unit raise Error {
 }
 
 ///|
+test "parse diagnostic preserves a token span and legacy error surface" {
+  match @parser.parse_diagnostic("let =") {
+    Ok(_) => fail("expected parse diagnostic failure")
+    Err(failure) => {
+      inspect(
+        failure.message(),
+        content="SyntaxError: Expected identifier, got Assign at line 1, col 5",
+      )
+      match failure.source_span() {
+        None => fail("expected parser token span")
+        Some((start, end_offset)) =>
+          json_inspect([start.line, start.col, start.offset, end_offset], content=[
+            1, 5, 4, 5,
+          ])
+      }
+    }
+  }
+  let legacy_message = try {
+    let _ = @parser.parse("let =")
+    "no error"
+  } catch {
+    @errors.SyntaxError(message~) => message
+    error => "wrong error: " + error.to_string()
+  }
+  inspect(
+    legacy_message,
+    content="Expected identifier, got Assign at line 1, col 5",
+  )
+}
+
+///|
 test "parse variable declaration" {
   let prog = @parser.parse("let x = 42;")
   match prog.stmts[0] {

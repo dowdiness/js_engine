@@ -46,12 +46,13 @@ fn assert_engine_diagnostic(
   integrity : String,
   effects : String,
   jobs : String,
+  has_location? : Bool = false,
 ) -> Unit raise {
   inspect(diagnostic.failure_kind_code(), content=kind)
   inspect(diagnostic.operation_code(), content=operation)
   inspect(diagnostic.phase_code(), content=phase)
   assert_true(diagnostic.source_identity() == source_identity)
-  assert_true(diagnostic.source_location() is None)
+  assert_true((diagnostic.source_location() is Some(_)) == has_location)
   inspect(
     engine_integrity_code(diagnostic.engine_integrity()),
     content=integrity,
@@ -59,6 +60,31 @@ fn assert_engine_diagnostic(
   inspect(retained_effects_code(diagnostic.retained_effects()), content=effects)
   inspect(pending_jobs_code(diagnostic.pending_jobs()), content=jobs)
   assert_true(diagnostic.message().length() > 0)
+}
+
+///|
+fn assert_source_range(
+  diagnostic : @js_engine.EngineDiagnostic,
+  start_line : Int,
+  start_column : Int,
+  start_offset : Int,
+  end_line : Int,
+  end_column : Int,
+  end_offset : Int,
+) -> Unit raise {
+  guard diagnostic.source_location() is Some(location) else {
+    fail("expected parser source location")
+  }
+  let start = location.start()
+  json_inspect([start.line(), start.column(), start.offset()], content=[
+    start_line, start_column, start_offset,
+  ])
+  guard location.end() is Some(end) else {
+    fail("expected parser source range end")
+  }
+  json_inspect([end.line(), end.column(), end.offset()], content=[
+    end_line, end_column, end_offset,
+  ])
 }
 
 ///|
@@ -293,7 +319,54 @@ test "Engine detailed eval reports a portable parse diagnostic" {
     "reusable",
     "none",
     "present",
+    has_location=true,
   )
+  assert_source_range(diagnostic, 1, 5, 4, 1, 6, 5)
+}
+
+///|
+test "Engine detailed eval keeps UTF-16 offsets after astral input" {
+  let engine = @js_engine.Engine()
+  let diagnostic = expect_engine_diagnostic(
+    engine.eval_diagnostic("𝒜;\nlet =", source_id="unicode.js"),
+  )
+  assert_engine_diagnostic(
+    diagnostic,
+    "parse-error",
+    "eval",
+    "parse",
+    Some("unicode.js"),
+    "reusable",
+    "none",
+    "none",
+    has_location=true,
+  )
+  assert_source_range(diagnostic, 2, 5, 8, 2, 6, 9)
+}
+
+///|
+test "Engine detailed eval keeps UTF-16 offsets after astral private names" {
+  let engine = @js_engine.Engine()
+  let diagnostic = expect_engine_diagnostic(
+    engine.eval_diagnostic(
+      "class C { #𝒜; }\nlet =",
+      source_id="private-unicode.js",
+    ),
+  )
+  assert_source_range(diagnostic, 2, 5, 21, 2, 6, 22)
+}
+
+///|
+test "Engine detailed eval computes multiline token range ends" {
+  let engine = @js_engine.Engine()
+  let crlf = expect_engine_diagnostic(
+    engine.eval_diagnostic("let `a\r\nb`", source_id="crlf.js"),
+  )
+  assert_source_range(crlf, 1, 5, 4, 2, 3, 10)
+  let line_separator = expect_engine_diagnostic(
+    engine.eval_diagnostic("let `a\u2028b`", source_id="line-separator.js"),
+  )
+  assert_source_range(line_separator, 1, 5, 4, 2, 3, 9)
 }
 
 ///|
@@ -848,10 +921,11 @@ test "Engine detailed timer checkpoint preserves callback phases" {
 
 ///|
 test "one-shot detailed run preserves every public phase" {
+  let parse_diagnostic = expect_engine_diagnostic(
+    @js_engine.run_diagnostic("let =", source_id="run.js"),
+  )
   assert_engine_diagnostic(
-    expect_engine_diagnostic(
-      @js_engine.run_diagnostic("let =", source_id="run.js"),
-    ),
+    parse_diagnostic,
     "parse-error",
     "run",
     "parse",
@@ -859,7 +933,9 @@ test "one-shot detailed run preserves every public phase" {
     "not-applicable",
     "none",
     "unknown",
+    has_location=true,
   )
+  assert_source_range(parse_diagnostic, 1, 5, 4, 1, 6, 5)
   assert_engine_diagnostic(
     expect_engine_diagnostic(
       @js_engine.run_diagnostic(
