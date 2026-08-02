@@ -5,9 +5,10 @@ using @runtime {type Binding}
 let empty_bytecode_env_slots : Array[Binding] = []
 
 ///|
-priv struct SourcePointId(Int) derive(Eq, Debug)
+priv struct SourcePointId(Int)
 
 ///|
+#warnings("-unused_value")
 priv enum SourcePointRole {
   StatementEntry
   ExpressionEntry
@@ -25,25 +26,28 @@ priv enum SourcePointRole {
 } derive(Eq, Debug)
 
 ///|
+#warnings("-unused_field")
 priv struct SourcePoint {
   role : SourcePointRole
   loc : @token.Loc
-} derive(Eq, Debug)
+}
 
 ///|
+#warnings("-unused_constructor")
 priv enum BytecodeObservationBarrierKind {
   NotObservationBarrier
   StatementObservationBarrier
   ExpressionObservationBarrier
-} derive(Eq, Debug)
+}
 
 ///|
+#warnings("-unused_field")
 priv struct BytecodeInstructionContract {
   may_raise_js : Bool
   may_invoke_guest : Bool
   required_source_roles : Array[SourcePointRole]
   observation_barrier : BytecodeObservationBarrierKind
-} derive(Eq, Debug)
+}
 
 ///|
 priv enum BytecodeInstr {
@@ -333,6 +337,7 @@ fn bytecode_unary_contract(op : @ast.UnaryOp) -> BytecodeInstructionContract {
 }
 
 ///|
+#warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
   params : Array[String]
