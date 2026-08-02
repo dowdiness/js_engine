@@ -43,6 +43,13 @@ test "RED: static own accessor reads lower through GetProperty" {
 }
 
 ///|
+// Pre-fix provenance: in a detached worktree at post-#740 base
+// `2c6aa6632dbeae60776bc4dda8fe278efc51f9f9`, vary only `remaining` and the
+// expected result in the second RED test, then run
+// `moon test compiler/executor_neutral_activation_wbtest.mbt --target native`
+// or `--target js` (debug, no host-stack tuning). Native passes at 252 and
+// fails at 253 with signal 11 (SIGSEGV); JS passes at 71 and fails at 72 with
+// `RangeError: Maximum call stack size exceeded`.
 test "RED: bytecode static own accessor recursion reaches the synchronous boundary" {
   let source = "let remaining = 320;" +
     "let receiver = { get x() {" +
