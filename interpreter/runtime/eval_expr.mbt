@@ -1686,16 +1686,7 @@ fn Interpreter::eval_expr(
       self.eval_update(ctx, op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>
       self.eval_compound_assign(ctx, op, target, value_expr, env, loc)
-    Comma(left, right, _) => {
-      let skip_left = match ctx.current_generator {
-        Some(gen) => gen.resuming && !expr_may_contain_yield(left)
-        None => false
-      }
-      if !skip_left {
-        let _ = self.eval_expr(ctx, left, env)
-      }
-      self.eval_expr(ctx, right, env)
-    }
+    Comma(left, right, _) => self.eval_direct_comma(ctx, left, right, env)
     TemplateLit(quasis, exprs, _) => {
       let buf = StringBuilder::new()
       for i = 0; i < quasis.length(); i = i + 1 {

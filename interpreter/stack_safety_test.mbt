@@ -450,6 +450,11 @@ test "post-parse stack safety phase isolation: 512 comma expressions" {
 }
 
 ///|
+test "post-parse stack safety: 512 comma expressions" {
+  inspect(run(nested_comma_source(512, "7")), content="7")
+}
+
+///|
 test "post-parse stack safety: direct eval Contains handles 4096 comma expressions" {
   let eval_body = nested_comma_source(4096, "new.target")
   inspect(
