@@ -2432,6 +2432,54 @@ fn BytecodeBuilder::emit_call(
 }
 
 ///|
+fn BytecodeBuilder::emit_property_call_prepare(
+  self : BytecodeBuilder,
+  prop : String,
+  loc : @token.Loc,
+  suspended? : Bool = false,
+) -> Unit raise Error {
+  let instr = if suspended {
+    PreparePlainPropertyCall(prop, loc)
+  } else {
+    PreparePropertyCall(prop, loc)
+  }
+  let _ = self.emit_with_source_locations(instr, [(MemberAccess, loc)])
+}
+
+///|
+fn BytecodeBuilder::emit_computed_call_prepare(
+  self : BytecodeBuilder,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let _ = self.emit_with_source_locations(PrepareComputedCall(loc), [
+    (MemberAccess, loc),
+    (PropertyKey, loc),
+  ])
+}
+
+///|
+fn BytecodeBuilder::emit_super_property_call_prepare(
+  self : BytecodeBuilder,
+  prop : String,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let _ = self.emit_with_source_locations(PrepareSuperPropertyCall(prop, loc), [
+    (SuperMemberAccess, loc),
+  ])
+}
+
+///|
+fn BytecodeBuilder::emit_super_computed_call_prepare(
+  self : BytecodeBuilder,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let _ = self.emit_with_source_locations(PrepareSuperComputedCall(loc), [
+    (SuperMemberAccess, loc),
+    (PropertyKey, loc),
+  ])
+}
+
+///|
 fn BytecodeBuilder::emit_call_with_receiver(
   self : BytecodeBuilder,
   args : Array[@ast.Expr],
@@ -2575,7 +2623,7 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
         OptionalMember(obj, prop, member_loc) => {
           self.compile_expr(obj)
           self.emit_optional_null_guard(end_jumps)
-          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.emit_property_call_prepare(prop, member_loc)
           self.compile_optional_chain_call_with_receiver_tail(
             args,
             loc,
@@ -2586,7 +2634,7 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
         ChainMember(obj, prop, member_loc) => {
           self.compile_optional_chain_expr_body(obj, end_jumps)
           self.emit_chain_short_circuit_guard(end_jumps)
-          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.emit_property_call_prepare(prop, member_loc)
           self.compile_optional_chain_call_with_receiver_tail(
             args,
             loc,
@@ -2598,7 +2646,7 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
           self.compile_expr(obj)
           self.emit_optional_null_guard(end_jumps)
           self.compile_expr(key)
-          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.emit_computed_call_prepare(member_loc)
           self.compile_optional_chain_call_with_receiver_tail(
             args,
             loc,
@@ -2610,7 +2658,7 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
           self.compile_optional_chain_expr_body(obj, end_jumps)
           self.emit_chain_short_circuit_guard(end_jumps)
           self.compile_expr(key)
-          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.emit_computed_call_prepare(member_loc)
           self.compile_optional_chain_call_with_receiver_tail(
             args,
             loc,
@@ -2621,7 +2669,7 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
         Member(obj, prop, member_loc) => {
           // Grouping(Member(...)) recovered — compile with receiver preservation.
           self.compile_expr(obj)
-          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.emit_property_call_prepare(prop, member_loc)
           self.compile_optional_chain_call_with_receiver_tail(
             args,
             loc,
@@ -2632,7 +2680,7 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
         ComputedMember(obj, key, member_loc) => {
           self.compile_expr(obj)
           self.compile_expr(key)
-          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.emit_computed_call_prepare(member_loc)
           self.compile_optional_chain_call_with_receiver_tail(
             args,
             loc,
@@ -2650,27 +2698,27 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
     Call(OptionalMember(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
       self.emit_optional_null_guard(end_jumps)
-      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      self.emit_property_call_prepare(prop, member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     Call(ChainMember(obj, prop, member_loc), args, loc) => {
       self.compile_optional_chain_expr_body(obj, end_jumps)
       self.emit_chain_short_circuit_guard(end_jumps)
-      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      self.emit_property_call_prepare(prop, member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     Call(OptionalComputedMember(obj, key, member_loc), args, loc) => {
       self.compile_expr(obj)
       self.emit_optional_null_guard(end_jumps)
       self.compile_expr(key)
-      let _ = self.emit(PrepareComputedCall(member_loc))
+      self.emit_computed_call_prepare(member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     Call(ChainComputedMember(obj, key, member_loc), args, loc) => {
       self.compile_optional_chain_expr_body(obj, end_jumps)
       self.emit_chain_short_circuit_guard(end_jumps)
       self.compile_expr(key)
-      let _ = self.emit(PrepareComputedCall(member_loc))
+      self.emit_computed_call_prepare(member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     // Call(OptionalCall(...), ...): continuation call after an optional call.
@@ -2823,7 +2871,7 @@ fn BytecodeBuilder::compile_optional_property_call(
     end_jumps.push(self.emit(Jump(-1)))
     self.patch(member_jump, JumpIfNotNullishKeep(self.code.length()))
   }
-  let _ = self.emit(PreparePropertyCall(prop, member_loc))
+  self.emit_property_call_prepare(prop, member_loc)
   self.compile_optional_call_with_receiver_tail(
     args,
     loc,
@@ -2853,7 +2901,7 @@ fn BytecodeBuilder::compile_optional_computed_call(
     self.patch(member_jump, JumpIfNotNullishKeep(self.code.length()))
   }
   self.compile_expr(key)
-  let _ = self.emit(PrepareComputedCall(member_loc))
+  self.emit_computed_call_prepare(member_loc)
   self.compile_optional_call_with_receiver_tail(
     args,
     loc,
@@ -2881,7 +2929,7 @@ fn BytecodeBuilder::compile_chain_property_call(
     member_jump,
     JumpIfNotOptionalChainShortCircuitKeep(self.code.length()),
   )
-  let _ = self.emit(PreparePropertyCall(prop, member_loc))
+  self.emit_property_call_prepare(prop, member_loc)
   self.compile_optional_call_with_receiver_tail(
     args,
     loc,
@@ -2911,7 +2959,7 @@ fn BytecodeBuilder::compile_chain_computed_call(
     JumpIfNotOptionalChainShortCircuitKeep(self.code.length()),
   )
   self.compile_expr(key)
-  let _ = self.emit(PrepareComputedCall(member_loc))
+  self.emit_computed_call_prepare(member_loc)
   self.compile_optional_call_with_receiver_tail(
     args,
     loc,
@@ -3983,22 +4031,28 @@ fn BytecodeBuilder::compile_expr_body(
     }
     TaggedTemplate(Member(obj, prop, member_loc), quasis, exprs, loc) => {
       self.compile_expr(obj)
-      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      self.emit_property_call_prepare(prop, member_loc)
       let _ = self.emit(MakeTemplateObject(quasis))
       for expr in exprs {
         self.compile_expr(expr)
       }
-      let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
+      let _ = self.emit_with_source_locations(
+        CallWithReceiver(1 + exprs.length(), loc),
+        [(Call, loc)],
+      )
     }
     TaggedTemplate(ComputedMember(obj, key, member_loc), quasis, exprs, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
-      let _ = self.emit(PrepareComputedCall(member_loc))
+      self.emit_computed_call_prepare(member_loc)
       let _ = self.emit(MakeTemplateObject(quasis))
       for expr in exprs {
         self.compile_expr(expr)
       }
-      let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
+      let _ = self.emit_with_source_locations(
+        CallWithReceiver(1 + exprs.length(), loc),
+        [(Call, loc)],
+      )
     }
     TaggedTemplate(tag, quasis, exprs, loc) => {
       self.compile_expr(tag)
@@ -4006,7 +4060,9 @@ fn BytecodeBuilder::compile_expr_body(
       for expr in exprs {
         self.compile_expr(expr)
       }
-      let _ = self.emit(Call(1 + exprs.length(), loc))
+      let _ = self.emit_with_source_locations(Call(1 + exprs.length(), loc), [
+        (Call, loc),
+      ])
     }
     RegexLit(pattern, flags, _) => {
       let _ = self.emit(MakeRegExp(pattern, flags))
@@ -4268,7 +4324,7 @@ fn BytecodeBuilder::compile_expr_body(
     }
     Call(SuperMember(prop, member_loc), args, loc) => {
       self.has_this = true
-      let _ = self.emit(PrepareSuperPropertyCall(prop, member_loc))
+      self.emit_super_property_call_prepare(prop, member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     Call(SuperComputedMember(key, member_loc), args, loc) => {
@@ -4278,7 +4334,7 @@ fn BytecodeBuilder::compile_expr_body(
       let _ = self.emit(LoadThis)
       let _ = self.emit(Pop)
       self.compile_expr(key)
-      let _ = self.emit(PrepareSuperComputedCall(member_loc))
+      self.emit_super_computed_call_prepare(member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     Call(OptionalMember(obj, prop, member_loc), args, loc) =>
@@ -4323,20 +4379,27 @@ fn BytecodeBuilder::compile_expr_body(
       )
     Call(Member(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
-      let _ = self.emit(PreparePlainPropertyCall(prop, member_loc))
+      self.emit_property_call_prepare(prop, member_loc, suspended=true)
       self.emit_call_with_receiver(args, loc)
     }
     Call(ComputedMember(obj, key, member_loc), args, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
-      let _ = self.emit(PrepareComputedCall(member_loc))
+      self.emit_computed_call_prepare(member_loc)
       self.emit_call_with_receiver(args, loc)
     }
     Call(callee, args, loc) =>
       if bytecode_is_direct_eval_callee(callee) {
-        let _ = self.emit(LoadDirectEvalCallee)
+        let callee_loc = bytecode_expr_loc(callee)
+        let _ = self.emit_with_source_locations(LoadDirectEvalCallee, [
+          (BindingAccess, callee_loc),
+          (DirectEval, callee_loc),
+        ])
         self.compile_dynamic_args(args)
-        let _ = self.emit(CallDirectEval(loc))
+        let _ = self.emit_with_source_locations(CallDirectEval(loc), [
+          (DirectEval, loc),
+          (Call, loc),
+        ])
       } else {
         self.compile_expr(callee)
         self.emit_call(args, loc)
