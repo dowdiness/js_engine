@@ -434,7 +434,11 @@ pub fn Interpreter::run_timers_observed(
         error => {
           policy.reject_dispatch_observation()
           return Err(
-            TimerRunFailure(error, TimerRunFailurePhase::TimerQueueDispatch, None),
+            TimerRunFailure(
+              error,
+              TimerRunFailurePhase::TimerQueueDispatch,
+              None,
+            ),
           )
         }
       }

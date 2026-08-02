@@ -92,7 +92,9 @@ fn TimerQueuePolicy::commit_next(self : TimerQueuePolicy) -> TimerTask? raise {
   match self.readiness() {
     TimerQueueObservationRequired => ()
     TimerQueueEmpty | TimerQueueSafetyLimit =>
-      invalid_timer_queue_policy_transition("commit_next requires ObservationRequired")
+      invalid_timer_queue_policy_transition(
+        "commit_next requires ObservationRequired",
+      )
   }
   self.iterations = self.iterations + 1
   let timer = match self.queue.pop() {
@@ -110,6 +112,7 @@ fn TimerQueuePolicy::commit_next(self : TimerQueuePolicy) -> TimerTask? raise {
   }
 }
 
+///|
 fn TimerQueuePolicy::callback_succeeded(self : TimerQueuePolicy) -> Unit raise {
   match self.phase {
     TimerQueueSelected(timer) => self.phase = TimerQueueCallbackSucceeded(timer)

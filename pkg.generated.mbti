@@ -56,6 +56,7 @@ pub fn Engine::run_microtask_checkpoint(Self) -> Bool raise EngineError
 pub fn Engine::run_microtask_checkpoint_bounded(Self, @runtime.ExecutionPolicy) -> Result[Bool, EngineDiagnostic]
 pub fn Engine::run_microtask_checkpoint_diagnostic(Self) -> Result[Bool, EngineDiagnostic]
 pub fn Engine::run_timer_checkpoint(Self) -> Unit raise EngineError
+pub fn Engine::run_timer_checkpoint_bounded(Self, @runtime.ExecutionPolicy) -> Result[Unit, EngineDiagnostic]
 pub fn Engine::run_timer_checkpoint_diagnostic(Self) -> Result[Unit, EngineDiagnostic]
 pub fn Engine::take_output(Self) -> Array[String]
 
