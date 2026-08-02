@@ -1685,16 +1685,16 @@ fn compile_bytecode_function(
   )
   let needs_arguments_obj = bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body)
-  {
-    name,
-    params,
-    rest_param,
-    source_body: body,
-    body_has_use_strict: @static_semantics.has_use_strict(body),
-    call_self_name,
-    needs_arguments_object: needs_arguments_obj,
+  BytecodeFunction(
+    name=name,
+    params=params,
+    rest_param=rest_param,
+    source_body=body,
+    body_has_use_strict=@static_semantics.has_use_strict(body),
+    call_self_name=call_self_name,
+    needs_arguments_object=needs_arguments_obj,
     // When false, run_bytecode_function skips all hoist calls (each is a no-op per these conditions).
-    needs_own_env: !(builder.env_slot_names.is_empty() &&
+    needs_own_env=!(builder.env_slot_names.is_empty() &&
     env_var_hoist_names.is_empty() &&
     !needs_arguments_obj &&
     !call_self_name &&
@@ -1704,14 +1704,14 @@ fn compile_bytecode_function(
     !builder.has_new_target &&
     first_decl_in(body, stmt_is_lexical_decl) is None &&
     !bytecode_body_contains_destructure_assign(body)),
-    local_names: builder.local_names,
-    local_indices: builder.local_indices,
-    env_slot_names: builder.env_slot_names,
-    env_var_hoist_names,
-    template_cache_key_prefix,
-    code: builder.code,
-    children: builder.children,
-  }
+    local_names=builder.local_names,
+    local_indices=builder.local_indices,
+    env_slot_names=builder.env_slot_names,
+    env_var_hoist_names=env_var_hoist_names,
+    template_cache_key_prefix=template_cache_key_prefix,
+    code=builder.code,
+    children=builder.children,
+  )
 }
 
 ///|

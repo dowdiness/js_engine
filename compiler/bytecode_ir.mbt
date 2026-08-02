@@ -142,6 +142,43 @@ priv struct BytecodeFunction {
 }
 
 ///|
+fn BytecodeFunction::BytecodeFunction(
+  name~ : String?,
+  params~ : Array[String],
+  rest_param~ : String?,
+  source_body~ : Array[@ast.Stmt],
+  body_has_use_strict~ : Bool,
+  call_self_name~ : Bool,
+  needs_arguments_object~ : Bool,
+  needs_own_env~ : Bool,
+  local_names~ : Array[String],
+  local_indices~ : Map[String, Int],
+  env_slot_names~ : Array[String],
+  env_var_hoist_names~ : Array[String],
+  template_cache_key_prefix~ : String,
+  code~ : Array[BytecodeInstr],
+  children~ : Array[BytecodeFunction],
+) -> BytecodeFunction {
+  {
+    name,
+    params,
+    rest_param,
+    source_body,
+    body_has_use_strict,
+    call_self_name,
+    needs_arguments_object,
+    needs_own_env,
+    local_names,
+    local_indices,
+    env_slot_names,
+    env_var_hoist_names,
+    template_cache_key_prefix,
+    code,
+    children,
+  }
+}
+
+///|
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
   children : Array[BytecodeFunction]
