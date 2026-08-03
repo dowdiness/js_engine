@@ -239,7 +239,7 @@ fn bytecode_instruction_contract(
     DeleteComputed => bytecode_contract(true, true, [MemberAccess, PropertyKey])
     AppendTemplate(_) => bytecode_contract(true, true, [Operator])
     MakeTemplateObject(_) => bytecode_contract(false, false, [])
-    MakeRegExp(_, _) => bytecode_contract(true, false, [])
+    MakeRegExp(_, _) => bytecode_contract(true, false, [ExpressionEntry])
     UpdateName(_, _, _, _) | UpdateLocal(_, _, _) | UpdateEnvSlot(_, _, _) =>
       bytecode_contract(true, true, [BindingAccess, Operator])
     UpdateProperty(_, _, _, _, _) =>
@@ -255,7 +255,8 @@ fn bytecode_instruction_contract(
     | MakeNamedFunction(_, _)
     | MakeMethodFunction(_)
     | MakeComputedMethodFunction(_)
-    | MakeArrowFunction(_) => bytecode_contract(true, false, [])
+    | MakeArrowFunction(_) =>
+      bytecode_contract(true, false, [ExpressionEntry])
     GetProperty(_, _)
     | ReadPropertyForAssign(_, _)
     | SetProperty(_, _)

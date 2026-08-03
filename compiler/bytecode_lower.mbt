@@ -3622,6 +3622,7 @@ fn BytecodeBuilder::compile_object_method(
   prop : @ast.Property,
   computed_key_on_stack? : Bool = false,
 ) -> Unit raise Error {
+  let function_loc = bytecode_expr_loc(prop.value)
   let fn_idx = match prop.value {
     FuncExpr(Some(name), params, body, _, _) =>
       self.add_function(Some(name), params, body, None)
@@ -3664,9 +3665,14 @@ fn BytecodeBuilder::compile_object_method(
     }
   }
   if computed_key_on_stack {
-    let _ = self.emit(MakeComputedMethodFunction(fn_idx))
+    let _ = self.emit_with_source_locations(
+      MakeComputedMethodFunction(fn_idx),
+      [(ExpressionEntry, function_loc)],
+    )
   } else {
-    let _ = self.emit(MakeMethodFunction(fn_idx))
+    let _ = self.emit_with_source_locations(MakeMethodFunction(fn_idx), [
+      (ExpressionEntry, function_loc),
+    ])
   }
 }
 
@@ -4175,8 +4181,10 @@ fn BytecodeBuilder::compile_expr_body(
         (Call, loc),
       ])
     }
-    RegexLit(pattern, flags, _) => {
-      let _ = self.emit(MakeRegExp(pattern, flags))
+    RegexLit(pattern, flags, loc) => {
+      let _ = self.emit_with_source_locations(MakeRegExp(pattern, flags), [
+        (ExpressionEntry, loc),
+      ])
     }
     DestructureAssign(pattern, value, loc) => {
       bytecode_validate_destructure_assignment_pattern(pattern, loc)
@@ -4269,13 +4277,17 @@ fn BytecodeBuilder::compile_expr_body(
             )
           }
       }
-    FuncExpr(Some(name), params, body, _, _) => {
+    FuncExpr(Some(name), params, body, loc, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
-      let _ = self.emit(MakeNamedFunction(fn_idx, name))
+      let _ = self.emit_with_source_locations(MakeNamedFunction(fn_idx, name), [
+        (ExpressionEntry, loc),
+      ])
     }
-    FuncExpr(None, params, body, _, _) => {
+    FuncExpr(None, params, body, loc, _) => {
       let fn_idx = self.add_function(None, params, body, None)
-      let _ = self.emit(MakeFunction(fn_idx))
+      let _ = self.emit_with_source_locations(MakeFunction(fn_idx), [
+        (ExpressionEntry, loc),
+      ])
     }
     FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
@@ -4287,25 +4299,33 @@ fn BytecodeBuilder::compile_expr_body(
         body,
         simple_rest,
       )
-      let _ = self.emit(MakeNamedFunction(fn_idx, name))
+      let _ = self.emit_with_source_locations(MakeNamedFunction(fn_idx, name), [
+        (ExpressionEntry, loc),
+      ])
     }
     FuncExprExt(None, params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(None, simple_params, body, simple_rest)
-      let _ = self.emit(MakeFunction(fn_idx))
+      let _ = self.emit_with_source_locations(MakeFunction(fn_idx), [
+        (ExpressionEntry, loc),
+      ])
     }
-    ArrowFunc(params, body, _, _) => {
+    ArrowFunc(params, body, loc, _) => {
       let fn_idx = self.add_function(None, params, body, None)
-      let _ = self.emit(MakeArrowFunction(fn_idx))
+      let _ = self.emit_with_source_locations(MakeArrowFunction(fn_idx), [
+        (ExpressionEntry, loc),
+      ])
     }
     ArrowFuncExt(params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(None, simple_params, body, simple_rest)
-      let _ = self.emit(MakeArrowFunction(fn_idx))
+      let _ = self.emit_with_source_locations(MakeArrowFunction(fn_idx), [
+        (ExpressionEntry, loc),
+      ])
     }
     Grouping(inner, _) => self.compile_expr(inner)
     ObjectLit(props, loc) => self.compile_object_lit(props, loc)
