@@ -37,6 +37,17 @@ priv struct BytecodeSourceMetadataDefect {
 ///|
 priv suberror BytecodeVerifierDefect {
   BytecodeVerifierDefect(BytecodeSourceMetadataDefect)
+  BytecodeControlFlowDefect(BytecodeControlFlowTargetDefect)
+}
+
+///|
+#warnings("-unused_field")
+priv struct BytecodeControlFlowTargetDefect {
+  function_path : Array[Int]
+  instruction_index : Int
+  expected_lower_bound : Int
+  expected_upper_bound : Int
+  actual_target : Int
 }
 
 ///|
@@ -73,7 +84,70 @@ fn finalize_bytecode_program(
   program : BytecodeUnverifiedProgram,
 ) -> BytecodeProgram raise Error {
   verify_bytecode_source_metadata(program)
+  verify_bytecode_control_flow(program)
   { source_stmts: program.source_stmts, main: program.main }
+}
+
+///|
+fn bytecode_control_flow_target(instruction : BytecodeInstr) -> Int? {
+  match instruction {
+    Jump(target)
+    | JumpIfFalse(target)
+    | JumpIfFalseKeep(target)
+    | JumpIfTrueKeep(target)
+    | JumpIfNotNullishKeep(target)
+    | JumpIfNotOptionalChainShortCircuitKeep(target)
+    | ForInNext(target) => Some(target)
+    _ => None
+  }
+}
+
+///|
+fn bytecode_control_flow_target_defect(
+  function_path : Array[Int],
+  instruction_index : Int,
+  code_length : Int,
+  actual_target : Int,
+) -> BytecodeVerifierDefect {
+  BytecodeControlFlowDefect({
+    function_path: function_path.copy(),
+    instruction_index,
+    expected_lower_bound: 0,
+    expected_upper_bound: code_length,
+    actual_target,
+  })
+}
+
+///|
+fn verify_bytecode_control_flow(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  verify_bytecode_function_control_flow(program.main, [])
+}
+
+///|
+fn verify_bytecode_function_control_flow(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let code_length = function.code.length()
+  for instruction_index, instruction in function.code {
+    match bytecode_control_flow_target(instruction) {
+      Some(target) => {
+        guard target >= 0 && target <= code_length else {
+          raise bytecode_control_flow_target_defect(
+            function_path, instruction_index, code_length, target,
+          )
+        }
+      }
+      None => ()
+    }
+  }
+  for child_index, child in function.children {
+    let child_path = function_path.copy()
+    child_path.push(child_index)
+    verify_bytecode_function_control_flow(child, child_path)
+  }
 }
 
 ///|
