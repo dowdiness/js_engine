@@ -73,6 +73,7 @@ fn direct_numeric_recursion_syntax_matches(
   expected.name == actual.name &&
   expected.parameter == actual.parameter &&
   expected.recursive_callee == actual.recursive_callee &&
+  expected.invocation_recipe == actual.invocation_recipe &&
   numeric_recursion_function_return_recipes_match(
     expected.return_recipe,
     actual.return_recipe,
@@ -81,6 +82,91 @@ fn direct_numeric_recursion_syntax_matches(
     expected.expression_recipe,
     actual.expression_recipe,
   )
+}
+
+///|
+fn numeric_recursion_apply_recipe_is_intrinsic(
+  recipe : NumericRecursionInvocationRecipe,
+) -> Bool {
+  match recipe {
+    NumericRecursionDirectCall => false
+    NumericRecursionIntrinsicApplyArray
+    | NumericRecursionIntrinsicApplyMappedArguments => true
+  }
+}
+
+///|
+fn Interpreter::numeric_recursion_apply_globals_are_canonical(
+  self : Interpreter,
+) -> Bool {
+  guard self.global.bindings.get("undefined") is None ||
+    self.global.bindings.get("undefined")
+    is Some({ value: Undefined, kind: VarBinding, initialized: true, .. }) else {
+    return false
+  }
+  guard self.global_this is Object(global_object) else { return false }
+  guard global_object.bag.properties.get("undefined") is Some(Undefined) else {
+    return false
+  }
+  let undefined_desc = match
+    ordinary_get_own_string_desc(global_object.bag, "undefined") {
+    Some(desc) => desc
+    None => return false
+  }
+  guard !undefined_desc.is_accessor &&
+    !undefined_desc.writable &&
+    !undefined_desc.enumerable &&
+    !undefined_desc.configurable else {
+    return false
+  }
+  guard self.global.bindings.get("[[FunctionPrototype]]") is Some(binding) &&
+    binding.initialized &&
+    binding.value is Object(function_proto) else {
+    return false
+  }
+  match
+    (
+      function_proto.bag.properties.get("apply"),
+      ordinary_get_own_string_desc(function_proto.bag, "apply"),
+    ) {
+    (Some(Object(apply_data)), Some(apply_desc)) if !apply_desc.is_accessor &&
+      apply_data.callable is Some(FuncApplyMethod(Undefined)) => true
+    _ => false
+  }
+}
+
+///|
+fn Interpreter::numeric_recursion_apply_intrinsic_is_canonical(
+  self : Interpreter,
+  syntax : NumericRecursionFunctionSyntax,
+  candidate : Value,
+) -> Bool {
+  guard numeric_recursion_apply_recipe_is_intrinsic(syntax.invocation_recipe) else {
+    return true
+  }
+  guard self.numeric_recursion_apply_globals_are_canonical() else {
+    return false
+  }
+  guard self.global.bindings.get("[[FunctionPrototype]]") is Some(binding) &&
+    binding.initialized &&
+    binding.value is Object(function_proto) else {
+    return false
+  }
+  guard candidate is Object(candidate_data) &&
+    candidate_data.prototype is Object(candidate_proto) &&
+    physical_equal(candidate_proto, function_proto) &&
+    ordinary_get_own_string_desc(candidate_data.bag, "apply") is None else {
+    return false
+  }
+  match
+    (
+      function_proto.bag.properties.get("apply"),
+      ordinary_get_own_string_desc(function_proto.bag, "apply"),
+    ) {
+    (Some(Object(apply_data)), Some(apply_desc)) if !apply_desc.is_accessor &&
+      apply_data.callable is Some(FuncApplyMethod(Undefined)) => true
+    _ => false
+  }
 }
 
 ///|
@@ -129,6 +215,9 @@ fn Interpreter::snapshot_direct_numeric_recursion_function(
     binding.kind == VarBinding &&
     binding.value is Object(bound) &&
     physical_equal(bound, actual) else {
+    return None
+  }
+  guard self.numeric_recursion_apply_intrinsic_is_canonical(syntax, candidate) else {
     return None
   }
   guard global_object.bag.properties.get(syntax.name) is Some(Object(mirrored)) &&
