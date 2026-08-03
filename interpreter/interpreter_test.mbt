@@ -2624,6 +2624,77 @@ test "function apply array argArray passes args to callee" {
 }
 
 ///|
+test "captured apply target forwards this and argument order" {
+  let src =
+    #|function target(a, b, c) { return this.tag + ":" + a + ":" + b + ":" + c; }
+    #|delete Function.prototype.apply;
+    #|var captured = target.apply;
+    #|captured.call({}, {tag: "receiver"}, [1, 2, 3]);
+  let (_, result) = run_js(src)
+  expect_result(result, "receiver:1:2:3")
+}
+
+///|
+test "function apply preserves thisArg and nullish/dense argument order" {
+  let output = run_output(
+    (
+      #|function describe(a, b) {
+      #|  return this.tag + ":" + arguments.length + ":" + String(a) + ":" + String(b);
+      #|}
+      #|var receiver = {tag: "R"};
+      #|console.log(describe.apply(receiver, null));
+      #|console.log(describe.apply(receiver, undefined));
+      #|console.log(describe.apply(receiver, [1, 2]));
+    ),
+  )
+  json_inspect(output, content=[
+    "R:0:undefined:undefined", "R:0:undefined:undefined", "R:2:1:2",
+  ])
+}
+
+///|
+test "function apply checks non-callable target before argArray length" {
+  let output = run_output(
+    (
+      #|var reads = 0;
+      #|var args = {};
+      #|Object.defineProperty(args, "length", {
+      #|  get: function() { reads = reads + 1; return 0; }
+      #|});
+      #|var threw = false;
+      #|try { Function.prototype.apply.call({}, null, args); }
+      #|catch(e) { threw = e instanceof TypeError; }
+      #|console.log(threw + ":" + reads);
+    ),
+  )
+  json_inspect(output, content=["true:0"])
+}
+
+///|
+test "function apply propagates accessor object identity and stops later reads" {
+  let output = run_output(
+    (
+      #|var log = [];
+      #|var marker = {kind: "marker"};
+      #|var args = {};
+      #|Object.defineProperty(args, "length", {
+      #|  get: function() { log.push("length"); return 2; }
+      #|});
+      #|Object.defineProperty(args, "0", {
+      #|  get: function() { log.push("0"); throw marker; }
+      #|});
+      #|Object.defineProperty(args, "1", {
+      #|  get: function() { log.push("1"); return 99; }
+      #|});
+      #|try { (function() {}).apply(null, args); }
+      #|catch(e) { console.log(e === marker); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["true", "length,0"])
+}
+
+///|
 test "function bind method" {
   let src =
     #|function greet() { return "Hi " + this.name; }
@@ -19902,6 +19973,29 @@ test "apply with Proxy length+index traps delivers argument" {
 }
 
 ///|
+/// Legacy CreateListFromArrayLike must observe each Proxy property exactly
+/// once and in length/index order.
+test "apply with Proxy argArray reads length then indices once" {
+  let output = run_output(
+    (
+      #|var log = [];
+      #|var p = new Proxy({}, {
+      #|  get: function(t, k) {
+      #|    log.push(k);
+      #|    if (k === "length") return 2;
+      #|    if (k === "0") return 3;
+      #|    if (k === "1") return 4;
+      #|  }
+      #|});
+      #|function sum(a, b) { return a + b; }
+      #|console.log(sum.apply(null, p));
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["7", "length,0,1"])
+}
+
+///|
 /// Same shape via Reflect.apply — independent code path that delegates to
 /// the same create_list_from_array_like helper.
 test "Reflect.apply with Proxy length+index traps delivers argument" {
@@ -19924,15 +20018,22 @@ test "Reflect.apply with Proxy length+index traps delivers argument" {
 test "apply with Object inheriting length from prototype" {
   let (_, result) = run_js(
     (
-      #|var proto = { length: 1, 0: 99 };
+      #|var log = [];
+      #|var proto = {};
+      #|Object.defineProperty(proto, "length", {
+      #|  get: function() { log.push("length"); return 1; }
+      #|});
+      #|Object.defineProperty(proto, "0", {
+      #|  get: function() { log.push("0"); return 99; }
+      #|});
       #|var obj = Object.create(proto);
       #|var got = -1;
       #|function f() { got = arguments[0]; }
       #|f.apply(null, obj);
-      #|got
+      #|got + ":" + log.join(",")
     ),
   )
-  expect_result(result, "99")
+  expect_result(result, "99:length,0")
 }
 
 ///|
