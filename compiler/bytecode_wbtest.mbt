@@ -99,9 +99,9 @@ fn instruction_source_roles_for_wb(
   function : BytecodeFunction,
   instruction_index : Int,
 ) -> Array[SourcePointRole] {
-  function.instruction_sources[instruction_index].map(source_id =>
+  function.instruction_sources[instruction_index].map(source_id => {
     function.resolve_source_point(source_id).role
-  )
+  })
 }
 
 ///|

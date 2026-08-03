@@ -3737,10 +3737,9 @@ fn BytecodeBuilder::compile_object_lit(
       if prop.is_method {
         if prop.computed {
           self.compile_expr(prop.key)
-          let _ = self.emit_with_source_locations(
-            ToObjectLiteralPropertyKey,
-            [(PropertyKey, bytecode_expr_loc(prop.key))],
-          )
+          let _ = self.emit_with_source_locations(ToObjectLiteralPropertyKey, [
+            (PropertyKey, bytecode_expr_loc(prop.key)),
+          ])
           self.compile_object_method(prop, computed_key_on_stack=true)
           let _ = self.emit(ObjectSetComputed)
           continue
@@ -3999,9 +3998,7 @@ fn BytecodeBuilder::compile_expr_body(
       )
     ThisExpr(loc) => {
       self.has_this = true
-      let _ = self.emit_with_source_locations(LoadThis, [
-        (BindingAccess, loc),
-      ])
+      let _ = self.emit_with_source_locations(LoadThis, [(BindingAccess, loc)])
     }
     NewTargetExpr(_) => {
       self.has_new_target = true
@@ -4018,9 +4015,7 @@ fn BytecodeBuilder::compile_expr_body(
       self.has_this = true
       // GetThisBinding precedes evaluation of the computed key. Pop preserves
       // the existing LoadSuperComputed stack contract (key only).
-      let _ = self.emit_with_source_locations(LoadThis, [
-        (BindingAccess, loc),
-      ])
+      let _ = self.emit_with_source_locations(LoadThis, [(BindingAccess, loc)])
       let _ = self.emit(Pop)
       self.compile_expr(key)
       let _ = self.emit_with_source_locations(LoadSuperComputed(loc), [
@@ -4232,11 +4227,7 @@ fn BytecodeBuilder::compile_expr_body(
       self.compile_expr(key)
       let _ = self.emit_with_source_locations(
         UpdateComputed(op, prefix, member_loc, loc),
-        [
-          (MemberAccess, member_loc),
-          (PropertyKey, member_loc),
-          (Operator, loc),
-        ],
+        [(MemberAccess, member_loc), (PropertyKey, member_loc), (Operator, loc)],
       )
     }
     UpdateExpr(_, target, _, loc) =>
