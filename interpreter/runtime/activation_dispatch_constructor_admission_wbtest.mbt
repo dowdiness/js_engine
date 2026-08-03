@@ -71,6 +71,52 @@ test "constructor recursion admission rejects near-match shapes" {
 }
 
 ///|
+test "constructor recursion admission keeps mutation-sensitive boundaries legacy" {
+  for
+    source in [
+      // Changed body shape: an unsupported third statement follows the exact edge.
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}this.extra=1;}" +
+      "new Node(0).value;",
+      // Callable identity and reassigned binding do not form a closed root plan.
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "function Alias(n){this.value=n;if(n>0){this.child=new Alias(n-1);}}" +
+      "new Alias(0).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "Node=function Other(n){this.value=99;};new Node(0).value;",
+      // Default, rest, and destructured parameter forms stay outside UserFunc admission.
+      "function Node(n=0){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new Node(0).value;",
+      "function Node(...args){this.value=args[0];if(args[0]>0){this.child=new Node(args[0]-1);}}" +
+      "new Node(0).value;",
+      "function Node({value}){this.value=value;if(value>0){this.child=new Node(value-1);}}" +
+      "new Node({value:0}).value;",
+      // Computed and spread construction must keep the legacy NewExpression path.
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new (Node)(0).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new Node(...[0]).value;",
+      // Accessor/proxy prototypes are observable and are not callback-free admission.
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "Object.defineProperty(Node,\"prototype\",{get(){return {};}});" +
+      "new Node(0).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "Node.prototype=new Proxy({},{});new Node(0).value;",
+      // Unsupported root expressions/statements remain legacy.
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "function zero(){return 0;}new Node(zero()).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "if(true)new Node(0).value;",
+    ] {
+    guard classify_constructor_recursion_program(
+        constructor_recursion_test_program(source),
+      )
+      is None else {
+      fail("mutation-sensitive constructor boundary was admitted: " + source)
+    }
+  }
+}
+
+///|
 test "constructor recursion admission retains terminal return recipes" {
   let object_return = constructor_recursion_test_program(
     "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}" +

@@ -71,11 +71,11 @@ test "ordinary constructor return replacement stays exact" {
   match
     run(
       "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}" +
-      "return {value:n};}" +
-      "new Node(4).value;",
+      "return {value:99,marker:1};}" +
+      "new Node(4).marker;",
     ) {
-    Value::Number(4.0) => ()
-    other => fail("expected object return value 4, got " + other.to_string())
+    Value::Number(1.0) => ()
+    other => fail("expected object return marker 1, got " + other.to_string())
   }
   match
     run(
@@ -87,6 +87,16 @@ test "ordinary constructor return replacement stays exact" {
     other =>
       fail("expected primitive fallback value 4, got " + other.to_string())
   }
+  match
+    run(
+      "function UndefinedNode(n){this.value=n;if(n>0){this.child=new UndefinedNode(n-1);}" +
+      "return undefined;}" +
+      "new UndefinedNode(4).value;",
+    ) {
+    Value::Number(4.0) => ()
+    other =>
+      fail("expected undefined fallback value 4, got " + other.to_string())
+  }
 }
 
 ///|
@@ -94,13 +104,8 @@ test "ordinary constructor throw releases activation state" {
   let interp = Interpreter::new()
   let source = "function Boom(n){this.value=n;if(n>0){this.child=new Boom(n-1);}" +
     "throw n;}new Boom(2).value;"
-  let failed = try {
-    ignore(interp.run(@parser.parse(source).stmts))
-    false
-  } catch {
-    _ => true
-  }
-  guard failed else { fail("expected the admitted constructor to throw") }
+  // The recursive base activation throws its own exact parameter value.
+  inspect(run_throws(source), content="0")
   match
     interp.run(
       @parser.parse(
@@ -112,6 +117,40 @@ test "ordinary constructor throw releases activation state" {
     other =>
       fail("expected a later shallow construction, got " + other.to_string())
   }
+}
+
+///|
+test "mutation-sensitive ordinary constructors stay on legacy shallow path" {
+  for
+    source in [
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}this.extra=1;}" +
+      "new Node(0).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new Node(...[0]).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "Node.prototype=new Proxy({},{});new Node(0).value;",
+    ] {
+    match run(source) {
+      Value::Number(0.0) => ()
+      result =>
+        fail(
+          "legacy constructor boundary changed: expected 0, got " +
+          result.to_string(),
+        )
+    }
+  }
+  match
+    run(
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "Node=function Other(n){this.value=99;};new Node(0).value;",
+    ) {
+    Value::Number(99.0) => ()
+    result =>
+      fail(
+        "legacy reassigned constructor changed: expected 99, got " +
+        result.to_string(),
+      )
+    }
 }
 
 ///|
