@@ -17,6 +17,7 @@ priv enum BytecodeSourceMetadataFact {
   SourcePointIndex(Int)
   SourcePointTableLength(Int)
   SourceUnit(SourceUnitHandle)
+  SourcePointOwner(SourcePointOwnerId)
   SourceRoles(Array[SourcePointRole])
   ObservationBarrierKind(BytecodeObservationBarrierKind)
 }
@@ -107,7 +108,7 @@ fn verify_bytecode_function_source_metadata(
     )
     let actual_roles : Array[SourcePointRole] = []
     for source_id in sources {
-      let SourcePointId(source_unit, source_point_index) = source_id
+      let SourcePointId(source_unit, source_point_owner, source_point_index) = source_id
       guard source_unit == function.source_unit else {
         raise bytecode_source_metadata_defect(
           function_path,
@@ -115,6 +116,15 @@ fn verify_bytecode_function_source_metadata(
           SourcePointOwnership,
           SourceUnit(function.source_unit),
           SourceUnit(source_unit),
+        )
+      }
+      guard source_point_owner == function.source_point_owner else {
+        raise bytecode_source_metadata_defect(
+          function_path,
+          Some(instruction_index),
+          SourcePointOwnership,
+          SourcePointOwner(function.source_point_owner),
+          SourcePointOwner(source_point_owner),
         )
       }
       guard source_point_index >= 0 &&
