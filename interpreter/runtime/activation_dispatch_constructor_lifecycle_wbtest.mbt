@@ -59,6 +59,86 @@ fn constructor_activation_test_release(
 }
 
 ///|
+fn constructor_root_test_result(
+  remaining_steps : Int64,
+) -> DispatchEffectResult raise {
+  let interp = Interpreter::new()
+  let stmts = @parser.parse(
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new Node(4).value;",
+    ).stmts
+  let plan = match classify_constructor_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact constructor-recursion plan")
+  }
+  let preflight = match interp.preflight_constructor_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free constructor preflight")
+  }
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    constructor_root_preflight=Some(preflight),
+    constructor_root_stmts=Some(stmts),
+  )
+  let cleanup = match
+    shell.perform_effect(
+      DispatchEnterActivation(
+        DispatchProgramActivation(
+          DispatchStatementCursor(
+            ctx~,
+            stmts~,
+            env=interp.global,
+            production=true,
+          ),
+        ),
+      ),
+    ) {
+    DispatchProgramAccepted(found) => found
+    _ => fail("expected accepted constructor root activation")
+  }
+  let control = ExecutionControl(
+    remaining_steps~,
+    maximum_active_depth=10,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let result = interp.with_execution_control(control, () => {
+    shell.execute_constructor_root_statement(
+      { ctx, stmt: stmts[1], env: interp.global, index: 1 },
+      preflight,
+    ) catch {
+      InvalidActivationDispatchShell(message) =>
+        fail(
+          "constructor root dispatch rejected the trusted cursor: " + message,
+        )
+    }
+  })
+  let completion = match result {
+    DispatchWorkCompleted(found) => found
+    DispatchWorkSuspended(_) => DispatchNormal(Undefined)
+    _ => fail("expected root work to complete or suspend")
+  }
+  constructor_activation_test_release(shell, cleanup, completion)
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(control.remaining_steps(), content="0")
+  result
+}
+
+///|
+test "constructor root observes five source steps before suspension" {
+  match constructor_root_test_result(4) {
+    DispatchWorkCompleted(
+      DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit))
+    ) => ()
+    _ => fail("expected the fifth root expression step to hit the limit")
+  }
+  match constructor_root_test_result(5) {
+    DispatchWorkSuspended(_) => ()
+    _ => fail("expected the root constructor to suspend after five steps")
+  }
+}
+
+///|
 test "constructor recursive edge observes five steps before construct" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))

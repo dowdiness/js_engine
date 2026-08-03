@@ -105,7 +105,18 @@ test "ordinary constructor throw releases activation state" {
   let source = "function Boom(n){this.value=n;if(n>0){this.child=new Boom(n-1);}" +
     "throw n;}new Boom(2).value;"
   // The recursive base activation throws its own exact parameter value.
-  inspect(run_throws(source), content="0")
+  let thrown : Error? = try {
+    let _ = interp.run(@parser.parse(source).stmts)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match thrown {
+    Some(@runtime.JsException(Number(value))) => inspect(value, content="0")
+    Some(error) =>
+      fail("expected the exact constructor throw, got " + error.to_string())
+    None => fail("expected the recursive constructor to throw")
+  }
   match
     interp.run(
       @parser.parse(
