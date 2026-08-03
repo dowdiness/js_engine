@@ -20,6 +20,32 @@ fn source_table_has_role_for_wb(
 }
 
 ///|
+priv enum RedFinalizationOutcome {
+  Constructed(BytecodeProgram)
+}
+
+///|
+fn red_finalize_bytecode_program_for_wb(
+  program : BytecodeProgram,
+) -> RedFinalizationOutcome {
+  // RED seam: the current implementation returns the private tree directly.
+  RedFinalizationOutcome::Constructed(program)
+}
+
+///|
+test "RED: private finalization rejects malformed source metadata" {
+  let parsed = @parser.parse("1;")
+  let malformed = build_script_bytecode(parsed.stmts)
+  malformed.main.instruction_sources[0] = []
+  match red_finalize_bytecode_program_for_wb(malformed) {
+    Constructed(program) => {
+      assert_true(program.main.code.length() > 0)
+      fail("expected typed verifier defect")
+    }
+  }
+}
+
+///|
 fn assert_instruction_contract_for_wb(
   instr : BytecodeInstr,
   may_raise_js : Bool,
