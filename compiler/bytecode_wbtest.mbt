@@ -134,10 +134,14 @@ test "RED: bytecode functions own typed source tables" {
   }
   assert_eq(bytecode.main.source_unit, child.source_unit)
   let root_point = bytecode.main.resolve_source_point(
-    SourcePointId(bytecode.main.source_unit, 0),
+    SourcePointId(
+      bytecode.main.source_unit,
+      bytecode.main.source_point_owner,
+      0,
+    ),
   )
   let child_point = child.resolve_source_point(
-    SourcePointId(child.source_unit, 0),
+    SourcePointId(child.source_unit, child.source_point_owner, 0),
   )
   assert_eq(root_point.source_unit, bytecode.main.source_unit)
   assert_eq(child_point.source_unit, child.source_unit)
@@ -325,6 +329,8 @@ test "bytecode lowering outcome keeps builder invariant defects internal" {
   let builder = BytecodeBuilder::BytecodeBuilder(
     { names: [], indices: Map([]), env_names: [], env_indices: Map([]) },
     "invariant-test",
+    SourcePointOwnerId(0),
+    new_source_point_owner_allocator(),
   )
   try {
     let _ = builder.pop_loop_context()
