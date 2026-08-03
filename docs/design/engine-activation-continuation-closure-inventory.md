@@ -198,7 +198,7 @@ legacy `with_active_property_access_value` wrapper and remain #608 work.
 
 | Evidence class | What it proves | What it does not prove |
 |---|---|---|
-| Public production | The four exact #616 depth-256 programs, exact direct numeric `call_value`, admitted protected numeric completions, and the two exact protected-control roots pass through public adapters | General programs or callable families are stack-safe |
+| Public production | The exact #616 depth-256 programs (including the #790 retained-argument comma workload), exact direct numeric `call_value`, admitted protected numeric completions, and the two exact protected-control roots pass through public adapters | General programs or callable families are stack-safe |
 | Direct shell and lifecycle | Exact admission/sealing, activation identity, normal/return/guest-throw/runtime-abrupt cleanup, property-scope LIFO restoration, observation acceptance/rejection/release, and finalizer-before-release ordering | A shell state without public admission is production reachable |
 | Core representability | Every completion category, parameter-default resume, general handler/finalizer precedence, loop/label routing, nested property cleanup, and Proxy invariant ordering reduce deterministically | The production shell implements or admits every represented state |
 | Legacy compatibility | Shallow bound/call/apply, accessor/Proxy lookalikes, existing interpreter behavior, error ordering, borrowed realm, source identity, and bytecode equivalence do not regress | Those fallback paths use managed continuation execution |

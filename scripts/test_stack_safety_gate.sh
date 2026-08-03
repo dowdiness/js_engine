@@ -123,6 +123,18 @@ grep -Fq 'nested_comma_source(512, "7")' "$ROOT_DIR/interpreter/stack_safety_tes
   fail 'engine selected suite omits the required 512-comma workload'
 grep -Fq 'nested_comma_source(512, "7")' "$CONSUMER_SUITE" ||
   fail 'external-consumer selected suite omits the required 512-comma workload'
+grep -Fq 'retained_numeric_argument_source' "$ROOT_DIR/interpreter/stack_safety_test.mbt" ||
+  fail 'engine selected suite omits the retained numeric argument workload'
+grep -Fq 'retained_numeric_argument_source' "$CONSUMER_SUITE" ||
+  fail 'external-consumer selected suite omits the retained numeric argument workload'
+grep -Fq 'step(256,(' "$ROOT_DIR/interpreter/stack_safety_test.mbt" ||
+  fail 'engine retained workload does not preserve the exact two-argument root call'
+grep -Fq 'step(256,(' "$CONSUMER_SUITE" ||
+  fail 'external-consumer retained workload does not preserve the exact two-argument root call'
+grep -Fq 'Value::Number(263.0)' "$ROOT_DIR/interpreter/stack_safety_test.mbt" ||
+  fail 'engine retained workload does not assert the exact result 263'
+grep -Fq 'content="263"' "$CONSUMER_SUITE" ||
+  fail 'external-consumer retained workload does not assert the exact result 263'
 
 for suite in \
   'interpreter/stack_safety_test.mbt' \
@@ -145,10 +157,6 @@ grep -Fq '"dowdiness/js_engine"' "$CONSUMER_PACKAGE" ||
 if grep -Eq 'NODE_OPTIONS|--stack-size|stack_size|stack-size' "$WORKFLOW" "$MAKEFILE"; then
   fail 'host stack-size override found in the permanent gate'
 fi
-if grep -Eq 'step\([^)]*,' "$CONSUMER_SUITE"; then
-  fail 'deferred #608 mixed call-plus-expression workload was admitted to the public gate'
-fi
-
 if [[ "$CHECK_ONLY" == true ]]; then
   echo 'stack-safety gate validation: ok'
   exit 0
@@ -287,6 +295,12 @@ copy_fixture "$fixture"
 sed -i '/nested_comma_source(512, "7")/d' \
   "$fixture/integration/external_consumer/stack_safety_test.mbt"
 expect_fixture_failure "$fixture" 'missing-facade-comma-workload'
+
+fixture="$GATE_TMP_ROOT/missing-retained-result"
+copy_fixture "$fixture"
+sed -i 's/Value::Number(263.0)/Value::Number(262.0)/' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-retained-result'
 
 fixture="$GATE_TMP_ROOT/missing-aggregator"
 copy_fixture "$fixture"
