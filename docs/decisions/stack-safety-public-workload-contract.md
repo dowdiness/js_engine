@@ -1,6 +1,6 @@
 # Stack-safe public acceptance workload contract
 
-Date: 2026-07-31. Reconciled by #693 from the public workload boundary in #692.
+Date: 2026-08-03. Reconciled by #790 from the public workload boundary in #692.
 
 ## Purpose
 
@@ -35,7 +35,7 @@ focused and core evidence that #619 also requires.
 | Strict-mode source `"use strict"; ` + `nested_comma_source(512, "eval = 0")`, with `SyntaxError: Unexpected eval or arguments in strict mode` before runtime evaluation | Post-parse phase-isolation | #614 | Required |
 | Finite-below-limit execution and engine-owned exhaustion at the logical activation boundary | Production-admitted exact slice (policy pending) | #617 | Required after #617 lands; pending before then |
 | Shallow release-profile controls for unchanged legacy behavior | Legacy compatibility control | #619 | Required |
-| The #616 mixed call-plus-expression generator (`"0,"` repeated 263 times, followed by `"7"`) with the recursive `step(256, ...)` wrapper, expected guest value `263` | #608 residual; deferred public graduation evidence | #608 | Deferred; absent from the required set |
+| The exact #790 mixed call-plus-expression generator (`"0,"` repeated 263 times, followed by `"7"`) with the recursive `step(256, ...)` wrapper, expected guest value `263` | Production-admitted retained-argument slice | #790 | Required |
 | The success-valued 512-comma runtime case (`"0,"` repeated 512 times, followed by `"7"`), expected guest value `7` | Production-admitted direct-comma expression slice | #772 | Required |
 
 ## Supporting required evidence outside the public workload classes
@@ -54,12 +54,13 @@ an unadmitted runtime path production-admitted. The production-path stress is a
 separate #619 shell check; this contract records its ownership without
 inventing a second depth or source that could drift from the gate.
 
-The post-parse 512-level traversal and the success-valued 512-comma runtime
-case are deliberately different workloads. #614 owns the former's early-error
-phase evidence. #772 owns the latter's direct-comma runtime evaluation, which
-is required by #619. #608 still owns the exact mixed workload until its
-dynamic call and expression paths are production-admitted. Passing post-parse
-validation does not graduate that mixed runtime workload.
+The post-parse 512-level traversal, the success-valued 512-comma runtime case,
+and the retained-argument mixed runtime case are deliberately different
+workloads. #614 owns the former's early-error phase evidence. #772 owns the
+direct-comma runtime evaluation, and #790 owns the exact retained-argument
+slice; both are required by #619. Broader dynamic call and expression paths
+remain #608 residuals. Passing one exact workload does not graduate those
+broader paths.
 
 ## Gate and independence rules
 
@@ -67,7 +68,7 @@ validation does not graduate that mixed runtime workload.
   every supported target and profile. Target-specific rewrites and host stack
   flags are not evidence.
 - A deferred row has no required-test skip marker. It joins #619 only when its
-  #608 child supplies a red public test, exact admission/provenance, iterative
+  owning child supplies a red public test, exact admission/provenance, iterative
   execution, and cleanup evidence.
 - #689's URI timeout/concurrency investigation is an independent CI-stability
   workload. It neither satisfies nor weakens this focused stack-safety gate.

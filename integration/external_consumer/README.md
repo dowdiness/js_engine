@@ -26,8 +26,10 @@ The adoption workflow runs both profiles for `native`, `js`, `wasm`, and
 result. The selected facade files are `stack_safety_test.mbt` and
 `bounded_eval_test.mbt`; the engine-side selected cleanup file is
 `activation_dispatch_numeric_activation_wbtest.mbt`. The selected facade suite
-includes the required success-valued 512-comma direct-expression workload;
-the #616 mixed-call workload remains deferred under #608.
+includes the required success-valued 512-comma direct-expression workload and
+the exact #790 retained-argument mixed-call workload, which returns `263` at
+depth 256 through the public facade. Broader mixed-call families remain #608
+residuals.
 
 The adoption workflow repeats this repository command for `native`, `js`,
 `wasm`, and `wasm-gc`. The repository architecture-boundary audit permits this

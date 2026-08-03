@@ -84,6 +84,7 @@ priv enum DispatchNumericCatchBindingState {
 ///|
 priv struct DispatchNumericActivationCapabilities {
   parameter : DispatchNumericParameterCapability?
+  retained_parameter : DispatchNumericParameterCapability?
   mut recursive_callee : DispatchNumericCalleeCaptureState
   mut catch_binding : DispatchNumericCatchBindingState
 }
@@ -91,10 +92,11 @@ priv struct DispatchNumericActivationCapabilities {
 ///|
 fn DispatchNumericActivationCapabilities::DispatchNumericActivationCapabilities(
   parameter~ : DispatchNumericParameterCapability?,
+  retained_parameter? : DispatchNumericParameterCapability? = None,
   recursive_callee~ : DispatchNumericCalleeCaptureState,
   catch_binding~ : DispatchNumericCatchBindingState,
 ) -> DispatchNumericActivationCapabilities {
-  { parameter, recursive_callee, catch_binding }
+  { parameter, retained_parameter, recursive_callee, catch_binding }
 }
 
 ///|
@@ -1301,6 +1303,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   let capabilities = DispatchNumericActivationCapabilities(
     parameter=None,
+    retained_parameter=None,
     recursive_callee=DispatchNumericCalleeUnresolved(
       preflight.plan.entry.syntax.name,
     ),
@@ -1437,19 +1440,32 @@ fn PrimitiveProgramDispatchShell::enter_numeric_call(
       "numeric activation requires an undefined receiver",
     )
   }
-  guard request.args.length() == 1 else {
+  let syntax = registry.require_callee(self.interp, request.callee)
+  let expected_argument_count = match syntax.retained_parameter {
+    None => 1
+    Some(_) => 2
+  }
+  guard request.args.length() == expected_argument_count else {
     invalid_activation_dispatch_shell(
-      "numeric activation requires exactly one argument",
+      "numeric activation received an unexpected argument count",
     )
   }
-  let argument = match request.args[0] {
-    Number(value) => value
+  let _ = match request.args[0] {
+    Number(_) => ()
     _ =>
       invalid_activation_dispatch_shell(
         "numeric activation requires a number argument",
       )
   }
-  let syntax = registry.require_callee(self.interp, request.callee)
+  if expected_argument_count == 2 {
+    let _ = match request.args[1] {
+      Number(_) => ()
+      _ =>
+        invalid_activation_dispatch_shell(
+          "numeric activation requires a number retained argument",
+        )
+    }
+  }
   guard request.callee is Object(callee_object) else {
     invalid_activation_dispatch_shell(
       "trusted numeric callee lost its function object",
@@ -1480,7 +1496,7 @@ fn PrimitiveProgramDispatchShell::enter_numeric_call(
     self.interp.prepare_user_func_activation(
       request.callee,
       request.this_value,
-      [Number(argument)],
+      request.args,
       data,
       throw_type_error_source=UsePreResolvedThrowTypeError(
         registry.throw_type_error,
@@ -2040,6 +2056,15 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   match setup {
     Ok(prepared) => {
+      let retained_capability = match syntax.retained_parameter {
+        None => None
+        Some(name) =>
+          Some(DispatchNumericParameterCapability(env=prepared.env, name~))
+      }
+      let retained_token = match syntax.retained_parameter {
+        None => None
+        Some(_) => Some(DispatchRetainedParameterBindingToken(id~))
+      }
       let capabilities = DispatchNumericActivationCapabilities(
         parameter=Some(
           DispatchNumericParameterCapability(
@@ -2047,6 +2072,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
             name=syntax.parameter,
           ),
         ),
+        retained_parameter=retained_capability,
         recursive_callee=DispatchNumericCalleeUnresolved(
           syntax.recursive_callee,
         ),
@@ -2065,6 +2091,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
         DispatchNumericCall(
           DispatchNumericCallStart(
             parameter=DispatchParameterBindingToken(id~),
+            retained_parameter=retained_token,
             recursive_callee=DispatchCalleeCaptureToken(id~),
             recipe=syntax.expression_recipe,
             return_recipe=syntax.return_recipe,
@@ -2121,6 +2148,31 @@ fn PrimitiveProgramDispatchShell::read_numeric_parameter(
     binding.is_parameter else {
     invalid_activation_dispatch_shell(
       "numeric parameter binding lost its trusted provenance",
+    )
+  }
+  DispatchWorkCompleted(DispatchNormal(binding.value))
+}
+
+///|
+fn PrimitiveProgramDispatchShell::read_numeric_retained_parameter(
+  self : PrimitiveProgramDispatchShell,
+  token : DispatchRetainedParameterBindingToken,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let capabilities = self.require_numeric_capabilities(token.id)
+  let retained_parameter = match capabilities.retained_parameter {
+    Some(found) => found
+    None =>
+      invalid_activation_dispatch_shell(
+        "numeric activation does not own a retained parameter capability",
+      )
+  }
+  guard retained_parameter.env.bindings.get(retained_parameter.name)
+    is Some(binding) &&
+    binding.initialized &&
+    binding.kind == LetBinding &&
+    binding.is_parameter else {
+    invalid_activation_dispatch_shell(
+      "numeric retained parameter binding lost its trusted provenance",
     )
   }
   DispatchWorkCompleted(DispatchNormal(binding.value))
@@ -2249,6 +2301,42 @@ fn PrimitiveProgramDispatchShell::start_captured_numeric_call(
         callee~,
         this_value=Undefined,
         args=[Number(argument)],
+        loc~,
+      ),
+      DispatchDeliverCallResult,
+    ),
+  )
+}
+
+///|
+fn PrimitiveProgramDispatchShell::start_captured_two_argument_numeric_call(
+  self : PrimitiveProgramDispatchShell,
+  token : DispatchCalleeCaptureToken,
+  first : Double,
+  second : Double,
+  loc : @token.Loc,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_numeric_registry()
+  let capabilities = self.require_numeric_capabilities(token.id)
+  let callee = match capabilities.recursive_callee {
+    DispatchNumericCalleeCaptured(found) => found
+    DispatchNumericCalleeUnresolved(_) =>
+      invalid_activation_dispatch_shell(
+        "numeric callee must be captured before call start",
+      )
+    DispatchNumericCalleeConsumed =>
+      invalid_activation_dispatch_shell(
+        "numeric callee call-start capability was already consumed",
+      )
+  }
+  let _ = registry.require_callee(self.interp, callee)
+  capabilities.recursive_callee = DispatchNumericCalleeConsumed
+  DispatchWorkSuspended(
+    DispatchSuspendCall(
+      DispatchCallRequest(
+        callee~,
+        this_value=Undefined,
+        args=[Number(first), Number(second)],
         loc~,
       ),
       DispatchDeliverCallResult,
@@ -3449,6 +3537,8 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
       self.observe_numeric_execution_step()
     }
     DispatchNumericReadParameter(token) => self.read_numeric_parameter(token)
+    DispatchNumericReadRetainedParameter(token) =>
+      self.read_numeric_retained_parameter(token)
     DispatchNumericEnterCatch(catch_state, error) =>
       self.enter_numeric_catch(catch_state, error)
     DispatchNumericReadCatchBinding(token) =>
@@ -3457,6 +3547,8 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
       self.capture_numeric_callee(token)
     DispatchNumericStartCapturedCall(token, argument, loc) =>
       self.start_captured_numeric_call(token, argument, loc)
+    DispatchNumericStartCapturedTwoArgumentCall(token, first, second, loc) =>
+      self.start_captured_two_argument_numeric_call(token, first, second, loc)
     DispatchReceiverStartCall(request, continuation) =>
       self.start_receiver_call(request, continuation)
     DispatchConstructStart(request, continuation) =>

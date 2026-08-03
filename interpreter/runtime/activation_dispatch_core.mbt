@@ -271,6 +271,7 @@ fn DispatchParameterDefaultResume::DispatchParameterDefaultResume(
 #warnings("-unused_field")
 priv struct DispatchNumericCallStart {
   parameter : DispatchParameterBindingToken
+  retained_parameter : DispatchRetainedParameterBindingToken?
   recursive_callee : DispatchCalleeCaptureToken
   recipe : NumericRecursionExpressionRecipe
   return_recipe : NumericRecursionFunctionReturnRecipe
@@ -280,11 +281,12 @@ priv struct DispatchNumericCallStart {
 #warnings("-unused_value")
 fn DispatchNumericCallStart::DispatchNumericCallStart(
   parameter~ : DispatchParameterBindingToken,
+  retained_parameter? : DispatchRetainedParameterBindingToken? = None,
   recursive_callee~ : DispatchCalleeCaptureToken,
   recipe~ : NumericRecursionExpressionRecipe,
   return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> DispatchNumericCallStart {
-  { parameter, recursive_callee, recipe, return_recipe }
+  { parameter, retained_parameter, recursive_callee, recipe, return_recipe }
 }
 
 ///|
@@ -610,6 +612,7 @@ fn snapshot_dispatch_numeric_call_start(
 ) -> DispatchNumericCallStart {
   DispatchNumericCallStart(
     parameter=start.parameter,
+    retained_parameter=start.retained_parameter,
     recursive_callee=start.recursive_callee,
     recipe=start.recipe,
     return_recipe=start.return_recipe,
@@ -812,11 +815,18 @@ priv enum DispatchProductionWork {
   DispatchNumericObserveExpressionStep(DispatchNumericExpressionObservation)
   DispatchNumericObserveStatementStep(DispatchNumericStatementObservation)
   DispatchNumericReadParameter(DispatchParameterBindingToken)
+  DispatchNumericReadRetainedParameter(DispatchRetainedParameterBindingToken)
   DispatchNumericEnterCatch(DispatchNumericCatchResume, Error)
   DispatchNumericReadCatchBinding(DispatchNumericCatchBindingToken)
   DispatchNumericCaptureTrustedCallee(DispatchCalleeCaptureToken)
   DispatchNumericStartCapturedCall(
     DispatchCalleeCaptureToken,
+    Double,
+    @token.Loc
+  )
+  DispatchNumericStartCapturedTwoArgumentCall(
+    DispatchCalleeCaptureToken,
+    Double,
     Double,
     @token.Loc
   )

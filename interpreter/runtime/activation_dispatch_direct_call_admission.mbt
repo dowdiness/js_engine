@@ -42,6 +42,7 @@ fn classify_direct_numeric_recursion_user_func(
   guard classify_numeric_recursion_function_syntax(name, data.params, data.body)
     is Some(entry) &&
     entry.return_recipe is NumericRecursionDirectReturn &&
+    entry.retained_parameter is None &&
     numeric_recursion_identifier_is_safe(entry.recursive_callee) &&
     entry.recursive_callee != entry.parameter else {
     return None

@@ -72,8 +72,8 @@ profiles for every supported target, without host stack-size overrides.
 Its eight matrix cells feed the stable `stack-safety-required` check, which
 fails unless the matrix result is exactly `success`.
 Validate that the Make target, workflow matrix, selected suites, required
-direct-comma workload, and deferred #616 mixed-call boundary remain wired as
-intended with:
+direct-comma workload, and the exact #790 retained-argument mixed-call result
+remain wired as intended with:
 
 ```bash
 make stack-safety-validate

@@ -52,6 +52,26 @@ fn numeric_activation_test_enter(
 }
 
 ///|
+fn numeric_activation_test_enter_with_args(
+  shell : PrimitiveProgramDispatchShell,
+  registry : TrustedNumericRecursionRegistry,
+  name : String,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> (DispatchActivationCleanup, DispatchNumericCallStart) raise {
+  let callee = registry.require_named(shell.interp, name)
+  let request = DispatchCallRequest(callee~, this_value=Undefined, args~, loc~)
+  match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchCallActivation(request)),
+    ) {
+    DispatchCallAccepted(cleanup, DispatchNumericCall(start)) =>
+      (cleanup, start)
+    _ => fail("expected a trusted numeric call activation")
+  }
+}
+
+///|
 fn numeric_activation_test_release(
   shell : PrimitiveProgramDispatchShell,
   cleanup : DispatchActivationCleanup,
@@ -223,6 +243,86 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
     InvalidActivationDispatchShell(_) => "rejected"
   }
   inspect(stale_read, content="rejected")
+}
+
+///|
+test "retained numeric parameter capability reads the live two-argument binding" {
+  let (_, shell, registry, plan) = numeric_activation_test_fixture(
+    numeric_expression_retained_argument_source(),
+  )
+  let (cleanup, start) = numeric_activation_test_enter_with_args(
+    shell,
+    registry,
+    "step",
+    [Number(7.0), Number(7.0)],
+    plan.root_call_loc,
+  )
+  let retained_token = match start.retained_parameter {
+    Some(found) => found
+    None => fail("expected the retained parameter token")
+  }
+  match
+    shell.perform_effect(
+      DispatchRunProduction(
+        DispatchNumericReadRetainedParameter(retained_token),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Number(value))) =>
+      inspect(value, content="7")
+    _ => fail("expected the live retained parameter")
+  }
+  let capabilities = shell.require_numeric_capabilities(cleanup.id)
+  let retained = match capabilities.retained_parameter {
+    Some(found) => found
+    None => fail("expected an activation-owned retained parameter")
+  }
+  guard retained.env.bindings.get(retained.name) is Some(binding) else {
+    fail("expected the prepared retained binding")
+  }
+  binding.value = Number(6.0)
+  match
+    shell.perform_effect(
+      DispatchRunProduction(
+        DispatchNumericReadRetainedParameter(retained_token),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Number(value))) =>
+      inspect(value, content="6")
+    _ => fail("retained reads must use the live binding")
+  }
+  match
+    shell.perform_effect(
+      DispatchRunProduction(
+        DispatchNumericCaptureTrustedCallee(start.recursive_callee),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected retained-call callee capture")
+  }
+  match
+    shell.perform_effect(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedTwoArgumentCall(
+          start.recursive_callee,
+          255.0,
+          6.0,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
+        ),
+      ),
+    ) {
+    DispatchWorkSuspended(DispatchSuspendCall(request, _)) => {
+      inspect(request.args.length(), content="2")
+      match (request.args[0], request.args[1]) {
+        (Number(first), Number(second)) => {
+          inspect(first, content="255")
+          inspect(second, content="6")
+        }
+        _ => fail("expected two numeric retained-call arguments")
+      }
+    }
+    _ => fail("expected a two-argument retained call request")
+  }
+  numeric_activation_test_release(shell, cleanup, DispatchReturn(Number(6.0)))
 }
 
 ///|

@@ -1,7 +1,7 @@
 # Stack-safe engine activation and continuation contract
 
-Date: 2026-07-29. Revised 2026-07-31 after reconciling the accepted model with
-the exact production recipes implemented for #630.
+Date: 2026-07-29. Revised 2026-08-03 after reconciling the accepted model with
+the exact production recipes implemented for #630 and #790.
 
 ## Status
 
@@ -19,15 +19,16 @@ entering guest code is stack-safe.
 The public workload and evidence-ownership boundary for the permanent #619
 gate is recorded in the [stack-safe public workload contract](stack-safety-public-workload-contract.md).
 That contract keeps the exact #630 slices and #614 phase-isolation evidence
-required, graduates the direct-comma 512 workload under #772, and retains the
-#616 mixed workload as deferred #608 graduation evidence.
+required, graduates the direct-comma 512 workload under #772, and graduates
+the exact retained-argument mixed workload under #790 while leaving broader
+mixed-call families as #608 residuals.
 
-#630 applies the general model below to a conservatively admitted set of exact
-recipes. Admission and runtime provenance checks establish the complete managed
-closure before effects cross the dispatcher boundary. Programs and calls that
-do not satisfy an exact recipe remain on the legacy synchronous path from their
-start and are residual #608 work; they are not covered by #630's stack-safety
-claim.
+#630 and #790 apply the general model below to a conservatively admitted set of
+exact recipes. Admission and runtime provenance checks establish the complete
+managed closure before effects cross the dispatcher boundary. Programs and
+calls that do not satisfy an exact recipe remain on the legacy synchronous path
+from their start and are residual #608 work; they are not covered by the
+corresponding stack-safety claims.
 
 ## Context
 
@@ -276,16 +277,17 @@ ownership and completion invariants.
 
 ## Scope boundary
 
-| In scope (#630 exact recipes) | Retained by later work |
+| In scope (#630/#790 exact recipes) | Retained by later work |
 |---|---|
 | One deterministic reducer and iterative shell behind private root adapters | Complete may-call-user-code migration (#608) |
 | Exact numeric self/mutual program roots and exact direct-call roots | General interpreted callable families, bound calls, and call/apply forwarding (#608) |
+| Exact retained numeric second-argument comma workload through the tree-walker dispatcher (#790) | Broader mixed-call and expression families (#608) |
 | Exact numeric return/binary and admitted protected catch/finally recipes | General expression, statement, and protected-control shapes (#608) |
 | Exact labelled-break and bounded-continue roots through a closed finalizer | Arbitrary labels, loops, and finalizers that may reach guest code (#608) |
 | Exact ordinary-object own and direct-prototype getter recipes | Other object families, deeper or exotic property paths, and setters (#608) |
 | Exact Proxy `get` recipe, captured trap result, and post-trap invariant continuation | Handler accessors, nested Proxies, callback-capable targets, and other Proxy traps (#608) |
 | Realm/value and simple-parameter lifecycle cleanup for admitted activations | Parameter-default expression resumption, destructuring, constructors, conversions, iteration, async/jobs, timers, and built-in callbacks (#608) |
-| Policy-free observation of #630-admitted guest activation entry/release | Logical activation-depth policy and error behavior (#617) |
+| Policy-free observation of #630/#790-admitted guest activation entry/release | Logical activation-depth policy and error behavior (#617) |
 | Existing synchronous facade preserved around exact adapters | Full bytecode call convention (#631) and final target/profile gate (#619) |
 
 The first unresolved edge decides the boundary. If a required #616 path cannot

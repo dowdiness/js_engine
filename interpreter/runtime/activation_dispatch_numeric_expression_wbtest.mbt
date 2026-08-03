@@ -14,6 +14,18 @@ fn numeric_expression_multiline_self_source() -> String {
 }
 
 ///|
+fn numeric_expression_retained_argument_source() -> String {
+  let mut argument = "7"
+  for _ in 0..<263 {
+    argument = "0," + argument
+  }
+  "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+  "step(256,(" +
+  argument +
+  "));"
+}
+
+///|
 test "numeric root expression observes callee before its argument" {
   let stmts = @parser.parse(
       "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
@@ -121,6 +133,209 @@ test "numeric root expression observes callee before its argument" {
       inspect(loc.line, content="1")
     }
     _ => fail("expected captured call start after argument observation")
+  }
+}
+
+///|
+test "retained root call observes callee first, all 528 argument nodes, then starts" {
+  let stmts = @parser.parse(numeric_expression_retained_argument_source()).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the retained numeric recursion plan")
+  }
+  let capture = DispatchCalleeCaptureToken(id=3100)
+  let expression = numeric_recursion_root_dispatch_expression(plan, capture)
+  stmts.clear()
+  let (running, root_ticket) = start_accepted_dispatch_root(3100)
+  let (observing_call, call_decision) = reduce_activation_dispatch(
+    running,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(DispatchSuspendNumericExpression(expression, None)),
+    ),
+  )
+  let call_ticket = match call_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(DispatchNumericObserveCall(_))
+      )
+    ) => ticket
+    _ => fail("expected the root call observation")
+  }
+  let (observing_callee, callee_decision) = reduce_activation_dispatch(
+    observing_call,
+    DispatchEffectCompleted(
+      call_ticket,
+      DispatchWorkCompleted(DispatchNormal(Undefined)),
+    ),
+  )
+  let callee_ticket = match callee_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveTrustedCallee(found)
+        )
+      )
+    ) => {
+      inspect(found.id, content="3100")
+      ticket
+    }
+    _ => fail("expected callee observation before either argument")
+  }
+  let (capturing_callee, capture_decision) = reduce_activation_dispatch(
+    observing_callee,
+    DispatchEffectCompleted(
+      callee_ticket,
+      DispatchWorkCompleted(DispatchNormal(Undefined)),
+    ),
+  )
+  let capture_ticket = match capture_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericCaptureTrustedCallee(found))
+    ) => {
+      inspect(found.id, content="3100")
+      ticket
+    }
+    _ => fail("expected callee capture before either argument")
+  }
+  let (observing_first, first_decision) = reduce_activation_dispatch(
+    capturing_callee,
+    DispatchEffectCompleted(
+      capture_ticket,
+      DispatchWorkCompleted(DispatchNormal(Undefined)),
+    ),
+  )
+  let first_ticket = match first_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
+      )
+    ) => {
+      inspect(value, content="256")
+      ticket
+    }
+    _ => fail("expected the first argument observation")
+  }
+  let (observing_closed, closed_decision) = reduce_activation_dispatch(
+    observing_first,
+    DispatchEffectCompleted(
+      first_ticket,
+      DispatchWorkCompleted(DispatchNormal(Undefined)),
+    ),
+  )
+  let closed_ticket = match closed_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveClosedArgument
+        )
+      )
+    ) => ticket
+    _ => fail("expected the retained comma argument observation")
+  }
+  let mut state = observing_closed
+  let mut ticket = closed_ticket
+  for index in 0..<528 {
+    let (next_state, next_decision) = reduce_activation_dispatch(
+      state,
+      DispatchEffectCompleted(
+        ticket,
+        DispatchWorkCompleted(DispatchNormal(Undefined)),
+      ),
+    )
+    state = next_state
+    if index < 527 {
+      match next_decision {
+        DispatchPerform(
+          next_ticket,
+          DispatchRunProduction(
+            DispatchNumericObserveExpressionStep(
+              DispatchNumericObserveClosedArgument
+            )
+          )
+        ) => ticket = next_ticket
+        _ =>
+          fail("closed argument observation was interrupted before 528 nodes")
+      }
+    } else {
+      match next_decision {
+        DispatchPerform(
+          _,
+          DispatchRunProduction(
+            DispatchNumericStartCapturedTwoArgumentCall(found, first, second, _)
+          )
+        ) => {
+          inspect(found.id, content="3100")
+          inspect(first, content="256")
+          inspect(second, content="7")
+        }
+        _ => fail("expected the call only after all 528 argument observations")
+      }
+    }
+  }
+}
+
+///|
+test "retained argument interruption routes abrupt completion without starting a call" {
+  let stmts = @parser.parse(numeric_expression_retained_argument_source()).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the retained numeric recursion plan")
+  }
+  let recipe = match plan.retained_argument {
+    Some(found) => found
+    None => fail("expected the retained argument recipe")
+  }
+  stmts.clear()
+  let (running, root_ticket) = start_accepted_dispatch_root(3200)
+  let (observing, observation_decision) = reduce_activation_dispatch(
+    running,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendNumericExpression(
+          DispatchNumericClosedArgument(recipe),
+          None,
+        ),
+      ),
+    ),
+  )
+  let observation_ticket = match observation_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveClosedArgument
+        )
+      )
+    ) => ticket
+    _ => fail("expected the first retained argument observation")
+  }
+  let (_, interrupted_decision) = reduce_activation_dispatch(
+    observing,
+    DispatchEffectCompleted(
+      observation_ticket,
+      DispatchWorkCompleted(
+        DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)),
+      ),
+    ),
+  )
+  match interrupted_decision {
+    DispatchPerform(
+      _,
+      DispatchReleaseActivation(
+        _,
+        DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit))
+      )
+    ) => ()
+    _ => fail("an interrupted retained observation must release without a call")
   }
 }
 
@@ -287,6 +502,72 @@ test "numeric base result completes return only after literal observation" {
       DispatchReleaseActivation(_, DispatchReturn(Number(value)))
     ) => inspect(value, content="0")
     _ => fail("expected return completion after base literal observation")
+  }
+}
+
+///|
+test "retained parameter is forwarded to the base result and recursive call" {
+  let stmts = @parser.parse(numeric_expression_retained_argument_source()).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the retained numeric recursion plan")
+  }
+  let retained = DispatchRetainedParameterBindingToken(id=3300)
+  match
+    numeric_recursion_base_result_dispatch_expression(
+      retained_parameter=Some(retained),
+    ) {
+    DispatchNumericRetainedParameter(found) => inspect(found.id, content="3300")
+    _ => fail("expected the retained parameter in the base result")
+  }
+  match
+    numeric_recursion_recursive_result_dispatch_expression(
+      plan.entry.syntax.expression_recipe,
+      DispatchParameterBindingToken(id=3301),
+      DispatchCalleeCaptureToken(id=3302),
+      retained_parameter=Some(retained),
+    ) {
+    DispatchNumericBinary(
+      DispatchNumericAdd,
+      DispatchNumericNumber(_),
+      DispatchNumericTwoArgumentCall(
+        _,
+        DispatchNumericBinary(_, _, _, _),
+        DispatchNumericRetainedParameter(found),
+        _
+      ),
+      _
+    ) => inspect(found.id, content="3300")
+    _ => fail("expected the retained parameter in the recursive call")
+  }
+}
+
+///|
+test "numeric continuation snapshot preserves the retained parameter capability" {
+  let stmts = @parser.parse(numeric_expression_retained_argument_source()).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the retained numeric recursion plan")
+  }
+  let retained = DispatchRetainedParameterBindingToken(id=1899)
+  let continuation = snapshot_dispatch_numeric_continuation(
+    DispatchAfterNumericBaseCondition(
+      DispatchNumericCallStart(
+        parameter=DispatchParameterBindingToken(id=1898),
+        retained_parameter=Some(retained),
+        recursive_callee=DispatchCalleeCaptureToken(id=1897),
+        recipe=plan.entry.syntax.expression_recipe,
+        return_recipe=plan.entry.syntax.return_recipe,
+      ),
+    ),
+  )
+  match continuation {
+    DispatchAfterNumericBaseCondition(start) =>
+      match start.retained_parameter {
+        Some(found) => inspect(found.id, content="1899")
+        None => fail("snapshot dropped the retained parameter capability")
+      }
+    _ => fail("expected base-condition continuation snapshot")
   }
 }
 

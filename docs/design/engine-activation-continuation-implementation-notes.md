@@ -1,7 +1,7 @@
 # Activation continuation implementation notes
 
-Date: 2026-07-29. Revised 2026-07-31 after reconciling the notes with the
-implemented #630 closure.
+Date: 2026-07-29. Revised 2026-08-03 after reconciling the notes with the
+implemented #630/#790 closure.
 
 This note maps the accepted
 [activation and continuation contract](../decisions/engine-activation-continuation-contract.md)
@@ -19,7 +19,7 @@ reported separately.
 
 ## Current execution structure
 
-Each #630 production slice follows the same boundary:
+Each #630/#790 production slice follows the same boundary:
 
 1. **Exact admission** classifies a callback-free source recipe and checks the
    initial runtime conditions before managed effects begin.
@@ -40,12 +40,15 @@ Once managed execution begins, an unsupported edge is an internal invariant
 failure. It is never permission to fall back to a recursive public adapter or
 to replay an enclosing statement.
 
-## Exact #630 production closure
+## Exact #630/#790 production closure
 
 The production claim is limited to these admitted recipes:
 
 - exact numeric self and mutual recursion entered through a program root or an
   exact direct-call root, including the required return and binary consumers;
+- the exact #790 retained numeric second-argument comma workload entered
+  through the tree-walker program root, including its iterative closed-argument
+  observations and retained-parameter return;
 - exact protected numeric recipes that exercise catch selection, saved
   completion resumption, normal finalization, abrupt replacement, guest throw,
   and runtime-abrupt routing;
@@ -82,7 +85,7 @@ the same LIFO order. A rejected entry restores partial setup but has no release
 event because no activation was acquired.
 
 The observation port is policy-free and covers guest activations admitted by
-#630. It does not make legacy call paths observable or stack-safe. #617 owns the
+#630 and #790. It does not make legacy call paths observable or stack-safe. #617 owns the
 logical-depth policy, configuration validation, and engine-created error that
 will consume this seam.
 
@@ -125,7 +128,8 @@ replacement remain separate downstream work.
 
 ## Verification and maintenance
 
-The four exact #616 programs supply the end-to-end red-to-green evidence.
+The exact #616 programs, including the retained-argument slice landed in #790,
+supply the end-to-end red-to-green evidence.
 Reducer tests separately cover deterministic transition, pathological
 continuation depth, handler/finalizer precedence, and one-time ownership. Shell
 tests cover effect order, runtime provenance, cleanup restoration, and adapter
