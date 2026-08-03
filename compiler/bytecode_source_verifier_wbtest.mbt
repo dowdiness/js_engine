@@ -13,7 +13,11 @@ fn source_point_id_for_role_for_wb(
 ) -> SourcePointId {
   for index, source_point in function.source_points {
     if source_point.role == role {
-      return SourcePointId(function.source_unit, index)
+      return SourcePointId(
+        function.source_unit,
+        function.source_point_owner,
+        index,
+      )
     }
   }
   abort("expected source point role")
@@ -103,6 +107,7 @@ fn assert_source_metadata_invariant_for_wb(
     | (SourcePointOwnership, SourcePointOwnership)
     | (SourceRoleOrder, SourceRoleOrder)
     | (ObservationBarrier, ObservationBarrier)
+    | (ObservationSourceIdentity, ObservationSourceIdentity)
     | (NestedSourceUnit, NestedSourceUnit) => ()
     _ => fail("unexpected source metadata invariant")
   }
@@ -133,6 +138,15 @@ fn assert_source_metadata_fact_equal_for_wb(
     | (SourcePointTableLength(left), SourcePointTableLength(right)) =>
       assert_eq(left, right)
     (SourceUnit(left), SourceUnit(right)) => assert_eq(left, right)
+    (SourcePointOwner(left), SourcePointOwner(right)) => assert_eq(left, right)
+    (
+      SourcePointIdentity(left_unit, left_owner, left_index),
+      SourcePointIdentity(right_unit, right_owner, right_index),
+    ) => {
+      assert_eq(left_unit, right_unit)
+      assert_eq(left_owner, right_owner)
+      assert_eq(left_index, right_index)
+    }
     (SourceRoles(left), SourceRoles(right)) => assert_eq(left, right)
     (ObservationBarrierKind(left), ObservationBarrierKind(right)) =>
       assert_observation_barrier_kind_equal_for_wb(left, right)
@@ -160,11 +174,95 @@ fn bytecode_function_with_source_unit_for_wb(
     env_var_hoist_names=function.env_var_hoist_names,
     template_cache_key_prefix=function.template_cache_key_prefix,
     code=function.code,
+    source_point_owner=function.source_point_owner,
     source_unit~,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     children=function.children,
   )
+}
+
+///|
+fn source_point_id_with_owner_for_wb(
+  source_id : SourcePointId,
+  source_point_owner : SourcePointOwnerId,
+) -> SourcePointId {
+  let SourcePointId(source_unit, _, source_point_index) = source_id
+  SourcePointId(source_unit, source_point_owner, source_point_index)
+}
+
+///|
+fn bytecode_instruction_with_source_point_owner_for_wb(
+  instruction : BytecodeInstr,
+  source_point_owner : SourcePointOwnerId,
+) -> BytecodeInstr {
+  match instruction {
+    ObserveStatement(source_id) =>
+      ObserveStatement(
+        source_point_id_with_owner_for_wb(source_id, source_point_owner),
+      )
+    ObserveExpression(source_id) =>
+      ObserveExpression(
+        source_point_id_with_owner_for_wb(source_id, source_point_owner),
+      )
+    _ => instruction
+  }
+}
+
+///|
+fn bytecode_function_with_source_point_owner_for_wb(
+  function : BytecodeFunction,
+  source_point_owner : SourcePointOwnerId,
+) -> BytecodeFunction {
+  let code = function.code.map(instruction => {
+    bytecode_instruction_with_source_point_owner_for_wb(
+      instruction, source_point_owner,
+    )
+  })
+  let instruction_sources = function.instruction_sources.map(sources => {
+    sources.map(source_id => {
+      source_point_id_with_owner_for_wb(source_id, source_point_owner)
+    })
+  })
+  let children = function.children.map(child => {
+    bytecode_function_with_source_point_owner_for_wb(child, source_point_owner)
+  })
+  BytecodeFunction(
+    name=function.name,
+    params=function.params,
+    rest_param=function.rest_param,
+    source_body=function.source_body,
+    body_has_use_strict=function.body_has_use_strict,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code~,
+    source_point_owner~,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources~,
+    children~,
+  )
+}
+
+///|
+fn source_point_id_with_different_index_for_wb(
+  function : BytecodeFunction,
+  source_id : SourcePointId,
+  role : SourcePointRole,
+) -> SourcePointId {
+  let SourcePointId(source_unit, source_point_owner, source_point_index) = source_id
+  for replacement_index, source_point in function.source_points {
+    if replacement_index != source_point_index && source_point.role == role {
+      return SourcePointId(source_unit, source_point_owner, replacement_index)
+    }
+  }
+  abort("expected a second source point with the requested role")
 }
 
 ///|
@@ -207,6 +305,10 @@ test "source metadata verifier accepts nested valid programs" {
   let program = unverified_source_program_for_wb(src)
   let finalized = finalize_bytecode_program(program)
   assert_true(finalized.main.children.length() == 1)
+  assert_true(
+    finalized.main.source_point_owner !=
+    finalized.main.children[0].source_point_owner,
+  )
   assert_true(function_contains_construction_for_wb(finalized.main))
   assert_true(function_contains_property_preparation_for_wb(finalized.main))
 }
@@ -217,6 +319,7 @@ test "source metadata verifier rejects out-of-range references" {
   let index = observe_statement_index_for_wb(program.main)
   program.main.instruction_sources[index][0] = SourcePointId(
     program.main.source_unit,
+    program.main.source_point_owner,
     program.main.source_points.length(),
   )
   let defect = expect_source_metadata_defect_for_wb(
@@ -236,9 +339,10 @@ test "source metadata verifier rejects out-of-range references" {
 test "source metadata verifier rejects cross-unit references" {
   let program = unverified_source_program_for_wb("1;")
   let index = observe_statement_index_for_wb(program.main)
-  let SourcePointId(_, source_point_index) = program.main.instruction_sources[index][0]
+  let SourcePointId(_, source_point_owner, source_point_index) = program.main.instruction_sources[index][0]
   program.main.instruction_sources[index][0] = SourcePointId(
     SourceUnitHandle(99),
+    source_point_owner,
     source_point_index,
   )
   let defect = expect_source_metadata_defect_for_wb(
@@ -405,12 +509,14 @@ test "source metadata verifier defects are deterministic" {
   let left_index = observe_statement_index_for_wb(left.main)
   left.main.instruction_sources[left_index][0] = SourcePointId(
     left.main.source_unit,
+    left.main.source_point_owner,
     left.main.source_points.length(),
   )
   let right = unverified_source_program_for_wb("1;")
   let right_index = observe_statement_index_for_wb(right.main)
   right.main.instruction_sources[right_index][0] = SourcePointId(
     right.main.source_unit,
+    right.main.source_point_owner,
     right.main.source_points.length(),
   )
   let left_defect = expect_source_metadata_defect_for_wb(
@@ -461,5 +567,247 @@ test "source metadata verifier retains nested path and source unit" {
     (SourceUnit(expected), SourceUnit(actual)) =>
       assert_true(expected != actual)
     _ => fail("expected nested source-unit facts")
+  }
+}
+
+///|
+test "RED: same-handle cross-function source owner aliases are rejected" {
+  let src =
+    #|function child() { return 1; }
+    #|child();
+  let program = unverified_source_program_for_wb(src)
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = program.main.children[0]
+  guard child.source_points.length() > 0 else {
+    abort("expected child source point")
+  }
+  let child_role = child.source_points[0].role
+  let mut root_source_slot : (Int, Int)? = None
+  for instruction_index, instruction in program.main.code {
+    let required_roles = bytecode_instruction_contract(instruction).required_source_roles
+    for
+      source_slot, source_id in program.main.instruction_sources[instruction_index] {
+      let SourcePointId(_, _, source_point_index) = source_id
+      if source_point_index == 0 && required_roles[source_slot] == child_role {
+        root_source_slot = Some((instruction_index, source_slot))
+        break
+      }
+    }
+    if root_source_slot is Some(_) {
+      break
+    }
+  }
+  let (instruction_index, source_slot) = match root_source_slot {
+    Some(slot) => slot
+    None => abort("expected root source point at index zero")
+  }
+  program.main.instruction_sources[instruction_index][source_slot] = SourcePointId(
+    child.source_unit,
+    child.source_point_owner,
+    0,
+  )
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed source ownership defect")
+  } catch {
+    BytecodeVerifierDefect(defect) => {
+      assert_eq(defect.function_path, [])
+      assert_eq(defect.instruction_index, Some(instruction_index))
+      assert_source_metadata_invariant_for_wb(
+        defect.invariant,
+        SourcePointOwnership,
+      )
+      match (defect.expected, defect.actual) {
+        (SourcePointOwner(expected), SourcePointOwner(actual)) =>
+          assert_true(expected != actual)
+        _ => fail("expected source-point owner facts")
+      }
+    }
+    _ => fail("expected typed source ownership defect")
+  }
+}
+
+///|
+test "RED: source owner tree order rejects reconstructed aliases" {
+  let src =
+    #|function child() { return 1; }
+    #|child();
+  let program = unverified_source_program_for_wb(src)
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let root_owner = program.main.source_point_owner
+  program.main.children[0] = bytecode_function_with_source_point_owner_for_wb(
+    program.main.children[0],
+    root_owner,
+  )
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed source ownership defect")
+  } catch {
+    BytecodeVerifierDefect(defect) => {
+      assert_eq(defect.function_path, [0])
+      assert_eq(defect.instruction_index, None)
+      assert_source_metadata_invariant_for_wb(
+        defect.invariant,
+        SourcePointOwnership,
+      )
+      match (defect.expected, defect.actual) {
+        (SourcePointOwner(expected), SourcePointOwner(actual)) =>
+          assert_true(expected != actual)
+        _ => fail("expected source-point owner facts")
+      }
+    }
+    _ => fail("expected typed source ownership defect")
+  }
+}
+
+///|
+test "RED: observation opcode payload identity is verified" {
+  let child_src =
+    #|function child() { return 1; }
+    #|child();
+  let child_program = unverified_source_program_for_wb(child_src)
+  let child_observation_index = observe_statement_index_for_wb(
+    child_program.main,
+  )
+  let child_source_id = source_point_id_for_role_for_wb(
+    child_program.main.children[0],
+    StatementEntry,
+  )
+  child_program.main.code[child_observation_index] = ObserveStatement(
+    child_source_id,
+  )
+  try {
+    let _ = finalize_bytecode_program(child_program)
+    fail("expected typed observation payload defect")
+  } catch {
+    BytecodeVerifierDefect(defect) => {
+      assert_eq(defect.function_path, [])
+      assert_eq(defect.instruction_index, Some(child_observation_index))
+      assert_source_metadata_invariant_for_wb(
+        defect.invariant,
+        SourcePointOwnership,
+      )
+      match (defect.expected, defect.actual) {
+        (SourcePointOwner(expected), SourcePointOwner(actual)) =>
+          assert_true(expected != actual)
+        _ => fail("expected source-point owner facts")
+      }
+    }
+    _ => fail("expected typed observation payload defect")
+  }
+
+  let same_owner_program = unverified_source_program_for_wb("1; 2;")
+  let same_owner_observation_index = observe_statement_index_for_wb(
+    same_owner_program.main,
+  )
+  let same_owner_metadata_id = same_owner_program.main.instruction_sources[same_owner_observation_index][0]
+  let same_owner_replacement = source_point_id_with_different_index_for_wb(
+    same_owner_program.main,
+    same_owner_metadata_id,
+    StatementEntry,
+  )
+  same_owner_program.main.code[same_owner_observation_index] = ObserveStatement(
+    same_owner_replacement,
+  )
+  try {
+    let _ = finalize_bytecode_program(same_owner_program)
+    fail("expected typed observation payload defect")
+  } catch {
+    BytecodeVerifierDefect(defect) => {
+      assert_eq(defect.function_path, [])
+      assert_eq(defect.instruction_index, Some(same_owner_observation_index))
+      assert_source_metadata_invariant_for_wb(
+        defect.invariant,
+        ObservationSourceIdentity,
+      )
+      match (defect.expected, defect.actual) {
+        (
+          SourcePointIdentity(expected_unit, expected_owner, expected_index),
+          SourcePointIdentity(actual_unit, actual_owner, actual_index),
+        ) => {
+          assert_eq(expected_unit, actual_unit)
+          assert_eq(expected_owner, actual_owner)
+          assert_true(expected_index != actual_index)
+        }
+        _ => fail("expected source-point identity facts")
+      }
+    }
+    _ => fail("expected typed observation payload defect")
+  }
+}
+
+///|
+test "RED: source owner allocator refuses exhaustion without wrap-around" {
+  let allocator : Ref[SourcePointOwnerAllocator] = {
+    val: { next_id: MAX_SOURCE_POINT_OWNER_ID - 1 },
+  }
+  let last_owner = allocate_source_point_owner(allocator)
+  match last_owner {
+    SourcePointOwnerId(id) => assert_eq(id, MAX_SOURCE_POINT_OWNER_ID - 1)
+  }
+  assert_eq(allocator.val.next_id, MAX_SOURCE_POINT_OWNER_ID)
+  let next_attempt : Result[
+    SourcePointOwnerId,
+    BytecodeSourcePointOwnerAllocationDefect,
+  ] = Ok(allocate_source_point_owner(allocator)) catch { error => Err(error) }
+  match next_attempt {
+    Ok(SourcePointOwnerId(id)) =>
+      fail("allocator wrapped or issued an exhausted owner: " + id.to_string())
+    Err(BytecodeSourcePointOwnerAllocationDefect(next_id)) =>
+      assert_eq(next_id, MAX_SOURCE_POINT_OWNER_ID)
+  }
+  assert_eq(allocator.val.next_id, MAX_SOURCE_POINT_OWNER_ID)
+  let negative_allocator : Ref[SourcePointOwnerAllocator] = {
+    val: { next_id: -1 },
+  }
+  let negative_attempt : Result[
+    SourcePointOwnerId,
+    BytecodeSourcePointOwnerAllocationDefect,
+  ] = Ok(allocate_source_point_owner(negative_allocator)) catch {
+    error => Err(error)
+  }
+  match negative_attempt {
+    Ok(_) => fail("allocator accepted a negative owner state")
+    Err(BytecodeSourcePointOwnerAllocationDefect(next_id)) =>
+      assert_eq(next_id, -1)
+  }
+  assert_eq(negative_allocator.val.next_id, -1)
+}
+
+///|
+test "source owner allocation is deterministic across compilations" {
+  let src =
+    #|function first() { return 1; }
+    #|function second() { return 2; }
+    #|first();
+    #|second();
+  let left = unverified_source_program_for_wb(src)
+  let right = unverified_source_program_for_wb(src)
+  assert_eq(left.main.children.length(), 2)
+  assert_eq(right.main.children.length(), 2)
+  match
+    (
+      left.main.source_point_owner,
+      left.main.children[0].source_point_owner,
+      left.main.children[1].source_point_owner,
+      right.main.source_point_owner,
+      right.main.children[0].source_point_owner,
+      right.main.children[1].source_point_owner,
+    ) {
+    (
+      SourcePointOwnerId(left_root),
+      SourcePointOwnerId(left_first),
+      SourcePointOwnerId(left_second),
+      SourcePointOwnerId(right_root),
+      SourcePointOwnerId(right_first),
+      SourcePointOwnerId(right_second),
+    ) => {
+      assert_eq((left_root, left_first, left_second), (0, 1, 2))
+      assert_eq((right_root, right_first, right_second), (0, 1, 2))
+    }
   }
 }

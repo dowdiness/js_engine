@@ -11,12 +11,47 @@ let empty_bytecode_env_slots : Array[Binding] = []
 #warnings("-unused_value")
 priv struct SourceUnitHandle(Int) derive(Eq, Debug)
 
-// Source-point references carry a source-unit tag that verification requires to
-// match the owning function/root program; separate program identity remains the
-// private facade boundary.
+///|
+const MAX_SOURCE_POINT_OWNER_ID : Int = 0x7FFFFFFF
 
 ///|
-priv struct SourcePointId(SourceUnitHandle, Int)
+#warnings("-unused_value")
+priv struct SourcePointOwnerId(Int) derive(Eq, Debug)
+
+///|
+priv struct SourcePointOwnerAllocator {
+  next_id : Int
+}
+
+///|
+priv suberror BytecodeSourcePointOwnerAllocationDefect {
+  BytecodeSourcePointOwnerAllocationDefect(Int)
+}
+
+///|
+fn new_source_point_owner_allocator() -> Ref[SourcePointOwnerAllocator] {
+  { val: { next_id: 0 } }
+}
+
+///|
+fn allocate_source_point_owner(
+  allocator : Ref[SourcePointOwnerAllocator],
+) -> SourcePointOwnerId raise BytecodeSourcePointOwnerAllocationDefect {
+  let next_id = allocator.val.next_id
+  guard next_id >= 0 && next_id < MAX_SOURCE_POINT_OWNER_ID else {
+    raise BytecodeSourcePointOwnerAllocationDefect(next_id)
+  }
+  allocator.val = { next_id: next_id + 1 }
+  SourcePointOwnerId(next_id)
+}
+
+///|
+// Source-point references carry source-unit and function-local ownership tags
+// that verification requires to match the owning function/root program;
+// separate program identity remains the private facade boundary.
+
+///|
+priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int)
 
 ///|
 #warnings("-unused_value")
@@ -387,6 +422,7 @@ priv struct BytecodeFunction {
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
   source_unit : SourceUnitHandle
+  source_point_owner : SourcePointOwnerId
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
@@ -408,6 +444,7 @@ fn BytecodeFunction::BytecodeFunction(
   env_var_hoist_names~ : Array[String],
   template_cache_key_prefix~ : String,
   code~ : Array[BytecodeInstr],
+  source_point_owner~ : SourcePointOwnerId,
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   source_points? : Array[SourcePoint] = [],
   instruction_sources? : Array[Array[SourcePointId]] = [],
@@ -429,6 +466,7 @@ fn BytecodeFunction::BytecodeFunction(
     template_cache_key_prefix,
     code,
     source_unit,
+    source_point_owner,
     source_points,
     instruction_sources,
     children,
@@ -440,7 +478,7 @@ fn BytecodeFunction::resolve_source_point(
   self : BytecodeFunction,
   id : SourcePointId,
 ) -> ResolvedSourcePoint {
-  let SourcePointId(_, index) = id
+  let SourcePointId(_, _, index) = id
   let point = self.source_points[index]
   { source_unit: self.source_unit, role: point.role, loc: point.loc }
 }
@@ -449,6 +487,8 @@ fn BytecodeFunction::resolve_source_point(
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
   source_unit : SourceUnitHandle
+  source_point_owner : SourcePointOwnerId
+  owner_allocator : Ref[SourcePointOwnerAllocator]
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
@@ -523,11 +563,15 @@ priv enum BytecodeRunResult {
 fn BytecodeBuilder::BytecodeBuilder(
   plan : BytecodeLocalPlan,
   template_cache_key_prefix : String,
+  source_point_owner : SourcePointOwnerId,
+  owner_allocator : Ref[SourcePointOwnerAllocator],
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
 ) -> BytecodeBuilder {
   {
     code: [],
     source_unit,
+    source_point_owner,
+    owner_allocator,
     source_points: [],
     instruction_sources: [],
     children: [],
@@ -559,7 +603,11 @@ fn BytecodeBuilder::allocate_source_point(
   role : SourcePointRole,
   loc : @token.Loc,
 ) -> SourcePointId {
-  let id = SourcePointId(self.source_unit, self.source_points.length())
+  let id = SourcePointId(
+    self.source_unit,
+    self.source_point_owner,
+    self.source_points.length(),
+  )
   self.source_points.push({ role, loc })
   id
 }

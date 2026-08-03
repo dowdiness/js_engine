@@ -1656,6 +1656,7 @@ fn compile_bytecode_function(
   params : Array[String],
   body : Array[@ast.Stmt],
   rest_param : String?,
+  owner_allocator : Ref[SourcePointOwnerAllocator],
   use_local_slots? : Bool = true,
   call_self_name? : Bool = false,
   template_cache_key_prefix? : String = "main",
@@ -1666,9 +1667,12 @@ fn compile_bytecode_function(
     body,
     use_local_slots=use_local_slots && rest_param is None,
   )
+  let source_point_owner = allocate_source_point_owner(owner_allocator)
   let builder = BytecodeBuilder::BytecodeBuilder(
     plan,
     template_cache_key_prefix,
+    source_point_owner,
+    owner_allocator,
     source_unit~,
   )
   for stmt in body {
@@ -1714,6 +1718,7 @@ fn compile_bytecode_function(
     template_cache_key_prefix~,
     code=builder.code,
     source_unit=builder.source_unit,
+    source_point_owner~,
     source_points=builder.source_points,
     instruction_sources=builder.instruction_sources,
     children=builder.children,
@@ -1725,6 +1730,7 @@ fn build_script_bytecode(
   stmts : Array[@ast.Stmt],
 ) -> BytecodeUnverifiedProgram raise Error {
   let source_unit = SourceUnitHandle(0)
+  let owner_allocator = new_source_point_owner_allocator()
   {
     source_stmts: stmts,
     main: compile_bytecode_function(
@@ -1732,6 +1738,7 @@ fn build_script_bytecode(
       [],
       stmts,
       None,
+      owner_allocator,
       use_local_slots=false,
       source_unit~,
     ),
@@ -1808,6 +1815,7 @@ fn BytecodeBuilder::add_function(
       params,
       body,
       rest_param,
+      self.owner_allocator,
       call_self_name~,
       template_cache_key_prefix~,
       source_unit=self.source_unit,
