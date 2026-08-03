@@ -499,7 +499,10 @@ fn classify_numeric_recursion_root_call_arguments(
   }
   let retained_argument : NumericRecursionClosedArgumentRecipe? = if args.length() ==
     2 {
-    classify_numeric_recursion_closed_argument(args[1])
+    match classify_numeric_recursion_closed_argument(args[1]) {
+      Some(recipe) => Some(recipe)
+      None => return None
+    }
   } else {
     None
   }

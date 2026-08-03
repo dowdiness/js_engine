@@ -569,3 +569,19 @@ test "numeric recursion admission rejects unsafe retained argument boundaries" {
     }
   }
 }
+
+///|
+test "numeric recursion admission rejects extra arguments for one-parameter functions" {
+  for
+    source in [
+      "function step(n){if(n===0)return 0;return 1+step(n-1);}step(256,missing);",
+      "function step(n){if(n===0)return 0;return 1+step(n-1);}step(256,side_effect());",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted extra argument for one-parameter function: " + source)
+    }
+  }
+}

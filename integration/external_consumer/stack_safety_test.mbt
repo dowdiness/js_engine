@@ -136,6 +136,11 @@ fn retained_numeric_argument_source() -> String {
 }
 
 ///|
+const ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE =
+  #|function step(n){if(n===0)return 0;return 1+step(n-1);}
+  #|step(256,missing);
+
+///|
 test "stack safety public facade: exact production-admitted depth-256 values" {
   inspect(run_value(SELF_RECURSION_SOURCE), content="256")
   inspect(run_value(RECEIVER_RECURSION_SOURCE), content="256")
@@ -150,6 +155,14 @@ test "stack safety public facade: exact production-admitted depth-256 values" {
 // Regression coverage for the exact #790 retained-argument managed slice.
 test "stack safety public facade: retained numeric argument across tree-walker activations" {
   inspect(run_value(retained_numeric_argument_source()), content="263")
+}
+
+///|
+test "stack safety public facade: one-parameter extra arguments preserve abrupt completion" {
+  inspect(
+    run_failure_message(ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE),
+    content="ReferenceError: missing is not defined",
+  )
 }
 
 ///|
