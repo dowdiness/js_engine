@@ -2686,7 +2686,10 @@ fn PrimitiveProgramDispatchShell::execute_constructor_root_statement(
       "constructor root expression no longer matches exact admission",
     )
   }
-  match self.observe_managed_execution_steps(1) {
+  // The closed root replaces the ExprStmt/New/member expression tree. Preserve
+  // the source-backed five observation points before entering the constructor,
+  // matching legacy order: statement, member, new, callee, and argument.
+  match self.observe_managed_execution_steps(5) {
     Some(completion) => return DispatchWorkCompleted(completion)
     None => ()
   }
