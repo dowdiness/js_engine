@@ -105,10 +105,47 @@ fn DispatchCallRequest::DispatchCallRequest(
 }
 
 ///|
+#warnings("-unused_field")
+priv struct DispatchConstructRequest {
+  ctor : Value
+  args : Array[Value]
+  loc : @token.Loc
+}
+
+///|
+fn DispatchConstructRequest::DispatchConstructRequest(
+  ctor~ : Value,
+  args~ : Array[Value],
+  loc~ : @token.Loc,
+) -> DispatchConstructRequest {
+  { ctor, args: args.copy(), loc }
+}
+
+///|
+#warnings("-unused_field")
+priv struct DispatchConstructAssignResume {
+  target : Value
+  property : String
+  loc : @token.Loc
+  strict : Bool
+}
+
+///|
+fn DispatchConstructAssignResume::DispatchConstructAssignResume(
+  target~ : Value,
+  property~ : String,
+  loc~ : @token.Loc,
+  strict~ : Bool,
+) -> DispatchConstructAssignResume {
+  { target, property, loc, strict }
+}
+
+///|
 #warnings("-unused_constructor-unused_field")
 priv enum DispatchActivationRequest {
   DispatchProgramActivation(DispatchStatementCursor)
   DispatchCallActivation(DispatchCallRequest)
+  DispatchConstructActivation(DispatchConstructRequest)
 }
 
 ///|
@@ -428,6 +465,7 @@ priv enum DispatchCallStart {
   DispatchCallBody(DispatchStatementCursor)
   DispatchCallParameters(DispatchParameterDefaultResume)
   DispatchNumericCall(DispatchNumericCallStart)
+  DispatchConstructorCall(DispatchStatementCursor, Value)
 }
 
 ///|
@@ -646,6 +684,10 @@ fn snapshot_dispatch_continuation(
     DispatchCompleteReturn => DispatchCompleteReturn
     DispatchCompleteThrow => DispatchCompleteThrow
     DispatchDeliverCallResult => DispatchDeliverCallResult
+    DispatchApplyConstructProperty(property) =>
+      DispatchApplyConstructProperty(property)
+    DispatchAssignConstructResult(assign) =>
+      DispatchAssignConstructResult(assign)
     DispatchApplyBinaryRight(binary) => DispatchApplyBinaryRight(binary)
     DispatchApplyPropertyBinaryRight(binary) =>
       DispatchApplyPropertyBinaryRight(binary)
@@ -728,6 +770,7 @@ priv enum DispatchCompletion {
 priv enum DispatchActivationExitRule {
   DispatchRootExit
   DispatchFunctionExit
+  DispatchConstructorExit(Value)
 }
 
 ///|
@@ -736,6 +779,8 @@ priv enum DispatchContinuation {
   DispatchCompleteReturn
   DispatchCompleteThrow
   DispatchDeliverCallResult
+  DispatchApplyConstructProperty(DispatchPropertyGetResume)
+  DispatchAssignConstructResult(DispatchConstructAssignResume)
   DispatchApplyBinaryRight(DispatchBinaryResume)
   DispatchApplyPropertyBinaryRight(DispatchBinaryResume)
   DispatchApplyNumericBinaryRight(DispatchBinaryResume)
@@ -776,6 +821,8 @@ priv enum DispatchProductionWork {
     @token.Loc
   )
   DispatchReceiverStartCall(DispatchCallRequest, DispatchContinuation)
+  DispatchConstructStart(DispatchConstructRequest, DispatchContinuation)
+  DispatchConstructAssignResult(DispatchConstructAssignResume, Value)
   DispatchNumericApplyBinaryRight(DispatchBinaryResume, Value)
   DispatchPropertyStart(DispatchPropertyGetResume, DispatchContinuation)
   DispatchPropertyExecute(DispatchPropertyGetResume)
@@ -795,6 +842,7 @@ priv enum DispatchSuspension {
     DispatchProductionWork
   )
   DispatchSuspendCall(DispatchCallRequest, DispatchContinuation)
+  DispatchSuspendConstruct(DispatchConstructRequest, DispatchContinuation)
   DispatchSuspendNumericExpression(
     DispatchNumericExpression,
     DispatchContinuation?
@@ -888,6 +936,7 @@ priv enum DispatchFrameStack {
 priv enum DispatchPendingActivation {
   DispatchPendingProgram(DispatchStatementCursor)
   DispatchPendingCall
+  DispatchPendingConstruct
 }
 
 ///|
@@ -1082,6 +1131,7 @@ fn schedule_dispatch_effect(
         DispatchProgramActivation(cursor) =>
           DispatchPendingProgram(snapshot_dispatch_statement_cursor(cursor))
         DispatchCallActivation(_) => DispatchPendingCall
+        DispatchConstructActivation(_) => DispatchPendingConstruct
       }
       DispatchPendingActivationEntry(ticket, activation)
     }
@@ -1143,6 +1193,14 @@ fn normalize_activation_completion(
   match (rule, completion) {
     (DispatchFunctionExit, DispatchNormal(_)) => DispatchNormal(Undefined)
     (DispatchFunctionExit, DispatchReturn(value)) => DispatchNormal(value)
+    (DispatchConstructorExit(receiver), DispatchNormal(_)) =>
+      DispatchNormal(receiver)
+    (DispatchConstructorExit(receiver), DispatchReturn(value)) =>
+      if is_object_like_for_constructor_return(value) {
+        DispatchNormal(value)
+      } else {
+        DispatchNormal(receiver)
+      }
     (_, other) => other
   }
 }
@@ -1553,6 +1611,24 @@ fn route_dispatch_completion(
                   popped,
                   DispatchPropertyDeliverAccessorResult(accessor, value),
                 )
+              (DispatchApplyConstructProperty(property), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchPropertyStart(
+                    DispatchPropertyGetResume(
+                      target=value,
+                      property_key=property.property_key,
+                      receiver=value,
+                      loc=property.loc,
+                    ),
+                    DispatchDeliverCallResult,
+                  ),
+                )
+              (DispatchAssignConstructResult(assign), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchConstructAssignResult(assign, value),
+                )
               (DispatchResolveProxyGetTrap(lookup), DispatchNormal(value)) =>
                 return schedule_dispatch_production_work(
                   popped,
@@ -1831,6 +1907,16 @@ fn suspend_dispatch_work(
         ),
         DispatchEnterActivation(DispatchCallActivation(request)),
       )
+    DispatchSuspendConstruct(request, continuation) =>
+      schedule_dispatch_effect(
+        push_dispatch_frame(
+          state,
+          DispatchContinuationFrame(
+            snapshot_dispatch_continuation(continuation),
+          ),
+        ),
+        DispatchEnterActivation(DispatchConstructActivation(request)),
+      )
     DispatchSuspendNumericExpression(expression, outer_consumer) => {
       let with_outer_consumer = match outer_consumer {
         Some(continuation) =>
@@ -1971,6 +2057,19 @@ fn complete_dispatch_effect(
         entered,
         DispatchNumericObserveIfStatement,
         DispatchAfterNumericIfStatement(start),
+      )
+    }
+    (
+      DispatchPendingActivationEntry(_, DispatchPendingConstruct),
+      DispatchCallAccepted(cleanup, DispatchConstructorCall(work, receiver)),
+    ) => {
+      let entered = push_dispatch_frame(
+        ready,
+        DispatchActivationFrame(cleanup, DispatchConstructorExit(receiver)),
+      )
+      begin_dispatch_statements(
+        entered,
+        snapshot_dispatch_statement_cursor(work),
       )
     }
     (
