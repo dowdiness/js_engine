@@ -74,9 +74,12 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
   assert_instruction_contract_for_wb(MakeMethodFunction(0), true, false, [
     ExpressionEntry,
   ])
-  assert_instruction_contract_for_wb(MakeComputedMethodFunction(0), true, false, [
-    ExpressionEntry,
-  ])
+  assert_instruction_contract_for_wb(
+    MakeComputedMethodFunction(0),
+    true,
+    false,
+    [ExpressionEntry],
+  )
   assert_instruction_contract_for_wb(MakeArrowFunction(0), true, false, [
     ExpressionEntry,
   ])
@@ -542,12 +545,9 @@ fn exact_matching_completion_budget_for_wb(
   source : String,
   maximum_budget : Int,
 ) -> Int raise Error {
-  for budget in 0..=maximum_budget {
+  for budget in 0..<=maximum_budget {
     match
-      structured_execution_policy_comparison_for_wb(
-        source,
-        budget.to_int64(),
-      ) {
+      structured_execution_policy_comparison_for_wb(source, budget.to_int64()) {
       Equivalent(ControlStopped(observation)) => {
         assert_true(observation.point is DispatchStepObservation)
         assert_true(observation.failure is ExecutionLimit)
@@ -591,36 +591,18 @@ fn lowered_observation_kinds_for_wb(
 
 ///|
 test "lowered barriers retain statement and expression identity" {
-  json_inspect(
-    lowered_observation_kinds_for_wb("1 + 2 * 3;"),
-    content=[
-      "statement",
-      "expression",
-      "expression",
-      "expression",
-      "expression",
-      "expression",
-    ],
-  )
-  json_inspect(
-    lowered_observation_kinds_for_wb("if (false) 1; else 2;"),
-    content=[
-      "statement",
-      "expression",
-      "statement",
-      "expression",
-      "statement",
-      "expression",
-    ],
-  )
-  json_inspect(
-    lowered_observation_kinds_for_wb("false && 1;"),
-    content=["statement", "expression", "expression", "expression"],
-  )
-  json_inspect(
-    lowered_observation_kinds_for_wb("while (false) 1;"),
-    content=["statement", "expression", "statement", "expression"],
-  )
+  json_inspect(lowered_observation_kinds_for_wb("1 + 2 * 3;"), content=[
+    "statement", "expression", "expression", "expression", "expression", "expression",
+  ])
+  json_inspect(lowered_observation_kinds_for_wb("if (false) 1; else 2;"), content=[
+    "statement", "expression", "statement", "expression", "statement", "expression",
+  ])
+  json_inspect(lowered_observation_kinds_for_wb("false && 1;"), content=[
+    "statement", "expression", "expression", "expression",
+  ])
+  json_inspect(lowered_observation_kinds_for_wb("while (false) 1;"), content=[
+    "statement", "expression", "statement", "expression",
+  ])
 }
 
 ///|
@@ -628,15 +610,11 @@ test "bounded bytecode matches exact dynamic observation frontiers" {
   json_inspect(
     [
       exact_matching_completion_budget_for_wb("1 + 2;", 8),
-      exact_matching_completion_budget_for_wb(
-        "if (false) 1; else 2;",
-        8,
-      ),
+      exact_matching_completion_budget_for_wb("if (false) 1; else 2;", 8),
       exact_matching_completion_budget_for_wb("false && 1;", 8),
       exact_matching_completion_budget_for_wb("true && 1;", 8),
       exact_matching_completion_budget_for_wb(
-        "var i = 0; while (i < 2) { i++; } i;",
-        32,
+        "var i = 0; while (i < 2) { i++; } i;", 32,
       ),
     ],
     content=[4, 4, 3, 4, 20],

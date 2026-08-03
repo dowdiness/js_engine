@@ -270,8 +270,7 @@ fn bytecode_instruction_contract(
     | MakeNamedFunction(_, _)
     | MakeMethodFunction(_)
     | MakeComputedMethodFunction(_)
-    | MakeArrowFunction(_) =>
-      bytecode_contract(true, false, [ExpressionEntry])
+    | MakeArrowFunction(_) => bytecode_contract(true, false, [ExpressionEntry])
     GetProperty(_, _)
     | ReadPropertyForAssign(_, _)
     | SetProperty(_, _)
@@ -439,11 +438,7 @@ fn BytecodeFunction::resolve_source_point(
 ) -> ResolvedSourcePoint {
   let SourcePointId(index) = id
   let point = self.source_points[index]
-  {
-    source_unit: self.source_unit,
-    role: point.role,
-    loc: point.loc,
-  }
+  { source_unit: self.source_unit, role: point.role, loc: point.loc }
 }
 
 ///|

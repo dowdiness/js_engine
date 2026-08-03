@@ -1667,7 +1667,9 @@ fn compile_bytecode_function(
     use_local_slots=use_local_slots && rest_param is None,
   )
   let builder = BytecodeBuilder::BytecodeBuilder(
-    plan, template_cache_key_prefix, source_unit~,
+    plan,
+    template_cache_key_prefix,
+    source_unit~,
   )
   for stmt in body {
     builder.compile_stmt(stmt)
