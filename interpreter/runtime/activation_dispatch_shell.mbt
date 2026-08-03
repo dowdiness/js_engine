@@ -2748,65 +2748,55 @@ fn PrimitiveProgramDispatchShell::execute_constructor_body_statement(
   match step.index {
     0 => self.execute_statement_with_legacy_adapter(step)
     1 => {
-      let condition = match step.stmt {
-        @ast.IfStmt(condition, _, None, _) => condition
+      let argument_value = match step.env.bindings.get(function.plan.parameter) {
+        Some(binding) if binding.initialized => binding.value
         _ =>
-          invalid_activation_dispatch_shell(
-            "constructor body conditional changed after admission",
+          return invalid_activation_dispatch_shell(
+            "constructor parameter binding was lost",
           )
       }
-      let condition_result : Result[Value, Error] = Ok(
-        self.interp.eval_expr(step.ctx, condition, step.env),
-      ) catch {
-        error => Err(error)
+      let parameter = match argument_value {
+        Number(value) => value
+        _ =>
+          return invalid_activation_dispatch_shell(
+            "constructor parameter is no longer numeric",
+          )
       }
-      match condition_result {
-        Err(error) =>
-          DispatchWorkCompleted(dispatch_work_error_completion(error))
-        Ok(value) if !is_truthy(value) =>
-          DispatchWorkCompleted(DispatchNormal(Undefined))
-        Ok(_) => {
-          let argument_value = match
-            step.env.bindings.get(function.plan.parameter) {
-            Some(binding) if binding.initialized => binding.value
-            _ =>
-              return invalid_activation_dispatch_shell(
-                "constructor parameter binding was lost",
-              )
-          }
-          let argument = match argument_value {
-            Number(value) => Number(value - 1.0)
-            _ =>
-              return invalid_activation_dispatch_shell(
-                "constructor parameter is no longer numeric",
-              )
-          }
-          let callee = registry.require_function(
-            self.interp,
-            function.plan.recursive_callee,
-          )
-          let this_value = this_binding.value
-          let request = DispatchConstructRequest(
-            ctor=callee.callee,
-            args=[argument],
-            loc=function.plan.construct_loc,
-          )
-          let assign = DispatchConstructAssignResume(
-            target=this_value,
-            property=function.plan.child_property,
-            loc=function.plan.construct_loc,
-            strict=step.ctx.strict,
-          )
-          DispatchWorkSuspended(
-            DispatchSuspendContinueProduction(
-              DispatchDeliverCallResult,
-              DispatchConstructStart(
-                request,
-                DispatchAssignConstructResult(assign),
-              ),
-            ),
-          )
+      if parameter <= 0.0 {
+        DispatchWorkCompleted(DispatchNormal(Undefined))
+      } else {
+        // The closed edge replaces the If/New expression tree. Preserve the
+        // source-backed five expression observation points before entering
+        // the child constructor, as the analogous receiver paths do.
+        match self.observe_managed_execution_steps(5) {
+          Some(completion) => return DispatchWorkCompleted(completion)
+          None => ()
         }
+        let callee = registry.require_function(
+          self.interp,
+          function.plan.recursive_callee,
+        )
+        let this_value = this_binding.value
+        let request = DispatchConstructRequest(
+          ctor=callee.callee,
+          args=[Number(parameter - 1.0)],
+          loc=function.plan.construct_loc,
+        )
+        let assign = DispatchConstructAssignResume(
+          target=this_value,
+          property=function.plan.child_property,
+          loc=function.plan.construct_loc,
+          strict=step.ctx.strict,
+        )
+        DispatchWorkSuspended(
+          DispatchSuspendContinueProduction(
+            DispatchDeliverCallResult,
+            DispatchConstructStart(
+              request,
+              DispatchAssignConstructResult(assign),
+            ),
+          ),
+        )
       }
     }
     2 => self.execute_statement_with_legacy_adapter(step)

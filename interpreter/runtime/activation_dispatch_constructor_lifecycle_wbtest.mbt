@@ -36,6 +36,7 @@ fn constructor_activation_test_fixture(
     args=[Number(4.0)],
     loc=plan.root_member_loc,
   )
+  dispatch_shell_test_install_realm_sentinel(interp, 81)
   match shell.perform_effect(DispatchEnterActivation(DispatchConstructActivation(request))) {
     DispatchCallAccepted(cleanup, DispatchConstructorCall(cursor, _)) =>
       (interp, shell, cleanup, cursor, plan)
@@ -61,7 +62,6 @@ test "constructor recursive edge observes five steps before construct" {
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
   let (interp, shell, cleanup, cursor, _) =
     constructor_activation_test_fixture(probe)
-  dispatch_shell_test_install_realm_sentinel(interp, 81)
   let control = ExecutionControl(
     remaining_steps=4,
     maximum_active_depth=10,
@@ -106,24 +106,55 @@ test "constructor guest and runtime abrupt exits preserve identity and cleanup" 
   let (interp, shell, cleanup, _, _) =
     constructor_activation_test_fixture(probe)
   let thrown : Error = JsException(String_("constructor guest throw"))
-  constructor_activation_test_release(shell, cleanup, DispatchThrow(thrown))
+  let guest_completion = DispatchThrow(thrown)
+  match guest_completion {
+    DispatchThrow(found) => inspect(physical_equal(found, thrown), content="true")
+    _ => fail("expected a guest throw completion")
+  }
+  constructor_activation_test_release(shell, cleanup, guest_completion)
   inspect(shell.cleanup_stack.length(), content="0")
   inspect(probe.released, content="1")
   inspect(probe.active, content="0")
+  match
+    interp.run(
+      @parser.parse(
+        "function Safe(n){this.value=n;if(n>0){this.child=new Safe(n-1);}}" +
+        "new Safe(0).value;",
+      ).stmts,
+    ) {
+    Number(value) => inspect(value, content="0")
+    other => fail("expected a later shallow constructor, got " + other.to_string())
+  }
 
   let runtime_interp = Interpreter::new()
   let runtime_probe = DispatchObservationProbe(observed_interp=Some(runtime_interp))
   let (runtime_interp, runtime_shell, runtime_cleanup, _, _) =
     constructor_activation_test_fixture(runtime_probe)
   let runtime_error : Error = ExecutionControlError(ExecutionLimit)
+  let runtime_completion = DispatchRuntimeAbrupt(runtime_error)
+  match runtime_completion {
+    DispatchRuntimeAbrupt(found) =>
+      inspect(physical_equal(found, runtime_error), content="true")
+    _ => fail("expected a runtime-abrupt completion")
+  }
   constructor_activation_test_release(
     runtime_shell,
     runtime_cleanup,
-    DispatchRuntimeAbrupt(runtime_error),
+    runtime_completion,
   )
   inspect(runtime_shell.cleanup_stack.length(), content="0")
   inspect(runtime_probe.released, content="1")
   inspect(runtime_probe.active, content="0")
+  match
+    runtime_interp.run(
+      @parser.parse(
+        "function Safe(n){this.value=n;if(n>0){this.child=new Safe(n-1);}}" +
+        "new Safe(0).value;",
+      ).stmts,
+    ) {
+    Number(value) => inspect(value, content="0")
+    other => fail("expected a later shallow constructor, got " + other.to_string())
+  }
   ignore(interp)
   ignore(runtime_interp)
 }
