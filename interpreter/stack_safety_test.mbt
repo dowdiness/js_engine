@@ -168,7 +168,7 @@ test "mutation-sensitive ordinary constructors stay on legacy shallow path" {
         "legacy reassigned constructor changed: expected 99, got " +
         result.to_string(),
       )
-    }
+  }
 }
 
 ///|

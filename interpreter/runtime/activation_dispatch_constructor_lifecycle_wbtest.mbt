@@ -9,8 +9,7 @@ fn constructor_activation_test_fixture(
   ConstructorRecursionPlan,
 ) raise {
   let interp = Interpreter::new()
-  let source =
-    "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+  let source = "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
     "new Node(4).value;"
   let stmts = @parser.parse(source).stmts
   let plan = match classify_constructor_recursion_program(stmts) {
@@ -37,7 +36,10 @@ fn constructor_activation_test_fixture(
     loc=plan.root_member_loc,
   )
   dispatch_shell_test_install_realm_sentinel(interp, 81)
-  match shell.perform_effect(DispatchEnterActivation(DispatchConstructActivation(request))) {
+  match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchConstructActivation(request)),
+    ) {
     DispatchCallAccepted(cleanup, DispatchConstructorCall(cursor, _)) =>
       (interp, shell, cleanup, cursor, plan)
     _ => fail("expected a trusted constructor activation")
@@ -60,8 +62,9 @@ fn constructor_activation_test_release(
 test "constructor recursive edge observes five steps before construct" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
-  let (interp, shell, cleanup, cursor, _) =
-    constructor_activation_test_fixture(probe)
+  let (interp, shell, cleanup, cursor, _) = constructor_activation_test_fixture(
+    probe,
+  )
   let control = ExecutionControl(
     remaining_steps=4,
     maximum_active_depth=10,
@@ -75,13 +78,16 @@ test "constructor recursive edge observes five steps before construct" {
       index: 1,
     }) catch {
       InvalidActivationDispatchShell(message) =>
-        fail("constructor body dispatch rejected the trusted cursor: " + message)
+        fail(
+          "constructor body dispatch rejected the trusted cursor: " + message,
+        )
     }
     let completion = match result {
       DispatchWorkCompleted(
-        DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)),
+        DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit))
       ) => DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit))
-      _ => fail("expected the fifth constructor expression step to hit the limit")
+      _ =>
+        fail("expected the fifth constructor expression step to hit the limit")
     }
     inspect(control.remaining_steps(), content="0")
     constructor_activation_test_release(shell, cleanup, completion)
@@ -103,8 +109,9 @@ test "constructor recursive edge observes five steps before construct" {
 test "constructor recursive edge consumes exactly five steps before suspension" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
-  let (interp, shell, cleanup, cursor, _) =
-    constructor_activation_test_fixture(probe)
+  let (interp, shell, cleanup, cursor, _) = constructor_activation_test_fixture(
+    probe,
+  )
   let control = ExecutionControl(
     remaining_steps=5,
     maximum_active_depth=10,
@@ -118,14 +125,20 @@ test "constructor recursive edge consumes exactly five steps before suspension" 
       index: 1,
     }) catch {
       InvalidActivationDispatchShell(message) =>
-        fail("constructor body dispatch rejected the trusted cursor: " + message)
+        fail(
+          "constructor body dispatch rejected the trusted cursor: " + message,
+        )
     }
     match result {
       DispatchWorkSuspended(_) => ()
       _ => fail("expected the constructor edge to suspend after five steps")
     }
     inspect(control.remaining_steps(), content="0")
-    constructor_activation_test_release(shell, cleanup, DispatchNormal(Undefined))
+    constructor_activation_test_release(
+      shell,
+      cleanup,
+      DispatchNormal(Undefined),
+    )
   })
 }
 
@@ -133,12 +146,13 @@ test "constructor recursive edge consumes exactly five steps before suspension" 
 test "constructor changed body stays legacy before managed effect" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
-  let (_, shell, cleanup, cursor, _) =
-    constructor_activation_test_fixture(probe)
+  let (_, shell, cleanup, cursor, _) = constructor_activation_test_fixture(
+    probe,
+  )
   let changed = @parser.parse(
-    "function Node(n){this.value=n;if(n>0){this.child=new Node(n-2);}}" +
-    "new Node(4).value;",
-  ).stmts
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-2);}}" +
+      "new Node(4).value;",
+    ).stmts
   let changed_statement = match changed[0] {
     @ast.FuncDecl(_, _, body, _, _) => body[1]
     _ => fail("expected the changed constructor declaration")
@@ -163,12 +177,14 @@ test "constructor changed body stays legacy before managed effect" {
 test "constructor guest and runtime abrupt exits preserve identity and cleanup" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
-  let (interp, shell, cleanup, _, _) =
-    constructor_activation_test_fixture(probe)
+  let (interp, shell, cleanup, _, _) = constructor_activation_test_fixture(
+    probe,
+  )
   let thrown : Error = JsException(String_("constructor guest throw"))
   let guest_completion = DispatchThrow(thrown)
   match guest_completion {
-    DispatchThrow(found) => inspect(physical_equal(found, thrown), content="true")
+    DispatchThrow(found) =>
+      inspect(physical_equal(found, thrown), content="true")
     _ => fail("expected a guest throw completion")
   }
   constructor_activation_test_release(shell, cleanup, guest_completion)
@@ -183,13 +199,17 @@ test "constructor guest and runtime abrupt exits preserve identity and cleanup" 
       ).stmts,
     ) {
     Number(value) => inspect(value, content="0")
-    other => fail("expected a later shallow constructor, got " + other.to_string())
+    other =>
+      fail("expected a later shallow constructor, got " + other.to_string())
   }
 
   let runtime_interp = Interpreter::new()
-  let runtime_probe = DispatchObservationProbe(observed_interp=Some(runtime_interp))
-  let (runtime_interp, runtime_shell, runtime_cleanup, _, _) =
-    constructor_activation_test_fixture(runtime_probe)
+  let runtime_probe = DispatchObservationProbe(
+    observed_interp=Some(runtime_interp),
+  )
+  let (runtime_interp, runtime_shell, runtime_cleanup, _, _) = constructor_activation_test_fixture(
+    runtime_probe,
+  )
   let runtime_error : Error = ExecutionControlError(ExecutionLimit)
   let runtime_completion = DispatchRuntimeAbrupt(runtime_error)
   match runtime_completion {
@@ -198,9 +218,7 @@ test "constructor guest and runtime abrupt exits preserve identity and cleanup" 
     _ => fail("expected a runtime-abrupt completion")
   }
   constructor_activation_test_release(
-    runtime_shell,
-    runtime_cleanup,
-    runtime_completion,
+    runtime_shell, runtime_cleanup, runtime_completion,
   )
   inspect(runtime_shell.cleanup_stack.length(), content="0")
   inspect(runtime_probe.released, content="1")
@@ -213,7 +231,8 @@ test "constructor guest and runtime abrupt exits preserve identity and cleanup" 
       ).stmts,
     ) {
     Number(value) => inspect(value, content="0")
-    other => fail("expected a later shallow constructor, got " + other.to_string())
+    other =>
+      fail("expected a later shallow constructor, got " + other.to_string())
   }
   ignore(interp)
   ignore(runtime_interp)

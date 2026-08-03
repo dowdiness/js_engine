@@ -2748,7 +2748,8 @@ fn PrimitiveProgramDispatchShell::execute_constructor_body_statement(
   match step.index {
     0 => self.execute_statement_with_legacy_adapter(step)
     1 => {
-      let argument_value = match step.env.bindings.get(function.plan.parameter) {
+      let argument_value = match
+        step.env.bindings.get(function.plan.parameter) {
         Some(binding) if binding.initialized => binding.value
         _ =>
           return invalid_activation_dispatch_shell(
