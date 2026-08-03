@@ -20,28 +20,33 @@ fn source_table_has_role_for_wb(
 }
 
 ///|
-priv enum RedFinalizationOutcome {
-  Constructed(BytecodeProgram)
-}
-
-///|
-fn red_finalize_bytecode_program_for_wb(
-  program : BytecodeProgram,
-) -> RedFinalizationOutcome {
-  // RED seam: the current implementation returns the private tree directly.
-  RedFinalizationOutcome::Constructed(program)
-}
-
-///|
 test "RED: private finalization rejects malformed source metadata" {
   let parsed = @parser.parse("1;")
   let malformed = build_script_bytecode(parsed.stmts)
-  malformed.main.instruction_sources[0] = []
-  match red_finalize_bytecode_program_for_wb(malformed) {
-    Constructed(program) => {
-      assert_true(program.main.code.length() > 0)
-      fail("expected typed verifier defect")
+  let code_length = malformed.main.code.length()
+  let _ = malformed.main.instruction_sources.pop()
+  try {
+    let _ = finalize_bytecode_program(malformed)
+    fail("expected typed verifier defect")
+  } catch {
+    BytecodeVerifierDefect(
+      { function_path, instruction_index, invariant, expected, actual }
+    ) => {
+      assert_eq(function_path, [])
+      assert_eq(instruction_index, None)
+      match invariant {
+        InstructionSourceCount => ()
+        _ => fail("expected instruction source count defect")
+      }
+      match (expected, actual) {
+        (CodeLength(expected), InstructionSourcesLength(actual)) => {
+          assert_eq(expected, code_length)
+          assert_eq(actual, code_length - 1)
+        }
+        _ => fail("expected source-count facts")
+      }
     }
+    _ => fail("expected typed verifier defect")
   }
 }
 
@@ -128,8 +133,12 @@ test "RED: bytecode functions own typed source tables" {
     abort("nested function must own source points")
   }
   assert_eq(bytecode.main.source_unit, child.source_unit)
-  let root_point = bytecode.main.resolve_source_point(SourcePointId(0))
-  let child_point = child.resolve_source_point(SourcePointId(0))
+  let root_point = bytecode.main.resolve_source_point(
+    SourcePointId(bytecode.main.source_unit, 0),
+  )
+  let child_point = child.resolve_source_point(
+    SourcePointId(child.source_unit, 0),
+  )
   assert_eq(root_point.source_unit, bytecode.main.source_unit)
   assert_eq(child_point.source_unit, child.source_unit)
   assert_true(
