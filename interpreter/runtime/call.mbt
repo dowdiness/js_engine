@@ -802,8 +802,13 @@ fn Interpreter::eval_call(
 ///|
 priv enum CallForwardingDecision {
   Forward(Value, Value, Array[Value])
+  PrepareApply(Value, Value, Value)
   NotForwarded
 }
+
+///|
+// Engine-private provenance for exact runtime-created Arguments objects.
+let runtime_arguments_host_slot : HostSlotKey = HostSlotKey::reserve()
 
 ///|
 fn call_forwarding_args(args : Array[Value]) -> Array[Value] {
@@ -834,6 +839,20 @@ fn call_forwarding_decision(
           let call_this = if args.length() > 0 { args[0] } else { Undefined }
           Forward(target, call_this, call_forwarding_args(args))
         }
+        // `FuncApplyMethod(Undefined)` is the runtime-owned identity for the
+        // exact Function.prototype.apply intrinsic. Its target is the
+        // current receiver, just as the exact Function.prototype.call
+        // intrinsic above forwards its current receiver.
+        Some(FuncApplyMethod(Undefined)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          let arg_array = if args.length() > 1 { args[1] } else { Undefined }
+          PrepareApply(this_val, call_this, arg_array)
+        }
+        Some(FuncApplyMethod(target)) => {
+          let call_this = if args.length() > 0 { args[0] } else { Undefined }
+          let arg_array = if args.length() > 1 { args[1] } else { Undefined }
+          PrepareApply(target, call_this, arg_array)
+        }
         _ => NotForwarded
       }
     _ => NotForwarded
@@ -841,11 +860,158 @@ fn call_forwarding_decision(
 }
 
 ///|
-fn resolve_call_forwarding(
+priv enum ApplyArgument {
+  Direct(Value)
+  Mapped(PropDescriptor)
+}
+
+///|
+fn dense_array_apply_shape(data : ArrayData) -> Array[ApplyArgument]? {
+  let len = array_logical_length(data)
+  // A sealed dense list has no length override and therefore cannot expose
+  // sparse slots or an arbitrarily large logical length through this path.
+  guard len == data.elements.length().to_int64() else { return None }
+  let mut i = 0L
+  while i < len {
+    guard array_index_lookup_result64(data, i) is Present(_) else {
+      return None
+    }
+    i += 1L
+  }
+  let result : Array[ApplyArgument] = []
+  i = 0L
+  while i < len {
+    match array_index_lookup_result64(data, i) {
+      Present(value) => result.push(Direct(value))
+      _ => return None
+    }
+    i += 1L
+  }
+  Some(result)
+}
+
+///|
+fn mapped_arguments_accessor(desc : PropDescriptor) -> Bool {
+  guard desc.is_accessor else { return false }
+  match (desc.getter, desc.setter) {
+    (
+      Some(
+        Object({ callable: Some(NativeCallable("[[MappedArgGetter]]", _)), .. })
+      ),
+      Some(
+        Object({ callable: Some(NativeCallable("[[MappedArgSetter]]", _)), .. })
+      ),
+    ) => true
+    _ => false
+  }
+}
+
+///|
+fn mapped_arguments_value(desc : PropDescriptor) -> Value raise Error {
+  match desc.getter {
+    Some(
+      Object(
+        { callable: Some(NativeCallable("[[MappedArgGetter]]", getter)), .. }
+      )
+    ) => getter([])
+    _ => Undefined
+  }
+}
+
+///|
+fn exact_arguments_apply_shape(data : ObjectData) -> Array[ApplyArgument]? {
+  // A host slot is the non-forgeable provenance marker installed only by
+  // make_arguments_object. The class name is retained as a defensive shape
+  // check, but is never used as provenance on its own.
+  guard data.class_name == "Arguments" &&
+    has_host_slot(data, runtime_arguments_host_slot) else {
+    return None
+  }
+  let length_value = data.bag.properties.get("length")
+  let length_desc = data.bag.descriptors.get("length")
+  let n = match length_value {
+    Some(Number(n)) => n
+    _ => return None
+  }
+  let desc = match length_desc {
+    Some(desc) => desc
+    _ => return None
+  }
+  guard !desc.is_accessor &&
+    n >= 0.0 &&
+    n == n.floor() &&
+    n <= JS_MAX_SAFE_INTEGER_DOUBLE else {
+    return None
+  }
+  let length = n.to_int64()
+  guard length <= data.bag.properties.length().to_int64() else { return None }
+  let mut i = 0L
+  while i < length {
+    let key = i.to_string()
+    match (data.bag.descriptors.get(key), data.bag.properties.get(key)) {
+      (Some(desc), Some(_)) if !desc.is_accessor => ()
+      (Some(desc), Some(_)) if mapped_arguments_accessor(desc) => ()
+      _ => return None
+    }
+    i += 1L
+  }
+  let result : Array[ApplyArgument] = []
+  i = 0L
+  while i < length {
+    let key = i.to_string()
+    match (data.bag.descriptors.get(key), data.bag.properties.get(key)) {
+      (Some(desc), Some(value)) if !desc.is_accessor =>
+        result.push(Direct(value))
+      (Some(desc), Some(_)) if mapped_arguments_accessor(desc) =>
+        result.push(Mapped(desc))
+      _ => return None
+    }
+    i += 1L
+  }
+  Some(result)
+}
+
+///|
+fn Interpreter::materialize_apply_shape(
+  self : Interpreter,
+  shape : Array[ApplyArgument],
+) -> Array[Value] raise Error {
+  let _ = self
+  let result : Array[Value] = []
+  for item in shape {
+    match item {
+      Direct(value) => result.push(value)
+      Mapped(desc) => result.push(mapped_arguments_value(desc))
+    }
+  }
+  result
+}
+
+///|
+fn prepare_apply_shape(
+  target : Value,
+  arg_array : Value,
+) -> Array[ApplyArgument]? raise Error {
+  // §20.2.3.1 checks IsCallable before touching argArray. This check also
+  // applies when the exact intrinsic is reached through Function#call.
+  guard is_callable(target) else {
+    raise @errors.TypeError(message="is not a function")
+  }
+  match arg_array {
+    Undefined | Null => Some([])
+    Array(data) => dense_array_apply_shape(data)
+    Object(data) => exact_arguments_apply_shape(data)
+    _ => None
+  }
+}
+
+///|
+fn Interpreter::resolve_call_forwarding(
+  self : Interpreter,
   callee : Value,
   this_val : Value,
   args : Array[Value],
-) -> (Value, Value, Array[Value]) {
+) -> (Value, Value, Array[Value]) raise Error {
   let mut current_callee = callee
   let mut current_this_val = this_val
   let mut current_args = args
@@ -857,6 +1023,18 @@ fn resolve_call_forwarding(
         current_this_val = next_this_val
         current_args = next_args
       }
+      PrepareApply(target, call_this, arg_array) =>
+        match prepare_apply_shape(target, arg_array) {
+          Some(shape) => {
+            let next_args = self.materialize_apply_shape(shape)
+            current_callee = target
+            current_this_val = call_this
+            current_args = next_args
+          }
+          // Shapes that are observable or unsupported by the sealed-list
+          // classifier retain the legacy FuncApplyMethod call below.
+          None => break
+        }
       NotForwarded => break
     }
   }
@@ -871,7 +1049,7 @@ pub fn Interpreter::call_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
-  let (current_callee, current_this_val, current_args) = resolve_call_forwarding(
+  let (current_callee, current_this_val, current_args) = self.resolve_call_forwarding(
     callee, this_val, args,
   )
   match
@@ -1409,6 +1587,14 @@ fn Interpreter::call_value_impl(
         Some(FuncCallMethod(_)) =>
           raise @errors.TypeError(message="is not a function")
         Some(FuncApplyMethod(target)) => {
+          let effective_target = if target is Undefined {
+            this_val
+          } else {
+            target
+          }
+          guard is_callable(effective_target) else {
+            raise @errors.TypeError(message="is not a function")
+          }
           let call_this = if args.length() > 0 { args[0] } else { Undefined }
           let call_args : Array[Value] = []
           if args.length() > 1 {
@@ -1416,20 +1602,26 @@ fn Interpreter::call_value_impl(
             match arg_array {
               Undefined | Null => ()
               _ => {
-                // apply accepts any array-like object (including `arguments`).
-                let arg_len = to_array_like_length(arg_array)
+                // Unsupported shapes retain full CreateListFromArrayLike
+                // semantics: reject primitives, then observe length/index
+                // through the interpreter so Proxy, accessors, and inherited
+                // properties stay visible.
+                guard is_object_value(arg_array) else {
+                  raise @errors.TypeError(
+                    message="CreateListFromArrayLike called on non-object",
+                  )
+                }
+                let arg_len = to_array_like_length_interp(arg_array, self)
                 for i = 0L; i < arg_len; i = i + 1L {
-                  let element = self.get_computed_property(
-                    arg_array,
-                    Number(i.to_double()),
-                    loc,
+                  let element = get_array_like_element_interp(
+                    self, arg_array, i,
                   )
                   call_args.push(element)
                 }
               }
             }
           }
-          self.call_value(target, call_this, call_args, loc)
+          self.call_value(effective_target, call_this, call_args, loc)
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)

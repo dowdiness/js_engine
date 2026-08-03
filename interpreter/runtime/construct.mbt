@@ -762,7 +762,7 @@ fn make_arguments_object(
     setter: None,
     is_accessor: false,
   }
-  Object({
+  let arguments_object = Object({
     bag: {
       properties: new_args_props,
       symbol_properties: new_args_sym_props,
@@ -777,6 +777,13 @@ fn make_arguments_object(
     extensible: true,
     arraybuffer_state: None,
   })
+  match arguments_object {
+    Object(data) => {
+      set_host_slot(data, runtime_arguments_host_slot, Undefined)
+      arguments_object
+    }
+    _ => arguments_object
+  }
 }
 
 ///|
