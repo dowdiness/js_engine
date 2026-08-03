@@ -1723,7 +1723,7 @@ fn compile_bytecode_function(
 ///|
 fn build_script_bytecode(
   stmts : Array[@ast.Stmt],
-) -> BytecodeProgram raise Error {
+) -> BytecodeUnverifiedProgram raise Error {
   let source_unit = SourceUnitHandle(0)
   {
     source_stmts: stmts,
@@ -1742,7 +1742,7 @@ fn build_script_bytecode(
 fn lower_script_to_bytecode(
   stmts : Array[@ast.Stmt],
 ) -> Result[BytecodeProgram, BytecodeUnsupported] raise Error {
-  Ok(build_script_bytecode(stmts)) catch {
+  Ok(finalize_bytecode_program(build_script_bytecode(stmts))) catch {
     BytecodeUnsupportedSignal(unsupported) => Err(unsupported)
     error => raise error
   }

@@ -5,14 +5,18 @@ using @runtime {type Binding}
 let empty_bytecode_env_slots : Array[Binding] = []
 
 ///|
-priv struct SourcePointId(Int)
-
-///|
 // A handle is scoped to one BytecodeProgram. Separate compilations need not
 // produce numerically distinct handles; the owning program provides the
 // identity boundary, while every nested function shares this source unit.
 #warnings("-unused_value")
 priv struct SourceUnitHandle(Int) derive(Eq, Debug)
+
+// Source-point references carry a source-unit tag that verification requires to
+// match the owning function/root program; separate program identity remains the
+// private facade boundary.
+
+///|
+priv struct SourcePointId(SourceUnitHandle, Int)
 
 ///|
 #warnings("-unused_value")
@@ -436,7 +440,7 @@ fn BytecodeFunction::resolve_source_point(
   self : BytecodeFunction,
   id : SourcePointId,
 ) -> ResolvedSourcePoint {
-  let SourcePointId(index) = id
+  let SourcePointId(_, index) = id
   let point = self.source_points[index]
   { source_unit: self.source_unit, role: point.role, loc: point.loc }
 }
@@ -504,6 +508,12 @@ pub struct BytecodeProgram {
 }
 
 ///|
+priv struct BytecodeUnverifiedProgram {
+  source_stmts : Array[@ast.Stmt]
+  main : BytecodeFunction
+}
+
+///|
 priv enum BytecodeRunResult {
   BytecodeNormal(Value)
   BytecodeReturn(Value)
@@ -549,7 +559,7 @@ fn BytecodeBuilder::allocate_source_point(
   role : SourcePointRole,
   loc : @token.Loc,
 ) -> SourcePointId {
-  let id = SourcePointId(self.source_points.length())
+  let id = SourcePointId(self.source_unit, self.source_points.length())
   self.source_points.push({ role, loc })
   id
 }
