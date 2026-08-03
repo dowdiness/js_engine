@@ -8,6 +8,13 @@ let empty_bytecode_env_slots : Array[Binding] = []
 priv struct SourcePointId(Int)
 
 ///|
+// A handle is scoped to one BytecodeProgram. Separate compilations need not
+// produce numerically distinct handles; the owning program provides the
+// identity boundary, while every nested function shares this source unit.
+#warnings("-unused_value")
+priv struct SourceUnitHandle(Int) derive(Eq, Debug)
+
+///|
 #warnings("-unused_value")
 priv enum SourcePointRole {
   StatementEntry
@@ -28,6 +35,14 @@ priv enum SourcePointRole {
 ///|
 #warnings("-unused_field")
 priv struct SourcePoint {
+  role : SourcePointRole
+  loc : @token.Loc
+}
+
+///|
+#warnings("-unused_field")
+priv struct ResolvedSourcePoint {
+  source_unit : SourceUnitHandle
   role : SourcePointRole
   loc : @token.Loc
 }
@@ -368,6 +383,7 @@ priv struct BytecodeFunction {
   env_var_hoist_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
+  source_unit : SourceUnitHandle
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
@@ -389,6 +405,7 @@ fn BytecodeFunction::BytecodeFunction(
   env_var_hoist_names~ : Array[String],
   template_cache_key_prefix~ : String,
   code~ : Array[BytecodeInstr],
+  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   source_points? : Array[SourcePoint] = [],
   instruction_sources? : Array[Array[SourcePointId]] = [],
   children~ : Array[BytecodeFunction],
@@ -408,6 +425,7 @@ fn BytecodeFunction::BytecodeFunction(
     env_var_hoist_names,
     template_cache_key_prefix,
     code,
+    source_unit,
     source_points,
     instruction_sources,
     children,
@@ -418,14 +436,20 @@ fn BytecodeFunction::BytecodeFunction(
 fn BytecodeFunction::resolve_source_point(
   self : BytecodeFunction,
   id : SourcePointId,
-) -> SourcePoint {
+) -> ResolvedSourcePoint {
   let SourcePointId(index) = id
-  self.source_points[index]
+  let point = self.source_points[index]
+  {
+    source_unit: self.source_unit,
+    role: point.role,
+    loc: point.loc,
+  }
 }
 
 ///|
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
+  source_unit : SourceUnitHandle
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
@@ -494,9 +518,11 @@ priv enum BytecodeRunResult {
 fn BytecodeBuilder::BytecodeBuilder(
   plan : BytecodeLocalPlan,
   template_cache_key_prefix : String,
+  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
 ) -> BytecodeBuilder {
   {
     code: [],
+    source_unit,
     source_points: [],
     instruction_sources: [],
     children: [],

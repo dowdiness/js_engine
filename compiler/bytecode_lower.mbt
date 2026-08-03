@@ -1659,6 +1659,7 @@ fn compile_bytecode_function(
   use_local_slots? : Bool = true,
   call_self_name? : Bool = false,
   template_cache_key_prefix? : String = "main",
+  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
 ) -> BytecodeFunction raise Error {
   let plan = plan_bytecode_locals(
     params,
@@ -1666,7 +1667,7 @@ fn compile_bytecode_function(
     use_local_slots=use_local_slots && rest_param is None,
   )
   let builder = BytecodeBuilder::BytecodeBuilder(
-    plan, template_cache_key_prefix,
+    plan, template_cache_key_prefix, source_unit~,
   )
   for stmt in body {
     builder.compile_stmt(stmt)
@@ -1710,6 +1711,7 @@ fn compile_bytecode_function(
     env_var_hoist_names~,
     template_cache_key_prefix~,
     code=builder.code,
+    source_unit=builder.source_unit,
     source_points=builder.source_points,
     instruction_sources=builder.instruction_sources,
     children=builder.children,
@@ -1720,6 +1722,7 @@ fn compile_bytecode_function(
 fn build_script_bytecode(
   stmts : Array[@ast.Stmt],
 ) -> BytecodeProgram raise Error {
+  let source_unit = SourceUnitHandle(0)
   {
     source_stmts: stmts,
     main: compile_bytecode_function(
@@ -1728,6 +1731,7 @@ fn build_script_bytecode(
       stmts,
       None,
       use_local_slots=false,
+      source_unit~,
     ),
   }
 }
@@ -1804,6 +1808,7 @@ fn BytecodeBuilder::add_function(
       rest_param,
       call_self_name~,
       template_cache_key_prefix~,
+      source_unit=self.source_unit,
     ),
   )
   idx

@@ -98,6 +98,11 @@ test "RED: bytecode functions own typed source tables" {
   guard child.source_points.length() > 0 else {
     abort("nested function must own source points")
   }
+  assert_eq(bytecode.main.source_unit, child.source_unit)
+  let root_point = bytecode.main.resolve_source_point(SourcePointId(0))
+  let child_point = child.resolve_source_point(SourcePointId(0))
+  assert_eq(root_point.source_unit, bytecode.main.source_unit)
+  assert_eq(child_point.source_unit, child.source_unit)
   assert_true(
     source_table_has_role_for_wb(bytecode.main.source_points, StatementEntry),
   )
