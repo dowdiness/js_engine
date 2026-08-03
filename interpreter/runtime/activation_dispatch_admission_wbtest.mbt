@@ -581,7 +581,10 @@ test "numeric recursion admission rejects extra arguments for one-parameter func
         numeric_recursion_test_program(source),
       )
       is None else {
-      fail("unexpectedly admitted extra argument for one-parameter function: " + source)
+      fail(
+        "unexpectedly admitted extra argument for one-parameter function: " +
+        source,
+      )
     }
   }
 }
