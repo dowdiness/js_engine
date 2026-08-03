@@ -5,7 +5,69 @@ using @runtime {type Binding}
 let empty_bytecode_env_slots : Array[Binding] = []
 
 ///|
+priv struct SourcePointId(Int)
+
+///|
+// A handle is scoped to one BytecodeProgram. Separate compilations need not
+// produce numerically distinct handles; the owning program provides the
+// identity boundary, while every nested function shares this source unit.
+#warnings("-unused_value")
+priv struct SourceUnitHandle(Int) derive(Eq, Debug)
+
+///|
+#warnings("-unused_value")
+priv enum SourcePointRole {
+  StatementEntry
+  ExpressionEntry
+  BindingAccess
+  MemberAccess
+  SuperMemberAccess
+  PropertyKey
+  Operator
+  Call
+  Construct
+  Throw
+  Spread
+  DirectEval
+  Iterator
+} derive(Eq, Debug)
+
+///|
+#warnings("-unused_field")
+priv struct SourcePoint {
+  role : SourcePointRole
+  loc : @token.Loc
+}
+
+///|
+#warnings("-unused_field")
+priv struct ResolvedSourcePoint {
+  source_unit : SourceUnitHandle
+  role : SourcePointRole
+  loc : @token.Loc
+}
+
+///|
+#warnings("-unused_constructor")
+priv enum BytecodeObservationBarrierKind {
+  NotObservationBarrier
+  StatementObservationBarrier
+  ExpressionObservationBarrier
+}
+
+///|
+#warnings("-unused_field")
+priv struct BytecodeInstructionContract {
+  may_raise_js : Bool
+  may_invoke_guest : Bool
+  required_source_roles : Array[SourcePointRole]
+  observation_barrier : BytecodeObservationBarrierKind
+}
+
+///|
 priv enum BytecodeInstr {
+  ObserveStatement(SourcePointId)
+  ObserveExpression(SourcePointId)
   LoadConst(Value)
   LoadUndefined
   LoadThis
@@ -109,6 +171,188 @@ priv enum BytecodeInstr {
 }
 
 ///|
+fn bytecode_instruction_contract(
+  instr : BytecodeInstr,
+) -> BytecodeInstructionContract {
+  match instr {
+    ObserveStatement(_) =>
+      {
+        may_raise_js: false,
+        may_invoke_guest: false,
+        required_source_roles: [StatementEntry],
+        observation_barrier: StatementObservationBarrier,
+      }
+    ObserveExpression(_) =>
+      {
+        may_raise_js: false,
+        may_invoke_guest: false,
+        required_source_roles: [ExpressionEntry],
+        observation_barrier: ExpressionObservationBarrier,
+      }
+    LoadConst(_)
+    | LoadUndefined
+    | LoadNewTarget
+    | LoadLocal(_)
+    | StoreLocal(_)
+    | DefineBinding(_, _, _)
+    | DefineLocal(_, _)
+    | DefineEnvSlot(_, _)
+    | SetCompletion
+    | SetCompletionValue(_)
+    | Pop
+    | Dup
+    | Jump(_)
+    | JumpIfFalse(_)
+    | JumpIfFalseKeep(_)
+    | JumpIfTrueKeep(_)
+    | JumpIfNotNullishKeep(_)
+    | BeginOptionalChain
+    | MarkOptionalChainShortCircuit
+    | JumpIfNotOptionalChainShortCircuitKeep(_)
+    | EndOptionalChain
+    | ForInNext(_)
+    | EndForIn
+    | MakeArray(_)
+    | MakeArrayWithHoles(_, _)
+    | StartArray
+    | ArrayPushValue
+    | ArrayPushHole
+    | StartArgs
+    | ArgPushValue
+    | MakeObject(_)
+    | StartObject
+    | ObjectSetStatic(_)
+    | ObjectSetStaticGetter(_)
+    | ObjectSetStaticSetter(_)
+    | ObjectSetComputedGetter
+    | ObjectSetComputedSetter
+    | ObjectSetComputed
+    | ObjectSetProto
+    | SetFunctionName(_)
+    | DeclareFunction(_, _)
+    | DropPropertyAssignReference
+    | DropComputedAssignReference
+    | Return => bytecode_contract(false, false, [])
+    LoadThis
+    | LoadName(_)
+    | LoadAssignmentName(_)
+    | StoreName(_)
+    | LoadEnvSlot(_)
+    | StoreEnvSlot(_)
+    | TypeofName(_)
+    | DeleteName(_) => bytecode_contract(true, false, [BindingAccess])
+    LoadDirectEvalCallee =>
+      bytecode_contract(true, false, [BindingAccess, DirectEval])
+    LoadConsoleMember(_) => bytecode_contract(true, false, [MemberAccess])
+    LoadSuperProperty(_, _) =>
+      bytecode_contract(true, true, [SuperMemberAccess])
+    LoadSuperComputed(_) =>
+      bytecode_contract(true, true, [SuperMemberAccess, PropertyKey])
+    BinaryOp(op, _) => bytecode_binary_contract(op)
+    UnaryValueOp(op, _) => bytecode_unary_contract(op)
+    DeleteProperty(_) => bytecode_contract(true, true, [MemberAccess])
+    DeleteComputed => bytecode_contract(true, true, [MemberAccess, PropertyKey])
+    AppendTemplate(_) => bytecode_contract(true, true, [Operator])
+    MakeTemplateObject(_) => bytecode_contract(false, false, [])
+    MakeRegExp(_, _) => bytecode_contract(true, false, [ExpressionEntry])
+    UpdateName(_, _, _, _) | UpdateLocal(_, _, _) | UpdateEnvSlot(_, _, _) =>
+      bytecode_contract(true, true, [BindingAccess, Operator])
+    UpdateProperty(_, _, _, _, _) =>
+      bytecode_contract(true, true, [MemberAccess, Operator])
+    UpdateComputed(_, _, _, _) =>
+      bytecode_contract(true, true, [MemberAccess, PropertyKey, Operator])
+    StartForIn => bytecode_contract(true, true, [Iterator])
+    ArrayPushSpread(_) | ArgPushSpread(_) =>
+      bytecode_contract(true, true, [Spread, Iterator])
+    ToObjectLiteralPropertyKey => bytecode_contract(true, true, [PropertyKey])
+    ObjectSpread(_) => bytecode_contract(true, true, [Spread])
+    MakeFunction(_)
+    | MakeNamedFunction(_, _)
+    | MakeMethodFunction(_)
+    | MakeComputedMethodFunction(_)
+    | MakeArrowFunction(_) => bytecode_contract(true, false, [ExpressionEntry])
+    GetProperty(_, _)
+    | ReadPropertyForAssign(_, _)
+    | SetProperty(_, _)
+    | SetForInProperty(_, _)
+    | PreparePropertyCall(_, _)
+    | PreparePlainPropertyCall(_, _) =>
+      bytecode_contract(true, true, [MemberAccess])
+    GetComputed(_)
+    | ReadComputedForAssign(_)
+    | SetComputed(_)
+    | SetForInComputed(_)
+    | PrepareComputedCall(_) =>
+      bytecode_contract(true, true, [MemberAccess, PropertyKey])
+    AssignPattern(_) =>
+      bytecode_contract(true, true, [BindingAccess, MemberAccess, Iterator])
+    PrepareSuperPropertyCall(_, _) =>
+      bytecode_contract(true, true, [SuperMemberAccess])
+    PrepareSuperComputedCall(_) =>
+      bytecode_contract(true, true, [SuperMemberAccess, PropertyKey])
+    CallDirectEval(_) => bytecode_contract(true, true, [DirectEval, Call])
+    Call(_, _)
+    | CallWithReceiver(_, _)
+    | CallSpread(_)
+    | CallSpreadWithReceiver(_) => bytecode_contract(true, true, [Call])
+    Construct(_, _) | ConstructSpread(_) =>
+      bytecode_contract(true, true, [Construct])
+    Throw => bytecode_contract(true, false, [Throw])
+  }
+}
+
+///|
+fn bytecode_contract(
+  may_raise_js : Bool,
+  may_invoke_guest : Bool,
+  required_source_roles : Array[SourcePointRole],
+) -> BytecodeInstructionContract {
+  {
+    may_raise_js,
+    may_invoke_guest,
+    required_source_roles,
+    observation_barrier: NotObservationBarrier,
+  }
+}
+
+///|
+fn bytecode_binary_contract(op : @ast.BinOp) -> BytecodeInstructionContract {
+  match op {
+    EqEqEq | NotEqEq | And | Or | NullishCoalesce =>
+      bytecode_contract(false, false, [Operator])
+    Add
+    | Sub
+    | Mul
+    | Div
+    | Mod
+    | EqEq
+    | NotEq
+    | Lt
+    | Gt
+    | LtEq
+    | GtEq
+    | BitAnd
+    | BitOr
+    | BitXor
+    | LShift
+    | RShift
+    | URShift
+    | Exp
+    | In
+    | Instanceof => bytecode_contract(true, true, [Operator])
+  }
+}
+
+///|
+fn bytecode_unary_contract(op : @ast.UnaryOp) -> BytecodeInstructionContract {
+  match op {
+    Not | Typeof | Void | Delete => bytecode_contract(false, false, [Operator])
+    Neg | Pos | BitNot => bytecode_contract(true, true, [Operator])
+  }
+}
+
+///|
+#warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
   params : Array[String]
@@ -138,12 +382,71 @@ priv struct BytecodeFunction {
   env_var_hoist_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
+  source_unit : SourceUnitHandle
+  source_points : Array[SourcePoint]
+  instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
+}
+
+///|
+fn BytecodeFunction::BytecodeFunction(
+  name~ : String?,
+  params~ : Array[String],
+  rest_param~ : String?,
+  source_body~ : Array[@ast.Stmt],
+  body_has_use_strict~ : Bool,
+  call_self_name~ : Bool,
+  needs_arguments_object~ : Bool,
+  needs_own_env~ : Bool,
+  local_names~ : Array[String],
+  local_indices~ : Map[String, Int],
+  env_slot_names~ : Array[String],
+  env_var_hoist_names~ : Array[String],
+  template_cache_key_prefix~ : String,
+  code~ : Array[BytecodeInstr],
+  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
+  source_points? : Array[SourcePoint] = [],
+  instruction_sources? : Array[Array[SourcePointId]] = [],
+  children~ : Array[BytecodeFunction],
+) -> BytecodeFunction {
+  {
+    name,
+    params,
+    rest_param,
+    source_body,
+    body_has_use_strict,
+    call_self_name,
+    needs_arguments_object,
+    needs_own_env,
+    local_names,
+    local_indices,
+    env_slot_names,
+    env_var_hoist_names,
+    template_cache_key_prefix,
+    code,
+    source_unit,
+    source_points,
+    instruction_sources,
+    children,
+  }
+}
+
+///|
+fn BytecodeFunction::resolve_source_point(
+  self : BytecodeFunction,
+  id : SourcePointId,
+) -> ResolvedSourcePoint {
+  let SourcePointId(index) = id
+  let point = self.source_points[index]
+  { source_unit: self.source_unit, role: point.role, loc: point.loc }
 }
 
 ///|
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
+  source_unit : SourceUnitHandle
+  source_points : Array[SourcePoint]
+  instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
   local_names : Array[String]
   local_indices : Map[String, Int]
@@ -210,9 +513,13 @@ priv enum BytecodeRunResult {
 fn BytecodeBuilder::BytecodeBuilder(
   plan : BytecodeLocalPlan,
   template_cache_key_prefix : String,
+  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
 ) -> BytecodeBuilder {
   {
     code: [],
+    source_unit,
+    source_points: [],
+    instruction_sources: [],
     children: [],
     local_names: plan.names,
     local_indices: plan.indices,
@@ -232,7 +539,73 @@ fn BytecodeBuilder::BytecodeBuilder(
 fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
   let idx = self.code.length()
   self.code.push(instr)
+  self.instruction_sources.push([])
   idx
+}
+
+///|
+fn BytecodeBuilder::allocate_source_point(
+  self : BytecodeBuilder,
+  role : SourcePointRole,
+  loc : @token.Loc,
+) -> SourcePointId {
+  let id = SourcePointId(self.source_points.length())
+  self.source_points.push({ role, loc })
+  id
+}
+
+///|
+fn BytecodeBuilder::emit_with_sources(
+  self : BytecodeBuilder,
+  instr : BytecodeInstr,
+  sources : Array[SourcePointId],
+) -> Int {
+  let idx = self.emit(instr)
+  self.instruction_sources[idx] = sources
+  idx
+}
+
+///|
+fn BytecodeBuilder::emit_with_source_locations(
+  self : BytecodeBuilder,
+  instr : BytecodeInstr,
+  source_locations : Array[(SourcePointRole, @token.Loc)],
+) -> Int raise Error {
+  let required = bytecode_instruction_contract(instr).required_source_roles
+  guard required.length() == source_locations.length() else {
+    raise @errors.InternalError(
+      message="bytecode instruction source-role count mismatch",
+    )
+  }
+  let sources : Array[SourcePointId] = []
+  for index, required_role in required {
+    let (actual_role, loc) = source_locations[index]
+    guard actual_role == required_role else {
+      raise @errors.InternalError(
+        message="bytecode instruction source-role order mismatch",
+      )
+    }
+    sources.push(self.allocate_source_point(actual_role, loc))
+  }
+  self.emit_with_sources(instr, sources)
+}
+
+///|
+fn BytecodeBuilder::emit_statement_observation(
+  self : BytecodeBuilder,
+  loc : @token.Loc,
+) -> Unit {
+  let source_id = self.allocate_source_point(StatementEntry, loc)
+  let _ = self.emit_with_sources(ObserveStatement(source_id), [source_id])
+}
+
+///|
+fn BytecodeBuilder::emit_expression_observation(
+  self : BytecodeBuilder,
+  loc : @token.Loc,
+) -> Unit {
+  let source_id = self.allocate_source_point(ExpressionEntry, loc)
+  let _ = self.emit_with_sources(ObserveExpression(source_id), [source_id])
 }
 
 ///|

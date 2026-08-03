@@ -536,6 +536,10 @@ fn BytecodeFrame::step_bytecode(
     let instr = code[frame.ip]
     frame.ip += 1
     match instr {
+      ObserveStatement(source_id) | ObserveExpression(source_id) => {
+        ignore(frame.func_def.resolve_source_point(source_id))
+        interp.observe_execution_step()
+      }
       LoadConst(value) => stack.push(value)
       LoadUndefined => stack.push(Value::Undefined)
       LoadThis => stack.push(@runtime.eval_this_value(env))

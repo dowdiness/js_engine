@@ -793,6 +793,7 @@ pub fn Interpreter::iterator_result_value(Self, Value, @token.Loc) -> Value rais
 pub fn Interpreter::iterator_step_result(Self, Value, Value, @token.Loc) -> Value? raise
 pub fn Interpreter::iterator_step_value(Self, Value, Value, @token.Loc) -> Value? raise
 pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
+pub fn Interpreter::observe_execution_step(Self) -> Unit raise
 pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::own_property_keys(Self, Value) -> Array[Value] raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise

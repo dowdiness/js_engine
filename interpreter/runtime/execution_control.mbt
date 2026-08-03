@@ -301,7 +301,9 @@ fn restore_execution_control_binding(
 }
 
 ///|
-fn Interpreter::observe_execution_step(self : Interpreter) -> Unit raise Error {
+pub fn Interpreter::observe_execution_step(
+  self : Interpreter,
+) -> Unit raise Error {
   match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
     Some(binding) =>
       match binding.value {

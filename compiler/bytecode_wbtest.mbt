@@ -7,6 +7,170 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn source_table_has_role_for_wb(
+  source_points : Array[SourcePoint],
+  role : SourcePointRole,
+) -> Bool {
+  for source_point in source_points {
+    if source_point.role == role {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn assert_instruction_contract_for_wb(
+  instr : BytecodeInstr,
+  may_raise_js : Bool,
+  may_invoke_guest : Bool,
+  required_source_roles : Array[SourcePointRole],
+) -> Unit raise Error {
+  let contract = bytecode_instruction_contract(instr)
+  assert_eq(contract.may_raise_js, may_raise_js)
+  assert_eq(contract.may_invoke_guest, may_invoke_guest)
+  assert_eq(contract.required_source_roles, required_source_roles)
+  assert_true(contract.observation_barrier is NotObservationBarrier)
+}
+
+///|
+test "RED: bytecode instruction contracts retain semantic source roles" {
+  let loc = @token.Loc::default()
+  assert_instruction_contract_for_wb(Throw, true, false, [Throw])
+  assert_instruction_contract_for_wb(Call(0, loc), true, true, [Call])
+  assert_instruction_contract_for_wb(CallDirectEval(loc), true, true, [
+    DirectEval,
+    Call,
+  ])
+  assert_instruction_contract_for_wb(
+    PreparePlainPropertyCall("method", loc),
+    true,
+    true,
+    [MemberAccess],
+  )
+  assert_instruction_contract_for_wb(
+    PrepareSuperComputedCall(loc),
+    true,
+    true,
+    [SuperMemberAccess, PropertyKey],
+  )
+  assert_instruction_contract_for_wb(ArgPushSpread(loc), true, true, [
+    Spread,
+    Iterator,
+  ])
+  assert_instruction_contract_for_wb(BinaryOp(Add, loc), true, true, [Operator])
+  assert_instruction_contract_for_wb(LoadName("binding"), true, false, [
+    BindingAccess,
+  ])
+  assert_instruction_contract_for_wb(MakeRegExp("a", ""), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeFunction(0), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeNamedFunction(0, "f"), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeMethodFunction(0), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(
+    MakeComputedMethodFunction(0),
+    true,
+    false,
+    [ExpressionEntry],
+  )
+  assert_instruction_contract_for_wb(MakeArrowFunction(0), true, false, [
+    ExpressionEntry,
+  ])
+}
+
+///|
+test "RED: bytecode functions own typed source tables" {
+  let src =
+    #|function failer() { throw 1; }
+    #|failer();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = bytecode.main.children[0]
+  guard bytecode.main.source_points.length() > 0 else {
+    abort("root function must own source points")
+  }
+  guard child.source_points.length() > 0 else {
+    abort("nested function must own source points")
+  }
+  assert_eq(bytecode.main.source_unit, child.source_unit)
+  let root_point = bytecode.main.resolve_source_point(SourcePointId(0))
+  let child_point = child.resolve_source_point(SourcePointId(0))
+  assert_eq(root_point.source_unit, bytecode.main.source_unit)
+  assert_eq(child_point.source_unit, child.source_unit)
+  assert_true(
+    source_table_has_role_for_wb(bytecode.main.source_points, StatementEntry),
+  )
+  assert_true(
+    source_table_has_role_for_wb(bytecode.main.source_points, ExpressionEntry),
+  )
+  assert_true(source_table_has_role_for_wb(bytecode.main.source_points, Call))
+  assert_true(source_table_has_role_for_wb(child.source_points, StatementEntry))
+  assert_true(
+    source_table_has_role_for_wb(child.source_points, ExpressionEntry),
+  )
+  assert_true(source_table_has_role_for_wb(child.source_points, Throw))
+}
+
+///|
+fn instruction_source_roles_for_wb(
+  function : BytecodeFunction,
+  instruction_index : Int,
+) -> Array[SourcePointRole] {
+  function.instruction_sources[instruction_index].map(source_id => {
+    function.resolve_source_point(source_id).role
+  })
+}
+
+///|
+fn assert_function_instruction_sources_for_wb(
+  function : BytecodeFunction,
+) -> Unit raise Error {
+  assert_eq(function.instruction_sources.length(), function.code.length())
+  for instruction_index, instruction in function.code {
+    let expected = bytecode_instruction_contract(instruction).required_source_roles
+    let actual = instruction_source_roles_for_wb(function, instruction_index)
+    assert_eq(actual, expected)
+  }
+  for child in function.children {
+    assert_function_instruction_sources_for_wb(child)
+  }
+}
+
+///|
+test "RED: lowered instructions satisfy their source contracts" {
+  let src =
+    #|function invoke(object, key, values) {
+    #|  object.value = object[key] + 1;
+    #|  object[key]++;
+    #|  var property;
+    #|  for (property in object) {
+    #|    if (property) break;
+    #|  }
+    #|  return object.method(...values);
+    #|}
+    #|invoke({ value: 0, method: function(x) { return x; } }, "value", [1]);
+    #|var pattern = /a/;
+    #|var ordinary = function() {};
+    #|var named = function f() {};
+    #|var arrow = () => 0;
+    #|var methods = { method() {}, ["computed"]() {} };
+    #|eval("1");
+    #|throw 1;
+    #|
+  let bytecode = parse_bytecode_for_wb(src)
+  assert_function_instruction_sources_for_wb(bytecode.main)
+}
+
+///|
 fn assert_bytecode_internal_error_for_wb(
   stmts : Array[@ast.Stmt],
   expected_message : String,
@@ -341,13 +505,13 @@ test "structured equivalence records current pending queue policy" {
 }
 
 ///|
-test "structured equivalence represents current step and deferred activation limits" {
+test "RED: structured equivalence requires bytecode step observation" {
   match structured_step_limit_comparison_for_wb("1 + 2;") {
-    ObservableMismatch(ControlStopped(expected), Completed(_)) => {
-      assert_true(expected.point is DispatchStepObservation)
-      assert_true(expected.failure is ExecutionLimit)
+    Equivalent(ControlStopped(observation)) => {
+      assert_true(observation.point is DispatchStepObservation)
+      assert_true(observation.failure is ExecutionLimit)
     }
-    _ => fail("expected typed bytecode step-observation gap")
+    _ => fail("bytecode must stop at the same typed step observation")
   }
   let activation = synthetic_control_outcome_for_wb(
     ActivationObservation,
@@ -360,6 +524,129 @@ test "structured equivalence represents current step and deferred activation lim
     }
     _ => fail("expected typed activation-limit observation")
   }
+}
+
+///|
+fn assert_control_stopped_equivalently_for_wb(
+  result : EquivalenceResult,
+  failure : ExecutionControlFailure,
+) -> Unit raise Error {
+  match result {
+    Equivalent(ControlStopped(observation)) => {
+      assert_true(observation.point is DispatchStepObservation)
+      assert_true(same_control_failure(observation.failure, failure))
+    }
+    _ => fail("bytecode and tree walker must stop at the same control point")
+  }
+}
+
+///|
+fn exact_matching_completion_budget_for_wb(
+  source : String,
+  maximum_budget : Int,
+) -> Int raise Error {
+  for budget in 0..<=maximum_budget {
+    match
+      structured_execution_policy_comparison_for_wb(source, budget.to_int64()) {
+      Equivalent(ControlStopped(observation)) => {
+        assert_true(observation.point is DispatchStepObservation)
+        assert_true(observation.failure is ExecutionLimit)
+      }
+      Equivalent(Completed(_)) => return budget
+      _ =>
+        fail(
+          "tree walker and bytecode diverged at observation budget " +
+          budget.to_string() +
+          " for " +
+          source,
+        )
+    }
+  }
+  fail("source did not complete within the observation frontier: " + source)
+}
+
+///|
+fn lowered_observation_kinds_for_wb(
+  source : String,
+) -> Array[String] raise Error {
+  let bytecode = parse_bytecode_for_wb(source)
+  let kinds : Array[String] = []
+  for instruction in bytecode.main.code {
+    match instruction {
+      ObserveStatement(source_id) => {
+        let point = bytecode.main.resolve_source_point(source_id)
+        assert_true(point.role is StatementEntry)
+        kinds.push("statement")
+      }
+      ObserveExpression(source_id) => {
+        let point = bytecode.main.resolve_source_point(source_id)
+        assert_true(point.role is ExpressionEntry)
+        kinds.push("expression")
+      }
+      _ => ()
+    }
+  }
+  kinds
+}
+
+///|
+test "lowered barriers retain statement and expression identity" {
+  json_inspect(lowered_observation_kinds_for_wb("1 + 2 * 3;"), content=[
+    "statement", "expression", "expression", "expression", "expression", "expression",
+  ])
+  json_inspect(lowered_observation_kinds_for_wb("if (false) 1; else 2;"), content=[
+    "statement", "expression", "statement", "expression", "statement", "expression",
+  ])
+  json_inspect(lowered_observation_kinds_for_wb("false && 1;"), content=[
+    "statement", "expression", "expression", "expression",
+  ])
+  json_inspect(lowered_observation_kinds_for_wb("while (false) 1;"), content=[
+    "statement", "expression", "statement", "expression",
+  ])
+}
+
+///|
+test "bounded bytecode matches exact dynamic observation frontiers" {
+  json_inspect(
+    [
+      exact_matching_completion_budget_for_wb("1 + 2;", 8),
+      exact_matching_completion_budget_for_wb("if (false) 1; else 2;", 8),
+      exact_matching_completion_budget_for_wb("false && 1;", 8),
+      exact_matching_completion_budget_for_wb("true && 1;", 8),
+      exact_matching_completion_budget_for_wb(
+        "var i = 0; while (i < 2) { i++; } i;", 32,
+      ),
+    ],
+    content=[4, 4, 3, 4, 20],
+  )
+}
+
+///|
+test "RED: bounded bytecode observes nested branch loop and interruption entries" {
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb("1 + 2;", 2L),
+    ExecutionLimit,
+  )
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb(
+      "if (false) { console.log('bad'); } else { 7; }", 3L,
+    ),
+    ExecutionLimit,
+  )
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb(
+      "var i = 0; while (i < 2) { i++; } i;", 8L,
+    ),
+    ExecutionLimit,
+  )
+  assert_control_stopped_equivalently_for_wb(
+    structured_execution_policy_comparison_for_wb(
+      "1 + 2;",
+      100L,
+      interrupted=true,
+    ),
+    Interrupted,
+  )
 }
 
 ///|
@@ -1204,6 +1491,7 @@ test "bytecode gets this before computed super read and call keys" {
         }
         stage = 0
       }
+      ObserveStatement(_) | ObserveExpression(_) => ()
       _ => stage = 0
     }
   }
