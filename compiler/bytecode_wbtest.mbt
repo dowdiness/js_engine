@@ -62,6 +62,24 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
   assert_instruction_contract_for_wb(LoadName("binding"), true, false, [
     BindingAccess,
   ])
+  assert_instruction_contract_for_wb(MakeRegExp("a", ""), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeFunction(0), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeNamedFunction(0, "f"), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeMethodFunction(0), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeComputedMethodFunction(0), true, false, [
+    ExpressionEntry,
+  ])
+  assert_instruction_contract_for_wb(MakeArrowFunction(0), true, false, [
+    ExpressionEntry,
+  ])
 }
 
 ///|
@@ -132,6 +150,11 @@ test "RED: lowered instructions satisfy their source contracts" {
     #|  return object.method(...values);
     #|}
     #|invoke({ value: 0, method: function(x) { return x; } }, "value", [1]);
+    #|var pattern = /a/;
+    #|var ordinary = function() {};
+    #|var named = function f() {};
+    #|var arrow = () => 0;
+    #|var methods = { method() {}, ["computed"]() {} };
     #|eval("1");
     #|throw 1;
     #|
