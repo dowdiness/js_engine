@@ -538,6 +538,112 @@ fn assert_control_stopped_equivalently_for_wb(
 }
 
 ///|
+fn exact_matching_completion_budget_for_wb(
+  source : String,
+  maximum_budget : Int,
+) -> Int raise Error {
+  for budget in 0..=maximum_budget {
+    match
+      structured_execution_policy_comparison_for_wb(
+        source,
+        budget.to_int64(),
+      ) {
+      Equivalent(ControlStopped(observation)) => {
+        assert_true(observation.point is DispatchStepObservation)
+        assert_true(observation.failure is ExecutionLimit)
+      }
+      Equivalent(Completed(_)) => return budget
+      _ =>
+        fail(
+          "tree walker and bytecode diverged at observation budget " +
+          budget.to_string() +
+          " for " +
+          source,
+        )
+    }
+  }
+  fail("source did not complete within the observation frontier: " + source)
+}
+
+///|
+fn lowered_observation_kinds_for_wb(
+  source : String,
+) -> Array[String] raise Error {
+  let bytecode = parse_bytecode_for_wb(source)
+  let kinds : Array[String] = []
+  for instruction in bytecode.main.code {
+    match instruction {
+      ObserveStatement(source_id) => {
+        let point = bytecode.main.resolve_source_point(source_id)
+        assert_true(point.role is StatementEntry)
+        kinds.push("statement")
+      }
+      ObserveExpression(source_id) => {
+        let point = bytecode.main.resolve_source_point(source_id)
+        assert_true(point.role is ExpressionEntry)
+        kinds.push("expression")
+      }
+      _ => ()
+    }
+  }
+  kinds
+}
+
+///|
+test "lowered barriers retain statement and expression identity" {
+  json_inspect(
+    lowered_observation_kinds_for_wb("1 + 2 * 3;"),
+    content=[
+      "statement",
+      "expression",
+      "expression",
+      "expression",
+      "expression",
+      "expression",
+    ],
+  )
+  json_inspect(
+    lowered_observation_kinds_for_wb("if (false) 1; else 2;"),
+    content=[
+      "statement",
+      "expression",
+      "statement",
+      "expression",
+      "statement",
+      "expression",
+    ],
+  )
+  json_inspect(
+    lowered_observation_kinds_for_wb("false && 1;"),
+    content=["statement", "expression", "expression", "expression"],
+  )
+  json_inspect(
+    lowered_observation_kinds_for_wb("while (false) 1;"),
+    content=["statement", "expression", "statement", "expression"],
+  )
+}
+
+///|
+test "bounded bytecode matches exact dynamic observation frontiers" {
+  json_inspect(
+    [
+      exact_matching_completion_budget_for_wb("1 + 2;", 8),
+      exact_matching_completion_budget_for_wb(
+        "if (false) 1; else 2;",
+        8,
+      ),
+      exact_matching_completion_budget_for_wb("false && 1;", 8),
+      exact_matching_completion_budget_for_wb("true && 1;", 8),
+      exact_matching_completion_budget_for_wb(
+        "var i = 0; while (i < 2) { i++; } i;",
+        32,
+      ),
+    ],
+    content=[4, 4, 3, 4, 20],
+  )
+}
+
+///|
 test "RED: bounded bytecode observes nested branch loop and interruption entries" {
   assert_control_stopped_equivalently_for_wb(
     structured_execution_policy_comparison_for_wb("1 + 2;", 2L),
