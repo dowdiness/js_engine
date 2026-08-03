@@ -811,3 +811,299 @@ test "source owner allocation is deterministic across compilations" {
     }
   }
 }
+
+///|
+test "RED: finalization rejects an unpatched control-flow target" {
+  let program = unverified_source_program_for_wb("if (true) 1; else 2;")
+  let mut jump_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      JumpIfFalse(target) => {
+        ignore(target)
+        program.main.code[instruction_index] = JumpIfFalse(-1)
+        jump_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let instruction_index = match jump_index {
+    Some(index) => index
+    None => abort("expected conditional jump")
+  }
+  let defect = expect_control_flow_defect_for_wb(program, [], instruction_index)
+  assert_eq(defect.expected_lower_bound, 0)
+  assert_eq(defect.expected_upper_bound, program.main.code.length())
+  assert_eq(defect.actual_target, -1)
+}
+
+///|
+fn expect_control_flow_defect_for_wb(
+  program : BytecodeUnverifiedProgram,
+  expected_path : Array[Int],
+  expected_instruction : Int,
+) -> BytecodeControlFlowTargetDefect raise Error {
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed control-flow verifier defect")
+  } catch {
+    BytecodeControlFlowDefect(defect) => {
+      assert_eq(defect.function_path, expected_path)
+      assert_eq(defect.instruction_index, expected_instruction)
+      defect
+    }
+    _ => fail("expected typed control-flow verifier defect")
+  }
+}
+
+///|
+priv enum ControlFlowOpcodeForWb {
+  Jump
+  JumpIfFalse
+  JumpIfFalseKeep
+  JumpIfTrueKeep
+  JumpIfNotNullishKeep
+  JumpIfNotOptionalChainShortCircuitKeep
+  ForInNext
+}
+
+///|
+fn is_control_flow_opcode_for_wb(
+  instruction : BytecodeInstr,
+  opcode : ControlFlowOpcodeForWb,
+) -> Bool {
+  match (instruction, opcode) {
+    (Jump(_), Jump)
+    | (JumpIfFalse(_), JumpIfFalse)
+    | (JumpIfFalseKeep(_), JumpIfFalseKeep)
+    | (JumpIfTrueKeep(_), JumpIfTrueKeep)
+    | (JumpIfNotNullishKeep(_), JumpIfNotNullishKeep)
+    | (
+      JumpIfNotOptionalChainShortCircuitKeep(_),
+      JumpIfNotOptionalChainShortCircuitKeep,
+    )
+    | (ForInNext(_), ForInNext) => true
+    _ => false
+  }
+}
+
+///|
+fn bytecode_instruction_with_target_for_wb(
+  instruction : BytecodeInstr,
+  target : Int,
+) -> BytecodeInstr {
+  match instruction {
+    Jump(_) => Jump(target)
+    JumpIfFalse(_) => JumpIfFalse(target)
+    JumpIfFalseKeep(_) => JumpIfFalseKeep(target)
+    JumpIfTrueKeep(_) => JumpIfTrueKeep(target)
+    JumpIfNotNullishKeep(_) => JumpIfNotNullishKeep(target)
+    JumpIfNotOptionalChainShortCircuitKeep(_) =>
+      JumpIfNotOptionalChainShortCircuitKeep(target)
+    ForInNext(_) => ForInNext(target)
+    _ => instruction
+  }
+}
+
+///|
+fn mutate_first_control_flow_target_for_wb(
+  function : BytecodeFunction,
+  opcode : ControlFlowOpcodeForWb,
+  target : Int,
+) -> Int {
+  for instruction_index, instruction in function.code {
+    if is_control_flow_opcode_for_wb(instruction, opcode) {
+      function.code[instruction_index] = bytecode_instruction_with_target_for_wb(
+        instruction, target,
+      )
+      return instruction_index
+    }
+  }
+  abort("expected destination-bearing opcode")
+}
+
+///|
+test "control-flow verifier rejects invalid targets for every destination opcode" {
+  let fixtures : Array[(ControlFlowOpcodeForWb, String)] = [
+    (Jump, "if (true) 1; else 2;"),
+    (JumpIfFalse, "if (true) 1; else 2;"),
+    (JumpIfFalseKeep, "false && 1;"),
+    (JumpIfTrueKeep, "true || 1;"),
+    (JumpIfNotNullishKeep, "var value = object?.value;"),
+    (JumpIfNotOptionalChainShortCircuitKeep, "var value = object?.value.next;"),
+    (ForInNext, "var key; for (key in object) { break; }"),
+  ]
+  for fixture in fixtures {
+    let (opcode, source) = fixture
+    let program = unverified_source_program_for_wb(source)
+    let instruction_index = mutate_first_control_flow_target_for_wb(
+      program.main,
+      opcode,
+      -1,
+    )
+    let defect = expect_control_flow_defect_for_wb(
+      program,
+      [],
+      instruction_index,
+    )
+    assert_eq(defect.expected_lower_bound, 0)
+    assert_eq(defect.expected_upper_bound, program.main.code.length())
+    assert_eq(defect.actual_target, -1)
+  }
+}
+
+///|
+test "control-flow verifier rejects targets above the terminal boundary" {
+  let program = unverified_source_program_for_wb("if (true) 1; else 2;")
+  let target = program.main.code.length() + 1
+  let instruction_index = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalse,
+    target,
+  )
+  let defect = expect_control_flow_defect_for_wb(program, [], instruction_index)
+  assert_eq(defect.expected_lower_bound, 0)
+  assert_eq(defect.expected_upper_bound, program.main.code.length())
+  assert_eq(defect.actual_target, target)
+}
+
+///|
+test "control-flow verifier accepts the inclusive terminal boundary" {
+  let program = unverified_source_program_for_wb("if (true) 1; else 2;")
+  let terminal = program.main.code.length()
+  let instruction_index = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalse,
+    terminal,
+  )
+  let finalized = finalize_bytecode_program(program)
+  match finalized.main.code[instruction_index] {
+    JumpIfFalse(target) => assert_eq(target, terminal)
+    _ => fail("expected mutated conditional jump")
+  }
+}
+
+///|
+test "control-flow verifier accepts zero and in-range targets" {
+  let zero_program = unverified_source_program_for_wb("if (true) 1; else 2;")
+  let zero_index = mutate_first_control_flow_target_for_wb(
+    zero_program.main,
+    JumpIfFalse,
+    0,
+  )
+  let zero_finalized = finalize_bytecode_program(zero_program)
+  match zero_finalized.main.code[zero_index] {
+    JumpIfFalse(target) => assert_eq(target, 0)
+    _ => fail("expected zero-target conditional jump")
+  }
+
+  let in_range_program = unverified_source_program_for_wb(
+    "if (true) 1; else 2;",
+  )
+  let in_range_target = 1
+  let in_range_index = mutate_first_control_flow_target_for_wb(
+    in_range_program.main,
+    JumpIfFalse,
+    in_range_target,
+  )
+  guard in_range_target < in_range_program.main.code.length() else {
+    abort("expected an in-range instruction target")
+  }
+  let in_range_finalized = finalize_bytecode_program(in_range_program)
+  match in_range_finalized.main.code[in_range_index] {
+    JumpIfFalse(target) => assert_eq(target, in_range_target)
+    _ => fail("expected in-range conditional jump")
+  }
+}
+
+///|
+test "control-flow verifier reports nested function provenance" {
+  let src =
+    #|function child() { if (true) 1; else 2; }
+    #|child();
+  let program = unverified_source_program_for_wb(src)
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let instruction_index = mutate_first_control_flow_target_for_wb(
+    program.main.children[0],
+    JumpIfFalse,
+    -1,
+  )
+  let defect = expect_control_flow_defect_for_wb(
+    program,
+    [0],
+    instruction_index,
+  )
+  assert_eq(defect.expected_lower_bound, 0)
+  assert_eq(defect.expected_upper_bound, program.main.children[0].code.length())
+  assert_eq(defect.actual_target, -1)
+}
+
+///|
+test "control-flow verifier defects are deterministic" {
+  let source = "if (true) 1; else 2;"
+  let left = unverified_source_program_for_wb(source)
+  let right = unverified_source_program_for_wb(source)
+  let left_target = left.main.code.length() + 1
+  let right_target = right.main.code.length() + 1
+  let left_index = mutate_first_control_flow_target_for_wb(
+    left.main,
+    JumpIfFalse,
+    left_target,
+  )
+  let right_index = mutate_first_control_flow_target_for_wb(
+    right.main,
+    JumpIfFalse,
+    right_target,
+  )
+  let left_defect = expect_control_flow_defect_for_wb(left, [], left_index)
+  let right_defect = expect_control_flow_defect_for_wb(right, [], right_index)
+  assert_eq(left_defect.function_path, right_defect.function_path)
+  assert_eq(left_defect.instruction_index, right_defect.instruction_index)
+  assert_eq(left_defect.expected_lower_bound, right_defect.expected_lower_bound)
+  assert_eq(left_defect.expected_upper_bound, right_defect.expected_upper_bound)
+  assert_eq(left_defect.actual_target, right_defect.actual_target)
+}
+
+///|
+test "control-flow verifier accepts representative valid programs" {
+  let src =
+    #|var object = {};
+    #|if (true) { object.x = 1; } else { object.x = 2; }
+    #|while (false) { break; }
+    #|do { continue; } while (false);
+    #|for (var i = 0; i < 1; i++) { if (i) continue; }
+    #|switch (object.x) { case 1: break; default: break; }
+    #|var key;
+    #|for (key in object) { if (key) break; }
+    #|var and_value = false && 1;
+    #|var or_value = true || 1;
+    #|var optional_value = object?.x;
+  let program = unverified_source_program_for_wb(src)
+  let _ = finalize_bytecode_program(program)
+}
+
+///|
+test "control-flow terminal target falls out with normal completion" {
+  let program = unverified_source_program_for_wb("1; if (false) 2;")
+  let code_length = program.main.code.length()
+  let mut jump_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      JumpIfFalse(_) => {
+        program.main.code[instruction_index] = JumpIfFalse(code_length)
+        jump_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let _ = match jump_index {
+    Some(index) => index
+    None => abort("expected conditional jump")
+  }
+  let finalized = finalize_bytecode_program(program)
+  let value = finalized.run(@interpreter.new_interpreter())
+  assert_eq(value.to_string(), "1")
+}
