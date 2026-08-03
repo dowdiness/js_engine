@@ -421,10 +421,16 @@ fn numeric_recursion_trusted_declaration(
       "numeric recursion declaration did not hoist a simple UserFunc",
     )
   }
+  let params_match = match syntax.retained_parameter {
+    None => data.params.length() == 1 && data.params[0] == syntax.parameter
+    Some(retained) =>
+      data.params.length() == 2 &&
+      data.params[0] == syntax.parameter &&
+      data.params[1] == retained
+  }
   guard ast_name == syntax.name &&
     data.name == Some(syntax.name) &&
-    data.params.length() == 1 &&
-    data.params[0] == syntax.parameter &&
+    params_match &&
     physical_equal(data.params, ast_params) &&
     physical_equal(data.body, ast_body) &&
     physical_equal(data.closure, interp.global) &&
@@ -477,6 +483,7 @@ fn numeric_recursion_function_syntaxes_match(
 ) -> Bool {
   expected.name == actual.name &&
   expected.parameter == actual.parameter &&
+  expected.retained_parameter == actual.retained_parameter &&
   expected.recursive_callee == actual.recursive_callee &&
   numeric_recursion_function_return_recipes_match(
     expected.return_recipe,
@@ -592,6 +599,20 @@ fn numeric_recursion_root_controls_match(
 }
 
 ///|
+fn numeric_recursion_closed_argument_recipes_match(
+  expected : NumericRecursionClosedArgumentRecipe?,
+  actual : NumericRecursionClosedArgumentRecipe?,
+) -> Bool {
+  match (expected, actual) {
+    (None, None) => true
+    (Some(expected), Some(actual)) =>
+      expected.value == actual.value &&
+      expected.observation_count == actual.observation_count
+    _ => false
+  }
+}
+
+///|
 // Compare only normalized admission semantics. The registry deliberately keeps
 // `actual`, so diagnostics and execution retain all sealed expression locations.
 fn numeric_recursion_plans_match(
@@ -602,6 +623,7 @@ fn numeric_recursion_plans_match(
     entry: expected_entry,
     peer: expected_peer,
     initial_argument: expected_initial_argument,
+    retained_argument: expected_retained_argument,
     root_call_loc: _expected_root_call_loc,
     root_control: expected_root_control,
   } = expected
@@ -609,6 +631,7 @@ fn numeric_recursion_plans_match(
     entry: actual_entry,
     peer: actual_peer,
     initial_argument: actual_initial_argument,
+    retained_argument: actual_retained_argument,
     root_call_loc: _actual_root_call_loc,
     root_control: actual_root_control,
   } = actual
@@ -621,6 +644,9 @@ fn numeric_recursion_plans_match(
   numeric_recursion_function_plans_match(expected_entry, actual_entry) &&
   peer_matches &&
   expected_initial_argument == actual_initial_argument &&
+  numeric_recursion_closed_argument_recipes_match(
+    expected_retained_argument, actual_retained_argument,
+  ) &&
   numeric_recursion_root_controls_match(
     expected_root_control, actual_root_control,
   )
@@ -707,9 +733,15 @@ fn numeric_recursion_user_func_matches_syntax(
   syntax : NumericRecursionFunctionSyntax,
   data : FuncData,
 ) -> Bool {
+  let params_match = match syntax.retained_parameter {
+    None => data.params.length() == 1 && data.params[0] == syntax.parameter
+    Some(retained) =>
+      data.params.length() == 2 &&
+      data.params[0] == syntax.parameter &&
+      data.params[1] == retained
+  }
   guard data.name == Some(syntax.name) &&
-    data.params.length() == 1 &&
-    data.params[0] == syntax.parameter &&
+    params_match &&
     data.body.length() == 2 &&
     physical_equal(data.closure, interp.global) &&
     !data.strict &&

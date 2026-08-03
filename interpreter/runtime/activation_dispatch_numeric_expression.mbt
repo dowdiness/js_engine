@@ -19,6 +19,20 @@ fn DispatchParameterBindingToken::DispatchParameterBindingToken(
 
 ///|
 #warnings("-unused_field")
+priv struct DispatchRetainedParameterBindingToken {
+  id : Int
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchRetainedParameterBindingToken::DispatchRetainedParameterBindingToken(
+  id~ : Int,
+) -> DispatchRetainedParameterBindingToken {
+  { id, }
+}
+
+///|
+#warnings("-unused_field")
 priv struct DispatchNumericCatchBindingToken {
   id : Int
 }
@@ -58,8 +72,10 @@ priv enum DispatchNumericBinaryOperator {
 priv enum DispatchNumericExpression {
   DispatchNumericNumber(Double)
   DispatchNumericParameter(DispatchParameterBindingToken)
+  DispatchNumericRetainedParameter(DispatchRetainedParameterBindingToken)
   DispatchNumericCatchBinding(DispatchNumericCatchBindingToken)
   DispatchNumericTrustedCallee(DispatchCalleeCaptureToken)
+  DispatchNumericClosedArgument(NumericRecursionClosedArgumentRecipe)
   DispatchNumericBinary(
     DispatchNumericBinaryOperator,
     DispatchNumericExpression,
@@ -71,6 +87,12 @@ priv enum DispatchNumericExpression {
     DispatchNumericExpression,
     @token.Loc
   )
+  DispatchNumericTwoArgumentCall(
+    DispatchCalleeCaptureToken,
+    DispatchNumericExpression,
+    DispatchNumericExpression,
+    @token.Loc
+  )
 }
 
 ///|
@@ -78,8 +100,10 @@ priv enum DispatchNumericExpression {
 priv enum DispatchNumericExpressionObservation {
   DispatchNumericObserveNumber(Double)
   DispatchNumericObserveParameter(DispatchParameterBindingToken)
+  DispatchNumericObserveRetainedParameter(DispatchRetainedParameterBindingToken)
   DispatchNumericObserveCatchBinding(DispatchNumericCatchBindingToken)
   DispatchNumericObserveTrustedCallee(DispatchCalleeCaptureToken)
+  DispatchNumericObserveClosedArgument
   DispatchNumericObserveBinary(DispatchNumericBinaryOperator, @token.Loc)
   DispatchNumericObserveCall(@token.Loc)
 }
@@ -89,7 +113,11 @@ priv enum DispatchNumericExpressionObservation {
 priv enum DispatchNumericExpressionContinuation {
   DispatchAfterNumericExpressionObservation(DispatchNumericExpression)
   DispatchAfterNumericParameterRead(DispatchParameterBindingToken)
+  DispatchAfterNumericRetainedParameterRead(
+    DispatchRetainedParameterBindingToken
+  )
   DispatchAfterNumericCatchBindingRead(DispatchNumericCatchBindingToken)
+  DispatchAfterNumericClosedArgumentObservation(Double, Int)
   DispatchAfterNumericBaseCondition(DispatchNumericCallStart)
   DispatchNumericBinaryLeft(
     DispatchNumericBinaryOperator,
@@ -101,7 +129,23 @@ priv enum DispatchNumericExpressionContinuation {
     DispatchNumericExpression,
     @token.Loc
   )
+  DispatchNumericCallCalleeTwoArgument(
+    DispatchCalleeCaptureToken,
+    DispatchNumericExpression,
+    DispatchNumericExpression,
+    @token.Loc
+  )
   DispatchNumericCallArgument(DispatchCalleeCaptureToken, @token.Loc)
+  DispatchNumericCallFirstArgument(
+    DispatchCalleeCaptureToken,
+    DispatchNumericExpression,
+    @token.Loc
+  )
+  DispatchNumericCallSecondArgument(
+    DispatchCalleeCaptureToken,
+    Double,
+    @token.Loc
+  )
 }
 
 ///|
@@ -110,11 +154,21 @@ fn numeric_recursion_root_dispatch_expression(
   plan : NumericRecursionPlan,
   capture : DispatchCalleeCaptureToken,
 ) -> DispatchNumericExpression {
-  DispatchNumericSingleArgumentCall(
-    capture,
-    DispatchNumericNumber(plan.initial_argument),
-    plan.root_call_loc,
-  )
+  match plan.retained_argument {
+    None =>
+      DispatchNumericSingleArgumentCall(
+        capture,
+        DispatchNumericNumber(plan.initial_argument),
+        plan.root_call_loc,
+      )
+    Some(recipe) =>
+      DispatchNumericTwoArgumentCall(
+        capture,
+        DispatchNumericNumber(plan.initial_argument),
+        DispatchNumericClosedArgument(recipe),
+        plan.root_call_loc,
+      )
+  }
 }
 
 ///|
@@ -133,8 +187,13 @@ fn numeric_recursion_base_condition_dispatch_expression(
 
 ///|
 #warnings("-unused_value")
-fn numeric_recursion_base_result_dispatch_expression() -> DispatchNumericExpression {
-  DispatchNumericNumber(NUMERIC_RECURSION_BASE)
+fn numeric_recursion_base_result_dispatch_expression(
+  retained_parameter? : DispatchRetainedParameterBindingToken? = None,
+) -> DispatchNumericExpression {
+  match retained_parameter {
+    None => DispatchNumericNumber(NUMERIC_RECURSION_BASE)
+    Some(token) => DispatchNumericRetainedParameter(token)
+  }
 }
 
 ///|
@@ -143,20 +202,33 @@ fn numeric_recursion_recursive_result_dispatch_expression(
   recipe : NumericRecursionExpressionRecipe,
   parameter : DispatchParameterBindingToken,
   capture : DispatchCalleeCaptureToken,
+  retained_parameter? : DispatchRetainedParameterBindingToken? = None,
 ) -> DispatchNumericExpression {
+  let recursive_argument = DispatchNumericBinary(
+    DispatchNumericSubtract,
+    DispatchNumericParameter(parameter),
+    DispatchNumericNumber(NUMERIC_RECURSION_STEP),
+    recipe.recursive_subtract_loc,
+  )
+  let recursive_call = match retained_parameter {
+    None =>
+      DispatchNumericSingleArgumentCall(
+        capture,
+        recursive_argument,
+        recipe.recursive_call_loc,
+      )
+    Some(token) =>
+      DispatchNumericTwoArgumentCall(
+        capture,
+        recursive_argument,
+        DispatchNumericRetainedParameter(token),
+        recipe.recursive_call_loc,
+      )
+  }
   DispatchNumericBinary(
     DispatchNumericAdd,
     DispatchNumericNumber(NUMERIC_RECURSION_STEP),
-    DispatchNumericSingleArgumentCall(
-      capture,
-      DispatchNumericBinary(
-        DispatchNumericSubtract,
-        DispatchNumericParameter(parameter),
-        DispatchNumericNumber(NUMERIC_RECURSION_STEP),
-        recipe.recursive_subtract_loc,
-      ),
-      recipe.recursive_call_loc,
-    ),
+    recursive_call,
     recipe.recursive_add_loc,
   )
 }
@@ -168,8 +240,12 @@ fn snapshot_dispatch_numeric_expression(
   match expression {
     DispatchNumericNumber(value) => DispatchNumericNumber(value)
     DispatchNumericParameter(token) => DispatchNumericParameter(token)
+    DispatchNumericRetainedParameter(token) =>
+      DispatchNumericRetainedParameter(token)
     DispatchNumericCatchBinding(token) => DispatchNumericCatchBinding(token)
     DispatchNumericTrustedCallee(token) => DispatchNumericTrustedCallee(token)
+    DispatchNumericClosedArgument(recipe) =>
+      DispatchNumericClosedArgument(recipe)
     DispatchNumericBinary(operator, left, right, loc) =>
       DispatchNumericBinary(
         operator,
@@ -181,6 +257,13 @@ fn snapshot_dispatch_numeric_expression(
       DispatchNumericSingleArgumentCall(
         token,
         snapshot_dispatch_numeric_expression(argument),
+        loc,
+      )
+    DispatchNumericTwoArgumentCall(token, first, second, loc) =>
+      DispatchNumericTwoArgumentCall(
+        token,
+        snapshot_dispatch_numeric_expression(first),
+        snapshot_dispatch_numeric_expression(second),
         loc,
       )
   }
@@ -197,8 +280,12 @@ fn snapshot_dispatch_numeric_continuation(
       )
     DispatchAfterNumericParameterRead(token) =>
       DispatchAfterNumericParameterRead(token)
+    DispatchAfterNumericRetainedParameterRead(token) =>
+      DispatchAfterNumericRetainedParameterRead(token)
     DispatchAfterNumericCatchBindingRead(token) =>
       DispatchAfterNumericCatchBindingRead(token)
+    DispatchAfterNumericClosedArgumentObservation(value, remaining) =>
+      DispatchAfterNumericClosedArgumentObservation(value, remaining)
     DispatchAfterNumericBaseCondition(start) =>
       DispatchAfterNumericBaseCondition(
         DispatchNumericCallStart(
@@ -220,8 +307,23 @@ fn snapshot_dispatch_numeric_continuation(
         snapshot_dispatch_numeric_expression(argument),
         loc,
       )
+    DispatchNumericCallCalleeTwoArgument(token, first, second, loc) =>
+      DispatchNumericCallCalleeTwoArgument(
+        token,
+        snapshot_dispatch_numeric_expression(first),
+        snapshot_dispatch_numeric_expression(second),
+        loc,
+      )
     DispatchNumericCallArgument(token, loc) =>
       DispatchNumericCallArgument(token, loc)
+    DispatchNumericCallFirstArgument(token, second, loc) =>
+      DispatchNumericCallFirstArgument(
+        token,
+        snapshot_dispatch_numeric_expression(second),
+        loc,
+      )
+    DispatchNumericCallSecondArgument(token, first, loc) =>
+      DispatchNumericCallSecondArgument(token, first, loc)
   }
 }
 
@@ -232,13 +334,18 @@ fn dispatch_numeric_expression_observation(
   match expression {
     DispatchNumericNumber(value) => DispatchNumericObserveNumber(value)
     DispatchNumericParameter(token) => DispatchNumericObserveParameter(token)
+    DispatchNumericRetainedParameter(token) =>
+      DispatchNumericObserveRetainedParameter(token)
     DispatchNumericCatchBinding(token) =>
       DispatchNumericObserveCatchBinding(token)
     DispatchNumericTrustedCallee(token) =>
       DispatchNumericObserveTrustedCallee(token)
+    DispatchNumericClosedArgument(_) => DispatchNumericObserveClosedArgument
     DispatchNumericBinary(operator, _, _, loc) =>
       DispatchNumericObserveBinary(operator, loc)
     DispatchNumericSingleArgumentCall(_, _, loc) =>
+      DispatchNumericObserveCall(loc)
+    DispatchNumericTwoArgumentCall(_, _, _, loc) =>
       DispatchNumericObserveCall(loc)
   }
 }
@@ -296,6 +403,37 @@ fn resume_dispatch_numeric_expression_outcome(
       }
       DispatchResumeCompletion(DispatchNormal(Number(number)))
     }
+    DispatchAfterNumericExpressionObservation(
+      DispatchNumericClosedArgument(recipe)
+    ) => {
+      guard value is Undefined else {
+        invalid_dispatch_transition(
+          "closed numeric argument observation returned a non-sentinel value",
+        )
+      }
+      if recipe.observation_count <= 1 {
+        DispatchResumeCompletion(DispatchNormal(Number(recipe.value)))
+      } else {
+        dispatch_resume_decision(
+          schedule_dispatch_production_work(
+            push_dispatch_frame(
+              state,
+              DispatchContinuationFrame(
+                DispatchContinueNumericExpression(
+                  DispatchAfterNumericClosedArgumentObservation(
+                    recipe.value,
+                    recipe.observation_count - 1,
+                  ),
+                ),
+              ),
+            ),
+            DispatchNumericObserveExpressionStep(
+              DispatchNumericObserveClosedArgument,
+            ),
+          ),
+        )
+      }
+    }
     DispatchAfterNumericParameterRead(_) => {
       guard value is Number(_) else {
         invalid_dispatch_transition(
@@ -304,8 +442,45 @@ fn resume_dispatch_numeric_expression_outcome(
       }
       DispatchResumeCompletion(DispatchNormal(value))
     }
+    DispatchAfterNumericRetainedParameterRead(_) => {
+      guard value is Number(_) else {
+        invalid_dispatch_transition(
+          "numeric retained parameter capability returned a non-number",
+        )
+      }
+      DispatchResumeCompletion(DispatchNormal(value))
+    }
     DispatchAfterNumericCatchBindingRead(_) =>
       DispatchResumeCompletion(DispatchNormal(value))
+    DispatchAfterNumericClosedArgumentObservation(final_value, remaining) => {
+      guard value is Undefined else {
+        invalid_dispatch_transition(
+          "closed numeric argument observation returned a non-sentinel value",
+        )
+      }
+      if remaining <= 1 {
+        DispatchResumeCompletion(DispatchNormal(Number(final_value)))
+      } else {
+        dispatch_resume_decision(
+          schedule_dispatch_production_work(
+            push_dispatch_frame(
+              state,
+              DispatchContinuationFrame(
+                DispatchContinueNumericExpression(
+                  DispatchAfterNumericClosedArgumentObservation(
+                    final_value,
+                    remaining - 1,
+                  ),
+                ),
+              ),
+            ),
+            DispatchNumericObserveExpressionStep(
+              DispatchNumericObserveClosedArgument,
+            ),
+          ),
+        )
+      }
+    }
     _ =>
       dispatch_resume_decision(
         resume_dispatch_numeric_expression_effect(state, continuation, value),
@@ -346,6 +521,18 @@ fn resume_dispatch_numeric_expression_effect(
             ),
             DispatchNumericReadParameter(token),
           )
+        DispatchNumericRetainedParameter(token) =>
+          schedule_dispatch_production_work(
+            push_dispatch_frame(
+              state,
+              DispatchContinuationFrame(
+                DispatchContinueNumericExpression(
+                  DispatchAfterNumericRetainedParameterRead(token),
+                ),
+              ),
+            ),
+            DispatchNumericReadRetainedParameter(token),
+          )
         DispatchNumericCatchBinding(token) =>
           schedule_dispatch_production_work(
             push_dispatch_frame(
@@ -365,6 +552,10 @@ fn resume_dispatch_numeric_expression_effect(
           schedule_dispatch_production_work(
             state,
             DispatchNumericCaptureTrustedCallee(token),
+          )
+        DispatchNumericClosedArgument(_) =>
+          invalid_dispatch_transition(
+            "closed numeric argument must remain in its observation loop",
           )
         DispatchNumericBinary(operator, left, right, loc) =>
           begin_dispatch_numeric_expression(
@@ -390,6 +581,20 @@ fn resume_dispatch_numeric_expression_effect(
             ),
             DispatchNumericTrustedCallee(token),
           )
+        DispatchNumericTwoArgumentCall(token, first, second, loc) =>
+          begin_dispatch_numeric_expression(
+            push_dispatch_frame(
+              state,
+              DispatchContinuationFrame(
+                DispatchContinueNumericExpression(
+                  DispatchNumericCallCalleeTwoArgument(
+                    token, first, second, loc,
+                  ),
+                ),
+              ),
+            ),
+            DispatchNumericTrustedCallee(token),
+          )
       }
     }
     DispatchAfterNumericParameterRead(_) => {
@@ -402,9 +607,17 @@ fn resume_dispatch_numeric_expression_effect(
         "numeric parameter completion must remain in the routing loop",
       )
     }
+    DispatchAfterNumericRetainedParameterRead(_) =>
+      invalid_dispatch_transition(
+        "numeric retained parameter completion must remain in the routing loop",
+      )
     DispatchAfterNumericCatchBindingRead(_) =>
       invalid_dispatch_transition(
         "numeric catch completion must remain in the routing loop",
+      )
+    DispatchAfterNumericClosedArgumentObservation(_, _) =>
+      invalid_dispatch_transition(
+        "closed numeric argument completion must remain in the routing loop",
       )
     DispatchAfterNumericBaseCondition(start) =>
       match value {
@@ -413,7 +626,9 @@ fn resume_dispatch_numeric_expression_effect(
             state,
             DispatchNumericObserveReturnStatement,
             DispatchAfterNumericReturnStatement(
-              numeric_recursion_base_result_dispatch_expression(),
+              numeric_recursion_base_result_dispatch_expression(
+                retained_parameter=start.retained_parameter,
+              ),
             ),
           )
         Bool(false) => {
@@ -421,6 +636,7 @@ fn resume_dispatch_numeric_expression_effect(
             start.recipe,
             start.parameter,
             start.recursive_callee,
+            retained_parameter=start.retained_parameter,
           )
           match start.return_recipe {
             NumericRecursionDirectReturn =>
@@ -484,6 +700,24 @@ fn resume_dispatch_numeric_expression_effect(
         argument,
       )
     }
+    DispatchNumericCallCalleeTwoArgument(token, first, second, loc) => {
+      guard value is Undefined else {
+        invalid_dispatch_transition(
+          "numeric callee capture returned a non-sentinel value",
+        )
+      }
+      begin_dispatch_numeric_expression(
+        push_dispatch_frame(
+          state,
+          DispatchContinuationFrame(
+            DispatchContinueNumericExpression(
+              DispatchNumericCallFirstArgument(token, second, loc),
+            ),
+          ),
+        ),
+        first,
+      )
+    }
     DispatchNumericCallArgument(token, loc) => {
       guard value is Number(argument) else {
         invalid_dispatch_transition(
@@ -493,6 +727,35 @@ fn resume_dispatch_numeric_expression_effect(
       schedule_dispatch_production_work(
         state,
         DispatchNumericStartCapturedCall(token, argument, loc),
+      )
+    }
+    DispatchNumericCallFirstArgument(token, second, loc) => {
+      guard value is Number(first) else {
+        invalid_dispatch_transition(
+          "numeric first call argument completed with a non-number",
+        )
+      }
+      begin_dispatch_numeric_expression(
+        push_dispatch_frame(
+          state,
+          DispatchContinuationFrame(
+            DispatchContinueNumericExpression(
+              DispatchNumericCallSecondArgument(token, first, loc),
+            ),
+          ),
+        ),
+        second,
+      )
+    }
+    DispatchNumericCallSecondArgument(token, first, loc) => {
+      guard value is Number(second) else {
+        invalid_dispatch_transition(
+          "numeric second call argument completed with a non-number",
+        )
+      }
+      schedule_dispatch_production_work(
+        state,
+        DispatchNumericStartCapturedTwoArgumentCall(token, first, second, loc),
       )
     }
   }

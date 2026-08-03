@@ -17,6 +17,28 @@ priv struct NumericRecursionExpressionRecipe {
 }
 
 ///|
+/// Closed, effect-free numeric argument admitted from one normal-form Number
+/// literal or one grouping around a comma tree of normal-form Number literals.
+/// The shell accounts for every represented AST node through this budget.
+#warnings("-unused_field")
+priv struct NumericRecursionClosedArgumentRecipe {
+  value : Double
+  observation_count : Int
+  root_loc : @token.Loc
+  final_loc : @token.Loc
+}
+
+///|
+fn NumericRecursionClosedArgumentRecipe::NumericRecursionClosedArgumentRecipe(
+  value~ : Double,
+  observation_count~ : Int,
+  root_loc~ : @token.Loc,
+  final_loc~ : @token.Loc,
+) -> NumericRecursionClosedArgumentRecipe {
+  { value, observation_count, root_loc, final_loc }
+}
+
+///|
 fn NumericRecursionExpressionRecipe::NumericRecursionExpressionRecipe(
   base_condition_loc~ : @token.Loc,
   recursive_add_loc~ : @token.Loc,
@@ -36,6 +58,7 @@ fn NumericRecursionExpressionRecipe::NumericRecursionExpressionRecipe(
 priv struct NumericRecursionFunctionSyntax {
   name : String
   parameter : String
+  retained_parameter : String?
   recursive_callee : String
   expression_recipe : NumericRecursionExpressionRecipe
   return_recipe : NumericRecursionFunctionReturnRecipe
@@ -45,11 +68,19 @@ priv struct NumericRecursionFunctionSyntax {
 fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
   name~ : String,
   parameter~ : String,
+  retained_parameter? : String? = None,
   recursive_callee~ : String,
   expression_recipe~ : NumericRecursionExpressionRecipe,
   return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> NumericRecursionFunctionSyntax {
-  { name, parameter, recursive_callee, expression_recipe, return_recipe }
+  {
+    name,
+    parameter,
+    retained_parameter,
+    recursive_callee,
+    expression_recipe,
+    return_recipe,
+  }
 }
 
 ///|
@@ -135,6 +166,7 @@ priv struct NumericRecursionPlan {
   entry : NumericRecursionFunctionPlan
   peer : NumericRecursionFunctionPlan?
   initial_argument : Double
+  retained_argument : NumericRecursionClosedArgumentRecipe?
   root_call_loc : @token.Loc
   root_control : NumericRecursionRootControlRecipe
 }
@@ -144,10 +176,18 @@ fn NumericRecursionPlan::NumericRecursionPlan(
   entry~ : NumericRecursionFunctionPlan,
   peer~ : NumericRecursionFunctionPlan?,
   initial_argument~ : Double,
+  retained_argument? : NumericRecursionClosedArgumentRecipe? = None,
   root_call_loc~ : @token.Loc,
   root_control~ : NumericRecursionRootControlRecipe,
 ) -> NumericRecursionPlan {
-  { entry, peer, initial_argument, root_call_loc, root_control }
+  {
+    entry,
+    peer,
+    initial_argument,
+    retained_argument,
+    root_call_loc,
+    root_control,
+  }
 }
 
 ///|
@@ -168,6 +208,7 @@ fn numeric_recursion_identifier_is_safe(name : String) -> Bool {
 fn numeric_recursion_base_condition_loc(
   stmt : @ast.Stmt,
   parameter : String,
+  retained_parameter? : String? = None,
 ) -> @token.Loc? {
   match stmt {
     @ast.IfStmt(
@@ -180,14 +221,24 @@ fn numeric_recursion_base_condition_loc(
       @ast.ReturnStmt(Some(base_result), _),
       None,
       _
-    ) =>
+    ) => {
+      let base_result_matches = match retained_parameter {
+        None =>
+          exact_numeric_recursion_number(base_result, NUMERIC_RECURSION_BASE)
+        Some(expected) =>
+          match base_result {
+            @ast.Ident(actual, _) => actual == expected
+            _ => false
+          }
+      }
       if condition_parameter == parameter &&
         exact_numeric_recursion_number(base_condition, NUMERIC_RECURSION_BASE) &&
-        exact_numeric_recursion_number(base_result, NUMERIC_RECURSION_BASE) {
+        base_result_matches {
         Some(base_condition_loc)
       } else {
         None
       }
+    }
     _ => None
   }
 }
@@ -220,6 +271,7 @@ fn NumericRecursionStepClassification::NumericRecursionStepClassification(
 fn classify_numeric_recursion_step_detail(
   stmt : @ast.Stmt,
   parameter : String,
+  retained_parameter? : String? = None,
 ) -> NumericRecursionStepClassification? {
   match stmt {
     @ast.ReturnStmt(
@@ -233,10 +285,23 @@ fn classify_numeric_recursion_step_detail(
       ),
       _
     ) => {
+      let expected_argument_count = match retained_parameter {
+        None => 1
+        Some(_) => 2
+      }
       guard exact_numeric_recursion_number(increment, NUMERIC_RECURSION_STEP) &&
-        args.length() == 1 else {
+        args.length() == expected_argument_count else {
         return None
       }
+      let retained_argument_matches = match retained_parameter {
+        None => true
+        Some(expected) =>
+          match args[1] {
+            @ast.Ident(actual, _) => actual == expected
+            _ => false
+          }
+      }
+      guard retained_argument_matches else { return None }
       match args[0] {
         @ast.Binary(
           @ast.Sub,
@@ -264,14 +329,20 @@ fn classify_numeric_recursion_step_detail(
 fn classify_numeric_recursion_function_return(
   stmt : @ast.Stmt,
   parameter : String,
+  retained_parameter? : String? = None,
 ) -> (NumericRecursionStepClassification, NumericRecursionFunctionReturnRecipe)? {
-  match classify_numeric_recursion_step_detail(stmt, parameter) {
+  match
+    classify_numeric_recursion_step_detail(stmt, parameter, retained_parameter~) {
     Some(step) => Some((step, NumericRecursionDirectReturn))
     None =>
       match stmt {
         @ast.TryCatchStmt(try_body, None, None, Some(finalizer_body), _) => {
           guard try_body.length() == 1 &&
-            classify_numeric_recursion_step_detail(try_body[0], parameter)
+            classify_numeric_recursion_step_detail(
+              try_body[0],
+              parameter,
+              retained_parameter~,
+            )
             is Some(step) else {
             return None
           }
@@ -296,19 +367,41 @@ fn classify_numeric_recursion_function_syntax(
   body : Array[@ast.Stmt],
 ) -> NumericRecursionFunctionSyntax? {
   guard numeric_recursion_identifier_is_safe(name) &&
-    params.length() == 1 &&
+    (params.length() == 1 || params.length() == 2) &&
     body.length() == 2 else {
     return None
   }
   let parameter = params[0]
+  let retained_parameter = if params.length() == 2 {
+    Some(params[1])
+  } else {
+    None
+  }
   guard numeric_recursion_identifier_is_safe(parameter) && parameter != name else {
     return None
   }
-  guard numeric_recursion_base_condition_loc(body[0], parameter)
+  guard (match retained_parameter {
+    None => true
+    Some(retained) =>
+      numeric_recursion_identifier_is_safe(retained) &&
+      retained != name &&
+      retained != parameter
+  }) else {
+    return None
+  }
+  guard numeric_recursion_base_condition_loc(
+      body[0],
+      parameter,
+      retained_parameter~,
+    )
     is Some(base_condition_loc) else {
     return None
   }
-  guard classify_numeric_recursion_function_return(body[1], parameter)
+  guard classify_numeric_recursion_function_return(
+      body[1],
+      parameter,
+      retained_parameter~,
+    )
     is Some((step, return_recipe)) else {
     return None
   }
@@ -316,6 +409,7 @@ fn classify_numeric_recursion_function_syntax(
     NumericRecursionFunctionSyntax(
       name~,
       parameter~,
+      retained_parameter~,
       recursive_callee=step.recursive_callee,
       expression_recipe=NumericRecursionExpressionRecipe(
         base_condition_loc~,
@@ -347,25 +441,28 @@ fn classify_numeric_recursion_function(
 ///|
 fn classify_numeric_recursion_root(
   stmt : @ast.Stmt,
-) -> (String, Double, @token.Loc, NumericRecursionRootControlRecipe)? {
+) -> (
+  String,
+  Double,
+  NumericRecursionClosedArgumentRecipe?,
+  @token.Loc,
+  NumericRecursionRootControlRecipe,
+)? {
   match stmt {
-    @ast.ExprStmt(@ast.Call(@ast.Ident(entry_name, _), args, root_call_loc), _) => {
-      guard args.length() == 1 else { return None }
-      match args[0] {
-        @ast.NumberLit(initial_argument, lex_form, _) if initial_argument ==
-          NUMERIC_RECURSION_INITIAL_ARGUMENT &&
-          lex_form == @token.LexForm::LexNormal =>
+    @ast.ExprStmt(@ast.Call(@ast.Ident(entry_name, _), args, root_call_loc), _) =>
+      match classify_numeric_recursion_root_call_arguments(args) {
+        Some((initial_argument, retained_argument)) =>
           Some(
             (
               entry_name,
               initial_argument,
+              retained_argument,
               root_call_loc,
               NumericRecursionDirectRoot,
             ),
           )
-        _ => None
+        None => None
       }
-    }
     @ast.TryCatchStmt(try_body, catch_parameter, catch_body, finalizer_body, _) =>
       classify_numeric_recursion_protected_root(
         try_body, catch_parameter, catch_body, finalizer_body,
@@ -377,20 +474,87 @@ fn classify_numeric_recursion_root(
 ///|
 fn classify_numeric_recursion_root_call(
   expr : @ast.Expr,
-) -> (String, Double, @token.Loc)? {
+) -> (String, Double, NumericRecursionClosedArgumentRecipe?, @token.Loc)? {
   match expr {
-    @ast.Call(@ast.Ident(entry_name, _), args, root_call_loc) => {
-      guard args.length() == 1 else { return None }
-      match args[0] {
-        @ast.NumberLit(initial_argument, lex_form, _) if initial_argument ==
-          NUMERIC_RECURSION_INITIAL_ARGUMENT &&
-          lex_form == @token.LexForm::LexNormal =>
-          Some((entry_name, initial_argument, root_call_loc))
-        _ => None
+    @ast.Call(@ast.Ident(entry_name, _), args, root_call_loc) =>
+      match classify_numeric_recursion_root_call_arguments(args) {
+        Some((initial_argument, retained_argument)) =>
+          Some((entry_name, initial_argument, retained_argument, root_call_loc))
+        None => None
       }
-    }
     _ => None
   }
+}
+
+///|
+fn classify_numeric_recursion_root_call_arguments(
+  args : Array[@ast.Expr],
+) -> (Double, NumericRecursionClosedArgumentRecipe?)? {
+  guard args.length() == 1 || args.length() == 2 else { return None }
+  let initial_argument = match args[0] {
+    @ast.NumberLit(value, lex_form, _) if value ==
+      NUMERIC_RECURSION_INITIAL_ARGUMENT &&
+      lex_form == @token.LexForm::LexNormal => value
+    _ => return None
+  }
+  let retained_argument : NumericRecursionClosedArgumentRecipe? = if args.length() ==
+    2 {
+    classify_numeric_recursion_closed_argument(args[1])
+  } else {
+    None
+  }
+  Some((initial_argument, retained_argument))
+}
+
+///|
+/// Classify the closed retained argument with an explicit AST worklist. The
+/// only accepted shapes are one normal-form Number literal or one Grouping
+/// around a comma tree of normal-form Number literals.
+fn classify_numeric_recursion_closed_argument(
+  expr : @ast.Expr,
+) -> NumericRecursionClosedArgumentRecipe? {
+  let root_loc = match expr {
+    @ast.NumberLit(_, _, loc) | @ast.Grouping(_, loc) => loc
+    _ => return None
+  }
+  let root_is_grouping = expr is @ast.Grouping(_, _)
+  let work : Array[@ast.Expr] = [expr]
+  let mut grouping_count = 0
+  let mut comma_count = 0
+  let mut observation_count = 0
+  let mut final_value = 0.0
+  let mut final_loc = root_loc
+  while work.pop() is Some(item) {
+    observation_count = observation_count + 1
+    match item {
+      @ast.Grouping(inner, _) => {
+        guard grouping_count == 0 && root_is_grouping else { return None }
+        grouping_count = grouping_count + 1
+        work.push(inner)
+      }
+      @ast.Comma(left, right, _) => {
+        comma_count = comma_count + 1
+        work.push(right)
+        work.push(left)
+      }
+      @ast.NumberLit(value, lex_form, loc) => {
+        guard lex_form == @token.LexForm::LexNormal else { return None }
+        final_value = value
+        final_loc = loc
+      }
+      _ => return None
+    }
+  }
+  guard root_is_grouping || comma_count == 0 else { return None }
+  guard !root_is_grouping || grouping_count == 1 else { return None }
+  Some(
+    NumericRecursionClosedArgumentRecipe(
+      value=final_value,
+      observation_count~,
+      root_loc~,
+      final_loc~,
+    ),
+  )
 }
 
 ///|
@@ -487,20 +651,31 @@ fn classify_numeric_recursion_protected_root(
   catch_parameter : @ast.Pattern?,
   catch_body : Array[@ast.Stmt]?,
   finalizer_body : Array[@ast.Stmt]?,
-) -> (String, Double, @token.Loc, NumericRecursionRootControlRecipe)? {
+) -> (
+  String,
+  Double,
+  NumericRecursionClosedArgumentRecipe?,
+  @token.Loc,
+  NumericRecursionRootControlRecipe,
+)? {
   guard try_body.length() == 1 else { return None }
-  let (entry_name, initial_argument, root_call_loc, try_completion) = match
-    try_body[0] {
+  let (
+    entry_name,
+    initial_argument,
+    retained_argument,
+    root_call_loc,
+    try_completion,
+  ) = match try_body[0] {
     @ast.ExprStmt(expr, _) =>
       match classify_numeric_recursion_root_call(expr) {
-        Some((name, argument, loc)) =>
-          (name, argument, loc, NumericRecursionRootCallValue)
+        Some((name, argument, retained, loc)) =>
+          (name, argument, retained, loc, NumericRecursionRootCallValue)
         None => return None
       }
     @ast.ThrowStmt(expr, _) =>
       match classify_numeric_recursion_root_call(expr) {
-        Some((name, argument, loc)) =>
-          (name, argument, loc, NumericRecursionRootCallThrow)
+        Some((name, argument, retained, loc)) =>
+          (name, argument, retained, loc, NumericRecursionRootCallThrow)
         None => return None
       }
     _ => return None
@@ -526,6 +701,7 @@ fn classify_numeric_recursion_protected_root(
     (
       entry_name,
       initial_argument,
+      retained_argument,
       root_call_loc,
       NumericRecursionProtectedRoot(
         NumericRecursionProtectedRootRecipe(
@@ -546,11 +722,32 @@ fn classify_self_numeric_recursion_program(
     return None
   }
   guard classify_numeric_recursion_root(stmts[1])
-    is Some((entry_name, initial_argument, root_call_loc, root_control)) else {
+    is Some(
+      (
+        entry_name,
+        initial_argument,
+        retained_argument,
+        root_call_loc,
+        root_control,
+      )
+    ) else {
     return None
   }
+  let retained_shape_is_allowed = match
+    (
+      entry.syntax.retained_parameter,
+      retained_argument,
+      entry.syntax.return_recipe,
+      root_control,
+    ) {
+    (None, None, _, _) => true
+    (Some(_), Some(_), NumericRecursionDirectReturn, NumericRecursionDirectRoot) =>
+      true
+    _ => false
+  }
   guard entry.syntax.recursive_callee == entry.syntax.name &&
-    entry_name == entry.syntax.name else {
+    entry_name == entry.syntax.name &&
+    retained_shape_is_allowed else {
     return None
   }
   Some(
@@ -558,6 +755,7 @@ fn classify_self_numeric_recursion_program(
       entry~,
       peer=None,
       initial_argument~,
+      retained_argument~,
       root_call_loc~,
       root_control~,
     ),
@@ -575,7 +773,15 @@ fn classify_mutual_numeric_recursion_program(
     return None
   }
   guard classify_numeric_recursion_root(stmts[2])
-    is Some((entry_name, initial_argument, root_call_loc, root_control)) else {
+    is Some(
+      (
+        entry_name,
+        initial_argument,
+        retained_argument,
+        root_call_loc,
+        root_control,
+      )
+    ) else {
     return None
   }
   guard entry.syntax.name != peer.syntax.name &&
@@ -583,7 +789,10 @@ fn classify_mutual_numeric_recursion_program(
     peer.syntax.parameter != entry.syntax.name &&
     entry.syntax.recursive_callee == peer.syntax.name &&
     peer.syntax.recursive_callee == entry.syntax.name &&
-    entry_name == entry.syntax.name else {
+    entry_name == entry.syntax.name &&
+    entry.syntax.retained_parameter is None &&
+    peer.syntax.retained_parameter is None &&
+    retained_argument is None else {
     return None
   }
   Some(
@@ -591,6 +800,7 @@ fn classify_mutual_numeric_recursion_program(
       entry~,
       peer=Some(peer),
       initial_argument~,
+      retained_argument~,
       root_call_loc~,
       root_control~,
     ),
