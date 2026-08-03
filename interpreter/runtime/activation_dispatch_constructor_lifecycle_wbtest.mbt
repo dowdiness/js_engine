@@ -100,6 +100,36 @@ test "constructor recursive edge observes five steps before construct" {
 }
 
 ///|
+test "constructor recursive edge consumes exactly five steps before suspension" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (interp, shell, cleanup, cursor, _) =
+    constructor_activation_test_fixture(probe)
+  let control = ExecutionControl(
+    remaining_steps=5,
+    maximum_active_depth=10,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let _ = interp.with_execution_control(control, () => {
+    let result = shell.execute_constructor_body_statement({
+      ctx: cursor.ctx,
+      stmt: cursor.stmts[1],
+      env: cursor.env,
+      index: 1,
+    }) catch {
+      InvalidActivationDispatchShell(message) =>
+        fail("constructor body dispatch rejected the trusted cursor: " + message)
+    }
+    match result {
+      DispatchWorkSuspended(_) => ()
+      _ => fail("expected the constructor edge to suspend after five steps")
+    }
+    inspect(control.remaining_steps(), content="0")
+    constructor_activation_test_release(shell, cleanup, DispatchNormal(Undefined))
+  })
+}
+
+///|
 test "constructor changed body stays legacy before managed effect" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
