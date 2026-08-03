@@ -100,6 +100,36 @@ test "constructor recursive edge observes five steps before construct" {
 }
 
 ///|
+test "constructor changed body stays legacy before managed effect" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (_, shell, cleanup, cursor, _) =
+    constructor_activation_test_fixture(probe)
+  let changed = @parser.parse(
+    "function Node(n){this.value=n;if(n>0){this.child=new Node(n-2);}}" +
+    "new Node(4).value;",
+  ).stmts
+  let changed_statement = match changed[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body[1]
+    _ => fail("expected the changed constructor declaration")
+  }
+  let result = try {
+    let _ = shell.execute_constructor_body_statement({
+      ctx: cursor.ctx,
+      stmt: changed_statement,
+      env: cursor.env,
+      index: 1,
+    })
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(result, content="rejected")
+  constructor_activation_test_release(shell, cleanup, DispatchNormal(Undefined))
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
 test "constructor guest and runtime abrupt exits preserve identity and cleanup" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
