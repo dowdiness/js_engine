@@ -128,14 +128,32 @@ test "mutation-sensitive ordinary constructors stay on legacy shallow path" {
       "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
       "new Node(...[0]).value;",
       "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new (Node)(0).value;",
+      "function Node(n=0){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "new Node(0).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
       "Node.prototype=new Proxy({},{});new Node(0).value;",
+      "function Node(n){this.value=n;if(n>0){this.child=new Node(n-1);}}" +
+      "function zero(){return 0;}new Node(zero()).value;",
     ] {
-    match run(source) {
-      Value::Number(0.0) => ()
-      result =>
+    let result : Result[Value, Error] = Ok(run(source)) catch {
+      error => Err(error)
+    }
+    match result {
+      Ok(Value::Number(0.0)) => ()
+      Ok(result) =>
         fail(
           "legacy constructor boundary changed: expected 0, got " +
-          result.to_string(),
+          result.to_string() +
+          " source=" +
+          source,
+        )
+      Err(error) =>
+        fail(
+          "legacy constructor boundary raised " +
+          error.to_string() +
+          " source=" +
+          source,
         )
     }
   }
