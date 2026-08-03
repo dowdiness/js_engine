@@ -230,6 +230,25 @@ test "managed activation observation balances every nested numeric call" {
 }
 
 ///|
+test "retained numeric workload restores realm and releases every activation once" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 37)
+  let probe = DispatchObservationProbe()
+  let (shell, stmts, ctx) = dispatch_observation_numeric_fixture(
+    interp,
+    probe,
+    source=numeric_expression_retained_argument_source(),
+  )
+  match activation_dispatch_root_value(shell.drive_root_program(stmts, ctx)) {
+    Number(value) => inspect(value, content="263")
+    other => fail("expected retained result 263, got " + other.to_string())
+  }
+  expect_nested_dispatch_observation_balanced(probe)
+  inspect(shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 37)
+}
+
+///|
 test "managed activation observation releases protected returns in strict LIFO order" {
   let interp = Interpreter::new()
   let probe = DispatchObservationProbe()

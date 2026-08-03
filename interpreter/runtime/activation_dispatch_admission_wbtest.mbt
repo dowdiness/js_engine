@@ -505,3 +505,67 @@ test "getter recursion admission rejects residual and lookalike shapes" {
     }
   }
 }
+
+///|
+test "numeric recursion admission classifies the retained comma workload iteratively" {
+  let mut retained = "7"
+  for _ in 0..<263 {
+    retained = "0," + retained
+  }
+  let source = "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+    "step(256,(" +
+    retained +
+    "));"
+  let plan = match
+    classify_numeric_recursion_program(numeric_recursion_test_program(source)) {
+    Some(found) => found
+    None => fail("expected the retained comma workload to be admitted")
+  }
+  inspect(plan.entry.syntax.name, content="step")
+  inspect(plan.entry.syntax.parameter, content="n")
+  match plan.entry.syntax.retained_parameter {
+    Some(name) => inspect(name, content="x")
+    None => fail("expected the retained parameter to be sealed")
+  }
+  match plan.retained_argument {
+    Some(recipe) => {
+      inspect(recipe.value, content="7")
+      inspect(recipe.observation_count, content="528")
+    }
+    None => fail("expected the retained argument recipe")
+  }
+}
+
+///|
+test "numeric recursion admission rejects unsafe retained argument boundaries" {
+  for
+    source in [
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256,0,7);",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256,((0,7)));",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256,(010,7));",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256);",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256,(x,7));",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256,(+7));",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "step(256,(String(7)));",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,0);}" +
+      "step(256,(0,7));",
+      "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+      "try{step(256,(0,7));}finally{0;}",
+      "function step(n,x){if(n===0)return x;" +
+      "try{return 1+step(n-1,x);}finally{0;}}step(256,(0,7));",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted retained argument boundary: " + source)
+    }
+  }
+}

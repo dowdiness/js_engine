@@ -126,6 +126,16 @@ const PROXY_GET_LOOKALIKE_SOURCE =
   #|let n=8;let p;p=new Proxy({},{get(t,k,r){if(n===0)return 0;n=n-1;return 1+p.x;}});p.x;
 
 ///|
+fn retained_numeric_argument_source() -> String {
+  let mut argument = "7"
+  for _ in 0..<263 {
+    argument = "0," + argument
+  }
+  "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+  "step(256,(" + argument + "));"
+}
+
+///|
 test "stack safety public facade: exact production-admitted depth-256 values" {
   inspect(run_value(SELF_RECURSION_SOURCE), content="256")
   inspect(run_value(RECEIVER_RECURSION_SOURCE), content="256")
@@ -134,6 +144,12 @@ test "stack safety public facade: exact production-admitted depth-256 values" {
   inspect(run_value(MUTUAL_RECURSION_SOURCE), content="256")
   inspect(run_value(GETTER_REENTRY_SOURCE), content="256")
   inspect(run_value(PROXY_REENTRY_SOURCE), content="256")
+}
+
+///|
+// Regression coverage for the exact #790 retained-argument managed slice.
+test "stack safety public facade: retained numeric argument across tree-walker activations" {
+  inspect(run_value(retained_numeric_argument_source()), content="263")
 }
 
 ///|

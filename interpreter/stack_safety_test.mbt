@@ -31,10 +31,32 @@ const REVERSED_MUTUAL_RECEIVER_RECURSION_SOURCE =
   #|receiver["\x72ight"](256);
 
 ///|
+fn retained_numeric_argument_source() -> String {
+  let mut argument = "7"
+  for _ in 0..<263 {
+    argument = "0," + argument
+  }
+  "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
+  "step(256,(" +
+  argument +
+  "));"
+}
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
     other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+// Regression coverage for the exact #790 retained-argument managed slice.
+test "execution stack safety: retained numeric argument across tree-walker activations" {
+  match run(retained_numeric_argument_source()) {
+    Value::Number(263.0) => ()
+    other =>
+      fail("expected retained argument result 263, got " + other.to_string())
   }
 }
 

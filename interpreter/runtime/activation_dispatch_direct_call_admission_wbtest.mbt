@@ -148,6 +148,23 @@ test "direct numeric call admission rejects non-exact public call inputs" {
 }
 
 ///|
+test "direct numeric call admission keeps retained-argument functions on legacy call_value" {
+  let callee = direct_numeric_recursion_test_callee(
+    "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}", "step",
+  )
+  inspect(
+    classify_direct_numeric_recursion_call(
+      callee,
+      Undefined,
+      [Number(256.0)],
+      @token.Loc::default(),
+    )
+    is None,
+    content="true",
+  )
+}
+
+///|
 test "direct numeric call admission rejects near-match function bodies" {
   let loc = @token.Loc::default()
   for

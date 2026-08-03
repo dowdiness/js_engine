@@ -548,6 +548,64 @@ test "numeric recursion trust rejects post-seal FuncData array mutation" {
 }
 
 ///|
+test "numeric recursion trust rejects retained-parameter and source drift" {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = Some("retained source")
+  let (stmts, plan) = numeric_recursion_trust_test_plan(
+    numeric_expression_retained_argument_source(),
+  )
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free retained-argument preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  let callee = registry.require_named(interp, "step")
+  guard callee is Object({ callable: Some(UserFunc(data)), .. }) else {
+    fail("retained trusted lookup must return a UserFunc capability")
+  }
+
+  let original_retained = data.params[1]
+  data.params[1] = "changed"
+  let retained_result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  data.params[1] = original_retained
+
+  guard callee is Object(source_object) &&
+    source_object.bag.symbol_properties.get(
+      FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID,
+    )
+    is Some(Array(metadata)) &&
+    metadata.elements.length() > FUNCTION_SOURCE_IDENTITY_IDX else {
+    fail("expected packed retained source metadata")
+  }
+  let original_source = metadata.elements[FUNCTION_SOURCE_IDENTITY_IDX]
+  metadata.elements[FUNCTION_SOURCE_IDENTITY_IDX] = String_("retained drift")
+  let source_result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  metadata.elements[FUNCTION_SOURCE_IDENTITY_IDX] = original_source
+
+  inspect(
+    retained_result,
+    content="numeric recursion candidate no longer has exact UserFunc provenance",
+  )
+  inspect(
+    source_result,
+    content="numeric recursion candidate source identity changed after sealing",
+  )
+  let restored = registry.require_callee(interp, callee)
+  inspect(restored.name, content="step")
+}
+
+///|
 test "numeric recursion trust revalidates protected function body shape" {
   let interp = Interpreter::new()
   let (stmts, plan) = numeric_recursion_trust_test_plan(
