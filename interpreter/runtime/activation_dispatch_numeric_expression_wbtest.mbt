@@ -543,6 +543,35 @@ test "retained parameter is forwarded to the base result and recursive call" {
 }
 
 ///|
+test "numeric continuation snapshot preserves the retained parameter capability" {
+  let stmts = @parser.parse(numeric_expression_retained_argument_source()).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the retained numeric recursion plan")
+  }
+  let retained = DispatchRetainedParameterBindingToken(id=1899)
+  let continuation = snapshot_dispatch_numeric_continuation(
+    DispatchAfterNumericBaseCondition(
+      DispatchNumericCallStart(
+        parameter=DispatchParameterBindingToken(id=1898),
+        retained_parameter=Some(retained),
+        recursive_callee=DispatchCalleeCaptureToken(id=1897),
+        recipe=plan.entry.syntax.expression_recipe,
+        return_recipe=plan.entry.syntax.return_recipe,
+      ),
+    ),
+  )
+  match continuation {
+    DispatchAfterNumericBaseCondition(start) =>
+      match start.retained_parameter {
+        Some(found) => inspect(found.id, content="1899")
+        None => fail("snapshot dropped the retained parameter capability")
+      }
+    _ => fail("expected base-condition continuation snapshot")
+  }
+}
+
+///|
 test "numeric recursive result preserves source order across child activation" {
   let stmts = @parser.parse(numeric_expression_multiline_self_source()).stmts
   let plan = match classify_numeric_recursion_program(stmts) {

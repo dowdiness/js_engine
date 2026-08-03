@@ -290,6 +290,7 @@ fn snapshot_dispatch_numeric_continuation(
       DispatchAfterNumericBaseCondition(
         DispatchNumericCallStart(
           parameter=start.parameter,
+          retained_parameter=start.retained_parameter,
           recursive_callee=start.recursive_callee,
           recipe=start.recipe,
           return_recipe=start.return_recipe,
