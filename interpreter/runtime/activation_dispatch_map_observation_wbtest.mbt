@@ -33,10 +33,10 @@ fn map_observation_test_fixture() -> (
   ArrayMapRecursionPreflight,
 ) raise Error {
   let interp = Interpreter::new()
-  let map_method = make_native_func(
+  let map_method = make_interp_method_func(
     name="map",
     realm_state=Some(interp.realm_state),
-    _args => Undefined,
+    fn(_interp, _this_val, _args) { Undefined },
   )
   let array_proto = make_object(
     { "map": map_method },

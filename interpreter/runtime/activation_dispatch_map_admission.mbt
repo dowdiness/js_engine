@@ -427,6 +427,18 @@ fn array_map_method_descriptor_is_canonical(desc : PropDescriptor) -> Bool {
 }
 
 ///|
+fn array_map_method_callable_is_canonical(value : Value) -> Bool {
+  match value {
+    Object(data) =>
+      match data.callable {
+        Some(InterpreterCallable(name, _)) => name == "map"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+///|
 fn array_map_intrinsic_values(
   interp : Interpreter,
 ) -> (Value, Value, Value, ArrayMapDescriptorShape)? {
@@ -443,6 +455,7 @@ fn array_map_intrinsic_values(
     Some(value) => value
     None => return None
   }
+  guard array_map_method_callable_is_canonical(map_method) else { return None }
   let map_descriptor = match proto_data.bag.descriptors.get("map") {
     Some(desc) if array_map_method_descriptor_is_canonical(desc) => desc
     _ => return None

@@ -139,6 +139,24 @@ test "array map cleanup permits a second run on the same Interpreter" {
 }
 
 ///|
+test "array map replacement stays legacy across same Interpreter runs" {
+  let interp = new_interpreter()
+  let replacement = @parser.parse(
+      "Array.prototype.map=function(){return [7];};",
+    ).stmts
+  ignore(interp.run(replacement))
+  let exact = @parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts
+  match interp.run(exact) {
+    Value::Number(8.0) => ()
+    other =>
+      fail(
+        "replaced Array.prototype.map must stay legacy, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
 test "array map near miss: replaced and own map stay legacy" {
   match
     run(
