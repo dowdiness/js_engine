@@ -277,6 +277,9 @@ priv struct PrimitiveProgramDispatchShell {
   array_map_root_preflight : ArrayMapRecursionPreflight?
   array_map_root_stmts : Array[@ast.Stmt]?
   mut array_map_registry : TrustedArrayMapRecursionRegistry?
+  expression_root_preflight : NumericMapExpressionPreflight?
+  expression_root_stmts : Array[@ast.Stmt]?
+  mut expression_plan : DispatchExpressionPlan?
   composition_root_preflight : NumericMapCompositionPreflight?
   composition_root_stmts : Array[@ast.Stmt]?
   mut managed_user_func_catalog : DispatchManagedUserFuncCatalog?
@@ -310,6 +313,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   array_map_root_preflight? : ArrayMapRecursionPreflight? = None,
   array_map_root_stmts? : Array[@ast.Stmt]? = None,
   array_map_registry? : TrustedArrayMapRecursionRegistry? = None,
+  expression_root_preflight? : NumericMapExpressionPreflight? = None,
+  expression_root_stmts? : Array[@ast.Stmt]? = None,
+  expression_plan? : DispatchExpressionPlan? = None,
   composition_root_preflight? : NumericMapCompositionPreflight? = None,
   composition_root_stmts? : Array[@ast.Stmt]? = None,
   managed_user_func_catalog? : DispatchManagedUserFuncCatalog? = None,
@@ -347,6 +353,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     array_map_root_preflight,
     array_map_root_stmts: array_map_root_stmts.map(stmts => stmts.copy()),
     array_map_registry,
+    expression_root_preflight,
+    expression_root_stmts: expression_root_stmts.map(stmts => stmts.copy()),
+    expression_plan,
     composition_root_preflight,
     composition_root_stmts: composition_root_stmts.map(stmts => stmts.copy()),
     managed_user_func_catalog,
@@ -1067,6 +1076,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.numeric_registry = None
       self.array_map_registry = None
       self.managed_user_func_catalog = None
+      self.expression_plan = None
       self.array_map_states.clear()
       self.array_map_activation_envs.clear()
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
@@ -1271,6 +1281,19 @@ fn PrimitiveProgramDispatchShell::composition_root_stmts_or_fail(
     None =>
       invalid_activation_dispatch_shell(
         "numeric/map composition root statements were not retained by admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::expression_root_stmts_or_fail(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[@ast.Stmt] raise InvalidActivationDispatchShell {
+  match self.expression_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "numeric/map expression root statements were not retained by admission",
       )
   }
 }
@@ -1498,6 +1521,15 @@ fn PrimitiveProgramDispatchShell::enter_program(
           return self.complete_constructor_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
+        None => ()
+      }
+      match self.expression_root_preflight {
+        Some(_) => {
+          self.push_numeric_map_composition_root_cleanup(
+            id, previous_realm_protos,
+          )
+          return DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
         None => ()
       }
       match self.composition_root_preflight {
@@ -2624,6 +2656,88 @@ fn PrimitiveProgramDispatchShell::execute_numeric_map_composition_root_statement
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::execute_numeric_map_expression_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  preflight : NumericMapExpressionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  guard physical_equal(step.env, self.interp.global) &&
+    numeric_map_expression_source(self.expression_root_stmts_or_fail())
+    is Some(_) else {
+    invalid_activation_dispatch_shell(
+      "numeric/map expression root statement lost its exact admission",
+    )
+  }
+  match step.index {
+    0 | 1 => self.execute_statement_with_legacy_adapter(step)
+    2 => {
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          let (catalog, plan) = self.interp.seal_numeric_map_expression_catalog(
+            preflight,
+            self.expression_root_stmts_or_fail(),
+          )
+          self.numeric_registry = Some(catalog.numeric)
+          self.array_map_registry = Some(catalog.array_map)
+          self.managed_user_func_catalog = Some(catalog)
+          self.expression_plan = Some(plan)
+        }
+        _ => ()
+      }
+      result
+    }
+    3 => {
+      match self.observe_managed_execution_steps(5) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let plan = match self.expression_plan {
+        Some(plan) => plan
+        None =>
+          invalid_activation_dispatch_shell(
+            "numeric/map expression call started before plan sealing",
+          )
+      }
+      guard plan.steps.length() > 0 else {
+        invalid_activation_dispatch_shell(
+          "numeric/map expression plan was empty",
+        )
+      }
+      match plan.steps[0] {
+        DispatchExpressionCall(call) => {
+          guard dispatch_managed_user_func_adapter_token_matches(
+              call.adapter,
+              call.request.callee,
+            ) &&
+            dispatch_expression_adapter_matches_name(call.adapter, call.name) else {
+            invalid_activation_dispatch_shell(
+              "numeric/map expression initial adapter drifted",
+            )
+          }
+          DispatchWorkSuspended(
+            DispatchSuspendCall(
+              call.request,
+              DispatchContinueExpressionPlan(
+                DispatchExpressionPlanResume(plan~, next_index=1, values=[]),
+              ),
+            ),
+          )
+        }
+        DispatchExpressionNumericAdd(_) =>
+          invalid_activation_dispatch_shell(
+            "numeric/map expression plan did not start with a call",
+          )
+      }
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "numeric/map expression root statement index is outside exact admission",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::observe_managed_execution_steps(
   self : PrimitiveProgramDispatchShell,
   count : Int,
@@ -3656,6 +3770,20 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
     Some(registry) => return self.execute_control_statement(step, registry)
     None => ()
   }
+  match self.expression_root_preflight {
+    Some(preflight) =>
+      if physical_equal(step.env, self.interp.global) {
+        return self.execute_numeric_map_expression_root_statement(
+          step, preflight,
+        )
+      } else {
+        return self.execute_array_map_body_statement(
+          step,
+          self.require_array_map_registry(),
+        )
+      }
+    None => ()
+  }
   match self.composition_root_preflight {
     Some(preflight) =>
       if physical_equal(step.env, self.interp.global) {
@@ -3904,6 +4032,9 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     )
     | DispatchRun(DispatchResumeContinuation(DispatchResolveProxyGetTrap(_), _))
     | DispatchRun(DispatchResumeContinuation(DispatchCheckProxyGetResult(_), _))
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchContinueExpressionPlan(_), _)
+    )
     | DispatchRun(DispatchResumeContinuation(DispatchContinueMap(_), _))
     | DispatchRun(DispatchResumeContinuation(DispatchMapStartMemberCall(_), _))
     | DispatchRun(
@@ -3974,6 +4105,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
   let production = self.control_root_preflight is Some(_) ||
     self.constructor_root_preflight is Some(_) ||
     self.composition_root_preflight is Some(_) ||
+    self.expression_root_preflight is Some(_) ||
     self.array_map_root_preflight is Some(_) ||
     self.numeric_root_preflight is Some(_) ||
     self.getter_root_preflight is Some(_) ||
@@ -4072,6 +4204,33 @@ fn Interpreter::run_activation_dispatch_numeric_map_composition_program(
     shell.array_map_activation_envs.is_empty() else {
     invalid_activation_dispatch_shell(
       "numeric/map composition ownership outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
+fn Interpreter::run_activation_dispatch_numeric_map_expression_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : NumericMapExpressionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    expression_root_preflight=Some(preflight),
+    expression_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.numeric_registry is None &&
+    shell.array_map_registry is None &&
+    shell.managed_user_func_catalog is None &&
+    shell.expression_plan is None &&
+    shell.array_map_states.is_empty() &&
+    shell.array_map_activation_envs.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "numeric/map expression ownership outlived its root activation",
     )
   }
   completion
@@ -4289,6 +4448,10 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_control_program(stmts, ctx, preflight)
     ActivationDispatchConstructorRoot(preflight) =>
       self.run_activation_dispatch_constructor_program(stmts, ctx, preflight)
+    ActivationDispatchNumericMapExpressionRoot(preflight) =>
+      self.run_activation_dispatch_numeric_map_expression_program(
+        stmts, ctx, preflight,
+      )
     ActivationDispatchNumericMapCompositionRoot(preflight) =>
       self.run_activation_dispatch_numeric_map_composition_program(
         stmts, ctx, preflight,

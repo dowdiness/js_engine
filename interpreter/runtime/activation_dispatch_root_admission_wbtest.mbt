@@ -12,6 +12,8 @@ fn root_admission_test_kind(
     ActivationDispatchManagedRoot(ActivationDispatchControlRoot(_)) => "control"
     ActivationDispatchManagedRoot(ActivationDispatchConstructorRoot(_)) =>
       "constructor"
+    ActivationDispatchManagedRoot(ActivationDispatchNumericMapExpressionRoot(_)) =>
+      "numeric map expression"
     ActivationDispatchManagedRoot(
       ActivationDispatchNumericMapCompositionRoot(_)
     ) => "numeric map composition"
@@ -104,6 +106,25 @@ test "numeric map composition classifier keeps near misses legacy" {
         root_admission_test_program(source),
       )
       is None,
+      content="true",
+    )
+  }
+}
+
+///|
+test "numeric map expression classifier keeps order and arity near misses legacy" {
+  let prefix = "function step(n){if(n===0)return 0;return 1+step(n-1);}" +
+    "function f(t){if(t===0)return 0;return u(t);}" +
+    "function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}"
+  let sources = [
+    prefix + "u(256)+step(256)+step(256);",
+    prefix + "step(256)+step(256)+u(256);",
+    prefix + "step(256)+u(256)+step(256)+u(256);",
+    prefix + "step(256)+u(256)+step(256);0;",
+  ]
+  for source in sources {
+    inspect(
+      numeric_map_expression_source(root_admission_test_program(source)) is None,
       content="true",
     )
   }
