@@ -283,6 +283,13 @@ fn Interpreter::seal_numeric_map_composition_catalog(
         "numeric/map composition no longer satisfies exact admission",
       )
   }
+  guard source.left_call_loc == preflight.left_call_loc &&
+    source.right_call_loc == preflight.right_call_loc &&
+    source.binary_loc == preflight.binary_loc else {
+    invalid_activation_dispatch_shell(
+      "numeric/map composition source locations changed after preflight",
+    )
+  }
   let numeric = self.seal_numeric_recursion_registry(
     preflight.numeric,
     source.numeric_stmts,

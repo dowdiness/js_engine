@@ -194,6 +194,116 @@ test "composition catalog rejects post-seal numeric body drift before observatio
 }
 
 ///|
+test "composition catalog rejects forwarding closure drift before observation" {
+  let (interp, stmts, preflight) = numeric_map_composition_observation_fixture()
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
+  }
+  let catalog = interp.seal_numeric_map_composition_catalog(preflight, stmts)
+  let previous_realm = active_realm_protos(interp.realm_state)
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let original_forward = match catalog.array_map.forward_function {
+    Some(original) => original
+    None => fail("expected the composition map catalog to retain f")
+  }
+  let lookalike = match original_forward {
+    Object(object_data) =>
+      match object_data.callable {
+        Some(UserFunc(data)) =>
+          Object({
+            ..object_data,
+            callable: Some(UserFunc({ ..data, closure: Environment::new() })),
+          })
+        _ => fail("expected the forwarding function to retain UserFunc data")
+      }
+    _ => fail("expected the forwarding function object")
+  }
+  let mutated_catalog = DispatchManagedUserFuncCatalog(
+    numeric=catalog.numeric,
+    array_map={ ..catalog.array_map, forward_function: Some(lookalike) },
+  )
+  match interp.global.bindings.get("f") {
+    Some(binding) => binding.value = lookalike
+    None => fail("expected the forwarding global binding")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    composition_root_preflight=Some(preflight),
+    composition_root_stmts=Some(stmts),
+    numeric_registry=Some(mutated_catalog.numeric),
+    array_map_registry=Some(mutated_catalog.array_map),
+    managed_user_func_catalog=Some(mutated_catalog),
+    activation_observation_port=probe.port(),
+  )
+  let request = DispatchCallRequest(
+    callee=lookalike,
+    this_value=Undefined,
+    args=[Number(1.0)],
+    loc=preflight.array_map.plan.forward_callback_call_loc,
+  )
+  let result = try {
+    let _ = shell.enter_managed_call(request)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  match interp.global.bindings.get("f") {
+    Some(binding) => binding.value = original_forward
+    None => fail("expected the forwarding global binding")
+  }
+  inspect(
+    result,
+    content="array map forwarding UserFunc provenance changed after sealing",
+  )
+  inspect(probe.attempts, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(shell.array_map_states.is_empty(), content="true")
+  inspect(shell.array_map_activation_envs.is_empty(), content="true")
+  inspect(
+    numeric_recursion_realm_protos_match(
+      previous_realm,
+      active_realm_protos(interp.realm_state),
+    ),
+    content="true",
+  )
+}
+
+///|
+test "composition sealing rejects outer binary location drift" {
+  let (interp, stmts, preflight) = numeric_map_composition_observation_fixture()
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
+  }
+  guard stmts[3]
+    is @ast.ExprStmt(@ast.Binary(@ast.Add, left, right, binary_loc), stmt_loc) else {
+    fail("expected the exact composition binary root")
+  }
+  let drifted_loc : @token.Loc = {
+    line: binary_loc.line + 1,
+    col: binary_loc.col + 3,
+    offset: binary_loc.offset + 11,
+  }
+  stmts[3] = @ast.ExprStmt(
+    @ast.Binary(@ast.Add, left, right, drifted_loc),
+    stmt_loc,
+  )
+  let result = try {
+    let _ = interp.seal_numeric_map_composition_catalog(preflight, stmts)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  inspect(
+    result,
+    content="numeric/map composition source locations changed after preflight",
+  )
+}
+
+///|
 fn composition_test_resume(
   left_callee : Value,
   right_callee : Value,
@@ -293,6 +403,34 @@ test "composition reducer schedules one right call then applies binary once" {
   }
   ignore(finished)
   ignore(right_ticket)
+}
+
+///|
+test "composition reducer rejects mismatched adapter tokens before continuation" {
+  let left_callee = make_array([])
+  let right_callee = make_array([])
+  let wrong_left = make_array([])
+  let left_mismatch = {
+    ..composition_test_resume(left_callee, right_callee, None),
+    left_adapter: DispatchNumericUserFuncAdapterToken(wrong_left),
+  }
+  expect_invalid_dispatch(() => {
+    let _ = route_dispatch_completion(
+      composition_test_state(left_mismatch),
+      DispatchNormal(Number(3.0)),
+    )
+  })
+  let wrong_right = make_array([])
+  let right_mismatch = {
+    ..composition_test_resume(left_callee, right_callee, Some(Number(3.0))),
+    right_adapter: DispatchArrayMapUserFuncAdapterToken(wrong_right),
+  }
+  expect_invalid_dispatch(() => {
+    let _ = route_dispatch_completion(
+      composition_test_state(right_mismatch),
+      DispatchNormal(Number(2.0)),
+    )
+  })
 }
 
 ///|
