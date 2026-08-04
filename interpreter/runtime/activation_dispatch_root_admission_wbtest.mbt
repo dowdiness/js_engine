@@ -54,6 +54,41 @@ const ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE =
   #|u(256,0,false);
 
 ///|
+const ARRAY_MAP_FORWARDING_RECURSION_ADMISSION_SOURCE =
+  #|function f(t) {
+  #|  if (t === 0) return 0;
+  #|  return u(t);
+  #|}
+  #|function u(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
+  #|}
+  #|u(256);
+
+///|
+fn array_map_forwarding_near_miss_sources() -> Array[String] {
+  [
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0,0].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(255);",
+    "function f(t,x){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n,x){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t==0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256,0);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return g(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return this.f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(String)[0];}u(256);",
+    "\"use strict\";function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){\"use strict\";if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){\"use strict\";if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);",
+    "function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}function f(t){if(t===0)return 0;return u(t);}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f.call(undefined,t);})[0];}u(256);",
+    "function f(t){if(t===0)return 0;return u(t);}function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}u(256);0;",
+  ]
+}
+
+///|
 fn array_map_direct_near_miss_sources() -> Array[String] {
   [
     "function u(t,e,f){if(t===0)return 0;return 1+[e,e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
@@ -99,6 +134,38 @@ test "array map admission classifies the direct callback source" {
 }
 
 ///|
+test "array map admission classifies the forwarding callback source" {
+  let stmts = root_admission_test_program(
+    ARRAY_MAP_FORWARDING_RECURSION_ADMISSION_SOURCE,
+  )
+  match classify_array_map_recursion_program(stmts) {
+    Some(plan) => {
+      inspect(
+        plan.callback_family is ArrayMapForwardingCallback,
+        content="true",
+      )
+      inspect(plan.function_name, content="u")
+      inspect(plan.forward_function_name, content="f")
+      inspect(plan.parameter_name, content="n")
+      inspect(plan.forward_parameter_name, content="t")
+      inspect(plan.callback_parameter, content="t")
+      inspect(plan.initial_count, content="256")
+      inspect(plan.map_property_name, content="map")
+      inspect(array_map_plan_is_dispatchable(plan), content="true")
+    }
+    None => fail("expected exact forwarding callback source admission")
+  }
+}
+
+///|
+test "array map forwarding admission rejects exact-shape near misses" {
+  for source in array_map_forwarding_near_miss_sources() {
+    let stmts = root_admission_test_program(source)
+    inspect(classify_array_map_recursion_program(stmts) is None, content="true")
+  }
+}
+
+///|
 test "array map direct admission rejects the nine near-miss sources" {
   for source in array_map_direct_near_miss_sources() {
     let stmts = root_admission_test_program(source)
@@ -138,6 +205,28 @@ test "array map sealing rejects a reclassified location mutation" {
     (Some(expected), Some(actual)) =>
       inspect(array_map_plan_matches(expected, actual), content="false")
     _ => fail("expected both direct sources to classify before plan comparison")
+  }
+}
+
+///|
+test "array map forwarding sealing rejects a reclassified location mutation" {
+  let original = root_admission_test_program(
+    ARRAY_MAP_FORWARDING_RECURSION_ADMISSION_SOURCE,
+  )
+  let shifted = root_admission_test_program(
+    "\n" + ARRAY_MAP_FORWARDING_RECURSION_ADMISSION_SOURCE,
+  )
+  match
+    (
+      classify_array_map_recursion_program(original),
+      classify_array_map_recursion_program(shifted),
+    ) {
+    (Some(expected), Some(actual)) =>
+      inspect(array_map_plan_matches(expected, actual), content="false")
+    _ =>
+      fail(
+        "expected both forwarding sources to classify before plan comparison",
+      )
   }
 }
 

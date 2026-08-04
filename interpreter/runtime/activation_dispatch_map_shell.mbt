@@ -74,6 +74,11 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
     registry.step_function,
     request.callee,
   )
+  let is_forward = match registry.forward_function {
+    Some(forward_function) =>
+      array_map_value_identity_matches(forward_function, request.callee)
+    None => false
+  }
   let state : MapState? = if self.array_map_states.is_empty() {
     None
   } else {
@@ -85,17 +90,19 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
     None => false
   }
   let is_member = match state {
-    Some(_) =>
+    Some(_) if plan.callback_family is ArrayMapMemberCallback =>
       array_map_member_receiver_matches(
         request.this_value,
         request.callee,
         plan.member_property_name,
       )
     None => false
+    _ => false
   }
-  guard (is_step && !is_callback && !is_member) ||
-    (!is_step && is_callback && !is_member) ||
-    (!is_step && !is_callback && is_member) else {
+  guard (is_step && !is_callback && !is_forward && !is_member) ||
+    (!is_step && is_callback && !is_forward && !is_member) ||
+    (!is_step && !is_callback && is_forward && !is_member) ||
+    (!is_step && !is_callback && !is_forward && is_member) else {
     invalid_activation_dispatch_shell(
       "array map call identity is outside the sealed activation family",
     )
@@ -104,6 +111,12 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
     callee_object.callable is Some(UserFunc(data)) else {
     invalid_activation_dispatch_shell(
       "array map activation lost its exact UserFunc provenance",
+    )
+  }
+  guard function_source_identity(request.callee) ==
+    registry.expected_source_identity else {
+    invalid_activation_dispatch_shell(
+      "array map activation source identity changed after sealing",
     )
   }
   if is_step {
@@ -156,9 +169,27 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
           )
         }
       }
+      ArrayMapForwardingCallback => {
+        guard request.args.length() == 1 && request.args[0] is Number(_) else {
+          invalid_activation_dispatch_shell(
+            "array map forwarding step activation requires one numeric argument",
+          )
+        }
+        guard data.params == [plan.parameter_name] &&
+          data.body.length() == 2 &&
+          array_map_forwarding_step_body_matches(data.body, plan) else {
+          invalid_activation_dispatch_shell(
+            "array map forwarding step activation body changed after sealing",
+          )
+        }
+      }
     }
     guard request.loc == plan.root_call_loc ||
-      request.loc == plan.recursive_call_loc else {
+      request.loc == plan.recursive_call_loc ||
+      (
+        plan.callback_family is ArrayMapForwardingCallback &&
+        request.loc == plan.forward_call_loc
+      ) else {
       invalid_activation_dispatch_shell(
         "array map step activation escaped its sealed source locations",
       )
@@ -199,6 +230,46 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
             "array map direct callback body changed after sealing",
           )
         }
+      ArrayMapForwardingCallback => {
+        if !array_map_forwarding_callback_body_matches(data.body, plan) {
+          invalid_activation_dispatch_shell(
+            "array map forwarding callback body changed after sealing",
+          )
+        }
+        match state {
+          Some(map_state) => {
+            guard request.args[0] is Number(_) &&
+              request.args[1] is Number(index) &&
+              index == map_state.index.to_double() &&
+              array_map_value_identity_matches(
+                request.args[2],
+                map_state.receiver,
+              ) else {
+              invalid_activation_dispatch_shell(
+                "array map forwarding callback arguments changed after sealing",
+              )
+            }
+          }
+          None =>
+            invalid_activation_dispatch_shell(
+              "array map forwarding callback lost its map state",
+            )
+        }
+      }
+    }
+  } else if is_forward {
+    guard plan.callback_family is ArrayMapForwardingCallback &&
+      request.this_value is Undefined &&
+      request.args.length() == 1 &&
+      request.args[0] is Number(_) &&
+      request.loc == plan.forward_callback_call_loc &&
+      data.name == Some(plan.forward_function_name) &&
+      data.params == [plan.forward_parameter_name] &&
+      data.body.length() == 2 &&
+      array_map_forwarding_body_matches(data.body, plan) else {
+      invalid_activation_dispatch_shell(
+        "array map forwarding activation changed after sealing",
+      )
     }
   } else {
     guard plan.callback_family is ArrayMapMemberCallback &&
@@ -215,7 +286,17 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
       )
     }
   }
-  if !is_step {
+  if is_forward {
+    guard data.name == Some(plan.forward_function_name) &&
+      !data.strict &&
+      !data.has_name_binding &&
+      !data.is_method &&
+      physical_equal(data.closure, self.interp.global) else {
+      invalid_activation_dispatch_shell(
+        "array map forwarding UserFunc provenance changed after sealing",
+      )
+    }
+  } else if !is_step {
     guard data.name is None &&
       !data.strict &&
       !data.has_name_binding &&
@@ -330,18 +411,35 @@ fn PrimitiveProgramDispatchShell::execute_array_map_root_statement(
     0 => {
       let result = self.execute_statement_with_legacy_adapter(step)
       match result {
-        DispatchWorkCompleted(DispatchNormal(_)) => {
-          let registry = self.interp.seal_array_map_recursion_registry(
-            preflight,
-            self.array_map_root_stmts_or_fail(),
-          )
-          self.array_map_registry = Some(registry)
-        }
+        DispatchWorkCompleted(DispatchNormal(_)) =>
+          if preflight.plan.callback_family is ArrayMapForwardingCallback {
+            ()
+          } else {
+            let registry = self.interp.seal_array_map_recursion_registry(
+              preflight,
+              self.array_map_root_stmts_or_fail(),
+            )
+            self.array_map_registry = Some(registry)
+          }
         _ => ()
       }
       result
     }
     1 => {
+      if preflight.plan.callback_family is ArrayMapForwardingCallback {
+        let result = self.execute_statement_with_legacy_adapter(step)
+        match result {
+          DispatchWorkCompleted(DispatchNormal(_)) => {
+            let registry = self.interp.seal_array_map_recursion_registry(
+              preflight,
+              self.array_map_root_stmts_or_fail(),
+            )
+            self.array_map_registry = Some(registry)
+          }
+          _ => ()
+        }
+        return result
+      }
       match self.observe_managed_execution_steps(3) {
         Some(completion) => return DispatchWorkCompleted(completion)
         None => ()
@@ -355,11 +453,33 @@ fn PrimitiveProgramDispatchShell::execute_array_map_root_statement(
             Number(preflight.plan.initial_value),
             Bool(preflight.plan.initial_flag),
           ]
+        ArrayMapForwardingCallback => [Number(preflight.plan.initial_count)]
       }
       let request = DispatchCallRequest(
         callee=registry.step_function,
         this_value=Undefined,
         args~,
+        loc=preflight.plan.root_call_loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendCall(request, DispatchDeliverCallResult),
+      )
+    }
+    2 => {
+      guard preflight.plan.callback_family is ArrayMapForwardingCallback else {
+        invalid_activation_dispatch_shell(
+          "array map root statement index 2 is outside exact admission",
+        )
+      }
+      match self.observe_managed_execution_steps(3) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let registry = self.require_array_map_registry()
+      let request = DispatchCallRequest(
+        callee=registry.step_function,
+        this_value=Undefined,
+        args=[Number(preflight.plan.initial_count)],
         loc=preflight.plan.root_call_loc,
       )
       DispatchWorkSuspended(
@@ -398,6 +518,12 @@ fn array_map_step_statement_matches(
       match index {
         0 => array_map_direct_base_statement_matches(stmt, plan)
         1 => array_map_direct_step_statement_matches(stmt, plan)
+        _ => false
+      }
+    ArrayMapForwardingCallback =>
+      match index {
+        0 => array_map_direct_base_statement_matches(stmt, plan)
+        1 => array_map_forwarding_step_return_statement_matches(stmt, plan)
         _ => false
       }
   }
@@ -629,6 +755,29 @@ fn array_map_direct_receiver_is_exact(
 }
 
 ///|
+fn array_map_forwarding_receiver_is_exact(
+  interp : Interpreter,
+  value : Value,
+  expected_array_prototype : Value,
+) -> Bool {
+  match value {
+    Array(data) =>
+      data.elements.length() == 2 &&
+      data.holes.is_empty() &&
+      data.bag.properties.length() == 0 &&
+      data.bag.descriptors.length() == 0 &&
+      get_array_prototype_override(data) is None &&
+      array_map_value_identity_matches(
+        get_array_prototype(interp.realm_state, data),
+        expected_array_prototype,
+      ) &&
+      data.elements[0] is Number(_) &&
+      data.elements[1] is Number(_)
+    _ => false
+  }
+}
+
+///|
 fn array_map_receiver_is_exact_for_plan(
   interp : Interpreter,
   value : Value,
@@ -640,6 +789,10 @@ fn array_map_receiver_is_exact_for_plan(
       array_map_receiver_is_exact(interp, value, expected_array_prototype)
     ArrayMapDirectCallback =>
       array_map_direct_receiver_is_exact(
+        interp, value, expected_array_prototype,
+      )
+    ArrayMapForwardingCallback =>
+      array_map_forwarding_receiver_is_exact(
         interp, value, expected_array_prototype,
       )
   }
@@ -730,6 +883,21 @@ fn array_map_registry_is_stable(
   interp : Interpreter,
   registry : TrustedArrayMapRecursionRegistry,
 ) -> Bool {
+  let step_binding_stable = match
+    interp.global.bindings.get(registry.plan.function_name) {
+    Some(binding) if binding.initialized =>
+      array_map_value_identity_matches(binding.value, registry.step_function)
+    _ => false
+  }
+  let forward_binding_stable = match registry.forward_function {
+    None => true
+    Some(forward_function) =>
+      match interp.global.bindings.get(registry.plan.forward_function_name) {
+        Some(binding) if binding.initialized =>
+          array_map_value_identity_matches(binding.value, forward_function)
+        _ => false
+      }
+  }
   match interp.numeric_recursion_canonical_global_object() {
     Some(global_object) if physical_equal(
         global_object,
@@ -751,6 +919,8 @@ fn array_map_registry_is_stable(
               )
             None => false
           }
+          step_binding_stable &&
+          forward_binding_stable &&
           array_map_value_identity_matches(
             array_constructor,
             registry.expected_array_constructor,
@@ -820,6 +990,23 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
           }
         _ => false
       }
+    ArrayMapForwardingCallback =>
+      step.env.bindings.get(plan.parameter_name) is Some(binding) &&
+      binding.initialized &&
+      binding.is_parameter &&
+      (match step.index {
+        0 =>
+          match step.stmt {
+            @ast.IfStmt(_, _, _, _) => true
+            _ => false
+          }
+        1 =>
+          match step.stmt {
+            @ast.ReturnStmt(Some(@ast.Binary(@ast.Add, _, _, _)), _) => true
+            _ => false
+          }
+        _ => false
+      })
   }
   if is_step_body {
     guard step.env.bindings.get(plan.parameter_name) is Some(binding) &&
@@ -837,6 +1024,7 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
     let managed_step_body = match plan.callback_family {
       ArrayMapMemberCallback => step.index == 2
       ArrayMapDirectCallback => step.index == 1
+      ArrayMapForwardingCallback => step.index == 1
     }
     if !managed_step_body {
       return self.execute_statement_with_legacy_adapter(step)
@@ -859,6 +1047,13 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
           Number(
             array_map_enclosing_number(step.env, plan.value_parameter_name),
           ),
+        ])
+      ArrayMapForwardingCallback =>
+        make_array([
+          Number(
+            array_map_enclosing_number(step.env, plan.parameter_name) - 1.0,
+          ),
+          Number(0.0),
         ])
     }
     guard array_map_receiver_is_exact_for_plan(
@@ -912,7 +1107,11 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
       Err(error) =>
         return DispatchWorkCompleted(dispatch_work_error_completion(error))
     }
-    guard length == 1L else {
+    let expected_length = match plan.callback_family {
+      ArrayMapForwardingCallback => 2L
+      _ => 1L
+    }
+    guard length == expected_length else {
       invalid_activation_dispatch_shell(
         "array map receiver length changed after admission",
       )
@@ -1011,6 +1210,43 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
       ),
     )
   }
+  if plan.callback_family is ArrayMapForwardingCallback &&
+    array_map_forwarding_base_statement_matches(step.stmt, plan) &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, self.interp.global) {
+    return self.execute_statement_with_legacy_adapter(step)
+  }
+  if plan.callback_family is ArrayMapForwardingCallback &&
+    array_map_forwarding_function_statement_matches(step.stmt, plan) &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, self.interp.global) {
+    let parameter = match step.env.bindings.get(plan.forward_parameter_name) {
+      Some(binding) if binding.initialized && binding.is_parameter =>
+        binding.value
+      _ =>
+        invalid_activation_dispatch_shell(
+          "array map forwarding function parameter lost its activation binding",
+        )
+    }
+    guard parameter is Number(_) else {
+      invalid_activation_dispatch_shell(
+        "array map forwarding function parameter is not numeric",
+      )
+    }
+    match self.observe_managed_execution_steps(5) {
+      Some(completion) => return DispatchWorkCompleted(completion)
+      None => ()
+    }
+    let request = DispatchCallRequest(
+      callee=registry.step_function,
+      this_value=Undefined,
+      args=[parameter],
+      loc=plan.forward_call_loc,
+    )
+    return DispatchWorkSuspended(
+      DispatchSuspendCall(request, DispatchCompleteReturn),
+    )
+  }
   if plan.callback_family is ArrayMapDirectCallback &&
     array_map_single_direct_callback_statement_matches(step.stmt, plan) {
     let args = array_map_direct_call_request_args(step.env, plan)
@@ -1023,6 +1259,42 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
       this_value=Undefined,
       args~,
       loc=plan.recursive_call_loc,
+    )
+    return DispatchWorkSuspended(
+      DispatchSuspendCall(request, DispatchCompleteReturn),
+    )
+  }
+  if plan.callback_family is ArrayMapForwardingCallback &&
+    array_map_forwarding_callback_statement_matches(step.stmt, plan) {
+    let parameter = match step.env.bindings.get(plan.callback_parameter) {
+      Some(binding) if binding.initialized && binding.is_parameter =>
+        binding.value
+      _ =>
+        invalid_activation_dispatch_shell(
+          "array map forwarding callback parameter lost its activation binding",
+        )
+    }
+    guard parameter is Number(_) else {
+      invalid_activation_dispatch_shell(
+        "array map forwarding callback parameter is not numeric",
+      )
+    }
+    let forward_function = match registry.forward_function {
+      Some(value) => value
+      None =>
+        invalid_activation_dispatch_shell(
+          "array map forwarding callback lost its retained function",
+        )
+    }
+    match self.observe_managed_execution_steps(5) {
+      Some(completion) => return DispatchWorkCompleted(completion)
+      None => ()
+    }
+    let request = DispatchCallRequest(
+      callee=forward_function,
+      this_value=Undefined,
+      args=[parameter],
+      loc=plan.forward_callback_call_loc,
     )
     return DispatchWorkSuspended(
       DispatchSuspendCall(request, DispatchCompleteReturn),
