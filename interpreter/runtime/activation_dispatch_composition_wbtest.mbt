@@ -244,6 +244,33 @@ test "expression reducer keeps postfix call order and returns one value" {
 }
 
 ///|
+test "expression reducer rejects invalid cursors before scheduling work" {
+  let plan = expression_test_plan(
+    make_array([]),
+    make_array([]),
+    make_array([]),
+  )
+  let state = dispatch_test_ready_state(DispatchFrameStackEmpty)
+  for next_index in [-1, plan.steps.length() + 1] {
+    let diagnostic = try {
+      let plan_resume = DispatchExpressionPlanResume(plan~, next_index~, values=[])
+      let result = resume_dispatch_expression_plan(
+        state,
+        plan_resume,
+        Number(1.0),
+      )
+      match result {
+        DispatchResumeDecision(_, _) => "work scheduled"
+        DispatchResumeCompletion(_) => "completed"
+      }
+    } catch {
+      InvalidDispatchTransition(message) => message
+    }
+    inspect(diagnostic, content="expression plan cursor is outside its steps")
+  }
+}
+
+///|
 fn expression_test_expect_abrupt(
   plan : DispatchExpressionPlan,
   next_index : Int,
