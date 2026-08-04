@@ -238,8 +238,7 @@ test "execution stack safety: four left-associated numeric and map calls compose
     Value::Number(1024.0) => ()
     other =>
       fail(
-        "expected four-call composition result 1024, got " +
-        other.to_string(),
+        "expected four-call composition result 1024, got " + other.to_string(),
       )
   }
 }

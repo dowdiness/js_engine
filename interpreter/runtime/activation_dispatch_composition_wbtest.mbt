@@ -119,8 +119,7 @@ test "expression driver releases owned numeric and map activations" {
 
 ///|
 test "four-call expression driver releases two numeric and two map trees" {
-  let (interp, stmts, preflight) =
-    four_call_numeric_map_expression_observation_fixture()
+  let (interp, stmts, preflight) = four_call_numeric_map_expression_observation_fixture()
   dispatch_shell_test_install_realm_sentinel(interp, 805)
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
   let shell = PrimitiveProgramDispatchShell(
@@ -375,7 +374,10 @@ test "expression reducer keeps the exact seven-step call and binary order" {
         DispatchEnterActivation(DispatchCallActivation(request))
       )
     ) =>
-      inspect(array_map_value_identity_matches(request.callee, middle), content="true")
+      inspect(
+        array_map_value_identity_matches(request.callee, middle),
+        content="true",
+      )
     _ => fail("seven-step plan must schedule its first map leaf")
   }
   let inner_add = resume_dispatch_expression_plan(
@@ -413,7 +415,10 @@ test "expression reducer keeps the exact seven-step call and binary order" {
         DispatchEnterActivation(DispatchCallActivation(request))
       )
     ) =>
-      inspect(array_map_value_identity_matches(request.callee, third), content="true")
+      inspect(
+        array_map_value_identity_matches(request.callee, third),
+        content="true",
+      )
     _ => fail("seven-step plan must schedule its second numeric leaf")
   }
   let outer_add = resume_dispatch_expression_plan(
@@ -449,7 +454,10 @@ test "expression reducer keeps the exact seven-step call and binary order" {
         DispatchEnterActivation(DispatchCallActivation(request))
       )
     ) =>
-      inspect(array_map_value_identity_matches(request.callee, last), content="true")
+      inspect(
+        array_map_value_identity_matches(request.callee, last),
+        content="true",
+      )
     _ => fail("seven-step plan must schedule its second map leaf")
   }
   let final_add = resume_dispatch_expression_plan(
@@ -713,8 +721,7 @@ fn expression_seal_mutation_result(final_source : String) -> String raise Error 
 fn four_call_expression_seal_mutation_result(
   final_source : String,
 ) -> String raise Error {
-  let (interp, stmts, preflight) =
-    four_call_numeric_map_expression_observation_fixture()
+  let (interp, stmts, preflight) = four_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let ctx : ExecContext = { strict: false, current_generator: None }
   for index in 0..<3 {
@@ -753,11 +760,8 @@ test "expression sealing rejects tree operator location and argument drift" {
 ///|
 test "four-call expression sealing rejects source and location drift" {
   let cases = [
-    "step(256)+(u(256)+step(256)+u(256));",
-    "step(256)+u(256)+step(256)-u(256);",
-    "step(256)+u(256)+step(256)+u(255);",
-    "step(256)+u(256)+step(256);",
-    " step(256)+u(256)+step(256)+u(256);",
+    "step(256)+(u(256)+step(256)+u(256));", "step(256)+u(256)+step(256)-u(256);",
+    "step(256)+u(256)+step(256)+u(255);", "step(256)+u(256)+step(256);", " step(256)+u(256)+step(256)+u(256);",
   ]
   for source in cases {
     inspect(
@@ -876,16 +880,14 @@ test "expression plan owns nested call argument arrays" {
 
 ///|
 test "four-call expression plan seals adapter families arguments and locations" {
-  let (interp, stmts, preflight) =
-    four_call_numeric_map_expression_observation_fixture()
+  let (interp, stmts, preflight) = four_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let ctx : ExecContext = { strict: false, current_generator: None }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
   let (catalog, plan) = interp.seal_numeric_map_expression_catalog(
-    preflight,
-    stmts,
+    preflight, stmts,
   )
   inspect(plan.steps.length(), content="7")
   let source_call_indices = [0, 1, 3, 5]

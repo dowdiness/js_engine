@@ -566,9 +566,7 @@ fn numeric_map_expression_source(
     Some(steps) => steps
     None => return None
   }
-  guard expression_source_shape_is_admissible(steps) else {
-    return None
-  }
+  guard expression_source_shape_is_admissible(steps) else { return None }
   let mut first_step_expr : @ast.Expr? = None
   let mut first_u_expr : @ast.Expr? = None
   for step in steps {

@@ -138,8 +138,7 @@ test "numeric map expression classifier keeps order and arity near misses legacy
 
 ///|
 test "numeric map expression rejects non-number results at root admission" {
-  let source =
-    "function step(n){if(n===0)return \"0\";return 1+step(n-1);}" +
+  let source = "function step(n){if(n===0)return \"0\";return 1+step(n-1);}" +
     "function f(t){if(t===0)return 0;return u(t);}" +
     "function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}" +
     "step(256)+u(256)+step(256)+u(256);"
@@ -162,26 +161,40 @@ test "numeric map expression classifier admits the exact seven-step source" {
   match numeric_map_expression_source(stmts) {
     Some(source) => {
       inspect(source.steps.length(), content="7")
-      inspect(expression_source_shape_is_admissible(source.steps), content="true")
       inspect(
-        source.steps[0] is DispatchExpressionCallSourceStep({ name: "step", .. }),
+        expression_source_shape_is_admissible(source.steps),
+        content="true",
+      )
+      inspect(
+        source.steps[0]
+        is DispatchExpressionCallSourceStep({ name: "step", .. }),
         content="true",
       )
       inspect(
         source.steps[1] is DispatchExpressionCallSourceStep({ name: "u", .. }),
         content="true",
       )
-      inspect(source.steps[2] is DispatchExpressionAddSourceStep(_), content="true")
       inspect(
-        source.steps[3] is DispatchExpressionCallSourceStep({ name: "step", .. }),
+        source.steps[2] is DispatchExpressionAddSourceStep(_),
         content="true",
       )
-      inspect(source.steps[4] is DispatchExpressionAddSourceStep(_), content="true")
+      inspect(
+        source.steps[3]
+        is DispatchExpressionCallSourceStep({ name: "step", .. }),
+        content="true",
+      )
+      inspect(
+        source.steps[4] is DispatchExpressionAddSourceStep(_),
+        content="true",
+      )
       inspect(
         source.steps[5] is DispatchExpressionCallSourceStep({ name: "u", .. }),
         content="true",
       )
-      inspect(source.steps[6] is DispatchExpressionAddSourceStep(_), content="true")
+      inspect(
+        source.steps[6] is DispatchExpressionAddSourceStep(_),
+        content="true",
+      )
     }
     None => fail("expected the exact seven-step source to classify")
   }

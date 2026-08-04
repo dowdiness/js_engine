@@ -2685,8 +2685,9 @@ fn PrimitiveProgramDispatchShell::execute_numeric_map_expression_root_statement(
           self.array_map_registry = Some(catalog.array_map)
           self.managed_user_func_catalog = Some(catalog)
           self.expression_plan = Some(plan)
-          self.expression_root_call_locs =
-            dispatch_expression_plan_root_call_locs(plan)
+          self.expression_root_call_locs = dispatch_expression_plan_root_call_locs(
+            plan,
+          )
         }
         _ => ()
       }
