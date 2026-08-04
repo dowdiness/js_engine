@@ -192,6 +192,21 @@ fn numeric_recursion_global_declaration_is_sealable(
 }
 
 ///|
+fn numeric_recursion_plan_requires_intrinsic_apply(
+  plan : NumericRecursionPlan,
+) -> Bool {
+  let entry_requires = numeric_recursion_apply_recipe_is_intrinsic(
+    plan.entry.syntax.invocation_recipe,
+  )
+  let peer_requires = match plan.peer {
+    Some(peer) =>
+      numeric_recursion_apply_recipe_is_intrinsic(peer.syntax.invocation_recipe)
+    None => false
+  }
+  entry_requires || peer_requires
+}
+
+///|
 #warnings("-unused_value")
 fn Interpreter::preflight_numeric_recursion_program(
   self : Interpreter,
@@ -199,6 +214,10 @@ fn Interpreter::preflight_numeric_recursion_program(
 ) -> NumericRecursionPreflight? {
   guard self.numeric_recursion_canonical_global_object()
     is Some(expected_global_object) else {
+    return None
+  }
+  guard !numeric_recursion_plan_requires_intrinsic_apply(plan) ||
+    self.numeric_recursion_apply_globals_are_canonical() else {
     return None
   }
   let peer_declaration_is_sealable = match plan.peer {
@@ -421,6 +440,11 @@ fn numeric_recursion_trusted_declaration(
       "numeric recursion declaration did not hoist a simple UserFunc",
     )
   }
+  guard interp.numeric_recursion_apply_intrinsic_is_canonical(syntax, callee) else {
+    invalid_activation_dispatch_shell(
+      "numeric recursion intrinsic apply provenance changed before sealing",
+    )
+  }
   let params_match = match syntax.retained_parameter {
     None => data.params.length() == 1 && data.params[0] == syntax.parameter
     Some(retained) =>
@@ -485,6 +509,7 @@ fn numeric_recursion_function_syntaxes_match(
   expected.parameter == actual.parameter &&
   expected.retained_parameter == actual.retained_parameter &&
   expected.recursive_callee == actual.recursive_callee &&
+  expected.invocation_recipe == actual.invocation_recipe &&
   numeric_recursion_function_return_recipes_match(
     expected.return_recipe,
     actual.return_recipe,
@@ -742,7 +767,7 @@ fn numeric_recursion_user_func_matches_syntax(
   }
   guard data.name == Some(syntax.name) &&
     params_match &&
-    data.body.length() == 2 &&
+    (data.body.length() == 2 || data.body.length() == 3) &&
     physical_equal(data.closure, interp.global) &&
     !data.strict &&
     !data.has_name_binding &&
@@ -855,6 +880,14 @@ fn numeric_recursion_revalidate_trusted_function(
     numeric_recursion_user_func_matches_syntax(interp, trusted.syntax, data) else {
     invalid_activation_dispatch_shell(
       "numeric recursion candidate no longer has exact UserFunc provenance",
+    )
+  }
+  guard interp.numeric_recursion_apply_intrinsic_is_canonical(
+    trusted.syntax,
+    candidate,
+  ) else {
+    invalid_activation_dispatch_shell(
+      "numeric recursion intrinsic apply provenance changed after sealing",
     )
   }
   guard function_source_identity(candidate) == trusted.expected_source_identity else {

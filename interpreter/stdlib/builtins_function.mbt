@@ -43,6 +43,23 @@ fn make_function_prototype_call(realm_state : @runtime.RealmState) -> Value {
 }
 
 ///|
+// The exact Function.prototype.apply intrinsic uses the runtime-owned
+// `FuncApplyMethod` identity with the reserved Undefined target. Captured
+// `fn.apply` values carry their callable target in that same enum variant.
+fn make_function_prototype_apply(realm_state : @runtime.RealmState) -> Value {
+  let apply_func = @runtime.make_native_func(
+    name="apply",
+    length=2,
+    realm_state=Some(realm_state),
+    _args => Undefined,
+  )
+  guard apply_func is Object(data) else {
+    abort("Function.prototype.apply factory must return an Object")
+  }
+  Object({ ..data, callable: Some(FuncApplyMethod(Undefined)) })
+}
+
+///|
 // §20.2.1.1.1 step 27a: wire result.prototype.constructor = result so the
 // constructed function's prototype correctly back-references the function.
 fn wire_constructor_to_prototype(proto : Value, result : Value) -> Unit {
@@ -188,29 +205,7 @@ fn setup_function_builtins(
   func_proto_props["call"] = make_function_prototype_call(realm_state)
 
   // Function.prototype.apply — §20.2.3.1
-  func_proto_props["apply"] = @runtime.make_interp_method_func(
-    name="apply",
-    length=2,
-    fn(interp, this_val, args) raise {
-      let loc = @token.Loc::default()
-      let call_this : Value = if args.length() > 0 {
-        args[0]
-      } else {
-        Undefined
-      }
-      // Step 2: argArray undefined/null → call with no args. Otherwise step 4
-      // delegates to CreateListFromArrayLike which throws for non-Object.
-      let call_args : Array[Value] = if args.length() > 1 {
-        match args[1] {
-          Null | Undefined => []
-          other => create_list_from_array_like(interp, other)
-        }
-      } else {
-        []
-      }
-      interp.call_value(this_val, call_this, call_args, loc)
-    },
-  )
+  func_proto_props["apply"] = make_function_prototype_apply(realm_state)
 
   // Function.prototype.bind - placeholder (actual implementation in interpreter)
   func_proto_props["bind"] = @runtime.make_interp_method_func(

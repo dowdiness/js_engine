@@ -43,6 +43,23 @@ fn retained_numeric_argument_source() -> String {
 }
 
 ///|
+const INTRINSIC_APPLY_RECURSION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + step.apply(undefined, [n - 1]);
+  #|}
+  #|step(256);
+
+///|
+const INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  arguments[0] = n - 1;
+  #|  return 1 + step.apply(undefined, arguments);
+  #|}
+  #|step(256);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -57,6 +74,97 @@ test "execution stack safety: retained numeric argument across tree-walker activ
     Value::Number(263.0) => ()
     other =>
       fail("expected retained argument result 263, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: intrinsic apply forwarding recursion at depth 256" {
+  match run(INTRINSIC_APPLY_RECURSION_SOURCE) {
+    Value::Number(256.0) => ()
+    other =>
+      fail("expected intrinsic apply result 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: intrinsic apply forwarding mapped arguments at depth 256" {
+  match run(INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE) {
+    Value::Number(256.0) => ()
+    other =>
+      fail(
+        "expected intrinsic apply mapped arguments result 256, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
+test "intrinsic apply recursion stays legacy when the function owns apply" {
+  match
+    run(
+      "function step(n){if(n===0)return 0;return 1+step.apply(undefined,[n-1]);}" +
+      "step.apply=function(){return 7;};step(256);",
+    ) {
+    Value::Number(8.0) => ()
+    other =>
+      fail("expected overridden own apply result 8, got " + other.to_string())
+  }
+}
+
+///|
+test "intrinsic apply recursion stays legacy when Function.prototype.apply changes" {
+  match
+    run(
+      "function step(n){if(n===0)return 0;return 1+step.apply(undefined,[n-1]);}" +
+      "Function.prototype.apply=function(){return 7;};step(256);",
+    ) {
+    Value::Number(8.0) => ()
+    other =>
+      fail(
+        "expected replaced Function.prototype.apply result 8, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
+test "intrinsic apply recursion stays legacy after function prototype drift" {
+  match
+    run(
+      "function step(n){if(n===0)return 0;return 1+step.apply(undefined,[n-1]);}" +
+      "Object.setPrototypeOf(step,{apply:function(){return 7;}});step(2);",
+    ) {
+    Value::Number(value) => inspect(value, content="8")
+    other => fail("unexpected prototype drift result: " + other.to_string())
+  }
+}
+
+///|
+test "intrinsic apply preserves sparse array holes through legacy reads" {
+  match
+    run(
+      "function read(value){return value===undefined;}" +
+      "read.apply(undefined,[,]);",
+    ) {
+    Value::Bool(true) => ()
+    other =>
+      fail(
+        "expected a sparse hole to read as undefined, got " + other.to_string(),
+      )
+  }
+}
+
+///|
+test "intrinsic apply preserves array accessor reads through legacy fallback" {
+  match
+    run(
+      "let reads=0;let args=[0];" +
+      "Object.defineProperty(args,\"0\",{get:function(){reads=reads+1;return 7;}});" +
+      "function read(value){return value;}read.apply(undefined,args)+reads;",
+    ) {
+    Value::Number(8.0) => ()
+    other =>
+      fail("expected one accessor read and value 7, got " + other.to_string())
   }
 }
 

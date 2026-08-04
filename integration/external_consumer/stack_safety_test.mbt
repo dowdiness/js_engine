@@ -136,6 +136,23 @@ fn retained_numeric_argument_source() -> String {
 }
 
 ///|
+const INTRINSIC_APPLY_RECURSION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + step.apply(undefined, [n - 1]);
+  #|}
+  #|step(256);
+
+///|
+const INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  arguments[0] = n - 1;
+  #|  return 1 + step.apply(undefined, arguments);
+  #|}
+  #|step(256);
+
+///|
 const ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE =
   #|function step(n){if(n===0)return 0;return 1+step(n-1);}
   #|step(256,missing);
@@ -155,6 +172,16 @@ test "stack safety public facade: exact production-admitted depth-256 values" {
 // Regression coverage for the exact #790 retained-argument managed slice.
 test "stack safety public facade: retained numeric argument across tree-walker activations" {
   inspect(run_value(retained_numeric_argument_source()), content="263")
+}
+
+///|
+test "stack safety public facade intrinsic apply forwarding recursion" {
+  inspect(run_value(INTRINSIC_APPLY_RECURSION_SOURCE), content="256")
+}
+
+///|
+test "stack safety public facade intrinsic apply mapped arguments" {
+  inspect(run_value(INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE), content="256")
 }
 
 ///|

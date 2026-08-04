@@ -54,12 +54,21 @@ fn NumericRecursionExpressionRecipe::NumericRecursionExpressionRecipe(
 }
 
 ///|
+#warnings("-unused_constructor-unused_field")
+priv enum NumericRecursionInvocationRecipe {
+  NumericRecursionDirectCall
+  NumericRecursionIntrinsicApplyArray
+  NumericRecursionIntrinsicApplyMappedArguments
+} derive(Eq)
+
+///|
 #warnings("-unused_field")
 priv struct NumericRecursionFunctionSyntax {
   name : String
   parameter : String
   retained_parameter : String?
   recursive_callee : String
+  invocation_recipe : NumericRecursionInvocationRecipe
   expression_recipe : NumericRecursionExpressionRecipe
   return_recipe : NumericRecursionFunctionReturnRecipe
 }
@@ -70,6 +79,7 @@ fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
   parameter~ : String,
   retained_parameter? : String? = None,
   recursive_callee~ : String,
+  invocation_recipe? : NumericRecursionInvocationRecipe = NumericRecursionDirectCall,
   expression_recipe~ : NumericRecursionExpressionRecipe,
   return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> NumericRecursionFunctionSyntax {
@@ -78,6 +88,7 @@ fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
     parameter,
     retained_parameter,
     recursive_callee,
+    invocation_recipe,
     expression_recipe,
     return_recipe,
   }
@@ -247,6 +258,7 @@ fn numeric_recursion_base_condition_loc(
 #warnings("-unused_field")
 priv struct NumericRecursionStepClassification {
   recursive_callee : String
+  invocation_recipe : NumericRecursionInvocationRecipe
   recursive_add_loc : @token.Loc
   recursive_call_loc : @token.Loc
   recursive_subtract_loc : @token.Loc
@@ -255,12 +267,14 @@ priv struct NumericRecursionStepClassification {
 ///|
 fn NumericRecursionStepClassification::NumericRecursionStepClassification(
   recursive_callee~ : String,
+  invocation_recipe? : NumericRecursionInvocationRecipe = NumericRecursionDirectCall,
   recursive_add_loc~ : @token.Loc,
   recursive_call_loc~ : @token.Loc,
   recursive_subtract_loc~ : @token.Loc,
 ) -> NumericRecursionStepClassification {
   {
     recursive_callee,
+    invocation_recipe,
     recursive_add_loc,
     recursive_call_loc,
     recursive_subtract_loc,
@@ -275,49 +289,84 @@ fn classify_numeric_recursion_step_detail(
 ) -> NumericRecursionStepClassification? {
   match stmt {
     @ast.ReturnStmt(
-      Some(
-        @ast.Binary(
-          @ast.Add,
-          increment,
-          @ast.Call(@ast.Ident(recursive_callee, _), args, recursive_call_loc),
-          recursive_add_loc
-        )
-      ),
+      Some(@ast.Binary(@ast.Add, increment, call_expr, recursive_add_loc)),
       _
     ) => {
-      let expected_argument_count = match retained_parameter {
-        None => 1
-        Some(_) => 2
-      }
-      guard exact_numeric_recursion_number(increment, NUMERIC_RECURSION_STEP) &&
-        args.length() == expected_argument_count else {
+      guard exact_numeric_recursion_number(increment, NUMERIC_RECURSION_STEP) else {
         return None
       }
-      let retained_argument_matches = match retained_parameter {
-        None => true
-        Some(expected) =>
-          match args[1] {
-            @ast.Ident(actual, _) => actual == expected
-            _ => false
+      match call_expr {
+        @ast.Call(@ast.Ident(recursive_callee, _), args, recursive_call_loc) => {
+          let expected_argument_count = match retained_parameter {
+            None => 1
+            Some(_) => 2
           }
-      }
-      guard retained_argument_matches else { return None }
-      match args[0] {
-        @ast.Binary(
-          @ast.Sub,
-          @ast.Ident(step_parameter, _),
-          decrement,
-          recursive_subtract_loc
-        ) if step_parameter == parameter &&
-          exact_numeric_recursion_number(decrement, NUMERIC_RECURSION_STEP) =>
-          Some(
-            NumericRecursionStepClassification(
-              recursive_callee~,
-              recursive_add_loc~,
-              recursive_call_loc~,
-              recursive_subtract_loc~,
-            ),
-          )
+          guard args.length() == expected_argument_count else { return None }
+          let retained_argument_matches = match retained_parameter {
+            None => true
+            Some(expected) =>
+              match args[1] {
+                @ast.Ident(actual, _) => actual == expected
+                _ => false
+              }
+          }
+          guard retained_argument_matches else { return None }
+          match args[0] {
+            @ast.Binary(
+              @ast.Sub,
+              @ast.Ident(step_parameter, _),
+              decrement,
+              recursive_subtract_loc
+            ) if step_parameter == parameter &&
+              exact_numeric_recursion_number(decrement, NUMERIC_RECURSION_STEP) =>
+              Some(
+                NumericRecursionStepClassification(
+                  recursive_callee~,
+                  invocation_recipe=NumericRecursionDirectCall,
+                  recursive_add_loc~,
+                  recursive_call_loc~,
+                  recursive_subtract_loc~,
+                ),
+              )
+            _ => None
+          }
+        }
+        @ast.Call(
+          @ast.Member(@ast.Ident(recursive_callee, _), "apply", _),
+          args,
+          recursive_call_loc
+        ) => {
+          guard retained_parameter is None && args.length() == 2 else {
+            return None
+          }
+          guard args[0] is @ast.Ident("undefined", _) else { return None }
+          match args[1] {
+            @ast.ArrayLit(elements, _) if elements.length() == 1 =>
+              match elements[0] {
+                @ast.Binary(
+                  @ast.Sub,
+                  @ast.Ident(step_parameter, _),
+                  decrement,
+                  recursive_subtract_loc
+                ) if step_parameter == parameter &&
+                  exact_numeric_recursion_number(
+                    decrement,
+                    NUMERIC_RECURSION_STEP,
+                  ) =>
+                  Some(
+                    NumericRecursionStepClassification(
+                      recursive_callee~,
+                      invocation_recipe=NumericRecursionIntrinsicApplyArray,
+                      recursive_add_loc~,
+                      recursive_call_loc~,
+                      recursive_subtract_loc~,
+                    ),
+                  )
+                _ => None
+              }
+            _ => None
+          }
+        }
         _ => None
       }
     }
@@ -361,6 +410,73 @@ fn classify_numeric_recursion_function_return(
 }
 
 ///|
+fn classify_numeric_recursion_mapped_apply_assignment(
+  stmt : @ast.Stmt,
+  parameter : String,
+) -> @token.Loc? {
+  match stmt {
+    @ast.ExprStmt(
+      @ast.ComputedAssign(
+        @ast.Ident("arguments", _),
+        @ast.NumberLit(0.0, @token.LexForm::LexNormal, _),
+        @ast.Binary(
+          @ast.Sub,
+          @ast.Ident(step_parameter, _),
+          decrement,
+          subtract_loc
+        ),
+        _
+      ),
+      _
+    ) if step_parameter == parameter &&
+      exact_numeric_recursion_number(decrement, NUMERIC_RECURSION_STEP) =>
+      Some(subtract_loc)
+    _ => None
+  }
+}
+
+///|
+fn classify_numeric_recursion_mapped_apply_step(
+  stmt : @ast.Stmt,
+  recursive_subtract_loc : @token.Loc,
+) -> NumericRecursionStepClassification? {
+  match stmt {
+    @ast.ReturnStmt(
+      Some(
+        @ast.Binary(
+          @ast.Add,
+          increment,
+          @ast.Call(
+            @ast.Member(@ast.Ident(recursive_callee, _), "apply", _),
+            args,
+            recursive_call_loc
+          ),
+          recursive_add_loc
+        )
+      ),
+      _
+    ) => {
+      guard exact_numeric_recursion_number(increment, NUMERIC_RECURSION_STEP) &&
+        args.length() == 2 else {
+        return None
+      }
+      guard args[0] is @ast.Ident("undefined", _) else { return None }
+      guard args[1] is @ast.Ident("arguments", _) else { return None }
+      Some(
+        NumericRecursionStepClassification(
+          recursive_callee~,
+          invocation_recipe=NumericRecursionIntrinsicApplyMappedArguments,
+          recursive_add_loc~,
+          recursive_call_loc~,
+          recursive_subtract_loc~,
+        ),
+      )
+    }
+    _ => None
+  }
+}
+
+///|
 fn classify_numeric_recursion_function_syntax(
   name : String,
   params : Array[String],
@@ -368,7 +484,7 @@ fn classify_numeric_recursion_function_syntax(
 ) -> NumericRecursionFunctionSyntax? {
   guard numeric_recursion_identifier_is_safe(name) &&
     (params.length() == 1 || params.length() == 2) &&
-    body.length() == 2 else {
+    (body.length() == 2 || body.length() == 3) else {
     return None
   }
   let parameter = params[0]
@@ -397,13 +513,33 @@ fn classify_numeric_recursion_function_syntax(
     is Some(base_condition_loc) else {
     return None
   }
-  guard classify_numeric_recursion_function_return(
-      body[1],
-      parameter,
-      retained_parameter~,
-    )
-    is Some((step, return_recipe)) else {
-    return None
+  let (step, return_recipe) = if body.length() == 2 {
+    match
+      classify_numeric_recursion_function_return(
+        body[1],
+        parameter,
+        retained_parameter~,
+      ) {
+      Some(result) => result
+      None => return None
+    }
+  } else {
+    guard params.length() == 1 && retained_parameter is None else {
+      return None
+    }
+    let recursive_subtract_loc = match
+      classify_numeric_recursion_mapped_apply_assignment(body[1], parameter) {
+      Some(loc) => loc
+      None => return None
+    }
+    match
+      classify_numeric_recursion_mapped_apply_step(
+        body[2],
+        recursive_subtract_loc,
+      ) {
+      Some(step) => (step, NumericRecursionDirectReturn)
+      None => return None
+    }
   }
   Some(
     NumericRecursionFunctionSyntax(
@@ -411,6 +547,7 @@ fn classify_numeric_recursion_function_syntax(
       parameter~,
       retained_parameter~,
       recursive_callee=step.recursive_callee,
+      invocation_recipe=step.invocation_recipe,
       expression_recipe=NumericRecursionExpressionRecipe(
         base_condition_loc~,
         recursive_add_loc=step.recursive_add_loc,

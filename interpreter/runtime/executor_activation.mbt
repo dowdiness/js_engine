@@ -546,7 +546,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
             self.complete_executor_child(stack, ExecutorActivationReturn(value))
           }
         ExecutorActivationCall(request) => {
-          let (forwarded_callee, forwarded_this_value, forwarded_args) = resolve_call_forwarding(
+          let (forwarded_callee, forwarded_this_value, forwarded_args) = self.resolve_call_forwarding(
             request.callee,
             request.this_value,
             request.args,

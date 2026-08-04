@@ -41,6 +41,78 @@ test "numeric recursion admission recognizes only the exact self shape" {
 }
 
 ///|
+test "numeric recursion admission recognizes intrinsic apply recipes" {
+  let array_plan = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function step(n){if(n===0)return 0;return 1+step.apply(undefined,[n-1]);}step(256);",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected intrinsic apply array admission")
+  }
+  match array_plan.entry.syntax.invocation_recipe {
+    NumericRecursionIntrinsicApplyArray => ()
+    _ => fail("expected intrinsic apply array recipe")
+  }
+  let mapped_plan = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function step(n){if(n===0)return 0;arguments[0]=n-1;return 1+step.apply(undefined,arguments);}step(256);",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected intrinsic apply mapped admission")
+  }
+  match mapped_plan.entry.syntax.invocation_recipe {
+    NumericRecursionIntrinsicApplyMappedArguments => ()
+    _ => fail("expected intrinsic apply mapped recipe")
+  }
+}
+
+///|
+test "numeric recursion admission rejects near-miss intrinsic apply arrays" {
+  for
+    source in [
+      "function step(n){if(n===0)return 0;" +
+      "return 1+step.apply(undefined,[n-1,0]);}step(256);",
+      "function step(n){if(n===0)return 0;" +
+      "return 1+step.apply(undefined,[n-2]);}step(256);",
+      "function step(n){if(n===0)return 0;" +
+      "return 1+step[\"apply\"](undefined,[n-1]);}step(256);",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted a near-miss intrinsic apply array: " + source)
+    }
+  }
+}
+
+///|
+test "numeric recursion admission rejects near-miss mapped apply arguments" {
+  for
+    source in [
+      "function step(n){if(n===0)return 0;arguments[1]=n-1;" +
+      "return 1+step.apply(undefined,arguments);}step(256);",
+      "function step(n){if(n===0)return 0;arguments[0]=n-2;" +
+      "return 1+step.apply(undefined,arguments);}step(256);",
+      "function step(n){if(n===0)return 0;arguments[\"0\"]=n-1;" +
+      "return 1+step.apply(undefined,arguments);}step(256);",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is None else {
+      fail(
+        "unexpectedly admitted a near-miss mapped intrinsic apply: " + source,
+      )
+    }
+  }
+}
+
+///|
 test "numeric recursion admission recognizes exact protected return-finalizer bodies" {
   for
     source in [
