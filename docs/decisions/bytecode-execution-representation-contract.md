@@ -4,9 +4,9 @@ Date: 2026-07-29.
 
 ## Status
 
-Proposed for #601. It becomes accepted when merged and linked from the owning
-issue. It changes no runtime behavior; it fixes the representation contract for
-the compiler and runtime work that follows.
+Accepted for #601 by PR #640 on 2026-07-29. It changes no runtime behavior; it
+fixes the representation contract for the compiler and runtime work that
+follows.
 
 ## Context
 
@@ -372,6 +372,7 @@ rewrite:
 |---|---|
 | #634 | Structured pre-execution lowering outcomes |
 | #330 | Structured equivalence outcomes and observation coverage |
+| #658 | Explicit source references and execution-observation barriers |
 | #635 | Pure verifier and verified executable wrapper |
 | #636 | Remove executable AST and source-body leakage |
 | #638 | Replace direct `Binding` access with runtime-owned environment slots |
