@@ -227,6 +227,7 @@ priv enum DispatchShellCleanupResources {
   DispatchReceiverRootRealmCleanup(FunctionRealmProtos)
   DispatchConstructorRootRealmCleanup(FunctionRealmProtos)
   DispatchArrayMapRootRealmCleanup(FunctionRealmProtos)
+  DispatchNumericMapCompositionRootRealmCleanup(FunctionRealmProtos)
   DispatchDeniedActivationCleanup
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
   DispatchGetterRealmCleanup(DispatchGetterCallRealmCleanup)
@@ -276,6 +277,9 @@ priv struct PrimitiveProgramDispatchShell {
   array_map_root_preflight : ArrayMapRecursionPreflight?
   array_map_root_stmts : Array[@ast.Stmt]?
   mut array_map_registry : TrustedArrayMapRecursionRegistry?
+  composition_root_preflight : NumericMapCompositionPreflight?
+  composition_root_stmts : Array[@ast.Stmt]?
+  mut managed_user_func_catalog : DispatchManagedUserFuncCatalog?
   array_map_states : Array[MapState]
   array_map_activation_envs : Array[Environment]
   activation_observation_port : ActivationObservationPort
@@ -306,6 +310,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   array_map_root_preflight? : ArrayMapRecursionPreflight? = None,
   array_map_root_stmts? : Array[@ast.Stmt]? = None,
   array_map_registry? : TrustedArrayMapRecursionRegistry? = None,
+  composition_root_preflight? : NumericMapCompositionPreflight? = None,
+  composition_root_stmts? : Array[@ast.Stmt]? = None,
+  managed_user_func_catalog? : DispatchManagedUserFuncCatalog? = None,
   // The shell lifecycle is policy-free; admitted production roots inject the
   // execution-control port explicitly below.
   activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
@@ -340,6 +347,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     array_map_root_preflight,
     array_map_root_stmts: array_map_root_stmts.map(stmts => stmts.copy()),
     array_map_registry,
+    composition_root_preflight,
+    composition_root_stmts: composition_root_stmts.map(stmts => stmts.copy()),
+    managed_user_func_catalog,
     array_map_states: [],
     array_map_activation_envs: [],
     activation_observation_port,
@@ -754,6 +764,23 @@ fn PrimitiveProgramDispatchShell::push_array_map_root_cleanup(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::push_numeric_map_composition_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchNumericMapCompositionRootRealmCleanup(
+      previous_realm_protos,
+    ),
+    capabilities: None,
+    observation: None,
+  })
+}
+
+///|
 fn PrimitiveProgramDispatchShell::push_constructor_call_cleanup(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1036,6 +1063,14 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.array_map_activation_envs.clear()
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
+    DispatchNumericMapCompositionRootRealmCleanup(previous_realm_protos) => {
+      self.numeric_registry = None
+      self.array_map_registry = None
+      self.managed_user_func_catalog = None
+      self.array_map_states.clear()
+      self.array_map_activation_envs.clear()
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchDeniedActivationCleanup => ()
     DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
@@ -1223,6 +1258,19 @@ fn PrimitiveProgramDispatchShell::require_numeric_registry(
     None =>
       invalid_activation_dispatch_shell(
         "numeric activation requires a sealed trust registry",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::composition_root_stmts_or_fail(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[@ast.Stmt] raise InvalidActivationDispatchShell {
+  match self.composition_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "numeric/map composition root statements were not retained by admission",
       )
   }
 }
@@ -1444,67 +1492,73 @@ fn PrimitiveProgramDispatchShell::enter_program(
     error => Err(error)
   }
   match setup {
-    Ok(_) =>
+    Ok(_) => {
       match self.constructor_root_preflight {
         Some(preflight) =>
-          self.complete_constructor_root_preparation(
+          return self.complete_constructor_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        None =>
-          match self.array_map_root_preflight {
-            Some(_) => {
-              self.push_array_map_root_cleanup(id, previous_realm_protos)
-              DispatchProgramAccepted(DispatchActivationCleanup(id))
-            }
-            None =>
-              match
-                (
-                  self.control_root_preflight,
-                  self.numeric_root_preflight,
-                  self.getter_root_preflight,
-                  self.proxy_root_preflight,
-                  self.receiver_root_preflight,
-                  self.mutual_receiver_root_preflight,
-                ) {
-                (Some(preflight), None, None, None, None, None) =>
-                  self.complete_control_root_preparation(
-                    id, cursor, previous_realm_protos, preflight,
-                  )
-                (None, Some(preflight), None, None, None, None) =>
-                  self.complete_numeric_root_preparation(
-                    id, cursor, previous_realm_protos, preflight,
-                  )
-                (None, None, Some(_), None, None, None) => {
-                  self.push_getter_root_cleanup(id, previous_realm_protos)
-                  DispatchProgramAccepted(DispatchActivationCleanup(id))
-                }
-                (None, None, None, Some(_), None, None) => {
-                  self.push_proxy_root_cleanup(id, previous_realm_protos)
-                  DispatchProgramAccepted(DispatchActivationCleanup(id))
-                }
-                (None, None, None, None, Some(_), None) => {
-                  self.push_receiver_root_cleanup(id, previous_realm_protos)
-                  DispatchProgramAccepted(DispatchActivationCleanup(id))
-                }
-                (None, None, None, None, None, Some(_)) => {
-                  self.push_receiver_root_cleanup(id, previous_realm_protos)
-                  DispatchProgramAccepted(DispatchActivationCleanup(id))
-                }
-                (None, None, None, None, None, None) => {
-                  self.push_program_cleanup(
-                    id,
-                    AcceptedProgram,
-                    previous_realm_protos,
-                  )
-                  DispatchProgramAccepted(DispatchActivationCleanup(id))
-                }
-                _ =>
-                  invalid_activation_dispatch_shell(
-                    "program cannot own multiple activation admissions",
-                  )
-              }
-          }
+        None => ()
       }
+      match self.composition_root_preflight {
+        Some(_) => {
+          self.push_numeric_map_composition_root_cleanup(
+            id, previous_realm_protos,
+          )
+          return DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        None => ()
+      }
+      match self.array_map_root_preflight {
+        Some(_) => {
+          self.push_array_map_root_cleanup(id, previous_realm_protos)
+          return DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        None => ()
+      }
+      match
+        (
+          self.control_root_preflight,
+          self.numeric_root_preflight,
+          self.getter_root_preflight,
+          self.proxy_root_preflight,
+          self.receiver_root_preflight,
+          self.mutual_receiver_root_preflight,
+        ) {
+        (Some(preflight), None, None, None, None, None) =>
+          self.complete_control_root_preparation(
+            id, cursor, previous_realm_protos, preflight,
+          )
+        (None, Some(preflight), None, None, None, None) =>
+          self.complete_numeric_root_preparation(
+            id, cursor, previous_realm_protos, preflight,
+          )
+        (None, None, Some(_), None, None, None) => {
+          self.push_getter_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None, None, Some(_), None, None) => {
+          self.push_proxy_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None, None, None, Some(_), None) => {
+          self.push_receiver_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None, None, None, None, Some(_)) => {
+          self.push_receiver_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None, None, None, None, None) => {
+          self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        _ =>
+          invalid_activation_dispatch_shell(
+            "program cannot own multiple activation admissions",
+          )
+      }
+    }
     Err(error) => {
       self.push_program_cleanup(id, RejectedProgram, previous_realm_protos)
       DispatchActivationRejected(
@@ -2102,6 +2156,26 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match self.managed_user_func_catalog {
+    Some(catalog) => {
+      let map_state : MapState? = if self.array_map_states.is_empty() {
+        None
+      } else {
+        Some(self.array_map_states[self.array_map_states.length() - 1])
+      }
+      match catalog.select(request.callee, map_state, request.this_value) {
+        Some(DispatchNumericUserFuncAdapterToken(_)) =>
+          return self.enter_numeric_call(request)
+        Some(DispatchArrayMapUserFuncAdapterToken(_)) =>
+          return self.enter_array_map_call(request)
+        None =>
+          invalid_activation_dispatch_shell(
+            "managed call is outside the sealed UserFunc adapter catalog",
+          )
+      }
+    }
+    None => ()
+  }
   match
     (
       self.numeric_registry,
@@ -2479,6 +2553,73 @@ fn PrimitiveProgramDispatchShell::execute_statement_with_legacy_adapter(
   match result {
     Ok(signal) => DispatchWorkCompleted(dispatch_signal_completion(signal))
     Err(error) => DispatchWorkCompleted(dispatch_work_error_completion(error))
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_numeric_map_composition_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  preflight : NumericMapCompositionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  guard physical_equal(step.env, self.interp.global) &&
+    classify_numeric_map_composition_source(
+      self.composition_root_stmts_or_fail(),
+    )
+    is Some(_) else {
+    invalid_activation_dispatch_shell(
+      "numeric/map composition root statement lost its exact admission",
+    )
+  }
+  match step.index {
+    0 | 1 => self.execute_statement_with_legacy_adapter(step)
+    2 => {
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          let catalog = self.interp.seal_numeric_map_composition_catalog(
+            preflight,
+            self.composition_root_stmts_or_fail(),
+          )
+          self.numeric_registry = Some(catalog.numeric)
+          self.array_map_registry = Some(catalog.array_map)
+          self.managed_user_func_catalog = Some(catalog)
+        }
+        _ => ()
+      }
+      result
+    }
+    3 => {
+      match self.observe_managed_execution_steps(3) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let catalog = match self.managed_user_func_catalog {
+        Some(catalog) => catalog
+        None =>
+          invalid_activation_dispatch_shell(
+            "numeric/map composition call started before catalog sealing",
+          )
+      }
+      let call_resume = match
+        numeric_map_composition_call_plan(preflight, catalog) {
+        Some(plan) => plan
+        None =>
+          invalid_activation_dispatch_shell(
+            "numeric/map composition call plan was not selected",
+          )
+      }
+      DispatchWorkSuspended(
+        DispatchSuspendCall(
+          call_resume.left_request,
+          DispatchComposeBinaryRight(call_resume),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "numeric/map composition root statement index is outside exact admission",
+      )
   }
 }
 
@@ -3515,6 +3656,20 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
     Some(registry) => return self.execute_control_statement(step, registry)
     None => ()
   }
+  match self.composition_root_preflight {
+    Some(preflight) =>
+      if physical_equal(step.env, self.interp.global) {
+        return self.execute_numeric_map_composition_root_statement(
+          step, preflight,
+        )
+      } else {
+        return self.execute_array_map_body_statement(
+          step,
+          self.require_array_map_registry(),
+        )
+      }
+    None => ()
+  }
   if activation_dispatch_leaf_statement_is_admissible(step.stmt) {
     return self.execute_statement_with_legacy_adapter(step)
   }
@@ -3743,6 +3898,7 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     | DispatchRun(
       DispatchResumeContinuation(DispatchApplyNumericBinaryRight(_), _)
     )
+    | DispatchRun(DispatchResumeContinuation(DispatchComposeBinaryRight(_), _))
     | DispatchRun(
       DispatchResumeContinuation(DispatchDeliverAccessorResult(_), _)
     )
@@ -3817,6 +3973,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
   }
   let production = self.control_root_preflight is Some(_) ||
     self.constructor_root_preflight is Some(_) ||
+    self.composition_root_preflight is Some(_) ||
     self.array_map_root_preflight is Some(_) ||
     self.numeric_root_preflight is Some(_) ||
     self.getter_root_preflight is Some(_) ||
@@ -3889,6 +4046,32 @@ fn Interpreter::run_activation_dispatch_array_map_program(
     shell.array_map_activation_envs.is_empty() else {
     invalid_activation_dispatch_shell(
       "array map registry, map state, or activation environment outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
+fn Interpreter::run_activation_dispatch_numeric_map_composition_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : NumericMapCompositionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    composition_root_preflight=Some(preflight),
+    composition_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.numeric_registry is None &&
+    shell.array_map_registry is None &&
+    shell.managed_user_func_catalog is None &&
+    shell.array_map_states.is_empty() &&
+    shell.array_map_activation_envs.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "numeric/map composition ownership outlived its root activation",
     )
   }
   completion
@@ -4106,6 +4289,10 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_control_program(stmts, ctx, preflight)
     ActivationDispatchConstructorRoot(preflight) =>
       self.run_activation_dispatch_constructor_program(stmts, ctx, preflight)
+    ActivationDispatchNumericMapCompositionRoot(preflight) =>
+      self.run_activation_dispatch_numeric_map_composition_program(
+        stmts, ctx, preflight,
+      )
     ActivationDispatchArrayMapRoot(preflight) =>
       self.run_activation_dispatch_array_map_program(stmts, ctx, preflight)
     ActivationDispatchNumericRoot(preflight) =>

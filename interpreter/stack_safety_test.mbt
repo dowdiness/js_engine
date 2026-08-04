@@ -86,6 +86,22 @@ const ARRAY_MAP_FORWARDING_RECURSION_SOURCE =
   #|u(256);
 
 ///|
+const NUMERIC_MAP_COMPOSITION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + step(n - 1);
+  #|}
+  #|function f(t) {
+  #|  if (t === 0) return 0;
+  #|  return u(t);
+  #|}
+  #|function u(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
+  #|}
+  #|step(256) + u(256);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -156,6 +172,35 @@ test "execution stack safety: array map forwarding callback at depth 256" {
       fail(
         "expected array map forwarding callback result 256, got " +
         other.to_string(),
+      )
+  }
+}
+
+///|
+test "execution stack safety: numeric and map calls compose at depth 256" {
+  match run(NUMERIC_MAP_COMPOSITION_SOURCE) {
+    Value::Number(512.0) => ()
+    other =>
+      fail(
+        "expected numeric and map composition result 512, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
+test "numeric and map composition cleanup permits a second run" {
+  let interp = new_interpreter()
+  let first = interp.run(@parser.parse(NUMERIC_MAP_COMPOSITION_SOURCE).stmts)
+  let second = interp.run(@parser.parse(NUMERIC_MAP_COMPOSITION_SOURCE).stmts)
+  match (first, second) {
+    (Value::Number(512.0), Value::Number(512.0)) => ()
+    (first, second) =>
+      fail(
+        "composition cleanup changed repeated results: " +
+        first.to_string() +
+        ", " +
+        second.to_string(),
       )
   }
 }

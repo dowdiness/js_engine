@@ -168,6 +168,49 @@ fn DispatchBinaryResume::DispatchBinaryResume(
 
 ///|
 #warnings("-unused_field")
+priv struct DispatchBinaryRightCallResume {
+  left_request : DispatchCallRequest
+  right_request : DispatchCallRequest
+  left_value : Value?
+  op : @ast.BinOp
+  loc : @token.Loc
+  left_adapter : DispatchManagedUserFuncAdapterToken
+  right_adapter : DispatchManagedUserFuncAdapterToken
+}
+
+///|
+fn DispatchBinaryRightCallResume::DispatchBinaryRightCallResume(
+  left_request~ : DispatchCallRequest,
+  right_request~ : DispatchCallRequest,
+  left_value~ : Value?,
+  op~ : @ast.BinOp,
+  loc~ : @token.Loc,
+  left_adapter~ : DispatchManagedUserFuncAdapterToken,
+  right_adapter~ : DispatchManagedUserFuncAdapterToken,
+) -> DispatchBinaryRightCallResume {
+  {
+    left_request: DispatchCallRequest(
+      callee=left_request.callee,
+      this_value=left_request.this_value,
+      args=left_request.args,
+      loc=left_request.loc,
+    ),
+    right_request: DispatchCallRequest(
+      callee=right_request.callee,
+      this_value=right_request.this_value,
+      args=right_request.args,
+      loc=right_request.loc,
+    ),
+    left_value,
+    op,
+    loc,
+    left_adapter,
+    right_adapter,
+  }
+}
+
+///|
+#warnings("-unused_field")
 priv struct DispatchPropertyGetResume {
   target : Value
   property_key : Value
@@ -712,6 +755,18 @@ fn snapshot_dispatch_continuation(
       DispatchApplyPropertyBinaryRight(binary)
     DispatchApplyNumericBinaryRight(binary) =>
       DispatchApplyNumericBinaryRight(binary)
+    DispatchComposeBinaryRight(binary) =>
+      DispatchComposeBinaryRight(
+        DispatchBinaryRightCallResume(
+          left_request=binary.left_request,
+          right_request=binary.right_request,
+          left_value=binary.left_value,
+          op=binary.op,
+          loc=binary.loc,
+          left_adapter=binary.left_adapter,
+          right_adapter=binary.right_adapter,
+        ),
+      )
     DispatchDeliverAccessorResult(accessor) =>
       DispatchDeliverAccessorResult(accessor)
     DispatchResolveProxyGetTrap(lookup) => DispatchResolveProxyGetTrap(lookup)
@@ -806,6 +861,7 @@ priv enum DispatchContinuation {
   DispatchApplyBinaryRight(DispatchBinaryResume)
   DispatchApplyPropertyBinaryRight(DispatchBinaryResume)
   DispatchApplyNumericBinaryRight(DispatchBinaryResume)
+  DispatchComposeBinaryRight(DispatchBinaryRightCallResume)
   DispatchDeliverAccessorResult(DispatchPropertyGetResume)
   DispatchResolveProxyGetTrap(DispatchProxyGetTrapLookupResume)
   DispatchCheckProxyGetResult(DispatchProxyGetResume)
@@ -1636,6 +1692,61 @@ fn route_dispatch_completion(
                   popped,
                   DispatchNumericApplyBinaryRight(binary, value),
                 )
+              (DispatchComposeBinaryRight(binary_call), DispatchNormal(value)) =>
+                match binary_call.left_value {
+                  None => {
+                    guard dispatch_managed_user_func_adapter_token_matches(
+                        binary_call.left_adapter,
+                        binary_call.left_request.callee,
+                      ) &&
+                      dispatch_managed_user_func_adapter_token_matches(
+                        binary_call.right_adapter,
+                        binary_call.right_request.callee,
+                      ) else {
+                      invalid_dispatch_transition(
+                        "binary-right call adapter token drifted",
+                      )
+                    }
+                    return suspend_dispatch_work(
+                      popped,
+                      DispatchSuspendCall(
+                        binary_call.right_request,
+                        DispatchComposeBinaryRight(
+                          DispatchBinaryRightCallResume(
+                            left_request=binary_call.left_request,
+                            right_request=binary_call.right_request,
+                            left_value=Some(value),
+                            op=binary_call.op,
+                            loc=binary_call.loc,
+                            left_adapter=binary_call.left_adapter,
+                            right_adapter=binary_call.right_adapter,
+                          ),
+                        ),
+                      ),
+                    )
+                  }
+                  Some(left) => {
+                    guard dispatch_managed_user_func_adapter_token_matches(
+                      binary_call.right_adapter,
+                      binary_call.right_request.callee,
+                    ) else {
+                      invalid_dispatch_transition(
+                        "binary-right result adapter token drifted",
+                      )
+                    }
+                    return schedule_dispatch_production_work(
+                      popped,
+                      DispatchNumericApplyBinaryRight(
+                        DispatchBinaryResume(
+                          op=binary_call.op,
+                          left~,
+                          loc=binary_call.loc,
+                        ),
+                        value,
+                      ),
+                    )
+                  }
+                }
               (DispatchApplyPropertyBinaryRight(binary), DispatchNormal(value)) =>
                 return schedule_dispatch_production_work(
                   popped,
