@@ -2,15 +2,27 @@
 // recursion recipe. Runtime identities are sealed after root declarations run.
 
 ///|
+#warnings("-unused_constructor")
+priv enum ArrayMapCallbackFamily {
+  ArrayMapMemberCallback
+  ArrayMapDirectCallback
+}
+
+///|
 #warnings("-unused_field")
 priv struct ArrayMapRecursionPlan {
   function_name : String
   parameter_name : String
   items_name : String
   callback_parameter : String
+  callback_family : ArrayMapCallbackFamily
+  value_parameter_name : String
+  flag_parameter_name : String
   map_property_name : String
   member_property_name : String
   initial_count : Double
+  initial_value : Double
+  initial_flag : Bool
   root_call_loc : @token.Loc
   base_condition_loc : @token.Loc
   map_call_loc : @token.Loc
@@ -18,6 +30,7 @@ priv struct ArrayMapRecursionPlan {
   member_call_loc : @token.Loc
   recursive_call_loc : @token.Loc
   recursive_subtract_loc : @token.Loc
+  recursive_not_loc : @token.Loc
   recursive_add_loc : @token.Loc
   result_member_loc : @token.Loc
 }
@@ -29,9 +42,14 @@ fn ArrayMapRecursionPlan::ArrayMapRecursionPlan(
   parameter_name~ : String,
   items_name~ : String,
   callback_parameter~ : String,
+  callback_family~ : ArrayMapCallbackFamily,
+  value_parameter_name~ : String,
+  flag_parameter_name~ : String,
   map_property_name~ : String,
   member_property_name~ : String,
   initial_count~ : Double,
+  initial_value~ : Double,
+  initial_flag~ : Bool,
   root_call_loc~ : @token.Loc,
   base_condition_loc~ : @token.Loc,
   map_call_loc~ : @token.Loc,
@@ -39,6 +57,7 @@ fn ArrayMapRecursionPlan::ArrayMapRecursionPlan(
   member_call_loc~ : @token.Loc,
   recursive_call_loc~ : @token.Loc,
   recursive_subtract_loc~ : @token.Loc,
+  recursive_not_loc~ : @token.Loc,
   recursive_add_loc~ : @token.Loc,
   result_member_loc~ : @token.Loc,
 ) -> ArrayMapRecursionPlan {
@@ -47,9 +66,14 @@ fn ArrayMapRecursionPlan::ArrayMapRecursionPlan(
     parameter_name,
     items_name,
     callback_parameter,
+    callback_family,
+    value_parameter_name,
+    flag_parameter_name,
     map_property_name,
     member_property_name,
     initial_count,
+    initial_value,
+    initial_flag,
     root_call_loc,
     base_condition_loc,
     map_call_loc,
@@ -57,6 +81,7 @@ fn ArrayMapRecursionPlan::ArrayMapRecursionPlan(
     member_call_loc,
     recursive_call_loc,
     recursive_subtract_loc,
+    recursive_not_loc,
     recursive_add_loc,
     result_member_loc,
   }
@@ -152,6 +177,144 @@ fn classify_array_map_next_function(
       actual_parameter == parameter_name &&
       array_map_number(decrement, 1.0) =>
       Some((subtract_loc, recursive_call_loc, recursive_call_loc))
+    _ => None
+  }
+}
+
+///|
+fn classify_array_map_direct_callback(
+  expr : @ast.Expr,
+  function_name : String,
+  parameter_name : String,
+  value_parameter_name : String,
+  flag_parameter_name : String,
+) -> (String, @token.Loc, @token.Loc, @token.Loc)? {
+  match expr {
+    @ast.FuncExpr(
+      None,
+      [callback_parameter],
+      [
+        @ast.ReturnStmt(
+          Some(
+            @ast.Call(
+              @ast.Ident(actual_name, _),
+              [
+                @ast.Binary(
+                  @ast.Sub,
+                  @ast.Ident(actual_parameter, _),
+                  decrement,
+                  subtract_loc
+                ),
+                @ast.Ident(actual_value_parameter, _),
+                @ast.Unary(
+                  @ast.Not,
+                  @ast.Ident(actual_flag_parameter, _),
+                  not_loc
+                ),
+              ],
+              recursive_call_loc
+            )
+          ),
+          _
+        ),
+      ],
+      _,
+      _
+    ) if array_map_identifier_is_safe(callback_parameter) &&
+      callback_parameter == value_parameter_name &&
+      actual_name == function_name &&
+      actual_parameter == parameter_name &&
+      actual_value_parameter == callback_parameter &&
+      actual_flag_parameter == flag_parameter_name &&
+      array_map_number(decrement, 1.0) =>
+      Some((callback_parameter, recursive_call_loc, subtract_loc, not_loc))
+    _ => None
+  }
+}
+
+///|
+fn classify_array_map_direct_body(
+  body : Array[@ast.Stmt],
+  function_name : String,
+  parameter_name : String,
+  value_parameter_name : String,
+  flag_parameter_name : String,
+) -> (
+  @token.Loc,
+  @token.Loc,
+  @token.Loc,
+  @token.Loc,
+  @token.Loc,
+  @token.Loc,
+  @token.Loc,
+  @token.Loc,
+  String,
+)? {
+  guard body.length() == 2 else { return None }
+  let base_condition_loc = match body[0] {
+    @ast.IfStmt(
+      @ast.Binary(
+        @ast.EqEqEq,
+        @ast.Ident(actual_parameter, _),
+        base,
+        condition_loc
+      ),
+      @ast.ReturnStmt(Some(base_result), _),
+      None,
+      _
+    ) if actual_parameter == parameter_name &&
+      array_map_number(base, 0.0) &&
+      array_map_number(base_result, 0.0) => condition_loc
+    _ => return None
+  }
+  match body[1] {
+    @ast.ReturnStmt(
+      Some(
+        @ast.Binary(
+          @ast.Add,
+          increment,
+          @ast.ComputedMember(
+            @ast.Call(
+              @ast.Member(
+                @ast.ArrayLit([@ast.Ident(actual_value_parameter, _)], _),
+                map_property_name,
+                map_call_loc
+              ),
+              [callback],
+              callback_call_loc
+            ),
+            @ast.NumberLit(result_index, _, _),
+            result_member_loc
+          ),
+          recursive_add_loc
+        )
+      ),
+      _
+    ) if actual_value_parameter == value_parameter_name &&
+      map_property_name == "map" &&
+      result_index == 0 &&
+      array_map_number(increment, 1.0) =>
+      match
+        classify_array_map_direct_callback(
+          callback, function_name, parameter_name, value_parameter_name, flag_parameter_name,
+        ) {
+        Some(
+          (
+            callback_parameter,
+            recursive_call_loc,
+            recursive_subtract_loc,
+            recursive_not_loc,
+          )
+        ) =>
+          Some(
+            (
+              base_condition_loc, recursive_subtract_loc, recursive_call_loc, recursive_not_loc,
+              recursive_add_loc, map_call_loc, callback_call_loc, result_member_loc,
+              callback_parameter,
+            ),
+          )
+        None => None
+      }
     _ => None
   }
 }
@@ -288,69 +451,187 @@ fn classify_array_map_recursion_program(
   stmts : Array[@ast.Stmt],
 ) -> ArrayMapRecursionPlan? {
   guard stmts.length() == 2 else { return None }
-  let (function_name, parameter_name, body) = match stmts[0] {
-    @ast.FuncDecl(name, [parameter], body, _, _) if array_map_identifier_is_safe(
+  let (function_name, parameters, body) = match stmts[0] {
+    @ast.FuncDecl(name, parameters, body, _, _) if array_map_identifier_is_safe(
         name,
-      ) &&
-      array_map_identifier_is_safe(parameter) => (name, parameter, body)
+      ) => (name, parameters, body)
     _ => return None
   }
-  let (root_call_loc, initial_count) = match stmts[1] {
-    @ast.ExprStmt(@ast.Call(@ast.Ident(actual_name, _), [initial], call_loc), _) if actual_name ==
-      function_name &&
-      array_map_number(initial, 256.0) => (call_loc, 256.0)
-    _ => return None
-  }
-  let items_name = "items"
-  let member_property_name = "next"
-  match
-    classify_array_map_body(
-      body, function_name, parameter_name, items_name, member_property_name,
-    ) {
-    Some(
-      (
-        base_condition_loc,
-        subtract_loc,
-        recursive_call_loc,
-        recursive_add_loc,
-        map_call_loc,
-        callback_call_loc,
-        member_call_loc,
-        result_member_loc,
-        callback_parameter,
-        _,
-        _,
-      )
-    ) =>
-      Some(
-        ArrayMapRecursionPlan(
-          function_name~,
-          parameter_name~,
-          items_name~,
-          callback_parameter~,
-          map_property_name="map",
-          member_property_name~,
-          initial_count~,
-          root_call_loc~,
-          base_condition_loc~,
-          map_call_loc~,
-          callback_call_loc~,
-          member_call_loc~,
-          recursive_call_loc~,
-          recursive_subtract_loc=subtract_loc,
-          recursive_add_loc~,
-          result_member_loc~,
-        ),
-      )
-    None => None
+  match parameters {
+    [parameter] if array_map_identifier_is_safe(parameter) => {
+      let (root_call_loc, initial_count) = match stmts[1] {
+        @ast.ExprStmt(
+          @ast.Call(@ast.Ident(actual_name, _), [initial], call_loc),
+          _
+        ) if actual_name == function_name && array_map_number(initial, 256.0) =>
+          (call_loc, 256.0)
+        _ => return None
+      }
+      let items_name = "items"
+      let member_property_name = "next"
+      match
+        classify_array_map_body(
+          body, function_name, parameter, items_name, member_property_name,
+        ) {
+        Some(
+          (
+            base_condition_loc,
+            subtract_loc,
+            recursive_call_loc,
+            recursive_add_loc,
+            map_call_loc,
+            callback_call_loc,
+            member_call_loc,
+            result_member_loc,
+            callback_parameter,
+            _,
+            _,
+          )
+        ) =>
+          Some(
+            ArrayMapRecursionPlan(
+              function_name~,
+              parameter_name=parameter,
+              items_name~,
+              callback_parameter~,
+              callback_family=ArrayMapMemberCallback,
+              value_parameter_name="",
+              flag_parameter_name="",
+              map_property_name="map",
+              member_property_name~,
+              initial_count~,
+              initial_value=0.0,
+              initial_flag=false,
+              root_call_loc~,
+              base_condition_loc~,
+              map_call_loc~,
+              callback_call_loc~,
+              member_call_loc~,
+              recursive_call_loc~,
+              recursive_subtract_loc=subtract_loc,
+              recursive_not_loc=@token.Loc::default(),
+              recursive_add_loc~,
+              result_member_loc~,
+            ),
+          )
+        None => None
+      }
+    }
+    ["t", "e", "f"] if function_name == "u" => {
+      let (root_call_loc, initial_count, initial_value, initial_flag) = match
+        stmts[1] {
+        @ast.ExprStmt(
+          @ast.Call(
+            @ast.Ident(actual_name, _),
+            [initial, value, @ast.BoolLit(flag, _)],
+            call_loc
+          ),
+          _
+        ) if actual_name == function_name &&
+          array_map_number(initial, 256.0) &&
+          array_map_number(value, 0.0) &&
+          flag == false => (call_loc, 256.0, 0.0, false)
+        _ => return None
+      }
+      match classify_array_map_direct_body(body, function_name, "t", "e", "f") {
+        Some(
+          (
+            base_condition_loc,
+            recursive_subtract_loc,
+            recursive_call_loc,
+            recursive_not_loc,
+            recursive_add_loc,
+            map_call_loc,
+            callback_call_loc,
+            result_member_loc,
+            callback_parameter,
+          )
+        ) =>
+          Some(
+            ArrayMapRecursionPlan(
+              function_name~,
+              parameter_name="t",
+              items_name="",
+              callback_parameter~,
+              callback_family=ArrayMapDirectCallback,
+              value_parameter_name="e",
+              flag_parameter_name="f",
+              map_property_name="map",
+              member_property_name="",
+              initial_count~,
+              initial_value~,
+              initial_flag~,
+              root_call_loc~,
+              base_condition_loc~,
+              map_call_loc~,
+              callback_call_loc~,
+              member_call_loc=@token.Loc::default(),
+              recursive_call_loc~,
+              recursive_subtract_loc~,
+              recursive_not_loc~,
+              recursive_add_loc~,
+              result_member_loc~,
+            ),
+          )
+        None => None
+      }
+    }
+    _ => None
   }
 }
 
 ///|
 fn array_map_plan_is_dispatchable(plan : ArrayMapRecursionPlan) -> Bool {
-  plan.initial_count == 256.0 &&
-  plan.map_property_name == "map" &&
-  plan.member_property_name == "next"
+  match plan.callback_family {
+    ArrayMapMemberCallback =>
+      plan.initial_count == 256.0 &&
+      plan.map_property_name == "map" &&
+      plan.member_property_name == "next"
+    ArrayMapDirectCallback =>
+      plan.function_name == "u" &&
+      plan.parameter_name == "t" &&
+      plan.value_parameter_name == "e" &&
+      plan.flag_parameter_name == "f" &&
+      plan.callback_parameter == "e" &&
+      plan.initial_count == 256.0 &&
+      plan.initial_value == 0.0 &&
+      !plan.initial_flag &&
+      plan.map_property_name == "map"
+  }
+}
+
+///|
+fn array_map_plan_matches(
+  expected : ArrayMapRecursionPlan,
+  actual : ArrayMapRecursionPlan,
+) -> Bool {
+  let same_family = match (expected.callback_family, actual.callback_family) {
+    (ArrayMapMemberCallback, ArrayMapMemberCallback)
+    | (ArrayMapDirectCallback, ArrayMapDirectCallback) => true
+    _ => false
+  }
+  same_family &&
+  expected.function_name == actual.function_name &&
+  expected.parameter_name == actual.parameter_name &&
+  expected.items_name == actual.items_name &&
+  expected.callback_parameter == actual.callback_parameter &&
+  expected.value_parameter_name == actual.value_parameter_name &&
+  expected.flag_parameter_name == actual.flag_parameter_name &&
+  expected.map_property_name == actual.map_property_name &&
+  expected.member_property_name == actual.member_property_name &&
+  expected.initial_count == actual.initial_count &&
+  expected.initial_value == actual.initial_value &&
+  expected.initial_flag == actual.initial_flag &&
+  expected.root_call_loc == actual.root_call_loc &&
+  expected.base_condition_loc == actual.base_condition_loc &&
+  expected.map_call_loc == actual.map_call_loc &&
+  expected.callback_call_loc == actual.callback_call_loc &&
+  expected.member_call_loc == actual.member_call_loc &&
+  expected.recursive_call_loc == actual.recursive_call_loc &&
+  expected.recursive_subtract_loc == actual.recursive_subtract_loc &&
+  expected.recursive_not_loc == actual.recursive_not_loc &&
+  expected.recursive_add_loc == actual.recursive_add_loc &&
+  expected.result_member_loc == actual.result_member_loc
 }
 
 ///|
@@ -623,22 +904,36 @@ fn array_map_existing_step_binding_is_compatible(
       match binding.value {
         Object(data) =>
           match data.callable {
-            Some(UserFunc(func)) =>
-              func.name == Some(plan.function_name) &&
-              func.params.length() == 1 &&
-              func.params[0] == plan.parameter_name &&
-              !func.strict &&
-              !func.has_name_binding &&
-              !func.is_method &&
-              physical_equal(func.closure, interp.global) &&
-              classify_array_map_body(
-                func.body,
-                plan.function_name,
-                plan.parameter_name,
-                plan.items_name,
-                plan.member_property_name,
-              )
-              is Some(_)
+            Some(UserFunc(func)) => {
+              let common = func.name == Some(plan.function_name) &&
+                !func.strict &&
+                !func.has_name_binding &&
+                !func.is_method &&
+                physical_equal(func.closure, interp.global)
+              match plan.callback_family {
+                ArrayMapMemberCallback =>
+                  common &&
+                  func.params.length() == 1 &&
+                  func.params[0] == plan.parameter_name &&
+                  classify_array_map_body(
+                    func.body,
+                    plan.function_name,
+                    plan.parameter_name,
+                    plan.items_name,
+                    plan.member_property_name,
+                  )
+                  is Some(_)
+                ArrayMapDirectCallback =>
+                  common &&
+                  func.params ==
+                  [
+                    plan.parameter_name,
+                    plan.value_parameter_name,
+                    plan.flag_parameter_name,
+                  ] &&
+                  array_map_direct_step_body_matches(func.body, plan)
+              }
+            }
             _ => false
           }
         _ => false
@@ -774,6 +1069,74 @@ fn array_map_callback_body_matches(
 
 ///|
 #warnings("-unused_value")
+fn array_map_direct_callback_body_matches(
+  body : Array[@ast.Stmt],
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match
+    classify_array_map_direct_callback(
+      @ast.FuncExpr(
+        None,
+        [plan.callback_parameter],
+        body,
+        @token.Loc::default(),
+        None,
+      ),
+      plan.function_name,
+      plan.parameter_name,
+      plan.value_parameter_name,
+      plan.flag_parameter_name,
+    ) {
+    Some((_, recursive_call_loc, subtract_loc, not_loc)) =>
+      recursive_call_loc == plan.recursive_call_loc &&
+      subtract_loc == plan.recursive_subtract_loc &&
+      not_loc == plan.recursive_not_loc
+    None => false
+  }
+}
+
+///|
+#warnings("-unused_value")
+fn array_map_direct_step_body_matches(
+  body : Array[@ast.Stmt],
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match
+    classify_array_map_direct_body(
+      body,
+      plan.function_name,
+      plan.parameter_name,
+      plan.value_parameter_name,
+      plan.flag_parameter_name,
+    ) {
+    Some(
+      (
+        base_condition_loc,
+        recursive_subtract_loc,
+        recursive_call_loc,
+        recursive_not_loc,
+        recursive_add_loc,
+        map_call_loc,
+        callback_call_loc,
+        result_member_loc,
+        callback_parameter,
+      )
+    ) =>
+      base_condition_loc == plan.base_condition_loc &&
+      recursive_subtract_loc == plan.recursive_subtract_loc &&
+      recursive_call_loc == plan.recursive_call_loc &&
+      recursive_not_loc == plan.recursive_not_loc &&
+      recursive_add_loc == plan.recursive_add_loc &&
+      map_call_loc == plan.map_call_loc &&
+      callback_call_loc == plan.callback_call_loc &&
+      result_member_loc == plan.result_member_loc &&
+      callback_parameter == plan.callback_parameter
+    None => false
+  }
+}
+
+///|
+#warnings("-unused_value")
 fn array_map_next_body_matches(
   body : Array[@ast.Stmt],
   function_name : String,
@@ -823,14 +1186,28 @@ fn Interpreter::seal_array_map_recursion_registry(
   guard step_function is Object(step_data) &&
     step_data.callable is Some(UserFunc(data)) &&
     data.name == Some(preflight.plan.function_name) &&
-    data.params.length() == 1 &&
-    data.params[0] == preflight.plan.parameter_name &&
     !data.strict &&
     !data.has_name_binding &&
     physical_equal(data.closure, self.global) &&
     function_source_identity(step_function) ==
     preflight.expected_source_identity &&
-    classify_array_map_recursion_program(stmts) is Some(_) else {
+    (match preflight.plan.callback_family {
+      ArrayMapMemberCallback =>
+        data.params.length() == 1 &&
+        data.params[0] == preflight.plan.parameter_name
+      ArrayMapDirectCallback =>
+        data.params ==
+        [
+          preflight.plan.parameter_name,
+          preflight.plan.value_parameter_name,
+          preflight.plan.flag_parameter_name,
+        ] &&
+        array_map_direct_step_body_matches(data.body, preflight.plan)
+    }) &&
+    (match classify_array_map_recursion_program(stmts) {
+      Some(actual_plan) => array_map_plan_matches(preflight.plan, actual_plan)
+      None => false
+    }) else {
     invalid_activation_dispatch_shell(
       "array map function lost its sealed provenance",
     )

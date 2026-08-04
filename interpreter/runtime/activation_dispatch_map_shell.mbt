@@ -107,25 +107,60 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
     )
   }
   if is_step {
-    guard request.this_value is Undefined && request.args.length() == 1 else {
+    guard request.this_value is Undefined else {
       invalid_activation_dispatch_shell(
-        "array map step activation requires undefined receiver and one argument",
+        "array map step activation requires an undefined receiver",
       )
+    }
+    match plan.callback_family {
+      ArrayMapMemberCallback => {
+        guard request.args.length() == 1 else {
+          invalid_activation_dispatch_shell(
+            "array map member step activation requires one argument",
+          )
+        }
+        guard request.args[0] is Number(_) else {
+          invalid_activation_dispatch_shell(
+            "array map member step activation requires a numeric argument",
+          )
+        }
+        guard data.body.length() == 3 && data.params.length() == 1 else {
+          invalid_activation_dispatch_shell(
+            "array map member step activation body changed after sealing",
+          )
+        }
+      }
+      ArrayMapDirectCallback => {
+        guard request.args.length() == 3 else {
+          invalid_activation_dispatch_shell(
+            "array map direct step activation requires three arguments",
+          )
+        }
+        guard request.args[0] is Number(_) &&
+          request.args[1] is Number(_) &&
+          request.args[2] is Bool(_) else {
+          invalid_activation_dispatch_shell(
+            "array map direct step activation argument types changed",
+          )
+        }
+        guard data.body.length() == 2 &&
+          data.params ==
+          [
+            plan.parameter_name,
+            plan.value_parameter_name,
+            plan.flag_parameter_name,
+          ] &&
+          array_map_direct_step_body_matches(data.body, plan) else {
+          invalid_activation_dispatch_shell(
+            "array map direct step activation body changed after sealing",
+          )
+        }
+      }
     }
     guard request.loc == plan.root_call_loc ||
       request.loc == plan.recursive_call_loc else {
       invalid_activation_dispatch_shell(
         "array map step activation escaped its sealed source locations",
-      )
-    }
-    guard request.args[0] is Number(_) else {
-      invalid_activation_dispatch_shell(
-        "array map step activation requires a numeric argument",
-      )
-    }
-    guard data.body.length() == 3 && data.params.length() == 1 else {
-      invalid_activation_dispatch_shell(
-        "array map step activation body changed after sealing",
       )
     }
     guard data.name == Some(plan.function_name) &&
@@ -142,18 +177,32 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
       request.args.length() == 3 &&
       request.loc == plan.callback_call_loc &&
       data.params.length() == 1 &&
-      data.params[0] == plan.callback_parameter &&
-      array_map_callback_body_matches(
-        data.body,
-        plan.callback_parameter,
-        plan.member_property_name,
-      ) else {
+      data.params[0] == plan.callback_parameter else {
       invalid_activation_dispatch_shell(
         "array map callback activation changed after sealing",
       )
     }
+    match plan.callback_family {
+      ArrayMapMemberCallback =>
+        if !array_map_callback_body_matches(
+            data.body,
+            plan.callback_parameter,
+            plan.member_property_name,
+          ) {
+          invalid_activation_dispatch_shell(
+            "array map member callback body changed after sealing",
+          )
+        }
+      ArrayMapDirectCallback =>
+        if !array_map_direct_callback_body_matches(data.body, plan) {
+          invalid_activation_dispatch_shell(
+            "array map direct callback body changed after sealing",
+          )
+        }
+    }
   } else {
-    guard request.args.is_empty() &&
+    guard plan.callback_family is ArrayMapMemberCallback &&
+      request.args.is_empty() &&
       request.loc == plan.member_call_loc &&
       data.params.is_empty() &&
       array_map_next_body_matches(
@@ -298,10 +347,19 @@ fn PrimitiveProgramDispatchShell::execute_array_map_root_statement(
         None => ()
       }
       let registry = self.require_array_map_registry()
+      let args = match preflight.plan.callback_family {
+        ArrayMapMemberCallback => [Number(preflight.plan.initial_count)]
+        ArrayMapDirectCallback =>
+          [
+            Number(preflight.plan.initial_count),
+            Number(preflight.plan.initial_value),
+            Bool(preflight.plan.initial_flag),
+          ]
+      }
       let request = DispatchCallRequest(
         callee=registry.step_function,
         this_value=Undefined,
-        args=[Number(preflight.plan.initial_count)],
+        args~,
         loc=preflight.plan.root_call_loc,
       )
       DispatchWorkSuspended(
@@ -321,18 +379,27 @@ fn array_map_step_statement_matches(
   index : Int,
   stmt : @ast.Stmt,
 ) -> Bool {
-  match (index, stmt) {
-    (0, @ast.IfStmt(_, @ast.ReturnStmt(Some(_), _), None, _)) => true
-    (1, @ast.VarDecl(_, name, Some(@ast.ArrayLit(_, _)), _)) =>
-      name == plan.items_name
-    (
-      2,
-      @ast.ReturnStmt(
-        Some(@ast.Binary(@ast.Add, _, @ast.ComputedMember(_, _, _), _)),
-        _
-      ),
-    ) => true
-    _ => false
+  match plan.callback_family {
+    ArrayMapMemberCallback =>
+      match (index, stmt) {
+        (0, @ast.IfStmt(_, @ast.ReturnStmt(Some(_), _), None, _)) => true
+        (1, @ast.VarDecl(_, name, Some(@ast.ArrayLit(_, _)), _)) =>
+          name == plan.items_name
+        (
+          2,
+          @ast.ReturnStmt(
+            Some(@ast.Binary(@ast.Add, _, @ast.ComputedMember(_, _, _), _)),
+            _
+          ),
+        ) => true
+        _ => false
+      }
+    ArrayMapDirectCallback =>
+      match index {
+        0 => array_map_direct_base_statement_matches(stmt, plan)
+        1 => array_map_direct_step_statement_matches(stmt, plan)
+        _ => false
+      }
   }
 }
 
@@ -355,6 +422,132 @@ fn array_map_single_callback_statement_matches(
     ) =>
       actual_parameter == parameter_name &&
       actual_property == member_property_name
+    _ => false
+  }
+}
+
+///|
+fn array_map_single_direct_callback_statement_matches(
+  stmt : @ast.Stmt,
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match stmt {
+    @ast.ReturnStmt(
+      Some(
+        @ast.Call(
+          @ast.Ident(actual_name, _),
+          [
+            @ast.Binary(
+              @ast.Sub,
+              @ast.Ident(actual_parameter, _),
+              decrement,
+              subtract_loc
+            ),
+            @ast.Ident(actual_value_parameter, _),
+            @ast.Unary(@ast.Not, @ast.Ident(actual_flag_parameter, _), not_loc),
+          ],
+          recursive_call_loc
+        )
+      ),
+      _
+    ) =>
+      actual_name == plan.function_name &&
+      actual_parameter == plan.parameter_name &&
+      actual_value_parameter == plan.callback_parameter &&
+      actual_flag_parameter == plan.flag_parameter_name &&
+      recursive_call_loc == plan.recursive_call_loc &&
+      subtract_loc == plan.recursive_subtract_loc &&
+      not_loc == plan.recursive_not_loc &&
+      array_map_number(decrement, 1.0)
+    _ => false
+  }
+}
+
+///|
+fn array_map_direct_base_statement_matches(
+  stmt : @ast.Stmt,
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match stmt {
+    @ast.IfStmt(
+      @ast.Binary(
+        @ast.EqEqEq,
+        @ast.Ident(actual_parameter, _),
+        base,
+        condition_loc
+      ),
+      @ast.ReturnStmt(Some(base_result), _),
+      None,
+      _
+    ) =>
+      actual_parameter == plan.parameter_name &&
+      condition_loc == plan.base_condition_loc &&
+      array_map_number(base, 0.0) &&
+      array_map_number(base_result, 0.0)
+    _ => false
+  }
+}
+
+///|
+fn array_map_direct_callback_expr_matches(
+  expr : @ast.Expr,
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match
+    classify_array_map_direct_callback(
+      expr,
+      plan.function_name,
+      plan.parameter_name,
+      plan.value_parameter_name,
+      plan.flag_parameter_name,
+    ) {
+    Some((parameter, recursive_call_loc, subtract_loc, not_loc)) =>
+      parameter == plan.callback_parameter &&
+      recursive_call_loc == plan.recursive_call_loc &&
+      subtract_loc == plan.recursive_subtract_loc &&
+      not_loc == plan.recursive_not_loc
+    None => false
+  }
+}
+
+///|
+fn array_map_direct_step_statement_matches(
+  stmt : @ast.Stmt,
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match stmt {
+    @ast.ReturnStmt(
+      Some(
+        @ast.Binary(
+          @ast.Add,
+          increment,
+          @ast.ComputedMember(
+            @ast.Call(
+              @ast.Member(
+                @ast.ArrayLit([@ast.Ident(actual_value_parameter, _)], _),
+                actual_map_property,
+                map_call_loc
+              ),
+              [callback],
+              callback_call_loc
+            ),
+            @ast.NumberLit(result_index, _, _),
+            result_member_loc
+          ),
+          recursive_add_loc
+        )
+      ),
+      _
+    ) =>
+      actual_value_parameter == plan.value_parameter_name &&
+      actual_map_property == plan.map_property_name &&
+      result_index == 0 &&
+      map_call_loc == plan.map_call_loc &&
+      callback_call_loc == plan.callback_call_loc &&
+      result_member_loc == plan.result_member_loc &&
+      recursive_add_loc == plan.recursive_add_loc &&
+      array_map_number(increment, 1.0) &&
+      array_map_direct_callback_expr_matches(callback, plan)
     _ => false
   }
 }
@@ -414,6 +607,45 @@ fn array_map_receiver_is_exact(
 }
 
 ///|
+fn array_map_direct_receiver_is_exact(
+  interp : Interpreter,
+  value : Value,
+  expected_array_prototype : Value,
+) -> Bool {
+  match value {
+    Array(data) =>
+      data.elements.length() == 1 &&
+      data.holes.is_empty() &&
+      data.bag.properties.length() == 0 &&
+      data.bag.descriptors.length() == 0 &&
+      get_array_prototype_override(data) is None &&
+      array_map_value_identity_matches(
+        get_array_prototype(interp.realm_state, data),
+        expected_array_prototype,
+      ) &&
+      data.elements[0] is Number(_)
+    _ => false
+  }
+}
+
+///|
+fn array_map_receiver_is_exact_for_plan(
+  interp : Interpreter,
+  value : Value,
+  expected_array_prototype : Value,
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match plan.callback_family {
+    ArrayMapMemberCallback =>
+      array_map_receiver_is_exact(interp, value, expected_array_prototype)
+    ArrayMapDirectCallback =>
+      array_map_direct_receiver_is_exact(
+        interp, value, expected_array_prototype,
+      )
+  }
+}
+
+///|
 fn array_map_enclosing_number(
   env : Environment,
   name : String,
@@ -436,6 +668,61 @@ fn array_map_enclosing_number(
           )
       }
   }
+}
+
+///|
+fn array_map_enclosing_bool(
+  env : Environment,
+  name : String,
+) -> Bool raise InvalidActivationDispatchShell {
+  match env.bindings.get(name) {
+    Some(binding) if binding.initialized && binding.is_parameter =>
+      match binding.value {
+        Bool(value) => value
+        _ =>
+          invalid_activation_dispatch_shell(
+            "array map enclosing parameter is not boolean",
+          )
+      }
+    _ =>
+      match env.parent {
+        Some(parent) => array_map_enclosing_bool(parent, name)
+        None =>
+          invalid_activation_dispatch_shell(
+            "array map enclosing step flag was not retained",
+          )
+      }
+  }
+}
+
+///|
+priv struct ArrayMapDirectCallArguments {
+  count : Double
+  value : Value
+  flag : Bool
+}
+
+///|
+fn array_map_direct_call_arguments(
+  env : Environment,
+  plan : ArrayMapRecursionPlan,
+) -> ArrayMapDirectCallArguments raise InvalidActivationDispatchShell {
+  // Keep the source-order reads in one explicit data record.  The ordinary
+  // activation request below owns the resulting values; no guest callback or
+  // MoonBit closure is retained between argument evaluation and the call.
+  let count = array_map_enclosing_number(env, plan.parameter_name)
+  let value = Number(array_map_enclosing_number(env, plan.callback_parameter))
+  let flag = array_map_enclosing_bool(env, plan.flag_parameter_name)
+  { count, value, flag }
+}
+
+///|
+fn array_map_direct_call_request_args(
+  env : Environment,
+  plan : ArrayMapRecursionPlan,
+) -> Array[Value] raise InvalidActivationDispatchShell {
+  let direct_args = array_map_direct_call_arguments(env, plan)
+  [Number(direct_args.count - 1.0), direct_args.value, Bool(!direct_args.flag)]
 }
 
 ///|
@@ -507,15 +794,32 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
       "array map body activation lost its lexical environment",
     )
   }
-  let is_step_body = match step.stmt {
-    @ast.IfStmt(_, _, _, _) if step.index == 0 => true
-    @ast.VarDecl(_, name, _, _) if step.index == 1 && name == plan.items_name =>
-      true
-    @ast.ReturnStmt(
-      Some(@ast.Binary(@ast.Add, _, @ast.ComputedMember(_, _, _), _)),
-      _
-    ) if step.index == 2 => true
-    _ => false
+  let is_step_body = match plan.callback_family {
+    ArrayMapMemberCallback =>
+      match step.stmt {
+        @ast.IfStmt(_, _, _, _) if step.index == 0 => true
+        @ast.VarDecl(_, name, _, _) if step.index == 1 &&
+          name == plan.items_name => true
+        @ast.ReturnStmt(
+          Some(@ast.Binary(@ast.Add, _, @ast.ComputedMember(_, _, _), _)),
+          _
+        ) if step.index == 2 => true
+        _ => false
+      }
+    ArrayMapDirectCallback =>
+      match step.index {
+        0 =>
+          match step.stmt {
+            @ast.IfStmt(_, _, _, _) => true
+            _ => false
+          }
+        1 =>
+          match step.stmt {
+            @ast.ReturnStmt(Some(@ast.Binary(@ast.Add, _, _, _)), _) => true
+            _ => false
+          }
+        _ => false
+      }
   }
   if is_step_body {
     guard step.env.bindings.get(plan.parameter_name) is Some(binding) &&
@@ -530,24 +834,38 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
         "array map step body changed after sealing",
       )
     }
-    if step.index < 2 {
+    let managed_step_body = match plan.callback_family {
+      ArrayMapMemberCallback => step.index == 2
+      ArrayMapDirectCallback => step.index == 1
+    }
+    if !managed_step_body {
       return self.execute_statement_with_legacy_adapter(step)
     }
     match self.observe_managed_execution_steps(5) {
       Some(completion) => return DispatchWorkCompleted(completion)
       None => ()
     }
-    let items = match step.env.bindings.get(plan.items_name) {
-      Some(binding) if binding.initialized => binding.value
-      _ =>
-        invalid_activation_dispatch_shell(
-          "array map items binding was not initialized before map",
-        )
+    let items = match plan.callback_family {
+      ArrayMapMemberCallback =>
+        match step.env.bindings.get(plan.items_name) {
+          Some(binding) if binding.initialized => binding.value
+          _ =>
+            invalid_activation_dispatch_shell(
+              "array map items binding was not initialized before map",
+            )
+        }
+      ArrayMapDirectCallback =>
+        make_array([
+          Number(
+            array_map_enclosing_number(step.env, plan.value_parameter_name),
+          ),
+        ])
     }
-    guard array_map_receiver_is_exact(
+    guard array_map_receiver_is_exact_for_plan(
       self.interp,
       items,
       registry.expected_array_prototype,
+      plan,
     ) else {
       invalid_activation_dispatch_shell(
         "array map receiver drifted from the admitted ordinary one-element array",
@@ -693,6 +1011,23 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
       ),
     )
   }
+  if plan.callback_family is ArrayMapDirectCallback &&
+    array_map_single_direct_callback_statement_matches(step.stmt, plan) {
+    let args = array_map_direct_call_request_args(step.env, plan)
+    match self.observe_managed_execution_steps(5) {
+      Some(completion) => return DispatchWorkCompleted(completion)
+      None => ()
+    }
+    let request = DispatchCallRequest(
+      callee=registry.step_function,
+      this_value=Undefined,
+      args~,
+      loc=plan.recursive_call_loc,
+    )
+    return DispatchWorkSuspended(
+      DispatchSuspendCall(request, DispatchCompleteReturn),
+    )
+  }
   if array_map_single_next_statement_matches(
       step.stmt,
       plan.function_name,
@@ -809,10 +1144,11 @@ fn PrimitiveProgramDispatchShell::perform_array_map_decision(
           "array map HasProperty decision is not exactly once",
         )
       }
-      guard array_map_receiver_is_exact(
+      guard array_map_receiver_is_exact_for_plan(
         self.interp,
         state.receiver,
         registry.expected_array_prototype,
+        registry.plan,
       ) else {
         invalid_activation_dispatch_shell(
           "array map receiver drifted before HasProperty",
@@ -831,10 +1167,11 @@ fn PrimitiveProgramDispatchShell::perform_array_map_decision(
           "array map Get decision is not exactly once",
         )
       }
-      guard array_map_receiver_is_exact(
+      guard array_map_receiver_is_exact_for_plan(
         self.interp,
         state.receiver,
         registry.expected_array_prototype,
+        registry.plan,
       ) else {
         invalid_activation_dispatch_shell(
           "array map receiver drifted before Get",

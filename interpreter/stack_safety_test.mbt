@@ -69,6 +69,11 @@ const ARRAY_MAP_MEMBER_RECURSION_SOURCE =
   #|step(256);
 
 ///|
+const ARRAY_MAP_DIRECT_RECURSION_SOURCE =
+  #|function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}
+  #|u(256,0,false);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -120,6 +125,18 @@ test "execution stack safety: exact array map member callback at depth 256" {
 }
 
 ///|
+test "execution stack safety: exact array map direct callback at depth 256" {
+  match run(ARRAY_MAP_DIRECT_RECURSION_SOURCE) {
+    Value::Number(256.0) => ()
+    other =>
+      fail(
+        "expected exact array map direct callback result 256, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
 test "array map cleanup permits a second run on the same Interpreter" {
   let interp = new_interpreter()
   let first = interp.run(@parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts)
@@ -131,6 +148,25 @@ test "array map cleanup permits a second run on the same Interpreter" {
     (first, second) =>
       fail(
         "array map cleanup changed repeated results: " +
+        first.to_string() +
+        ", " +
+        second.to_string(),
+      )
+  }
+}
+
+///|
+test "array map direct cleanup permits a second run on the same Interpreter" {
+  let interp = new_interpreter()
+  let first = interp.run(@parser.parse(ARRAY_MAP_DIRECT_RECURSION_SOURCE).stmts)
+  let second = interp.run(
+    @parser.parse(ARRAY_MAP_DIRECT_RECURSION_SOURCE).stmts,
+  )
+  match (first, second) {
+    (Value::Number(256.0), Value::Number(256.0)) => ()
+    (first, second) =>
+      fail(
+        "direct map cleanup changed repeated results: " +
         first.to_string() +
         ", " +
         second.to_string(),
@@ -280,6 +316,63 @@ test "array map near miss: non-UserFunc callback and non-one-element length stay
     Value::String_(value) => inspect(value, content="2:1:2:0:true|1:true")
     other =>
       fail("non-one-element map changed result/order: " + other.to_string())
+  }
+}
+
+///|
+test "array map direct near misses stay legacy" {
+  let cases = [
+    (
+      "function u(t,e,f){if(t===0)return 0;return 1+[e,e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e);})[0];}u(2,0);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f)+0;})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function v(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return v(t-1,e,!f);})[0];}function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return v(t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){if(t==0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u.call(undefined,t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){if(t===0)return 0;return 1+[e].map(Number)[0];}u(2,0,false);",
+      1.0,
+    ),
+    (
+      "\"use strict\";function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){if(t===0)return this===undefined?1:0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+      2.0,
+    ),
+    (
+      "function u(t,e,f){\"use strict\";if(t===0)return this===undefined?1:0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+      3.0,
+    ),
+  ]
+  for pair in cases {
+    let (source, expected) = pair
+    match run(source) {
+      Value::Number(value) => inspect(value, content=expected.to_string())
+      other => fail("direct near miss changed result: " + other.to_string())
+    }
   }
 }
 

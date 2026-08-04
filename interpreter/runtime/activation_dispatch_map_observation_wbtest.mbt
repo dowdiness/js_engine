@@ -8,6 +8,14 @@ const MAP_OBSERVATION_SOURCE =
   #|step(256);
 
 ///|
+const MAP_DIRECT_OBSERVATION_SOURCE =
+  #|function u(t,e,f){
+  #|  if (t === 0) return 0;
+  #|  return 1 + [e].map(function(e) { return u(t - 1, e, !f); })[0];
+  #|}
+  #|u(256,0,false);
+
+///|
 fn map_observation_array_construct(
   _interp : Interpreter,
   args : Array[Value],
@@ -27,11 +35,9 @@ fn map_observation_species_getter(
 }
 
 ///|
-fn map_observation_test_fixture() -> (
-  Interpreter,
-  Array[@ast.Stmt],
-  ArrayMapRecursionPreflight,
-) raise Error {
+fn map_observation_test_fixture_for_source(
+  source : String,
+) -> (Interpreter, Array[@ast.Stmt], ArrayMapRecursionPreflight) raise Error {
   let interp = Interpreter::new()
   let map_method = make_interp_method_func(
     name="map",
@@ -80,13 +86,22 @@ fn map_observation_test_fixture() -> (
     _ => ()
   }
   interp.global.def_builtin("Array", array_constructor)
-  let stmts = @parser.parse(MAP_OBSERVATION_SOURCE).stmts
+  let stmts = @parser.parse(source).stmts
   let preflight = match
     interp.preflight_dispatchable_array_map_recursion_program(stmts) {
     Some(found) => found
     None => fail("expected the map observation fixture to preflight")
   }
   (interp, stmts, preflight)
+}
+
+///|
+fn map_observation_test_fixture() -> (
+  Interpreter,
+  Array[@ast.Stmt],
+  ArrayMapRecursionPreflight,
+) raise Error {
+  map_observation_test_fixture_for_source(MAP_OBSERVATION_SOURCE)
 }
 
 ///|
@@ -124,6 +139,92 @@ test "array map observations accept and release each managed activation once" {
   inspect(shell.array_map_registry is None, content="true")
   inspect(shell.array_map_states.is_empty(), content="true")
   inspect(shell.array_map_activation_envs.is_empty(), content="true")
+}
+
+///|
+test "array map direct observations accept and release each activation once" {
+  let (interp, stmts, preflight) = map_observation_test_fixture_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let probe = DispatchObservationProbe()
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+    activation_observation_port=probe.port(),
+  )
+  match
+    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the exact direct map fixture to complete normally")
+  }
+  // 257 direct callee activations (256..0) and one callback for each
+  // non-base step.
+  inspect(probe.attempts, content="513")
+  inspect(probe.acquired, content="513")
+  inspect(probe.accepted, content="513")
+  inspect(probe.released, content="513")
+  inspect(probe.rejected, content="0")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="513")
+  inspect(probe.release_ordinals.length(), content="513")
+  for i in 0..<probe.release_ordinals.length() {
+    if probe.release_ordinals[i] != 513 - i {
+      fail("direct map activation cleanup was not strict LIFO")
+    }
+  }
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(shell.array_map_registry is None, content="true")
+  inspect(shell.array_map_states.is_empty(), content="true")
+  inspect(shell.array_map_activation_envs.is_empty(), content="true")
+}
+
+///|
+test "array map direct post-seal body drift rejects before executing" {
+  let (interp, stmts, preflight) = map_observation_test_fixture_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+  )
+  match
+    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the exact direct map setup run to complete")
+  }
+  let registry = interp.seal_array_map_recursion_registry(preflight, stmts)
+  shell.array_map_registry = Some(registry)
+  let replacement = @parser.parse("if(t===1)return 9;").stmts[0]
+  match registry.step_function {
+    Object({ callable: Some(UserFunc(data)), .. }) => {
+      let original = data.body[0]
+      data.body[0] = replacement
+      let request = DispatchCallRequest(
+        callee=registry.step_function,
+        this_value=Undefined,
+        args=[Number(256.0), Number(0.0), Bool(false)],
+        loc=preflight.plan.root_call_loc,
+      )
+      let result = try {
+        let _ = shell.enter_array_map_call(request)
+        "accepted"
+      } catch {
+        InvalidActivationDispatchShell(message) => message
+      }
+      data.body[0] = original
+      inspect(
+        result,
+        content="array map direct step activation body changed after sealing",
+      )
+      inspect(shell.cleanup_stack.length(), content="0")
+      inspect(shell.array_map_states.is_empty(), content="true")
+      inspect(shell.array_map_activation_envs.is_empty(), content="true")
+    }
+    _ => fail("expected the direct step function to retain UserFunc data")
+  }
 }
 
 ///|
@@ -320,10 +421,76 @@ test "array map accessor drift invokes getter on renewed exact run" {
 }
 
 ///|
-fn map_observation_control_run(
+test "array map direct accessor drift preserves guest abrupt identity" {
+  let (interp, stmts, _) = map_observation_test_fixture_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  match interp.realm_state.get_array_proto() {
+    Object(proto_data) =>
+      match proto_data.bag.descriptors.get("map") {
+        Some(original_desc) => {
+          let marker = make_array([String_("direct map accessor marker")])
+          let map_getter = make_method_func(
+            name="get map",
+            realm_state=Some(interp.realm_state),
+            fn(_this_val, _args) raise { raise JsException(marker) },
+          )
+          proto_data.bag.descriptors["map"] = {
+            ..original_desc,
+            writable: false,
+            getter: Some(map_getter),
+            setter: None,
+            is_accessor: true,
+          }
+          let thrown = try {
+            ignore(interp.run(stmts))
+            fail("expected the drifted direct map getter to throw")
+          } catch {
+            JsException(value) => value
+            error =>
+              fail("expected a direct map guest throw: " + error.to_string())
+          }
+          match (marker, thrown) {
+            (Array(expected_data), Array(actual_data)) =>
+              if !physical_equal(expected_data, actual_data) {
+                fail("direct map getter changed the guest throw identity")
+              }
+            _ => fail("direct map getter lost the marker object")
+          }
+          proto_data.bag.descriptors["map"] = original_desc
+        }
+        None => fail("expected the canonical map descriptor")
+      }
+    _ => fail("expected the canonical Array prototype object")
+  }
+  let recovery_preflight = match
+    interp.preflight_dispatchable_array_map_recursion_program(stmts) {
+    Some(value) => value
+    None => fail("direct map recovery lost exact admission")
+  }
+  let recovery_shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(recovery_preflight),
+    array_map_root_stmts=Some(stmts),
+  )
+  match
+    recovery_shell.drive_root_program(stmts, {
+      strict: false,
+      current_generator: None,
+    }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("direct map recovery did not complete")
+  }
+}
+
+///|
+fn map_observation_control_run_for_source(
+  source : String,
   remaining_steps : Int64,
 ) -> (DispatchCompletion, Int64, Int, Int, Int) raise Error {
-  let (interp, stmts, preflight) = map_observation_test_fixture()
+  let (interp, stmts, preflight) = map_observation_test_fixture_for_source(
+    source,
+  )
   let control = ExecutionControl(
     remaining_steps~,
     maximum_active_depth=1024,
@@ -356,6 +523,16 @@ fn map_observation_control_run(
 }
 
 ///|
+fn map_observation_control_run(
+  remaining_steps : Int64,
+) -> (DispatchCompletion, Int64, Int, Int, Int) raise Error {
+  map_observation_control_run_for_source(
+    MAP_OBSERVATION_SOURCE,
+    remaining_steps,
+  )
+}
+
+///|
 test "array map execution-control budget charges each observation once" {
   let (normal, remaining, cleanup, states, envs) = map_observation_control_run(
     5643L,
@@ -375,6 +552,35 @@ test "array map execution-control budget charges each observation once" {
     DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)) => ()
     _ =>
       fail("one-short map budget must stop at the exact observation boundary")
+  }
+  inspect(remaining, content="0")
+  inspect(cleanup, content="0")
+  inspect(states, content="0")
+  inspect(envs, content="0")
+}
+
+///|
+test "array map direct execution-control budget charges each observation once" {
+  let (normal, remaining, cleanup, states, envs) = map_observation_control_run_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+    4363L,
+  )
+  match normal {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("direct map budget must complete normally")
+  }
+  inspect(remaining, content="0")
+  inspect(cleanup, content="0")
+  inspect(states, content="0")
+  inspect(envs, content="0")
+  let (short, remaining, cleanup, states, envs) = map_observation_control_run_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+    4362L,
+  )
+  match short {
+    DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)) => ()
+    _ =>
+      fail("one-short direct map budget must stop at the observation boundary")
   }
   inspect(remaining, content="0")
   inspect(cleanup, content="0")

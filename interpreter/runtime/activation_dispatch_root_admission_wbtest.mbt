@@ -49,12 +49,61 @@ const ARRAY_MAP_RECURSION_ADMISSION_SOURCE =
   #|step(256);
 
 ///|
+const ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE =
+  #|function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}
+  #|u(256,0,false);
+
+///|
+fn array_map_direct_near_miss_sources() -> Array[String] {
+  [
+    "function u(t,e,f){if(t===0)return 0;return 1+[e,e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e);})[0];}u(2,0);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f)+0;})[0];}u(2,0,false);",
+    "function v(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return v(t-1,e,!f);})[0];}function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return v(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t==0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u.call(undefined,t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(Number)[0];}u(2,0,false);",
+    "\"use strict\";function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+  ]
+}
+
+///|
 test "array map admission classifies the exact source" {
   let stmts = root_admission_test_program(ARRAY_MAP_RECURSION_ADMISSION_SOURCE)
   inspect(
     classify_array_map_recursion_program(stmts) is Some(_),
     content="true",
   )
+}
+
+///|
+test "array map admission classifies the direct callback source" {
+  let stmts = root_admission_test_program(
+    ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE,
+  )
+  match classify_array_map_recursion_program(stmts) {
+    Some(plan) => {
+      inspect(array_map_plan_is_dispatchable(plan), content="true")
+      match stmts[0] {
+        @ast.FuncDecl(_, _, body, _, _) =>
+          inspect(
+            array_map_direct_step_statement_matches(body[1], plan),
+            content="true",
+          )
+        _ => fail("expected direct callback function declaration")
+      }
+    }
+    None => fail("expected exact direct callback source admission")
+  }
+}
+
+///|
+test "array map direct admission rejects the nine near-miss sources" {
+  for source in array_map_direct_near_miss_sources() {
+    let stmts = root_admission_test_program(source)
+    inspect(classify_array_map_recursion_program(stmts) is None, content="true")
+  }
 }
 
 ///|
@@ -70,6 +119,77 @@ test "array map admission rejects near-miss source families" {
     ] {
     let stmts = root_admission_test_program(source)
     inspect(classify_array_map_recursion_program(stmts) is None, content="true")
+  }
+}
+
+///|
+test "array map sealing rejects a reclassified location mutation" {
+  let original = root_admission_test_program(
+    ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE,
+  )
+  let shifted = root_admission_test_program(
+    "\n" + ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE,
+  )
+  match
+    (
+      classify_array_map_recursion_program(original),
+      classify_array_map_recursion_program(shifted),
+    ) {
+    (Some(expected), Some(actual)) =>
+      inspect(array_map_plan_matches(expected, actual), content="false")
+    _ => fail("expected both direct sources to classify before plan comparison")
+  }
+}
+
+///|
+test "array map direct call arguments retain source order and values" {
+  let stmts = root_admission_test_program(
+    ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE,
+  )
+  match classify_array_map_recursion_program(stmts) {
+    Some(plan) => {
+      let env = Environment::new()
+      env.def_parameter(plan.parameter_name, Number(4.0))
+      env.def_parameter(plan.callback_parameter, Number(7.0))
+      env.def_parameter(plan.flag_parameter_name, Bool(false))
+      let args = array_map_direct_call_arguments(env, plan)
+      inspect(args.count, content="4")
+      match args.value {
+        Number(value) => inspect(value, content="7")
+        _ => fail("direct argument value was not numeric")
+      }
+      inspect(args.flag, content="false")
+      let request_args = array_map_direct_call_request_args(env, plan)
+      inspect(request_args.length(), content="3")
+      match (request_args[0], request_args[1], request_args[2]) {
+        (Number(count), Number(value), Bool(flag)) => {
+          inspect(count, content="3")
+          inspect(value, content="7")
+          inspect(flag, content="true")
+        }
+        _ => fail("direct request arguments changed type or order")
+      }
+    }
+    None => fail("expected direct plan for argument ownership test")
+  }
+}
+
+///|
+test "array map sealing rejects a reclassified direct location" {
+  let (interp, original, preflight) = map_observation_test_fixture_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let shifted = root_admission_test_program(
+    "\n" + MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, original[0], interp.global)
+  let _ = try {
+    ignore(interp.seal_array_map_recursion_registry(preflight, shifted))
+    fail("sealing accepted a reclassified direct location")
+  } catch {
+    InvalidActivationDispatchShell(_) => ()
+    error => fail("unexpected direct seal error: " + error.to_string())
   }
 }
 

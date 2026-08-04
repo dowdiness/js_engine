@@ -162,6 +162,11 @@ const ARRAY_MAP_MEMBER_RECURSION_SOURCE =
   #|step(256);
 
 ///|
+const ARRAY_MAP_DIRECT_RECURSION_SOURCE =
+  #|function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}
+  #|u(256,0,false);
+
+///|
 const ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE =
   #|function step(n){if(n===0)return 0;return 1+step(n-1);}
   #|step(256,missing);
@@ -196,6 +201,11 @@ test "stack safety public facade intrinsic apply mapped arguments" {
 ///|
 test "stack safety public facade exact array map member callback" {
   inspect(run_value(ARRAY_MAP_MEMBER_RECURSION_SOURCE), content="256")
+}
+
+///|
+test "stack safety public facade exact array map direct callback" {
+  inspect(run_value(ARRAY_MAP_DIRECT_RECURSION_SOURCE), content="256")
 }
 
 ///|
