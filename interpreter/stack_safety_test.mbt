@@ -189,6 +189,23 @@ test "execution stack safety: numeric and map calls compose at depth 256" {
 }
 
 ///|
+test "numeric and map composition cleanup permits a second run" {
+  let interp = new_interpreter()
+  let first = interp.run(@parser.parse(NUMERIC_MAP_COMPOSITION_SOURCE).stmts)
+  let second = interp.run(@parser.parse(NUMERIC_MAP_COMPOSITION_SOURCE).stmts)
+  match (first, second) {
+    (Value::Number(512.0), Value::Number(512.0)) => ()
+    (first, second) =>
+      fail(
+        "composition cleanup changed repeated results: " +
+        first.to_string() +
+        ", " +
+        second.to_string(),
+      )
+  }
+}
+
+///|
 test "array map cleanup permits a second run on the same Interpreter" {
   let interp = new_interpreter()
   let first = interp.run(@parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts)

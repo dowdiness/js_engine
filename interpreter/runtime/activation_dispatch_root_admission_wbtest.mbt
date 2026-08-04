@@ -12,6 +12,9 @@ fn root_admission_test_kind(
     ActivationDispatchManagedRoot(ActivationDispatchControlRoot(_)) => "control"
     ActivationDispatchManagedRoot(ActivationDispatchConstructorRoot(_)) =>
       "constructor"
+    ActivationDispatchManagedRoot(
+      ActivationDispatchNumericMapCompositionRoot(_)
+    ) => "numeric map composition"
     ActivationDispatchManagedRoot(ActivationDispatchArrayMapRoot(_)) =>
       "array map"
     ActivationDispatchManagedRoot(ActivationDispatchNumericRoot(_)) => "numeric"
@@ -64,6 +67,47 @@ const ARRAY_MAP_FORWARDING_RECURSION_ADMISSION_SOURCE =
   #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
   #|}
   #|u(256);
+
+///|
+test "numeric map composition source is admitted by the closed classifier" {
+  let source =
+    #|function step(n){if(n===0)return 0;return 1+step(n-1);}
+    #|function f(t){if(t===0)return 0;return u(t);}
+    #|function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}
+    #|step(256)+u(256);
+  let stmts = root_admission_test_program(source)
+  inspect(
+    classify_numeric_map_composition_source(stmts) is Some(_),
+    content="true",
+  )
+}
+
+///|
+test "numeric map composition classifier keeps near misses legacy" {
+  let sources = [
+    "function step(n){if(n===0)return 0;return 1+step(n-1);}" +
+    "function f(t){if(t===0)return 0;return u(t);}" +
+    "function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}" +
+    "step(256)+u(256);0;",
+    "function step(n){if(n===0)return 0;return 1+step(n-1);}" +
+    "function f(t){if(t===0)return 0;return u(t);}" +
+    "function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}" +
+    "u(256)+step(256);",
+    "function step(n){if(n===0)return 0;return 1+step(n-1);}" +
+    "function f(t){if(t===0)return 0;return u(t);}" +
+    "function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}" +
+    "step(256)+u(255);",
+  ]
+  for source in sources {
+    inspect(
+      classify_numeric_map_composition_source(
+        root_admission_test_program(source),
+      )
+      is None,
+      content="true",
+    )
+  }
+}
 
 ///|
 fn array_map_forwarding_near_miss_sources() -> Array[String] {
