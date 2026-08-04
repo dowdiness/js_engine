@@ -449,7 +449,10 @@ fn array_map_registry_is_stable(
         registry.expected_global_object,
       ) =>
       match array_map_intrinsic_values(interp) {
-        Some((array_constructor, array_prototype, map_method)) => {
+        Some(
+          (array_constructor, array_prototype, map_method, map_method_descriptor
+          )
+        ) => {
           let species_stable = match
             array_map_species_snapshot(
               interp, array_prototype, array_constructor,
@@ -472,6 +475,10 @@ fn array_map_registry_is_stable(
           array_map_value_identity_matches(
             map_method,
             registry.expected_map_method,
+          ) &&
+          array_map_species_descriptor_shape_matches(
+            registry.expected_map_method_descriptor,
+            map_method_descriptor,
           ) &&
           species_stable
         }

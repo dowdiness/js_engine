@@ -361,6 +361,7 @@ priv struct ArrayMapRecursionPreflight {
   expected_array_prototype : Value
   expected_array_constructor : Value
   expected_map_method : Value
+  expected_map_method_descriptor : ArrayMapDescriptorShape
   expected_species : ArrayMapSpeciesSnapshot
   expected_source_identity : String?
 }
@@ -398,6 +399,7 @@ fn ArrayMapRecursionPreflight::ArrayMapRecursionPreflight(
   expected_array_prototype~ : Value,
   expected_array_constructor~ : Value,
   expected_map_method~ : Value,
+  expected_map_method_descriptor~ : ArrayMapDescriptorShape,
   expected_species~ : ArrayMapSpeciesSnapshot,
   expected_source_identity~ : String?,
 ) -> ArrayMapRecursionPreflight {
@@ -408,13 +410,26 @@ fn ArrayMapRecursionPreflight::ArrayMapRecursionPreflight(
     expected_array_prototype,
     expected_array_constructor,
     expected_map_method,
+    expected_map_method_descriptor,
     expected_species,
     expected_source_identity,
   }
 }
 
 ///|
-fn array_map_intrinsic_values(interp : Interpreter) -> (Value, Value, Value)? {
+fn array_map_method_descriptor_is_canonical(desc : PropDescriptor) -> Bool {
+  !desc.is_accessor &&
+  desc.writable &&
+  !desc.enumerable &&
+  desc.configurable &&
+  desc.getter is None &&
+  desc.setter is None
+}
+
+///|
+fn array_map_intrinsic_values(
+  interp : Interpreter,
+) -> (Value, Value, Value, ArrayMapDescriptorShape)? {
   let array_constructor = match interp.global.bindings.get("Array") {
     Some(binding) if binding.initialized => binding.value
     _ => return None
@@ -424,10 +439,22 @@ fn array_map_intrinsic_values(interp : Interpreter) -> (Value, Value, Value)? {
   guard proto_data.class_name == "Array" && proto_data.callable is None else {
     return None
   }
-  guard proto_data.bag.properties.get("map") is Some(map_method) else {
-    return None
+  let map_method = match proto_data.bag.properties.get("map") {
+    Some(value) => value
+    None => return None
   }
-  Some((array_constructor, array_prototype, map_method))
+  let map_descriptor = match proto_data.bag.descriptors.get("map") {
+    Some(desc) if array_map_method_descriptor_is_canonical(desc) => desc
+    _ => return None
+  }
+  Some(
+    (
+      array_constructor,
+      array_prototype,
+      map_method,
+      array_map_descriptor_shape(map_descriptor),
+    ),
+  )
 }
 
 ///|
@@ -620,7 +647,7 @@ fn Interpreter::preflight_array_map_recursion_program(
   guard array_map_existing_step_binding_is_compatible(self, plan) else {
     return None
   }
-  let (array_constructor, array_prototype, map_method) = match
+  let (array_constructor, array_prototype, map_method, map_method_descriptor) = match
     array_map_intrinsic_values(self) {
     Some(values) => values
     None => return None
@@ -645,6 +672,7 @@ fn Interpreter::preflight_array_map_recursion_program(
       expected_array_prototype=array_prototype,
       expected_array_constructor=array_constructor,
       expected_map_method=map_method,
+      expected_map_method_descriptor=map_method_descriptor,
       expected_species~,
       expected_source_identity=self.realm_state.active_source_identity.val,
     ),
@@ -672,6 +700,7 @@ priv struct TrustedArrayMapRecursionRegistry {
   expected_array_prototype : Value
   expected_array_constructor : Value
   expected_map_method : Value
+  expected_map_method_descriptor : ArrayMapDescriptorShape
   expected_species : ArrayMapSpeciesSnapshot
   expected_throw_type_error : Value?
 }
@@ -685,6 +714,7 @@ fn TrustedArrayMapRecursionRegistry::TrustedArrayMapRecursionRegistry(
   expected_array_prototype~ : Value,
   expected_array_constructor~ : Value,
   expected_map_method~ : Value,
+  expected_map_method_descriptor~ : ArrayMapDescriptorShape,
   expected_species~ : ArrayMapSpeciesSnapshot,
   expected_throw_type_error~ : Value?,
 ) -> TrustedArrayMapRecursionRegistry {
@@ -695,6 +725,7 @@ fn TrustedArrayMapRecursionRegistry::TrustedArrayMapRecursionRegistry(
     expected_array_prototype,
     expected_array_constructor,
     expected_map_method,
+    expected_map_method_descriptor,
     expected_species,
     expected_throw_type_error,
   }
@@ -792,7 +823,9 @@ fn Interpreter::seal_array_map_recursion_registry(
     )
   }
   guard array_map_intrinsic_values(self)
-    is Some((array_constructor, array_prototype, map_method)) &&
+    is Some(
+      (array_constructor, array_prototype, map_method, map_method_descriptor)
+    ) &&
     array_map_value_identity_matches(
       preflight.expected_array_constructor,
       array_constructor,
@@ -801,7 +834,11 @@ fn Interpreter::seal_array_map_recursion_registry(
       preflight.expected_array_prototype,
       array_prototype,
     ) &&
-    array_map_value_identity_matches(preflight.expected_map_method, map_method) else {
+    array_map_value_identity_matches(preflight.expected_map_method, map_method) &&
+    array_map_species_descriptor_shape_matches(
+      preflight.expected_map_method_descriptor,
+      map_method_descriptor,
+    ) else {
     invalid_activation_dispatch_shell(
       "array map intrinsic identity drifted before sealing",
     )
@@ -823,6 +860,7 @@ fn Interpreter::seal_array_map_recursion_registry(
     expected_array_prototype=preflight.expected_array_prototype,
     expected_array_constructor=preflight.expected_array_constructor,
     expected_map_method=preflight.expected_map_method,
+    expected_map_method_descriptor=preflight.expected_map_method_descriptor,
     expected_species=preflight.expected_species,
     expected_throw_type_error=array_map_registry_throw_type_error(
       preflight.throw_type_error_snapshot,

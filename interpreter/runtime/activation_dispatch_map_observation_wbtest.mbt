@@ -70,8 +70,10 @@ fn map_observation_test_fixture() -> (
         species_getter,
       )
       match array_proto {
-        Object(proto_data) =>
+        Object(proto_data) => {
+          install_builtin_method(proto_data, "map", map_method)
           install_builtin_method(proto_data, "constructor", array_constructor)
+        }
         _ => ()
       }
     }
@@ -260,6 +262,60 @@ test "array map shell abort preserves guest identity and pops state" {
     }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("same-Interpreter map recovery did not complete")
+  }
+}
+
+///|
+test "array map accessor drift invokes getter on renewed exact run" {
+  let (interp, stmts, preflight) = map_observation_test_fixture()
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+  )
+  match
+    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the first exact map run to complete")
+  }
+  let marker = make_array([String_("map accessor marker")])
+  let map_getter = make_method_func(
+    name="get map",
+    realm_state=Some(interp.realm_state),
+    fn(_this_val, _args) raise { raise JsException(marker) },
+  )
+  match interp.realm_state.get_array_proto() {
+    Object(proto_data) =>
+      match proto_data.bag.descriptors.get("map") {
+        Some(desc) =>
+          proto_data.bag.descriptors["map"] = {
+            ..desc,
+            writable: false,
+            getter: Some(map_getter),
+            setter: None,
+            is_accessor: true,
+          }
+        None => fail("expected the canonical map descriptor")
+      }
+    _ => fail("expected the canonical Array prototype object")
+  }
+  let thrown = try {
+    ignore(interp.run(stmts))
+    fail("expected the drifted Array.prototype.map getter to throw")
+  } catch {
+    JsException(value) => value
+    error =>
+      fail(
+        "expected the drifted map getter to throw a guest value: " +
+        error.to_string(),
+      )
+  }
+  match (marker, thrown) {
+    (Array(expected_data), Array(actual_data)) =>
+      if !physical_equal(expected_data, actual_data) {
+        fail("drifted map getter changed the guest throw identity")
+      }
+    _ => fail("drifted map getter did not preserve the marker object")
   }
 }
 
