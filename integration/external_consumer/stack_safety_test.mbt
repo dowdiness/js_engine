@@ -179,6 +179,22 @@ const ARRAY_MAP_FORWARDING_RECURSION_SOURCE =
   #|u(256);
 
 ///|
+const NUMERIC_MAP_COMPOSITION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + step(n - 1);
+  #|}
+  #|function f(t) {
+  #|  if (t === 0) return 0;
+  #|  return u(t);
+  #|}
+  #|function u(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
+  #|}
+  #|step(256) + u(256);
+
+///|
 const ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE =
   #|function step(n){if(n===0)return 0;return 1+step(n-1);}
   #|step(256,missing);
@@ -223,6 +239,11 @@ test "stack safety public facade exact array map direct callback" {
 ///|
 test "stack safety public facade array map forwarding callback" {
   inspect(run_value(ARRAY_MAP_FORWARDING_RECURSION_SOURCE), content="256")
+}
+
+///|
+test "stack safety public facade numeric and map calls compose at depth 256" {
+  inspect(run_value(NUMERIC_MAP_COMPOSITION_SOURCE), content="512")
 }
 
 ///|
