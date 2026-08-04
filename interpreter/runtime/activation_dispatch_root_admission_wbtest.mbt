@@ -12,6 +12,8 @@ fn root_admission_test_kind(
     ActivationDispatchManagedRoot(ActivationDispatchControlRoot(_)) => "control"
     ActivationDispatchManagedRoot(ActivationDispatchConstructorRoot(_)) =>
       "constructor"
+    ActivationDispatchManagedRoot(ActivationDispatchArrayMapRoot(_)) =>
+      "array map"
     ActivationDispatchManagedRoot(ActivationDispatchNumericRoot(_)) => "numeric"
     ActivationDispatchManagedRoot(ActivationDispatchGetterRoot(_)) => "getter"
     ActivationDispatchManagedRoot(ActivationDispatchProxyRoot(_)) => "proxy"
@@ -36,6 +38,40 @@ const REVERSED_MUTUAL_RECEIVER_RECURSION_SOURCE =
   #|function right(n){if(n===0)return this["\x6darker"];return 1+this["\x6ceft"](n-1);}
   #|let receiver={["\x6darker"]:0,["\x6ceft"]:left,["\x72ight"]:right};
   #|receiver["\x72ight"](256);
+
+///|
+const ARRAY_MAP_RECURSION_ADMISSION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  var items = [{next: function() { return step(n - 1); }}];
+  #|  return 1 + items.map(function(t) { return t.next(); })[0];
+  #|}
+  #|step(256);
+
+///|
+test "array map admission classifies the exact source" {
+  let stmts = root_admission_test_program(ARRAY_MAP_RECURSION_ADMISSION_SOURCE)
+  inspect(
+    classify_array_map_recursion_program(stmts) is Some(_),
+    content="true",
+  )
+}
+
+///|
+test "array map admission rejects near-miss source families" {
+  for
+    source in [
+      "function step(n){if(n===0)return 0;var items=[{next:function(){return step(n-1);}}];items.map=function(){return [41];};return 1+items.map(function(t){return t.next();})[0];}step(2);",
+      "Array.prototype.map=function(){return [7];};function step(n){if(n===0)return 0;var items=[{next:function(){return step(n-1);}}];return 1+items.map(function(t){return t.next();})[0];}step(2);",
+      "function step(n){if(n===0)return 0;var items=[{next:function(){return step(n-1);}}];return 1+items.map(function(t){return t[\"next\"]();})[0];}step(2);",
+      "var source=[];source[1]=2;source.map(function(x){return x;});", "var source=[1];Object.defineProperty(source,\"0\",{get:function(){return 7;}});source.map(function(x){return x;});",
+      "var source=[1];var proxy=new Proxy(source,{});proxy.map(function(x){return x;});",
+      "[1].map(String);", "[{next:function(){return 1;}},{next:function(){return 2;}}].map(function(t){return t.next();});",
+    ] {
+    let stmts = root_admission_test_program(source)
+    inspect(classify_array_map_recursion_program(stmts) is None, content="true")
+  }
+}
 
 ///|
 test "Interpreter run uses one closed root admission seam" {

@@ -153,6 +153,15 @@ const INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE =
   #|step(256);
 
 ///|
+const ARRAY_MAP_MEMBER_RECURSION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  var items = [{next: function() { return step(n - 1); }}];
+  #|  return 1 + items.map(function(t) { return t.next(); })[0];
+  #|}
+  #|step(256);
+
+///|
 const ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE =
   #|function step(n){if(n===0)return 0;return 1+step(n-1);}
   #|step(256,missing);
@@ -182,6 +191,11 @@ test "stack safety public facade intrinsic apply forwarding recursion" {
 ///|
 test "stack safety public facade intrinsic apply mapped arguments" {
   inspect(run_value(INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE), content="256")
+}
+
+///|
+test "stack safety public facade exact array map member callback" {
+  inspect(run_value(ARRAY_MAP_MEMBER_RECURSION_SOURCE), content="256")
 }
 
 ///|

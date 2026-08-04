@@ -16,6 +16,7 @@ fn[T] invalid_activation_dispatch_shell(
 }
 
 ///|
+#warnings("-unused_constructor")
 priv enum ProgramCleanupOwner {
   AcceptedProgram
   RejectedProgram
@@ -29,6 +30,8 @@ priv enum ProgramCleanupOwner {
   RejectedReceiverCall
   AcceptedConstructorCall
   RejectedConstructorCall
+  AcceptedArrayMapCall
+  RejectedArrayMapCall
   PropertyAccessCleanup
 }
 
@@ -214,6 +217,7 @@ priv enum DispatchActivationObservation {
 }
 
 ///|
+#warnings("-unused_constructor")
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
   DispatchControlRootRealmCleanup(FunctionRealmProtos)
@@ -222,12 +226,14 @@ priv enum DispatchShellCleanupResources {
   DispatchProxyRootRealmCleanup(FunctionRealmProtos)
   DispatchReceiverRootRealmCleanup(FunctionRealmProtos)
   DispatchConstructorRootRealmCleanup(FunctionRealmProtos)
+  DispatchArrayMapRootRealmCleanup(FunctionRealmProtos)
   DispatchDeniedActivationCleanup
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
   DispatchGetterRealmCleanup(DispatchGetterCallRealmCleanup)
   DispatchProxyRealmCleanup(DispatchProxyCallRealmCleanup)
   DispatchReceiverRealmCleanup(DispatchReceiverCallRealmCleanup)
   DispatchConstructorRealmCleanup(DispatchConstructorCallRealmCleanup)
+  DispatchArrayMapRealmCleanup(DispatchReceiverCallRealmCleanup)
   DispatchPropertyRealmCleanup(ClearedActiveCalleeRealmScope)
 }
 
@@ -241,6 +247,7 @@ priv struct ProgramRealmCleanup {
 }
 
 ///|
+#warnings("-unused_field")
 priv struct PrimitiveProgramDispatchShell {
   interp : Interpreter
   cleanup_stack : Array[ProgramRealmCleanup]
@@ -266,6 +273,11 @@ priv struct PrimitiveProgramDispatchShell {
   constructor_root_preflight : ConstructorRecursionPreflight?
   constructor_root_stmts : Array[@ast.Stmt]?
   mut constructor_registry : TrustedConstructorRecursionRegistry?
+  array_map_root_preflight : ArrayMapRecursionPreflight?
+  array_map_root_stmts : Array[@ast.Stmt]?
+  mut array_map_registry : TrustedArrayMapRecursionRegistry?
+  array_map_states : Array[MapState]
+  array_map_activation_envs : Array[Environment]
   activation_observation_port : ActivationObservationPort
   mut next_cleanup_id : Int
 }
@@ -291,6 +303,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   constructor_root_preflight? : ConstructorRecursionPreflight? = None,
   constructor_root_stmts? : Array[@ast.Stmt]? = None,
   constructor_registry? : TrustedConstructorRecursionRegistry? = None,
+  array_map_root_preflight? : ArrayMapRecursionPreflight? = None,
+  array_map_root_stmts? : Array[@ast.Stmt]? = None,
+  array_map_registry? : TrustedArrayMapRecursionRegistry? = None,
   // The shell lifecycle is policy-free; admitted production roots inject the
   // execution-control port explicitly below.
   activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
@@ -322,6 +337,11 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     constructor_root_preflight,
     constructor_root_stmts: constructor_root_stmts.map(stmts => stmts.copy()),
     constructor_registry,
+    array_map_root_preflight,
+    array_map_root_stmts: array_map_root_stmts.map(stmts => stmts.copy()),
+    array_map_registry,
+    array_map_states: [],
+    array_map_activation_envs: [],
     activation_observation_port,
     next_cleanup_id: 0,
   }
@@ -421,6 +441,8 @@ fn activation_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
     | RejectedReceiverCall
     | AcceptedConstructorCall
     | RejectedConstructorCall
+    | AcceptedArrayMapCall
+    | RejectedArrayMapCall
     | PropertyAccessCleanup => false
   }
 }
@@ -436,13 +458,15 @@ fn activation_cleanup_owner_matches(
     | (AcceptedGetterCall, true)
     | (AcceptedProxyCall, true)
     | (AcceptedReceiverCall, true)
-    | (AcceptedConstructorCall, true) => true
+    | (AcceptedConstructorCall, true)
+    | (AcceptedArrayMapCall, true) => true
     (RejectedProgram, false)
     | (RejectedNumericCall, false)
     | (RejectedGetterCall, false)
     | (RejectedProxyCall, false)
     | (RejectedReceiverCall, false)
-    | (RejectedConstructorCall, false) => true
+    | (RejectedConstructorCall, false)
+    | (RejectedArrayMapCall, false) => true
     _ => false
   }
 }
@@ -517,7 +541,8 @@ fn PrimitiveProgramDispatchShell::reject_denied_managed_activation(
     | RejectedGetterCall
     | RejectedProxyCall
     | RejectedReceiverCall
-    | RejectedConstructorCall => ()
+    | RejectedConstructorCall
+    | RejectedArrayMapCall => ()
     _ =>
       invalid_activation_dispatch_shell(
         "denied activation requires a rejected call owner",
@@ -713,6 +738,22 @@ fn PrimitiveProgramDispatchShell::push_constructor_root_cleanup(
 }
 
 ///|
+#warnings("-unused_value")
+fn PrimitiveProgramDispatchShell::push_array_map_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchArrayMapRootRealmCleanup(previous_realm_protos),
+    capabilities: None,
+    observation: None,
+  })
+}
+
+///|
 fn PrimitiveProgramDispatchShell::push_constructor_call_cleanup(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -724,6 +765,24 @@ fn PrimitiveProgramDispatchShell::push_constructor_call_cleanup(
     id,
     owner,
     resources: DispatchConstructorRealmCleanup(resources),
+    capabilities: None,
+    observation,
+  })
+}
+
+///|
+#warnings("-unused_value")
+fn PrimitiveProgramDispatchShell::push_array_map_call_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  owner : ProgramCleanupOwner,
+  resources : DispatchReceiverCallRealmCleanup,
+  observation : DispatchActivationObservation?,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchArrayMapRealmCleanup(resources),
     capabilities: None,
     observation,
   })
@@ -971,6 +1030,12 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.constructor_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
+    DispatchArrayMapRootRealmCleanup(previous_realm_protos) => {
+      self.array_map_registry = None
+      self.array_map_states.clear()
+      self.array_map_activation_envs.clear()
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchDeniedActivationCleanup => ()
     DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
@@ -1029,6 +1094,20 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       )
     }
     DispatchConstructorRealmCleanup(resources) => {
+      self.interp.finish_simple_user_func_parameter_gate(
+        resources.parameter_gate,
+      )
+      finish_active_callee_realm_value(
+        self.interp.realm_state,
+        resources.active_realm,
+        failure~,
+      )
+      finish_cleared_active_callee_realm(
+        self.interp.realm_state,
+        resources.cleared_realm,
+      )
+    }
+    DispatchArrayMapRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
       )
@@ -1372,51 +1451,58 @@ fn PrimitiveProgramDispatchShell::enter_program(
             id, cursor, previous_realm_protos, preflight,
           )
         None =>
-          match
-            (
-              self.control_root_preflight,
-              self.numeric_root_preflight,
-              self.getter_root_preflight,
-              self.proxy_root_preflight,
-              self.receiver_root_preflight,
-              self.mutual_receiver_root_preflight,
-            ) {
-            (Some(preflight), None, None, None, None, None) =>
-              self.complete_control_root_preparation(
-                id, cursor, previous_realm_protos, preflight,
-              )
-            (None, Some(preflight), None, None, None, None) =>
-              self.complete_numeric_root_preparation(
-                id, cursor, previous_realm_protos, preflight,
-              )
-            (None, None, Some(_), None, None, None) => {
-              self.push_getter_root_cleanup(id, previous_realm_protos)
+          match self.array_map_root_preflight {
+            Some(_) => {
+              self.push_array_map_root_cleanup(id, previous_realm_protos)
               DispatchProgramAccepted(DispatchActivationCleanup(id))
             }
-            (None, None, None, Some(_), None, None) => {
-              self.push_proxy_root_cleanup(id, previous_realm_protos)
-              DispatchProgramAccepted(DispatchActivationCleanup(id))
-            }
-            (None, None, None, None, Some(_), None) => {
-              self.push_receiver_root_cleanup(id, previous_realm_protos)
-              DispatchProgramAccepted(DispatchActivationCleanup(id))
-            }
-            (None, None, None, None, None, Some(_)) => {
-              self.push_receiver_root_cleanup(id, previous_realm_protos)
-              DispatchProgramAccepted(DispatchActivationCleanup(id))
-            }
-            (None, None, None, None, None, None) => {
-              self.push_program_cleanup(
-                id,
-                AcceptedProgram,
-                previous_realm_protos,
-              )
-              DispatchProgramAccepted(DispatchActivationCleanup(id))
-            }
-            _ =>
-              invalid_activation_dispatch_shell(
-                "program cannot own multiple activation admissions",
-              )
+            None =>
+              match
+                (
+                  self.control_root_preflight,
+                  self.numeric_root_preflight,
+                  self.getter_root_preflight,
+                  self.proxy_root_preflight,
+                  self.receiver_root_preflight,
+                  self.mutual_receiver_root_preflight,
+                ) {
+                (Some(preflight), None, None, None, None, None) =>
+                  self.complete_control_root_preparation(
+                    id, cursor, previous_realm_protos, preflight,
+                  )
+                (None, Some(preflight), None, None, None, None) =>
+                  self.complete_numeric_root_preparation(
+                    id, cursor, previous_realm_protos, preflight,
+                  )
+                (None, None, Some(_), None, None, None) => {
+                  self.push_getter_root_cleanup(id, previous_realm_protos)
+                  DispatchProgramAccepted(DispatchActivationCleanup(id))
+                }
+                (None, None, None, Some(_), None, None) => {
+                  self.push_proxy_root_cleanup(id, previous_realm_protos)
+                  DispatchProgramAccepted(DispatchActivationCleanup(id))
+                }
+                (None, None, None, None, Some(_), None) => {
+                  self.push_receiver_root_cleanup(id, previous_realm_protos)
+                  DispatchProgramAccepted(DispatchActivationCleanup(id))
+                }
+                (None, None, None, None, None, Some(_)) => {
+                  self.push_receiver_root_cleanup(id, previous_realm_protos)
+                  DispatchProgramAccepted(DispatchActivationCleanup(id))
+                }
+                (None, None, None, None, None, None) => {
+                  self.push_program_cleanup(
+                    id,
+                    AcceptedProgram,
+                    previous_realm_protos,
+                  )
+                  DispatchProgramAccepted(DispatchActivationCleanup(id))
+                }
+                _ =>
+                  invalid_activation_dispatch_shell(
+                    "program cannot own multiple activation admissions",
+                  )
+              }
           }
       }
     Err(error) => {
@@ -2023,14 +2109,17 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
       self.proxy_registry,
       self.receiver_registry,
       self.mutual_receiver_registry,
+      self.array_map_registry,
     ) {
-    (Some(_), None, None, None, None) => self.enter_numeric_call(request)
-    (None, Some(_), None, None, None) => self.enter_getter_call(request)
-    (None, None, Some(_), None, None) => self.enter_proxy_call(request)
-    (None, None, None, Some(_), None) => self.enter_receiver_call(request)
-    (None, None, None, None, Some(_)) =>
+    (Some(_), None, None, None, None, None) => self.enter_numeric_call(request)
+    (None, Some(_), None, None, None, None) => self.enter_getter_call(request)
+    (None, None, Some(_), None, None, None) => self.enter_proxy_call(request)
+    (None, None, None, Some(_), None, None) => self.enter_receiver_call(request)
+    (None, None, None, None, Some(_), None) =>
       self.enter_mutual_receiver_call(request)
-    (None, None, None, None, None) =>
+    (None, None, None, None, None, Some(_)) =>
+      self.enter_array_map_call(request)
+    (None, None, None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed call requires one sealed runtime registry",
       )
@@ -3431,31 +3520,41 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
   }
   match
     (
+      self.array_map_root_preflight,
       self.constructor_root_preflight,
       self.getter_root_preflight,
       self.proxy_root_preflight,
       self.receiver_root_preflight,
       self.mutual_receiver_root_preflight,
     ) {
-    (Some(preflight), None, None, None, None) =>
+    (Some(preflight), None, None, None, None, None) =>
+      if physical_equal(step.env, self.interp.global) {
+        self.execute_array_map_root_statement(step, preflight)
+      } else {
+        self.execute_array_map_body_statement(
+          step,
+          self.require_array_map_registry(),
+        )
+      }
+    (None, Some(preflight), None, None, None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_constructor_root_statement(step, preflight)
       } else {
         self.execute_constructor_body_statement(step)
       }
-    (None, Some(preflight), None, None, None) =>
+    (None, None, Some(preflight), None, None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_getter_root_statement(step, preflight)
       } else {
         self.execute_getter_body_statement(step, self.require_getter_registry())
       }
-    (None, None, Some(preflight), None, None) =>
+    (None, None, None, Some(preflight), None, None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_proxy_root_statement(step, preflight)
       } else {
         self.execute_proxy_body_statement(step, self.require_proxy_registry())
       }
-    (None, None, None, Some(preflight), None) =>
+    (None, None, None, None, Some(preflight), None) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_receiver_root_statement(step, preflight)
       } else {
@@ -3464,13 +3563,13 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
           self.require_receiver_registry(),
         )
       }
-    (None, None, None, None, Some(preflight)) =>
+    (None, None, None, None, None, Some(preflight)) =>
       if physical_equal(step.env, self.interp.global) {
         self.execute_mutual_receiver_root_statement(step, preflight)
       } else {
         self.execute_mutual_receiver_body_statement(step)
       }
-    (None, None, None, None, None) =>
+    (None, None, None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed statement is outside admitted execution",
       )
@@ -3567,6 +3666,46 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
       self.resume_proxy_get_trap(lookup, value)
     DispatchPropertyCheckProxyGetResult(work, value) =>
       self.resume_proxy_get_result(work, value)
+    DispatchMapStart(state) => {
+      guard state.phase is MapReady else {
+        invalid_activation_dispatch_shell(
+          "array map start received a non-ready state",
+        )
+      }
+      self.array_map_states.push(state)
+      self.perform_array_map_event(state, MapStart)
+    }
+    DispatchMapResume(state, value) =>
+      self.perform_array_map_event(
+        state,
+        self.array_map_resume_event(state, value),
+      )
+    DispatchMapStartMemberCall(member_resume, value) => {
+      let registry = self.require_array_map_registry()
+      guard member_resume.loc == registry.plan.member_call_loc else {
+        invalid_activation_dispatch_shell(
+          "array map member call escaped its sealed source location",
+        )
+      }
+      guard member_resume.receiver is Object(_) else {
+        invalid_activation_dispatch_shell(
+          "array map member call receiver is not the admitted object",
+        )
+      }
+      DispatchWorkSuspended(
+        DispatchSuspendCall(
+          DispatchCallRequest(
+            callee=value,
+            this_value=member_resume.receiver,
+            args=[],
+            loc=member_resume.loc,
+          ),
+          DispatchCompleteReturn,
+        ),
+      )
+    }
+    DispatchMapAbort(state, error) =>
+      self.perform_array_map_event(state, MapAbrupt(error))
   }
 }
 
@@ -3609,6 +3748,8 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     )
     | DispatchRun(DispatchResumeContinuation(DispatchResolveProxyGetTrap(_), _))
     | DispatchRun(DispatchResumeContinuation(DispatchCheckProxyGetResult(_), _))
+    | DispatchRun(DispatchResumeContinuation(DispatchContinueMap(_), _))
+    | DispatchRun(DispatchResumeContinuation(DispatchMapStartMemberCall(_), _))
     | DispatchRun(
       DispatchResumeContinuation(DispatchBindParameterDefault(_), _)
     )
@@ -3676,6 +3817,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
   }
   let production = self.control_root_preflight is Some(_) ||
     self.constructor_root_preflight is Some(_) ||
+    self.array_map_root_preflight is Some(_) ||
     self.numeric_root_preflight is Some(_) ||
     self.getter_root_preflight is Some(_) ||
     self.proxy_root_preflight is Some(_) ||
@@ -3726,6 +3868,30 @@ fn PrimitiveProgramDispatchShell::drive_root_call(
       raise error
     }
   }
+}
+
+///|
+fn Interpreter::run_activation_dispatch_array_map_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : ArrayMapRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.array_map_registry is None &&
+    shell.array_map_states.is_empty() &&
+    shell.array_map_activation_envs.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "array map registry, map state, or activation environment outlived its root activation",
+    )
+  }
+  completion
 }
 
 ///|
@@ -3940,6 +4106,8 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_control_program(stmts, ctx, preflight)
     ActivationDispatchConstructorRoot(preflight) =>
       self.run_activation_dispatch_constructor_program(stmts, ctx, preflight)
+    ActivationDispatchArrayMapRoot(preflight) =>
+      self.run_activation_dispatch_array_map_program(stmts, ctx, preflight)
     ActivationDispatchNumericRoot(preflight) =>
       self.run_activation_dispatch_numeric_program(stmts, ctx, preflight)
     ActivationDispatchGetterRoot(preflight) =>
