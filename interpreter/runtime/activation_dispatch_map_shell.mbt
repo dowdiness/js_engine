@@ -44,6 +44,19 @@ fn PrimitiveProgramDispatchShell::current_array_map_state(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::expression_root_call_loc_matches(
+  self : PrimitiveProgramDispatchShell,
+  loc : @token.Loc,
+) -> Bool {
+  for expected in self.expression_root_call_locs {
+    if expected == loc {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn array_map_member_receiver_matches(
   receiver : Value,
   callee : Value,
@@ -186,6 +199,7 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
     }
     guard request.loc == plan.root_call_loc ||
       request.loc == plan.recursive_call_loc ||
+      (is_step && self.expression_root_call_loc_matches(request.loc)) ||
       (
         plan.callback_family is ArrayMapForwardingCallback &&
         request.loc == plan.forward_call_loc

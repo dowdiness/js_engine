@@ -435,6 +435,25 @@ fn snapshot_dispatch_expression_plan_resume(
 }
 
 ///|
+fn dispatch_expression_plan_root_call_locs(
+  plan : DispatchExpressionPlan,
+) -> Array[@token.Loc] {
+  let locations : Array[@token.Loc] = []
+  for step in plan.steps {
+    match step {
+      DispatchExpressionCall(call) =>
+        match call.adapter {
+          DispatchArrayMapUserFuncAdapterToken(_) =>
+            locations.push(call.request.loc)
+          DispatchNumericUserFuncAdapterToken(_) => ()
+        }
+      DispatchExpressionNumericAdd(_) => ()
+    }
+  }
+  locations
+}
+
+///|
 fn expression_call_source(expr : @ast.Expr) -> DispatchExpressionCallSource? {
   match expr {
     @ast.Call(
@@ -482,8 +501,56 @@ fn classify_expression_source_steps(
         steps.push(DispatchExpressionAddSourceStep(loc))
     }
   }
-  guard steps.length() == 5 else { return None }
   Some(steps)
+}
+
+///|
+fn expression_source_step_is_call_named(
+  steps : Array[DispatchExpressionSourceStep],
+  index : Int,
+  name : String,
+) -> Bool {
+  match steps[index] {
+    DispatchExpressionCallSourceStep({ name: actual, .. }) => actual == name
+    _ => false
+  }
+}
+
+///|
+fn expression_source_step_is_add(
+  steps : Array[DispatchExpressionSourceStep],
+  index : Int,
+) -> Bool {
+  match steps[index] {
+    DispatchExpressionAddSourceStep(_) => true
+    _ => false
+  }
+}
+
+///|
+// The common postfix plan is deliberately closed to the three-call and
+// four-call sources already proven at the public boundary. A longer or
+// reordered call sequence remains on the legacy evaluator.
+fn expression_source_shape_is_admissible(
+  steps : Array[DispatchExpressionSourceStep],
+) -> Bool {
+  match steps.length() {
+    5 =>
+      expression_source_step_is_call_named(steps, 0, "step") &&
+      expression_source_step_is_call_named(steps, 1, "u") &&
+      expression_source_step_is_add(steps, 2) &&
+      expression_source_step_is_call_named(steps, 3, "step") &&
+      expression_source_step_is_add(steps, 4)
+    7 =>
+      expression_source_step_is_call_named(steps, 0, "step") &&
+      expression_source_step_is_call_named(steps, 1, "u") &&
+      expression_source_step_is_add(steps, 2) &&
+      expression_source_step_is_call_named(steps, 3, "step") &&
+      expression_source_step_is_add(steps, 4) &&
+      expression_source_step_is_call_named(steps, 5, "u") &&
+      expression_source_step_is_add(steps, 6)
+    _ => false
+  }
 }
 
 ///|
@@ -499,11 +566,7 @@ fn numeric_map_expression_source(
     Some(steps) => steps
     None => return None
   }
-  guard steps[0] is DispatchExpressionCallSourceStep({ name: "step", .. }) &&
-    steps[1] is DispatchExpressionCallSourceStep({ name: "u", .. }) &&
-    steps[2] is DispatchExpressionAddSourceStep(_) &&
-    steps[3] is DispatchExpressionCallSourceStep({ name: "step", .. }) &&
-    steps[4] is DispatchExpressionAddSourceStep(_) else {
+  guard expression_source_shape_is_admissible(steps) else {
     return None
   }
   let mut first_step_expr : @ast.Expr? = None
