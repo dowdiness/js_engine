@@ -176,6 +176,22 @@ priv struct DispatchPropertyGetResume {
 }
 
 ///|
+#warnings("-unused_field")
+priv struct DispatchMapMemberCallResume {
+  receiver : Value
+  loc : @token.Loc
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchMapMemberCallResume::DispatchMapMemberCallResume(
+  receiver~ : Value,
+  loc~ : @token.Loc,
+) -> DispatchMapMemberCallResume {
+  { receiver, loc }
+}
+
+///|
 #warnings("-unused_value")
 fn DispatchPropertyGetResume::DispatchPropertyGetResume(
   target~ : Value,
@@ -712,6 +728,9 @@ fn snapshot_dispatch_continuation(
       DispatchContinueNumericStatement(
         snapshot_dispatch_numeric_statement_continuation(numeric),
       )
+    DispatchContinueMap(map) => DispatchContinueMap(map)
+    DispatchMapStartMemberCall(member_resume) =>
+      DispatchMapStartMemberCall(member_resume)
   }
 }
 
@@ -793,6 +812,8 @@ priv enum DispatchContinuation {
   DispatchBindParameterDefault(DispatchParameterDefaultResume)
   DispatchContinueNumericExpression(DispatchNumericExpressionContinuation)
   DispatchContinueNumericStatement(DispatchNumericStatementContinuation)
+  DispatchContinueMap(MapState)
+  DispatchMapStartMemberCall(DispatchMapMemberCallResume)
 }
 
 ///|
@@ -807,7 +828,7 @@ priv enum DispatchWork {
 }
 
 ///|
-#warnings("-unused_constructor")
+#warnings("-unused_constructor-unused_field")
 priv enum DispatchProductionWork {
   DispatchExecuteStatement(DispatchStatementStep)
   DispatchAdvanceLoop(DispatchLoopResume)
@@ -839,6 +860,10 @@ priv enum DispatchProductionWork {
   DispatchPropertyDeliverAccessorResult(DispatchPropertyGetResume, Value)
   DispatchPropertyResolveProxyGetTrap(DispatchProxyGetTrapLookupResume, Value)
   DispatchPropertyCheckProxyGetResult(DispatchProxyGetResume, Value)
+  DispatchMapStart(MapState)
+  DispatchMapResume(MapState, Value)
+  DispatchMapStartMemberCall(DispatchMapMemberCallResume, Value)
+  DispatchMapAbort(MapState, Error)
 }
 
 ///|
@@ -1665,6 +1690,25 @@ fn route_dispatch_completion(
                       popped, numeric, value,
                     )
                 }
+              (DispatchContinueMap(map), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchMapResume(map, value),
+                )
+              (
+                DispatchContinueMap(map),
+                DispatchThrow(error)
+                | DispatchRuntimeAbrupt(error),
+              ) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchMapAbort(map, error),
+                )
+              (DispatchMapStartMemberCall(member_resume), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchMapStartMemberCall(member_resume, value),
+                )
               (consumer, DispatchNormal(value)) =>
                 return schedule_dispatch_effect(
                   popped,

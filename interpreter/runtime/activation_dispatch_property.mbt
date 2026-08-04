@@ -16,6 +16,12 @@ fn dispatch_ordinary_property_lookup(
   let mut current = work.target
   while true {
     match current {
+      Array(data) if property == "0" =>
+        if data.elements.length() > 0 && !data.holes.contains(0) {
+          return DispatchOrdinaryPropertyValue(data.elements[0])
+        } else {
+          return DispatchOrdinaryPropertyValue(Undefined)
+        }
       Object(data) if data.class_name == "Object" =>
         match data.bag.descriptors.get(property) {
           Some(descriptor) =>
