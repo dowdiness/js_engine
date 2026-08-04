@@ -74,6 +74,18 @@ const ARRAY_MAP_DIRECT_RECURSION_SOURCE =
   #|u(256,0,false);
 
 ///|
+const ARRAY_MAP_FORWARDING_RECURSION_SOURCE =
+  #|function f(t) {
+  #|  if (t === 0) return 0;
+  #|  return u(t);
+  #|}
+  #|function u(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
+  #|}
+  #|u(256);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -131,6 +143,18 @@ test "execution stack safety: exact array map direct callback at depth 256" {
     other =>
       fail(
         "expected exact array map direct callback result 256, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
+test "execution stack safety: array map forwarding callback at depth 256" {
+  match run(ARRAY_MAP_FORWARDING_RECURSION_SOURCE) {
+    Value::Number(256.0) => ()
+    other =>
+      fail(
+        "expected array map forwarding callback result 256, got " +
         other.to_string(),
       )
   }
