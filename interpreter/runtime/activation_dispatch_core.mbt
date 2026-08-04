@@ -779,6 +779,10 @@ fn snapshot_dispatch_continuation(
       DispatchContinueNumericExpression(
         snapshot_dispatch_numeric_continuation(numeric),
       )
+    DispatchContinueExpressionPlan(plan) =>
+      DispatchContinueExpressionPlan(
+        snapshot_dispatch_expression_plan_resume(plan),
+      )
     DispatchContinueNumericStatement(numeric) =>
       DispatchContinueNumericStatement(
         snapshot_dispatch_numeric_statement_continuation(numeric),
@@ -867,6 +871,7 @@ priv enum DispatchContinuation {
   DispatchCheckProxyGetResult(DispatchProxyGetResume)
   DispatchBindParameterDefault(DispatchParameterDefaultResume)
   DispatchContinueNumericExpression(DispatchNumericExpressionContinuation)
+  DispatchContinueExpressionPlan(DispatchExpressionPlanResume)
   DispatchContinueNumericStatement(DispatchNumericStatementContinuation)
   DispatchContinueMap(MapState)
   DispatchMapStartMemberCall(DispatchMapMemberCallResume)
@@ -1683,6 +1688,12 @@ fn route_dispatch_completion(
                   resume_dispatch_numeric_expression_outcome(
                     popped, numeric, value,
                   ) {
+                  DispatchResumeCompletion(next) => routed = next
+                  DispatchResumeDecision(next_state, decision) =>
+                    return (next_state, decision)
+                }
+              (DispatchContinueExpressionPlan(plan), DispatchNormal(value)) =>
+                match resume_dispatch_expression_plan(popped, plan, value) {
                   DispatchResumeCompletion(next) => routed = next
                   DispatchResumeDecision(next_state, decision) =>
                     return (next_state, decision)
