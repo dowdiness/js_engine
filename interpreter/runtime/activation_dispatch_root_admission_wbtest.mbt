@@ -152,6 +152,25 @@ test "array map direct call arguments retain source order and values" {
 }
 
 ///|
+test "array map sealing rejects a reclassified direct location" {
+  let (interp, original, preflight) = map_observation_test_fixture_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let shifted = root_admission_test_program(
+    "\n" + MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, original[0], interp.global)
+  let _ = try {
+    ignore(interp.seal_array_map_recursion_registry(preflight, shifted))
+    fail("sealing accepted a reclassified direct location")
+  } catch {
+    InvalidActivationDispatchShell(_) => ()
+    error => fail("unexpected direct seal error: " + error.to_string())
+  }
+}
+
+///|
 test "Interpreter run uses one closed root admission seam" {
   for
     pair in [
