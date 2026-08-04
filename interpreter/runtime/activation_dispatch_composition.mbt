@@ -702,6 +702,10 @@ fn resume_dispatch_expression_plan(
   guard state.phase is DispatchReady else {
     invalid_dispatch_transition("expression plan resume requires Ready")
   }
+  guard plan_resume.next_index >= 0 &&
+    plan_resume.next_index <= plan_resume.plan.steps.length() else {
+    invalid_dispatch_transition("expression plan cursor is outside its steps")
+  }
   let values = plan_resume.values.copy()
   values.push(value)
   let mut index = plan_resume.next_index
