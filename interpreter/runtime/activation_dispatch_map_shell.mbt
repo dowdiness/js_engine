@@ -149,7 +149,8 @@ fn PrimitiveProgramDispatchShell::enter_array_map_call(
             plan.parameter_name,
             plan.value_parameter_name,
             plan.flag_parameter_name,
-          ] else {
+          ] &&
+          array_map_direct_step_body_matches(data.body, plan) else {
           invalid_activation_dispatch_shell(
             "array map direct step activation body changed after sealing",
           )
@@ -395,11 +396,7 @@ fn array_map_step_statement_matches(
       }
     ArrayMapDirectCallback =>
       match index {
-        0 =>
-          match stmt {
-            @ast.IfStmt(_, @ast.ReturnStmt(Some(_), _), None, _) => true
-            _ => false
-          }
+        0 => array_map_direct_base_statement_matches(stmt, plan)
         1 => array_map_direct_step_statement_matches(stmt, plan)
         _ => false
       }
@@ -462,6 +459,31 @@ fn array_map_single_direct_callback_statement_matches(
       subtract_loc == plan.recursive_subtract_loc &&
       not_loc == plan.recursive_not_loc &&
       array_map_number(decrement, 1.0)
+    _ => false
+  }
+}
+
+///|
+fn array_map_direct_base_statement_matches(
+  stmt : @ast.Stmt,
+  plan : ArrayMapRecursionPlan,
+) -> Bool {
+  match stmt {
+    @ast.IfStmt(
+      @ast.Binary(
+        @ast.EqEqEq,
+        @ast.Ident(actual_parameter, _),
+        base,
+        condition_loc
+      ),
+      @ast.ReturnStmt(Some(base_result), _),
+      None,
+      _
+    ) =>
+      actual_parameter == plan.parameter_name &&
+      condition_loc == plan.base_condition_loc &&
+      array_map_number(base, 0.0) &&
+      array_map_number(base_result, 0.0)
     _ => false
   }
 }

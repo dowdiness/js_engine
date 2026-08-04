@@ -181,6 +181,53 @@ test "array map direct observations accept and release each activation once" {
 }
 
 ///|
+test "array map direct post-seal body drift rejects before executing" {
+  let (interp, stmts, preflight) = map_observation_test_fixture_for_source(
+    MAP_DIRECT_OBSERVATION_SOURCE,
+  )
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+  )
+  match
+    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the exact direct map setup run to complete")
+  }
+  let registry = interp.seal_array_map_recursion_registry(preflight, stmts)
+  shell.array_map_registry = Some(registry)
+  let replacement = @parser.parse("if(t===1)return 9;").stmts[0]
+  match registry.step_function {
+    Object({ callable: Some(UserFunc(data)), .. }) => {
+      let original = data.body[0]
+      data.body[0] = replacement
+      let request = DispatchCallRequest(
+        callee=registry.step_function,
+        this_value=Undefined,
+        args=[Number(256.0), Number(0.0), Bool(false)],
+        loc=preflight.plan.root_call_loc,
+      )
+      let result = try {
+        let _ = shell.enter_array_map_call(request)
+        "accepted"
+      } catch {
+        InvalidActivationDispatchShell(message) => message
+      }
+      data.body[0] = original
+      inspect(
+        result,
+        content="array map direct step activation body changed after sealing",
+      )
+      inspect(shell.cleanup_stack.length(), content="0")
+      inspect(shell.array_map_states.is_empty(), content="true")
+      inspect(shell.array_map_activation_envs.is_empty(), content="true")
+    }
+    _ => fail("expected the direct step function to retain UserFunc data")
+  }
+}
+
+///|
 test "array map admission rejects prior constructor and species drift" {
   let (interp, stmts, preflight) = map_observation_test_fixture()
   let probe = DispatchObservationProbe()

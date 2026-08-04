@@ -54,6 +54,21 @@ const ARRAY_MAP_DIRECT_RECURSION_ADMISSION_SOURCE =
   #|u(256,0,false);
 
 ///|
+fn array_map_direct_near_miss_sources() -> Array[String] {
+  [
+    "function u(t,e,f){if(t===0)return 0;return 1+[e,e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e);})[0];}u(2,0);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f)+0;})[0];}u(2,0,false);",
+    "function v(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return v(t-1,e,!f);})[0];}function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return v(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t==0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u.call(undefined,t-1,e,!f);})[0];}u(2,0,false);",
+    "function u(t,e,f){if(t===0)return 0;return 1+[e].map(Number)[0];}u(2,0,false);",
+    "\"use strict\";function u(t,e,f){if(t===0)return 0;return 1+[e].map(function(e){return u(t-1,e,!f);})[0];}u(2,0,false);",
+  ]
+}
+
+///|
 test "array map admission classifies the exact source" {
   let stmts = root_admission_test_program(ARRAY_MAP_RECURSION_ADMISSION_SOURCE)
   inspect(
@@ -80,6 +95,14 @@ test "array map admission classifies the direct callback source" {
       }
     }
     None => fail("expected exact direct callback source admission")
+  }
+}
+
+///|
+test "array map direct admission rejects the nine near-miss sources" {
+  for source in array_map_direct_near_miss_sources() {
+    let stmts = root_admission_test_program(source)
+    inspect(classify_array_map_recursion_program(stmts) is None, content="true")
   }
 }
 

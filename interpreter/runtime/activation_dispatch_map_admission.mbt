@@ -931,14 +931,7 @@ fn array_map_existing_step_binding_is_compatible(
                     plan.value_parameter_name,
                     plan.flag_parameter_name,
                   ] &&
-                  classify_array_map_direct_body(
-                    func.body,
-                    plan.function_name,
-                    plan.parameter_name,
-                    plan.value_parameter_name,
-                    plan.flag_parameter_name,
-                  )
-                  is Some(_)
+                  array_map_direct_step_body_matches(func.body, plan)
               }
             }
             _ => false
@@ -1106,15 +1099,40 @@ fn array_map_direct_callback_body_matches(
 #warnings("-unused_value")
 fn array_map_direct_step_body_matches(
   body : Array[@ast.Stmt],
-  function_name : String,
-  parameter_name : String,
-  value_parameter_name : String,
-  flag_parameter_name : String,
+  plan : ArrayMapRecursionPlan,
 ) -> Bool {
-  classify_array_map_direct_body(
-    body, function_name, parameter_name, value_parameter_name, flag_parameter_name,
-  )
-  is Some(_)
+  match
+    classify_array_map_direct_body(
+      body,
+      plan.function_name,
+      plan.parameter_name,
+      plan.value_parameter_name,
+      plan.flag_parameter_name,
+    ) {
+    Some(
+      (
+        base_condition_loc,
+        recursive_subtract_loc,
+        recursive_call_loc,
+        recursive_not_loc,
+        recursive_add_loc,
+        map_call_loc,
+        callback_call_loc,
+        result_member_loc,
+        callback_parameter,
+      )
+    ) =>
+      base_condition_loc == plan.base_condition_loc &&
+      recursive_subtract_loc == plan.recursive_subtract_loc &&
+      recursive_call_loc == plan.recursive_call_loc &&
+      recursive_not_loc == plan.recursive_not_loc &&
+      recursive_add_loc == plan.recursive_add_loc &&
+      map_call_loc == plan.map_call_loc &&
+      callback_call_loc == plan.callback_call_loc &&
+      result_member_loc == plan.result_member_loc &&
+      callback_parameter == plan.callback_parameter
+    None => false
+  }
 }
 
 ///|
@@ -1184,13 +1202,7 @@ fn Interpreter::seal_array_map_recursion_registry(
           preflight.plan.value_parameter_name,
           preflight.plan.flag_parameter_name,
         ] &&
-        array_map_direct_step_body_matches(
-          data.body,
-          preflight.plan.function_name,
-          preflight.plan.parameter_name,
-          preflight.plan.value_parameter_name,
-          preflight.plan.flag_parameter_name,
-        )
+        array_map_direct_step_body_matches(data.body, preflight.plan)
     }) &&
     (match classify_array_map_recursion_program(stmts) {
       Some(actual_plan) => array_map_plan_matches(preflight.plan, actual_plan)
