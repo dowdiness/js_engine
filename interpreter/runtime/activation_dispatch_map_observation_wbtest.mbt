@@ -8,6 +8,25 @@ const MAP_OBSERVATION_SOURCE =
   #|step(256);
 
 ///|
+fn map_observation_array_construct(
+  _interp : Interpreter,
+  args : Array[Value],
+) -> Value raise Error {
+  if args.length() < 0 {
+    raise @errors.TypeError(message="unreachable map observation constructor")
+  }
+  make_array([])
+}
+
+///|
+fn map_observation_species_getter(
+  this_val : Value,
+  _args : Array[Value],
+) -> Value {
+  this_val
+}
+
+///|
 fn map_observation_test_fixture() -> (
   Interpreter,
   Array[@ast.Stmt],
@@ -28,11 +47,36 @@ fn map_observation_test_fixture() -> (
     true,
   )
   interp.realm_state.array_prototype.val = Some(array_proto)
-  let array_constructor = make_native_func(
-    name="Array",
+  let species_getter = make_method_func(
+    name="get [Symbol.species]",
     realm_state=Some(interp.realm_state),
-    _args => make_array([]),
+    fn(this_val, args) { map_observation_species_getter(this_val, args) },
   )
+  let array_constructor = Object({
+    bag: PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      ConstructorOnlyCallable("Array", map_observation_array_construct),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  match array_constructor {
+    Object(ctor_data) => {
+      install_builtin_symbol_accessor(
+        ctor_data,
+        interp.realm_state.well_known_symbols.species.id,
+        species_getter,
+      )
+      match array_proto {
+        Object(proto_data) =>
+          install_builtin_method(proto_data, "constructor", array_constructor)
+        _ => ()
+      }
+    }
+    _ => ()
+  }
   interp.global.def_builtin("Array", array_constructor)
   let stmts = @parser.parse(MAP_OBSERVATION_SOURCE).stmts
   let preflight = match
@@ -78,6 +122,145 @@ test "array map observations accept and release each managed activation once" {
   inspect(shell.array_map_registry is None, content="true")
   inspect(shell.array_map_states.is_empty(), content="true")
   inspect(shell.array_map_activation_envs.is_empty(), content="true")
+}
+
+///|
+test "array map admission rejects prior constructor and species drift" {
+  let (interp, stmts, preflight) = map_observation_test_fixture()
+  let probe = DispatchObservationProbe()
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+    activation_observation_port=probe.port(),
+  )
+  match
+    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the prior exact map run to complete")
+  }
+  match interp.realm_state.get_array_proto() {
+    Object(proto_data) =>
+      match proto_data.bag.descriptors.get("constructor") {
+        Some(desc) =>
+          proto_data.bag.descriptors["constructor"] = {
+            ..desc,
+            configurable: false,
+          }
+        None => fail("expected the canonical constructor descriptor")
+      }
+    _ => fail("expected the canonical Array prototype object")
+  }
+  inspect(
+    interp.preflight_dispatchable_array_map_recursion_program(stmts) is None,
+    content="true",
+  )
+
+  let (species_interp, species_stmts, species_preflight) = map_observation_test_fixture()
+  let species_shell = PrimitiveProgramDispatchShell(
+    species_interp,
+    array_map_root_preflight=Some(species_preflight),
+    array_map_root_stmts=Some(species_stmts),
+  )
+  match
+    species_shell.drive_root_program(species_stmts, {
+      strict: false,
+      current_generator: None,
+    }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the prior exact species run to complete")
+  }
+  match species_interp.global.bindings.get("Array") {
+    Some(binding) =>
+      match binding.value {
+        Object(ctor_data) => {
+          let species_sym = species_interp.realm_state.well_known_symbols.species
+          match ctor_data.bag.symbol_descriptors.get(species_sym.id) {
+            Some(desc) =>
+              ctor_data.bag.symbol_descriptors[species_sym.id] = {
+                ..desc,
+                configurable: false,
+              }
+            None => fail("expected the canonical species descriptor")
+          }
+        }
+        _ => fail("expected the canonical Array constructor object")
+      }
+    None => fail("expected the canonical Array constructor binding")
+  }
+  inspect(
+    species_interp.preflight_dispatchable_array_map_recursion_program(
+      species_stmts,
+    )
+    is None,
+    content="true",
+  )
+}
+
+///|
+test "array map shell abort preserves guest identity and pops state" {
+  let (interp, stmts, preflight) = map_observation_test_fixture()
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(preflight),
+    array_map_root_stmts=Some(stmts),
+  )
+  match
+    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("expected the exact map setup run to complete")
+  }
+  let registry = interp.seal_array_map_recursion_registry(preflight, stmts)
+  shell.array_map_registry = Some(registry)
+  let length = 1L
+  let initial_state = MapState(
+    length~,
+    receiver=make_array([Number(1.0)]),
+    result=make_array([]),
+    callback=registry.step_function,
+    this_arg=Undefined,
+    pending_result_consumer=DispatchCompleteReturn,
+  )
+  let (awaiting, _) = reduce_array_map(initial_state, MapStart)
+  shell.array_map_states.push(awaiting)
+  shell.array_map_activation_envs.push(interp.global)
+  let marker = make_array([String_("shell abort marker")])
+  let completion = shell.perform_array_map_event(
+    awaiting,
+    MapAbrupt(JsException(marker)),
+  )
+  match completion {
+    DispatchWorkCompleted(DispatchThrow(JsException(actual))) =>
+      match (marker, actual) {
+        (Array(expected_data), Array(actual_data)) =>
+          if !physical_equal(expected_data, actual_data) {
+            fail("shell map abort changed the guest throw identity")
+          }
+        _ => fail("shell map abort lost the guest throw value")
+      }
+    _ => fail("shell map abort must return the guest throw completion")
+  }
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(shell.array_map_states.is_empty(), content="true")
+  inspect(shell.array_map_activation_envs.is_empty(), content="true")
+  let recovery_preflight = match
+    interp.preflight_dispatchable_array_map_recursion_program(stmts) {
+    Some(value) => value
+    None => fail("same-Interpreter map recovery lost exact admission")
+  }
+  let recovery_shell = PrimitiveProgramDispatchShell(
+    interp,
+    array_map_root_preflight=Some(recovery_preflight),
+    array_map_root_stmts=Some(stmts),
+  )
+  match
+    recovery_shell.drive_root_program(stmts, {
+      strict: false,
+      current_generator: None,
+    }) {
+    DispatchNormal(Number(value)) => inspect(value, content="256")
+    _ => fail("same-Interpreter map recovery did not complete")
+  }
 }
 
 ///|

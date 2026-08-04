@@ -266,6 +266,19 @@ test "array map near miss: non-UserFunc callback and non-one-element length stay
 }
 
 ///|
+test "array map observes length before callback callability" {
+  match
+    run(
+      "var seen=[];var source=new Proxy([1],{get:function(t,k,r){" +
+      "seen.push(k);return Reflect.get(t,k,r);}});" +
+      "try{source.map(0);}catch(e){}seen.join(\"|\");",
+    ) {
+    Value::String_(value) => inspect(value, content="map|length")
+    other => fail("map length/callability order changed: " + other.to_string())
+  }
+}
+
+///|
 test "array map preserves callback thisArg argument order result and length" {
   match
     run(

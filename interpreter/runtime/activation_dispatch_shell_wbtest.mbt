@@ -1247,3 +1247,31 @@ test "ordinary data property work completes once through the reducer" {
   })
   dispatch_shell_test_expect_realm_sentinel(interp, 19)
 }
+
+///|
+test "ordinary Array hole index is unsupported instead of undefined" {
+  let hole = make_array_with_holes([Number(7.0)], [0])
+  let hole_work = DispatchPropertyGetResume(
+    target=hole,
+    property_key=String_("0"),
+    receiver=hole,
+    loc=@token.Loc::default(),
+  )
+  match dispatch_ordinary_property_lookup(hole_work) {
+    DispatchOrdinaryPropertyUnsupported => ()
+    DispatchOrdinaryPropertyValue(Undefined) =>
+      fail("Array hole must not be reported as an ordinary undefined value")
+    _ => fail("Array hole must not enter the ordinary property fast path")
+  }
+  let empty = make_array([])
+  let empty_work = DispatchPropertyGetResume(
+    target=empty,
+    property_key=String_("0"),
+    receiver=empty,
+    loc=@token.Loc::default(),
+  )
+  match dispatch_ordinary_property_lookup(empty_work) {
+    DispatchOrdinaryPropertyUnsupported => ()
+    _ => fail("out-of-range Array index must not enter the ordinary fast path")
+  }
+}

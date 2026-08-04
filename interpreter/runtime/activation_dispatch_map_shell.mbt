@@ -449,7 +449,18 @@ fn array_map_registry_is_stable(
         registry.expected_global_object,
       ) =>
       match array_map_intrinsic_values(interp) {
-        Some((array_constructor, array_prototype, map_method)) =>
+        Some((array_constructor, array_prototype, map_method)) => {
+          let species_stable = match
+            array_map_species_snapshot(
+              interp, array_prototype, array_constructor,
+            ) {
+            Some(actual_species) =>
+              array_map_species_snapshot_matches(
+                registry.expected_species,
+                actual_species,
+              )
+            None => false
+          }
           array_map_value_identity_matches(
             array_constructor,
             registry.expected_array_constructor,
@@ -461,7 +472,9 @@ fn array_map_registry_is_stable(
           array_map_value_identity_matches(
             map_method,
             registry.expected_map_method,
-          )
+          ) &&
+          species_stable
+        }
         None => false
       }
     _ => false
@@ -564,11 +577,6 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
       Err(error) =>
         return DispatchWorkCompleted(dispatch_work_error_completion(error))
     }
-    guard is_callable(callback) else {
-      invalid_activation_dispatch_shell(
-        "array map callback is not callable after exact admission",
-      )
-    }
     let length_result : Result[Int64, Error] = Ok(
       to_array_like_length_interp(items, self.interp),
     ) catch {
@@ -582,6 +590,25 @@ fn PrimitiveProgramDispatchShell::execute_array_map_body_statement(
     guard length == 1L else {
       invalid_activation_dispatch_shell(
         "array map receiver length changed after admission",
+      )
+    }
+    guard is_callable(callback) else {
+      invalid_activation_dispatch_shell(
+        "array map callback is not callable after exact admission",
+      )
+    }
+    guard array_map_species_snapshot(
+        self.interp,
+        registry.expected_array_prototype,
+        registry.expected_array_constructor,
+      )
+      is Some(actual_species) &&
+      array_map_species_snapshot_matches(
+        registry.expected_species,
+        actual_species,
+      ) else {
+      invalid_activation_dispatch_shell(
+        "array map species identity drifted before ArraySpeciesCreate",
       )
     }
     let result_result : Result[Value, Error] = Ok(

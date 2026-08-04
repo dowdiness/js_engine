@@ -361,7 +361,32 @@ priv struct ArrayMapRecursionPreflight {
   expected_array_prototype : Value
   expected_array_constructor : Value
   expected_map_method : Value
+  expected_species : ArrayMapSpeciesSnapshot
   expected_source_identity : String?
+}
+
+///|
+// ArraySpeciesCreate observes this exact callback-free path for an ordinary
+// Array receiver: the prototype's data constructor and the Array constructor's
+// canonical MethodCallable species getter.  Keep the observed values and
+// descriptor shapes so later map entries can reject any drift without invoking
+// guest code during admission or validation.
+priv struct ArrayMapSpeciesSnapshot {
+  receiver_constructor : Value
+  receiver_constructor_descriptor : ArrayMapDescriptorShape
+  species_value : Value
+  species_getter : Value
+  species_descriptor : ArrayMapDescriptorShape
+}
+
+///|
+priv struct ArrayMapDescriptorShape {
+  writable : Bool
+  enumerable : Bool
+  configurable : Bool
+  is_accessor : Bool
+  has_getter : Bool
+  has_setter : Bool
 }
 
 ///|
@@ -373,6 +398,7 @@ fn ArrayMapRecursionPreflight::ArrayMapRecursionPreflight(
   expected_array_prototype~ : Value,
   expected_array_constructor~ : Value,
   expected_map_method~ : Value,
+  expected_species~ : ArrayMapSpeciesSnapshot,
   expected_source_identity~ : String?,
 ) -> ArrayMapRecursionPreflight {
   {
@@ -382,6 +408,7 @@ fn ArrayMapRecursionPreflight::ArrayMapRecursionPreflight(
     expected_array_prototype,
     expected_array_constructor,
     expected_map_method,
+    expected_species,
     expected_source_identity,
   }
 }
@@ -401,6 +428,148 @@ fn array_map_intrinsic_values(interp : Interpreter) -> (Value, Value, Value)? {
     return None
   }
   Some((array_constructor, array_prototype, map_method))
+}
+
+///|
+fn array_map_species_getter_is_canonical(getter : Value) -> Bool {
+  match getter {
+    Object(data) =>
+      match data.callable {
+        Some(MethodCallable(name, _)) => name == "get [Symbol.species]"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+///|
+fn array_map_species_data_descriptor_is_canonical(
+  desc : PropDescriptor,
+) -> Bool {
+  !desc.is_accessor &&
+  desc.writable &&
+  !desc.enumerable &&
+  desc.configurable &&
+  desc.getter is None &&
+  desc.setter is None
+}
+
+///|
+fn array_map_species_accessor_descriptor_is_canonical(
+  desc : PropDescriptor,
+) -> Bool {
+  desc.is_accessor &&
+  !desc.writable &&
+  !desc.enumerable &&
+  desc.configurable &&
+  desc.setter is None &&
+  desc.getter is Some(_)
+}
+
+///|
+fn array_map_descriptor_shape(desc : PropDescriptor) -> ArrayMapDescriptorShape {
+  {
+    writable: desc.writable,
+    enumerable: desc.enumerable,
+    configurable: desc.configurable,
+    is_accessor: desc.is_accessor,
+    has_getter: desc.getter is Some(_),
+    has_setter: desc.setter is Some(_),
+  }
+}
+
+///|
+fn array_map_species_snapshot(
+  interp : Interpreter,
+  array_prototype : Value,
+  array_constructor : Value,
+) -> ArrayMapSpeciesSnapshot? {
+  let (receiver_constructor, receiver_constructor_descriptor) = match
+    array_prototype {
+    Object(proto_data) =>
+      match
+        (
+          proto_data.bag.properties.get("constructor"),
+          proto_data.bag.descriptors.get("constructor"),
+        ) {
+        (Some(value), Some(desc)) if array_map_species_data_descriptor_is_canonical(
+            desc,
+          ) &&
+          array_map_value_identity_matches(value, array_constructor) =>
+          (value, desc)
+        _ => return None
+      }
+    _ => return None
+  }
+  let species_sym = interp.realm_state.well_known_symbols.species
+  match array_constructor {
+    Object(ctor_data) =>
+      match
+        (
+          ctor_data.bag.symbol_properties.get(species_sym.id),
+          ctor_data.bag.symbol_descriptors.get(species_sym.id),
+        ) {
+        (Some(species_value), Some(species_descriptor)) if species_value
+          is Undefined &&
+          array_map_species_accessor_descriptor_is_canonical(species_descriptor) =>
+          match species_descriptor.getter {
+            Some(species_getter) if array_map_species_getter_is_canonical(
+                species_getter,
+              ) =>
+              Some({
+                receiver_constructor,
+                receiver_constructor_descriptor: array_map_descriptor_shape(
+                  receiver_constructor_descriptor,
+                ),
+                species_value,
+                species_getter,
+                species_descriptor: array_map_descriptor_shape(
+                  species_descriptor,
+                ),
+              })
+            _ => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+fn array_map_species_descriptor_shape_matches(
+  expected : ArrayMapDescriptorShape,
+  actual : ArrayMapDescriptorShape,
+) -> Bool {
+  expected.writable == actual.writable &&
+  expected.enumerable == actual.enumerable &&
+  expected.configurable == actual.configurable &&
+  expected.is_accessor == actual.is_accessor &&
+  expected.has_getter == actual.has_getter &&
+  expected.has_setter == actual.has_setter
+}
+
+///|
+fn array_map_species_snapshot_matches(
+  expected : ArrayMapSpeciesSnapshot,
+  actual : ArrayMapSpeciesSnapshot,
+) -> Bool {
+  array_map_value_identity_matches(
+    expected.receiver_constructor,
+    actual.receiver_constructor,
+  ) &&
+  array_map_species_descriptor_shape_matches(
+    expected.receiver_constructor_descriptor,
+    actual.receiver_constructor_descriptor,
+  ) &&
+  same_value(expected.species_value, actual.species_value) &&
+  array_map_value_identity_matches(
+    expected.species_getter,
+    actual.species_getter,
+  ) &&
+  array_map_species_descriptor_shape_matches(
+    expected.species_descriptor,
+    actual.species_descriptor,
+  )
 }
 
 ///|
@@ -456,6 +625,11 @@ fn Interpreter::preflight_array_map_recursion_program(
     Some(values) => values
     None => return None
   }
+  let expected_species = match
+    array_map_species_snapshot(self, array_prototype, array_constructor) {
+    Some(snapshot) => snapshot
+    None => return None
+  }
   let throw_type_error_snapshot = numeric_recursion_callback_free_throw_type_error(
     self.global,
   )
@@ -471,6 +645,7 @@ fn Interpreter::preflight_array_map_recursion_program(
       expected_array_prototype=array_prototype,
       expected_array_constructor=array_constructor,
       expected_map_method=map_method,
+      expected_species~,
       expected_source_identity=self.realm_state.active_source_identity.val,
     ),
   )
@@ -497,6 +672,7 @@ priv struct TrustedArrayMapRecursionRegistry {
   expected_array_prototype : Value
   expected_array_constructor : Value
   expected_map_method : Value
+  expected_species : ArrayMapSpeciesSnapshot
   expected_throw_type_error : Value?
 }
 
@@ -509,6 +685,7 @@ fn TrustedArrayMapRecursionRegistry::TrustedArrayMapRecursionRegistry(
   expected_array_prototype~ : Value,
   expected_array_constructor~ : Value,
   expected_map_method~ : Value,
+  expected_species~ : ArrayMapSpeciesSnapshot,
   expected_throw_type_error~ : Value?,
 ) -> TrustedArrayMapRecursionRegistry {
   {
@@ -518,6 +695,7 @@ fn TrustedArrayMapRecursionRegistry::TrustedArrayMapRecursionRegistry(
     expected_array_prototype,
     expected_array_constructor,
     expected_map_method,
+    expected_species,
     expected_throw_type_error,
   }
 }
@@ -628,6 +806,16 @@ fn Interpreter::seal_array_map_recursion_registry(
       "array map intrinsic identity drifted before sealing",
     )
   }
+  guard array_map_species_snapshot(self, array_prototype, array_constructor)
+    is Some(actual_species) &&
+    array_map_species_snapshot_matches(
+      preflight.expected_species,
+      actual_species,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "array map species identity drifted before sealing",
+    )
+  }
   TrustedArrayMapRecursionRegistry(
     plan=preflight.plan,
     step_function~,
@@ -635,6 +823,7 @@ fn Interpreter::seal_array_map_recursion_registry(
     expected_array_prototype=preflight.expected_array_prototype,
     expected_array_constructor=preflight.expected_array_constructor,
     expected_map_method=preflight.expected_map_method,
+    expected_species=preflight.expected_species,
     expected_throw_type_error=array_map_registry_throw_type_error(
       preflight.throw_type_error_snapshot,
     ),
