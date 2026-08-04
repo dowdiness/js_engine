@@ -13,6 +13,13 @@ const NUMERIC_MAP_EXPRESSION_OBSERVATION_SOURCE =
   #|step(256)+u(256)+step(256);
 
 ///|
+const FOUR_CALL_NUMERIC_MAP_EXPRESSION_SOURCE =
+  #|function step(n){if(n===0)return 0;return 1+step(n-1);}
+  #|function f(t){if(t===0)return 0;return u(t);}
+  #|function u(n){if(n===0)return 0;return 1+[n-1,0].map(function(t){return f(t);})[0];}
+  #|step(256)+u(256)+step(256)+u(256);
+
+///|
 fn numeric_map_composition_observation_fixture() -> (
   Interpreter,
   Array[@ast.Stmt],
@@ -46,6 +53,24 @@ fn numeric_map_expression_observation_fixture() -> (
     interp.preflight_dispatchable_numeric_map_expression_program(stmts) {
     Some(found) => found
     None => fail("expected the numeric/map expression fixture to preflight")
+  }
+  (interp, stmts, preflight)
+}
+
+///|
+fn four_call_numeric_map_expression_observation_fixture() -> (
+  Interpreter,
+  Array[@ast.Stmt],
+  NumericMapExpressionPreflight,
+) raise Error {
+  let (interp, _, _) = map_observation_test_fixture_for_source(
+    MAP_FORWARDING_OBSERVATION_SOURCE,
+  )
+  let stmts = @parser.parse(FOUR_CALL_NUMERIC_MAP_EXPRESSION_SOURCE).stmts
+  let preflight = match
+    interp.preflight_dispatchable_numeric_map_expression_program(stmts) {
+    Some(found) => found
+    None => fail("expected the four-call numeric/map expression to preflight")
   }
   (interp, stmts, preflight)
 }
@@ -93,6 +118,49 @@ test "expression driver releases owned numeric and map activations" {
 }
 
 ///|
+test "four-call expression driver releases two numeric and two map trees" {
+  let (interp, stmts, preflight) =
+    four_call_numeric_map_expression_observation_fixture()
+  dispatch_shell_test_install_realm_sentinel(interp, 805)
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    expression_root_preflight=Some(preflight),
+    expression_root_stmts=Some(stmts),
+    activation_observation_port=probe.port(),
+  )
+  let completion = shell.drive_root_program(stmts, {
+    strict: false,
+    current_generator: None,
+  }) catch {
+    InvalidActivationDispatchShell(message) =>
+      fail("four-call observation run rejected: " + message)
+    error => fail("four-call observation run failed: " + error.to_string())
+  }
+  match completion {
+    DispatchNormal(Number(value)) => inspect(value, content="1024")
+    _ => fail("expected the exact four-call fixture to complete normally")
+  }
+  // Two numeric trees (257 calls each) plus two forwarding-map trees (1280
+  // calls each) make the exact four-call inventory 3074 activations.
+  inspect(probe.accepted, content="3074")
+  inspect(probe.released, content="3074")
+  inspect(probe.rejected, content="0")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.lifo_violations, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(shell.numeric_registry is None, content="true")
+  inspect(shell.array_map_registry is None, content="true")
+  inspect(shell.managed_user_func_catalog is None, content="true")
+  inspect(shell.expression_plan is None, content="true")
+  inspect(shell.expression_root_call_locs.length(), content="0")
+  inspect(shell.array_map_states.is_empty(), content="true")
+  inspect(shell.array_map_activation_envs.is_empty(), content="true")
+  dispatch_shell_test_expect_realm_sentinel(interp, 805)
+}
+
+///|
 fn expression_test_request(
   callee : Value,
   loc : @token.Loc,
@@ -128,6 +196,49 @@ fn expression_test_plan(
         request=expression_test_request(right, loc),
         adapter=DispatchNumericUserFuncAdapterToken(right),
         name="step",
+      ),
+    ),
+    DispatchExpressionNumericAdd(loc),
+  ])
+}
+
+///|
+fn expression_test_four_call_plan(
+  left : Value,
+  middle : Value,
+  right : Value,
+  last : Value,
+) -> DispatchExpressionPlan {
+  let loc = @token.Loc::default()
+  DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=expression_test_request(left, loc),
+        adapter=DispatchNumericUserFuncAdapterToken(left),
+        name="step",
+      ),
+    ),
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=expression_test_request(middle, loc),
+        adapter=DispatchArrayMapUserFuncAdapterToken(middle),
+        name="u",
+      ),
+    ),
+    DispatchExpressionNumericAdd(loc),
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=expression_test_request(right, loc),
+        adapter=DispatchNumericUserFuncAdapterToken(right),
+        name="step",
+      ),
+    ),
+    DispatchExpressionNumericAdd(loc),
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=expression_test_request(last, loc),
+        adapter=DispatchArrayMapUserFuncAdapterToken(last),
+        name="u",
       ),
     ),
     DispatchExpressionNumericAdd(loc),
@@ -240,6 +351,136 @@ test "expression reducer keeps postfix call order and returns one value" {
   match final_finish {
     DispatchFinish(DispatchNormal(Number(value))) => inspect(value, content="9")
     _ => fail("final numeric add must return one expression value")
+  }
+}
+
+///|
+test "expression reducer keeps the exact seven-step call and binary order" {
+  let first = make_array([])
+  let middle = make_array([])
+  let third = make_array([])
+  let last = make_array([])
+  let plan = expression_test_four_call_plan(first, middle, third, last)
+  inspect(plan.steps.length(), content="7")
+  let first_result = resume_dispatch_expression_plan(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchExpressionPlanResume(plan~, next_index=1, values=[]),
+    Number(3.0),
+  )
+  match first_result {
+    DispatchResumeDecision(
+      _,
+      DispatchPerform(
+        _,
+        DispatchEnterActivation(DispatchCallActivation(request))
+      )
+    ) =>
+      inspect(array_map_value_identity_matches(request.callee, middle), content="true")
+    _ => fail("seven-step plan must schedule its first map leaf")
+  }
+  let inner_add = resume_dispatch_expression_plan(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchExpressionPlanResume(plan~, next_index=2, values=[Number(3.0)]),
+    Number(2.0),
+  )
+  let inner_add_state = match inner_add {
+    DispatchResumeDecision(
+      waiting,
+      DispatchPerform(
+        _,
+        DispatchRunProduction(
+          DispatchNumericApplyBinaryRight(binary, Number(right))
+        )
+      )
+    ) => {
+      inspect(binary.left, content="3")
+      inspect(right, content="2")
+      waiting
+    }
+    _ => fail("seven-step plan must apply its first binary once")
+  }
+  ignore(inner_add_state)
+  let third_call = resume_dispatch_expression_plan(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchExpressionPlanResume(plan~, next_index=3, values=[]),
+    Number(4.0),
+  )
+  match third_call {
+    DispatchResumeDecision(
+      _,
+      DispatchPerform(
+        _,
+        DispatchEnterActivation(DispatchCallActivation(request))
+      )
+    ) =>
+      inspect(array_map_value_identity_matches(request.callee, third), content="true")
+    _ => fail("seven-step plan must schedule its second numeric leaf")
+  }
+  let outer_add = resume_dispatch_expression_plan(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchExpressionPlanResume(plan~, next_index=4, values=[Number(5.0)]),
+    Number(4.0),
+  )
+  match outer_add {
+    DispatchResumeDecision(
+      _,
+      DispatchPerform(
+        _,
+        DispatchRunProduction(
+          DispatchNumericApplyBinaryRight(binary, Number(right))
+        )
+      )
+    ) => {
+      inspect(binary.left, content="5")
+      inspect(right, content="4")
+    }
+    _ => fail("seven-step plan must apply its second binary once")
+  }
+  let final_call = resume_dispatch_expression_plan(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchExpressionPlanResume(plan~, next_index=5, values=[]),
+    Number(9.0),
+  )
+  match final_call {
+    DispatchResumeDecision(
+      _,
+      DispatchPerform(
+        _,
+        DispatchEnterActivation(DispatchCallActivation(request))
+      )
+    ) =>
+      inspect(array_map_value_identity_matches(request.callee, last), content="true")
+    _ => fail("seven-step plan must schedule its second map leaf")
+  }
+  let final_add = resume_dispatch_expression_plan(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchExpressionPlanResume(plan~, next_index=6, values=[Number(9.0)]),
+    Number(1.0),
+  )
+  match final_add {
+    DispatchResumeDecision(
+      _,
+      DispatchPerform(
+        _,
+        DispatchRunProduction(
+          DispatchNumericApplyBinaryRight(binary, Number(right))
+        )
+      )
+    ) => {
+      inspect(binary.left, content="9")
+      inspect(right, content="1")
+    }
+    _ => fail("seven-step plan must apply its final binary once")
+  }
+  match
+    resume_dispatch_expression_plan(
+      dispatch_test_ready_state(DispatchFrameStackEmpty),
+      DispatchExpressionPlanResume(plan~, next_index=7, values=[]),
+      Number(10.0),
+    ) {
+    DispatchResumeCompletion(DispatchNormal(Number(value))) =>
+      inspect(value, content="10")
+    _ => fail("seven-step plan must finish with one value")
   }
 }
 
@@ -388,6 +629,40 @@ test "expression reducer preserves abrupt identity at both binary boundaries" {
 }
 
 ///|
+test "four-call expression reducer preserves fourth-call and third-binary abrupt identity" {
+  let plan = expression_test_four_call_plan(
+    make_array([]),
+    make_array([]),
+    make_array([]),
+    make_array([]),
+  )
+  let guest_marker = make_array([])
+  let guest_throw = DispatchThrow(JsException(guest_marker))
+  let runtime_error : Error = ExecutionControlError(ExecutionLimit)
+  expression_test_expect_abrupt(plan, 5, [], guest_throw)
+  expression_test_expect_abrupt(
+    plan,
+    5,
+    [],
+    DispatchRuntimeAbrupt(runtime_error),
+  )
+  expression_test_expect_binary_abrupt(
+    plan,
+    6,
+    [Number(9.0)],
+    Number(1.0),
+    runtime_error,
+  )
+  expression_test_expect_binary_abrupt(
+    plan,
+    6,
+    [Number(9.0)],
+    Number(1.0),
+    JsException(guest_marker),
+  )
+}
+
+///|
 test "numeric map expression cleanup permits a second run on one Interpreter" {
   let (interp, _, _) = numeric_map_expression_observation_fixture()
   let first = interp.run(
@@ -403,8 +678,43 @@ test "numeric map expression cleanup permits a second run on one Interpreter" {
 }
 
 ///|
+test "four-call numeric map expression cleanup permits a second run" {
+  let (interp, _, _) = four_call_numeric_map_expression_observation_fixture()
+  let first = interp.run(
+    @parser.parse(FOUR_CALL_NUMERIC_MAP_EXPRESSION_SOURCE).stmts,
+  )
+  let second = interp.run(
+    @parser.parse(FOUR_CALL_NUMERIC_MAP_EXPRESSION_SOURCE).stmts,
+  )
+  match (first, second) {
+    (Number(1024.0), Number(1024.0)) => ()
+    _ => fail("four-call expression cleanup changed repeated results")
+  }
+}
+
+///|
 fn expression_seal_mutation_result(final_source : String) -> String raise Error {
   let (interp, stmts, preflight) = numeric_map_expression_observation_fixture()
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
+  }
+  stmts[3] = @parser.parse(final_source).stmts[0]
+  try {
+    let _ = interp.seal_numeric_map_expression_catalog(preflight, stmts)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+}
+
+///|
+fn four_call_expression_seal_mutation_result(
+  final_source : String,
+) -> String raise Error {
+  let (interp, stmts, preflight) =
+    four_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let ctx : ExecContext = { strict: false, current_generator: None }
   for index in 0..<3 {
@@ -437,6 +747,23 @@ test "expression sealing rejects tree operator location and argument drift" {
   ]
   for case in cases {
     inspect(expression_seal_mutation_result(case.0), content=case.1)
+  }
+}
+
+///|
+test "four-call expression sealing rejects source and location drift" {
+  let cases = [
+    "step(256)+(u(256)+step(256)+u(256));",
+    "step(256)+u(256)+step(256)-u(256);",
+    "step(256)+u(256)+step(256)+u(255);",
+    "step(256)+u(256)+step(256);",
+    " step(256)+u(256)+step(256)+u(256);",
+  ]
+  for source in cases {
+    inspect(
+      four_call_expression_seal_mutation_result(source) == "accepted",
+      content="false",
+    )
   }
 }
 
@@ -545,6 +872,80 @@ test "expression plan owns nested call argument arrays" {
     DispatchExpressionCall(call) => inspect(call.request.args[0], content="256")
     _ => fail("expression plan must retain its copied call step")
   }
+}
+
+///|
+test "four-call expression plan seals adapter families arguments and locations" {
+  let (interp, stmts, preflight) =
+    four_call_numeric_map_expression_observation_fixture()
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  for index in 0..<3 {
+    let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
+  }
+  let (catalog, plan) = interp.seal_numeric_map_expression_catalog(
+    preflight,
+    stmts,
+  )
+  inspect(plan.steps.length(), content="7")
+  let source_call_indices = [0, 1, 3, 5]
+  let mut call_index = 0
+  for step in plan.steps {
+    match step {
+      DispatchExpressionCall(call) => {
+        let expected_source_index = source_call_indices[call_index]
+        let expected_name = if call_index == 0 || call_index == 2 {
+          "step"
+        } else {
+          "u"
+        }
+        inspect(call.name, content=expected_name)
+        inspect(call.request.this_value, content="undefined")
+        inspect(call.request.args.length(), content="1")
+        inspect(call.request.args[0], content="256")
+        let expected_loc = match preflight.source.steps[expected_source_index] {
+          DispatchExpressionCallSourceStep(source) => source.call_loc
+          _ => fail("expected a call source at every plan leaf")
+        }
+        inspect(call.request.loc == expected_loc, content="true")
+        match (call.adapter, call.name) {
+          (DispatchNumericUserFuncAdapterToken(callee), "step") =>
+            inspect(
+              array_map_value_identity_matches(
+                callee,
+                catalog.numeric.entry.callee,
+              ),
+              content="true",
+            )
+          (DispatchArrayMapUserFuncAdapterToken(callee), "u") =>
+            inspect(
+              array_map_value_identity_matches(
+                callee,
+                catalog.array_map.step_function,
+              ),
+              content="true",
+            )
+          _ => fail("four-call plan selected the wrong adapter family")
+        }
+        call_index += 1
+      }
+      DispatchExpressionNumericAdd(loc) => {
+        let expected_add_index = if call_index == 2 {
+          2
+        } else if call_index == 3 {
+          4
+        } else {
+          6
+        }
+        let expected_loc = match preflight.source.steps[expected_add_index] {
+          DispatchExpressionAddSourceStep(source_loc) => source_loc
+          _ => fail("expected an add source at every plan binary")
+        }
+        inspect(loc == expected_loc, content="true")
+      }
+    }
+  }
+  inspect(call_index, content="4")
 }
 
 ///|
