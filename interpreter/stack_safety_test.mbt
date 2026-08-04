@@ -199,6 +199,27 @@ test "array map direct cleanup permits a second run on the same Interpreter" {
 }
 
 ///|
+test "array map forwarding cleanup permits a second run on the same Interpreter" {
+  let interp = new_interpreter()
+  let first = interp.run(
+    @parser.parse(ARRAY_MAP_FORWARDING_RECURSION_SOURCE).stmts,
+  )
+  let second = interp.run(
+    @parser.parse(ARRAY_MAP_FORWARDING_RECURSION_SOURCE).stmts,
+  )
+  match (first, second) {
+    (Value::Number(256.0), Value::Number(256.0)) => ()
+    (first, second) =>
+      fail(
+        "forwarding map cleanup changed repeated results: " +
+        first.to_string() +
+        ", " +
+        second.to_string(),
+      )
+  }
+}
+
+///|
 test "array map replacement stays legacy across same Interpreter runs" {
   let interp = new_interpreter()
   let replacement = @parser.parse(
@@ -340,6 +361,40 @@ test "array map near miss: non-UserFunc callback and non-one-element length stay
     Value::String_(value) => inspect(value, content="2:1:2:0:true|1:true")
     other =>
       fail("non-one-element map changed result/order: " + other.to_string())
+  }
+}
+
+///|
+test "array map forwarding shape length near misses stay legacy" {
+  match
+    run(
+      "function f(t){if(t===0)return 0;return u(t);}" +
+      "function u(n){if(n===0)return 0;return 1+[].map(function(t){return f(t);})[0];}" +
+      "u(2)!==u(2);",
+    ) {
+    Value::Bool(true) => ()
+    other =>
+      fail("empty forwarding map changed NaN semantics: " + other.to_string())
+  }
+  match
+    run(
+      "function f(t){if(t===0)return 0;return u(t);}" +
+      "function u(n){if(n===0)return 0;return 1+[n-1].map(function(t){return f(t);})[0];}" +
+      "u(2);",
+    ) {
+    Value::Number(2.0) => ()
+    other =>
+      fail("one-element forwarding map changed result: " + other.to_string())
+  }
+  match
+    run(
+      "function f(t){if(t===0)return 0;return u(t);}" +
+      "function u(n){if(n===0)return 0;return 1+[n-1,0,0].map(function(t){return f(t);})[0];}" +
+      "u(2);",
+    ) {
+    Value::Number(2.0) => ()
+    other =>
+      fail("three-element forwarding map changed result: " + other.to_string())
   }
 }
 

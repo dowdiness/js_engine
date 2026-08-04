@@ -15,6 +15,8 @@ priv struct DispatchObservationProbe {
   mut denied : Int
   mut active : Int
   mut maximum_active : Int
+  active_ordinals : Array[Int]
+  mut lifo_violations : Int
   release_ordinals : Array[Int]
   release_state_restored : Array[Bool]
 }
@@ -35,6 +37,8 @@ fn DispatchObservationProbe::DispatchObservationProbe(
     denied: 0,
     active: 0,
     maximum_active: 0,
+    active_ordinals: [],
+    lifo_violations: 0,
     release_ordinals: [],
     release_state_restored: [],
   }
@@ -67,6 +71,7 @@ fn DispatchObservationProbe::port(
         acquired=() => {
           self.acquired += 1
           self.active += 1
+          self.active_ordinals.push(ordinal)
           if self.active > self.maximum_active {
             self.maximum_active = self.active
           }
@@ -76,6 +81,13 @@ fn DispatchObservationProbe::port(
         released=() => {
           self.released += 1
           self.active -= 1
+          let last_active = match self.active_ordinals.pop() {
+            Some(found) => found
+            None => -1
+          }
+          if last_active != ordinal {
+            self.lifo_violations += 1
+          }
           self.release_ordinals.push(ordinal)
           match (self.observed_interp, state_before) {
             (
