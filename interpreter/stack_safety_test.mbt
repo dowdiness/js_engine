@@ -60,6 +60,15 @@ const INTRINSIC_APPLY_MAPPED_ARGUMENTS_SOURCE =
   #|step(256);
 
 ///|
+const ARRAY_MAP_MEMBER_RECURSION_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  var items = [{next: function() { return step(n - 1); }}];
+  #|  return 1 + items.map(function(t) { return t.next(); })[0];
+  #|}
+  #|step(256);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -95,6 +104,181 @@ test "execution stack safety: intrinsic apply forwarding mapped arguments at dep
         "expected intrinsic apply mapped arguments result 256, got " +
         other.to_string(),
       )
+  }
+}
+
+///|
+test "execution stack safety: exact array map member callback at depth 256" {
+  match run(ARRAY_MAP_MEMBER_RECURSION_SOURCE) {
+    Value::Number(256.0) => ()
+    other =>
+      fail(
+        "expected exact array map member callback result 256, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
+test "array map cleanup permits a second run on the same Interpreter" {
+  let interp = new_interpreter()
+  let first = interp.run(@parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts)
+  let second = interp.run(
+    @parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts,
+  )
+  match (first, second) {
+    (Value::Number(256.0), Value::Number(256.0)) => ()
+    (first, second) =>
+      fail(
+        "array map cleanup changed repeated results: " +
+        first.to_string() +
+        ", " +
+        second.to_string(),
+      )
+  }
+}
+
+///|
+test "array map near miss: replaced and own map stay legacy" {
+  match
+    run(
+      "function step(n){if(n===0)return 0;" +
+      "var items=[{next:function(){return step(n-1);}}];" +
+      "items.map=function(){return [41];};" +
+      "return 1+items.map(function(t){return t.next();})[0];}step(2);",
+    ) {
+    Value::Number(42.0) => ()
+    other => fail("own map override changed result: " + other.to_string())
+  }
+  match
+    run(
+      "Array.prototype.map=function(){return [7];};" +
+      "function step(n){if(n===0)return 0;" +
+      "var items=[{next:function(){return step(n-1);}}];" +
+      "return 1+items.map(function(t){return t.next();})[0];}step(2);",
+    ) {
+    Value::Number(8.0) => ()
+    other => fail("prototype map override changed result: " + other.to_string())
+  }
+}
+
+///|
+test "array map near miss: prototype and species drift stay legacy" {
+  match
+    run(
+      "var source=[1];var calls=0;" +
+      "source.constructor={};" +
+      "Object.defineProperty(source.constructor,Symbol.species,{get:function(){" +
+      "calls=calls+1;return Array;}});" +
+      "var result=source.map(function(x){return x+1;});calls+result[0];",
+    ) {
+    Value::Number(3.0) => ()
+    other =>
+      fail("species drift did not preserve result/order: " + other.to_string())
+  }
+}
+
+///|
+test "array map near miss: sparse accessor and proxy receivers stay legacy" {
+  match
+    run(
+      "var source=[];source[1]=2;var seen=[];" +
+      "var result=source.map(function(x,i){seen.push(i+\":\"+x);return x;});" +
+      "result.length+\":\"+result[0]+\":\"+result[1]+\":\"+seen.join(\"|\");",
+    ) {
+    Value::String_(value) => inspect(value, content="2:undefined:2:1:2")
+    other => fail("sparse map semantics changed: " + other.to_string())
+  }
+  match
+    run(
+      "var source=[1];var reads=0;" +
+      "Object.defineProperty(source,\"0\",{get:function(){reads=reads+1;return 7;}});" +
+      "var result=source.map(function(x){return x+1;});reads+result[0];",
+    ) {
+    Value::Number(9.0) => ()
+    other => fail("accessor map semantics changed: " + other.to_string())
+  }
+  match
+    run(
+      "var source=[1];var seen=[];" +
+      "var proxy=new Proxy(source,{has:function(t,k){seen.push(\"has:\"+k);" +
+      "return Reflect.has(t,k);},get:function(t,k,r){seen.push(\"get:\"+k);" +
+      "return Reflect.get(t,k,r);}});" +
+      "var result=proxy.map(function(x){return x+1;});" +
+      "result[0]+\":\"+seen.join(\"|\");",
+    ) {
+    Value::String_(value) =>
+      inspect(value, content="2:get:map|get:length|get:constructor|has:0|get:0")
+    other => fail("proxy map semantics changed: " + other.to_string())
+  }
+}
+
+///|
+test "array map near miss: computed member, callback body, and callee stay legacy" {
+  match
+    run(
+      "function step(n){if(n===0)return 0;" +
+      "var items=[{next:function(){return step(n-1);}}];" +
+      "return 1+items.map(function(t){return t[\"next\"]();})[0];}step(2);",
+    ) {
+    Value::Number(2.0) => ()
+    other => fail("computed member map changed result: " + other.to_string())
+  }
+  match
+    run(
+      "function step(n){if(n===0)return 0;" +
+      "var items=[{next:function(){return step(n-1);}}];" +
+      "return 1+items.map(function(t){var marker=1;return t.next()+marker-1;})[0];" +
+      "}step(2);",
+    ) {
+    Value::Number(2.0) => ()
+    other => fail("callback body mutation changed result: " + other.to_string())
+  }
+  match
+    run(
+      "function step(n){if(n===0)return 0;" +
+      "var items=[{next:function(){return step(n-1);}}];" +
+      "var map=items.map;return 1+map.call(items,function(t){return t.next();})[0];" +
+      "}step(2);",
+    ) {
+    Value::Number(2.0) => ()
+    other => fail("callee mutation changed result: " + other.to_string())
+  }
+}
+
+///|
+test "array map near miss: non-UserFunc callback and non-one-element length stay legacy" {
+  match run("[1].map(String)[0]") {
+    Value::String_(value) => inspect(value, content="1")
+    other => fail("builtin callback map changed result: " + other.to_string())
+  }
+  match
+    run(
+      "var source=[{next:function(){return 1;}},{next:function(){return 2;}}];" +
+      "var calls=[];var result=source.map(function(t,i,receiver){" +
+      "calls.push(i+\":\"+(receiver===source));return t.next();});" +
+      "result.length+\":\"+result[0]+\":\"+result[1]+\":\"+calls.join(\"|\");",
+    ) {
+    Value::String_(value) => inspect(value, content="2:1:2:0:true|1:true")
+    other =>
+      fail("non-one-element map changed result/order: " + other.to_string())
+  }
+}
+
+///|
+test "array map preserves callback thisArg argument order result and length" {
+  match
+    run(
+      "var source=[{next:function(){return 7;}}];" +
+      "var thisArg={marker:3};var seen=0;" +
+      "var result=source.map(function(value,index,receiver){" +
+      "seen=(this===thisArg?1:0)+index+(receiver===source?10:0)+" +
+      "(value===source[0]?100:0);return this.marker+value.next();},thisArg);" +
+      "result.length+\":\"+result[0]+\":\"+seen;",
+    ) {
+    Value::String_(value) => inspect(value, content="1:10:111")
+    other =>
+      fail("map callback arguments or result changed: " + other.to_string())
   }
 }
 
