@@ -98,17 +98,16 @@ test "direct-return admission owns a bound leaf argument plan" {
     Some(found) => found
     None => fail("expected a bound direct-return leaf plan")
   }
-  match leaf.syntax.parameter {
-    Some(parameter) => inspect(parameter, content="value")
-    None => fail("expected one sealed leaf parameter")
+  guard leaf.syntax.parameter is Some("value") else {
+    fail("expected one sealed leaf parameter")
   }
-  match leaf.syntax.leaf_completion {
-    DirectReturnLeafParameterValue(name, _) => inspect(name, content="value")
-    _ => fail("expected the leaf to return its sealed parameter")
+  guard leaf.syntax.leaf_completion
+    is DirectReturnLeafParameterValue("value", _) else {
+    fail("expected the leaf to return its sealed parameter")
   }
-  match plan.entry.syntax.base_call_argument {
-    Some(DirectReturnClosedString(value)) => inspect(value, content="done")
-    _ => fail("expected one sealed string call argument")
+  guard plan.entry.syntax.base_call_argument
+    is Some(DirectReturnClosedString("done")) else {
+    fail("expected one sealed string call argument")
   }
   guard plan.entry.syntax.base_call_argument_loc is Some(_) else {
     fail("expected the sealed call argument location")
