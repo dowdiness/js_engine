@@ -87,12 +87,8 @@ test "direct-return admission recognizes a sealed leaf callee" {
   inspect(leaf.declaration_index, content="0")
   inspect(plan.entry.declaration_index, content="1")
   match plan.entry.syntax.base_completion {
-    DirectReturnBaseLeafCall => {
-      guard plan.entry.syntax.leaf_call is Some({ callee_name: name, .. }) else {
-        fail("expected the sealed base leaf call plan")
-      }
+    DirectReturnBaseLeafCall({ callee_name: name, .. }) =>
       inspect(name, content="leaf")
-    }
     _ => fail("expected the base completion to call the sealed leaf")
   }
   match leaf.syntax.leaf_completion {
@@ -116,11 +112,7 @@ test "direct-return admission owns a result-fed leaf call plan" {
     fail("expected a closed base value before the result-fed call")
   }
   guard plan.entry.syntax.recursive_completion
-    is DirectReturnRecursiveResultFedLeafCall else {
-    fail("expected an explicit result-fed recursive completion")
-  }
-  guard plan.entry.syntax.leaf_call
-    is Some(
+    is DirectReturnRecursiveResultFedLeafCall(
       {
         callee_name: "id",
         call_loc: outer_loc,
@@ -142,6 +134,71 @@ test "direct-return admission owns a result-fed leaf call plan" {
 }
 
 ///|
+test "direct-return syntax snapshots payload leaf plans" {
+  let loc = @token.Loc::default()
+  let argument = DirectReturnClosedArgument(
+    literal=DirectReturnClosedString("done"),
+    loc~,
+  )
+  let argument_sources = [DirectReturnLeafClosedArgument(argument)]
+  let plan = DirectReturnLeafCallPlan(
+    callee_name="leaf",
+    call_loc=loc,
+    argument_sources~,
+  )
+  let recursive_sources = [DirectReturnLeafRecursiveResult(loc)]
+  let recursive_plan = DirectReturnLeafCallPlan(
+    callee_name="id",
+    call_loc=loc,
+    argument_sources=recursive_sources,
+  )
+  let syntax = DirectReturnFunctionSyntax(
+    name="f",
+    parameter="n",
+    recursive_callee="f",
+    base_condition_loc=loc,
+    base_literal_loc=loc,
+    recursive_call_loc=loc,
+    recursive_subtract_loc=loc,
+    base_completion=DirectReturnBaseLeafCall(plan),
+    recursive_completion=DirectReturnRecursiveResultFedLeafCall(recursive_plan),
+  )
+  argument_sources[0] = DirectReturnLeafClosedArgument(
+    DirectReturnClosedArgument(
+      literal=DirectReturnClosedString("changed"),
+      loc~,
+    ),
+  )
+  plan.argument_sources[0] = DirectReturnLeafClosedArgument(
+    DirectReturnClosedArgument(
+      literal=DirectReturnClosedString("changed-again"),
+      loc~,
+    ),
+  )
+  recursive_sources[0] = DirectReturnLeafClosedArgument(argument)
+  recursive_plan.argument_sources[0] = DirectReturnLeafClosedArgument(argument)
+  guard syntax.base_completion
+    is DirectReturnBaseLeafCall(
+      {
+        argument_sources: [
+          DirectReturnLeafClosedArgument(
+            { literal: DirectReturnClosedString("done"), .. }
+          ),
+        ],
+        ..,
+      }
+    ) else {
+    fail("expected syntax to own an immutable leaf-plan snapshot")
+  }
+  guard syntax.recursive_completion
+    is DirectReturnRecursiveResultFedLeafCall(
+      { argument_sources: [DirectReturnLeafRecursiveResult(_)], .. }
+    ) else {
+    fail("expected recursive syntax to own an immutable leaf-plan snapshot")
+  }
+}
+
+///|
 test "direct-return admission owns a bound leaf argument plan" {
   let stmts = direct_return_test_program(
     DIRECT_RETURN_ARGUMENT_LEAF_TEST_SOURCE,
@@ -159,8 +216,8 @@ test "direct-return admission owns a bound leaf argument plan" {
     is DirectReturnLeafParameterValue({ name: "value", index: 0, .. }) else {
     fail("expected the leaf to return its sealed parameter")
   }
-  guard plan.entry.syntax.leaf_call
-    is Some(
+  guard plan.entry.syntax.base_completion
+    is DirectReturnBaseLeafCall(
       {
         argument_sources: [
           DirectReturnLeafClosedArgument(
@@ -192,8 +249,8 @@ test "direct-return admission owns an ordered argument vector plan" {
     is DirectReturnLeafParameterValue({ name: "value", index: 1, .. }) else {
     fail("expected the leaf to return argument index one")
   }
-  guard plan.entry.syntax.leaf_call
-    is Some(
+  guard plan.entry.syntax.base_completion
+    is DirectReturnBaseLeafCall(
       {
         argument_sources: [
           DirectReturnLeafClosedArgument(
@@ -527,8 +584,7 @@ test "direct-return closed throw crosses depth 256 without host recursion" {
 }
 
 ///|
-test "direct-return result-fed helper throw preserves guest value" {
-  let interp = Interpreter::new()
+fn run_direct_return_result_fed_throw(interp : Interpreter) -> String {
   let result = try {
     let _ = interp.run(
       direct_return_test_program(DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE),
@@ -538,12 +594,78 @@ test "direct-return result-fed helper throw preserves guest value" {
     JsException(String_(value)) => value
     _ => "wrong throw"
   }
-  inspect(result, content="boom")
+  result
+}
+
+///|
+test "direct-return result-fed helper throw preserves guest value" {
+  inspect(
+    run_direct_return_result_fed_throw(Interpreter::new()),
+    content="boom",
+  )
+}
+
+///|
+test "direct-return result-fed helper throw permits same-interpreter reuse" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 161)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  inspect(run_direct_return_result_fed_throw(interp), content="boom")
+  dispatch_shell_test_expect_realm_sentinel(interp, 161)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after result-fed helper throw")
+  }
+  match
+    run_direct_return_result_fed_shell_once(
+      interp,
+      DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+    ) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected result-fed result after helper throw: " + other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 161)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after helper-throw reuse")
+  }
 }
 
 ///|
 test "direct-return result-fed interruption bypasses its saved return consumer" {
-  expect_direct_return_result_fed_interruption()
+  run_direct_return_result_fed_interruption(Interpreter::new())
+}
+
+///|
+test "direct-return result-fed interruption permits same-interpreter reuse" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 163)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  run_direct_return_result_fed_interruption(interp)
+  dispatch_shell_test_expect_realm_sentinel(interp, 163)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after result-fed interruption")
+  }
+  match
+    run_direct_return_result_fed_shell_once(
+      interp,
+      DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+    ) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected result-fed result after interruption: " + other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 163)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after result-fed interruption reuse")
+  }
 }
 
 ///|
@@ -765,9 +887,9 @@ test "direct-return trust rejects a changed bound leaf argument" {
     Some(found) => found
     None => fail("expected a trusted bound direct-return leaf")
   }
-  let call_loc = match registry.entry.syntax.leaf_call {
-    Some(plan) => plan.call_loc
-    None => fail("expected a sealed leaf call location")
+  let call_loc = match registry.entry.syntax.base_completion {
+    DirectReturnBaseLeafCall(plan) => plan.call_loc
+    _ => fail("expected a sealed leaf call location")
   }
   let result = try {
     registry.require_call(
@@ -811,9 +933,9 @@ test "direct-return result-fed trust rejects helper binding mutation" {
     Some(found) => found
     None => fail("expected a trusted result-fed helper")
   }
-  let call_loc = match registry.entry.syntax.leaf_call {
-    Some(plan) => plan.call_loc
-    None => fail("expected the result-fed call plan")
+  let call_loc = match registry.entry.syntax.recursive_completion {
+    DirectReturnRecursiveResultFedLeafCall(plan) => plan.call_loc
+    _ => fail("expected the result-fed call plan")
   }
   guard interp.global.bindings.get("id") is Some(binding) else {
     fail("expected the hoisted result-fed helper binding")
@@ -853,9 +975,9 @@ test "direct-return trust rejects reordered argument vectors" {
     Some(found) => found
     None => fail("expected a trusted ordered direct-return leaf")
   }
-  let call_loc = match registry.entry.syntax.leaf_call {
-    Some(plan) => plan.call_loc
-    None => fail("expected a sealed leaf call location")
+  let call_loc = match registry.entry.syntax.base_completion {
+    DirectReturnBaseLeafCall(plan) => plan.call_loc
+    _ => fail("expected a sealed leaf call location")
   }
   let result = try {
     registry.require_call(
@@ -1011,9 +1133,9 @@ test "direct-return ordinary cleanup owns an argument snapshot" {
     callee=leaf.callee,
     this_value=Undefined,
     args=[String_("done")],
-    loc=match registry.entry.syntax.leaf_call {
-      Some(plan) => plan.call_loc
-      None => fail("expected the sealed leaf call plan")
+    loc=match registry.entry.syntax.base_completion {
+      DirectReturnBaseLeafCall(plan) => plan.call_loc
+      _ => fail("expected the sealed leaf call plan")
     },
   )
   let shell = PrimitiveProgramDispatchShell(
@@ -1292,8 +1414,9 @@ fn expect_direct_return_interruption_at_leaf(source : String) -> Unit raise {
 }
 
 ///|
-fn expect_direct_return_result_fed_interruption() -> Unit raise {
-  let interp = Interpreter::new()
+fn run_direct_return_result_fed_interruption(
+  interp : Interpreter,
+) -> Unit raise {
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
   let interruption = ExecutionInterruptionRequest()
   let base_port = probe.port()
@@ -1467,4 +1590,145 @@ test "direct-return result-fed cleanup permits same-interpreter reuse" {
       None => fail("expected source identity after result-fed run")
     }
   }
+}
+
+///|
+test "direct-return result-fed one-short budget bypasses saved return consumer" {
+  let exact_interp = Interpreter::new()
+  let exact_probe = DispatchObservationProbe(observed_interp=Some(exact_interp))
+  let (exact_shell, exact_stmts, exact_ctx) = direct_return_observation_fixture_for_source(
+    exact_interp,
+    exact_probe,
+    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+  )
+  let full_budget = 10000L
+  let exact_control = ExecutionControl(
+    remaining_steps=full_budget,
+    maximum_active_depth=300L,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let exact_completion = exact_interp.with_execution_control(exact_control, () => {
+    exact_shell.drive_root_program(exact_stmts, exact_ctx)
+  })
+  match exact_completion {
+    DispatchNormal(String_(value)) => inspect(value, content="done")
+    _ => fail("expected exact result-fed budget to complete normally")
+  }
+  let used_steps = full_budget - exact_control.remaining_steps()
+  guard used_steps > 0L else {
+    fail("expected result-fed execution to charge steps")
+  }
+
+  let short_interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(short_interp, 167)
+  short_interp.realm_state.active_source_identity.val = Some("caller.js")
+  let short_probe = DispatchObservationProbe(observed_interp=Some(short_interp))
+  let (short_shell, short_stmts, short_ctx) = direct_return_observation_fixture_for_source(
+    short_interp,
+    short_probe,
+    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+  )
+  let short_control = ExecutionControl(
+    remaining_steps=used_steps - 1L,
+    maximum_active_depth=300L,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let short_completion = short_interp.with_execution_control(short_control, () => {
+    short_shell.drive_root_program(short_stmts, short_ctx)
+  })
+  match short_completion {
+    DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)) => ()
+    _ => fail("expected one-short result-fed execution limit")
+  }
+  inspect(short_probe.attempts, content="513")
+  inspect(short_probe.acquired, content="513")
+  inspect(short_probe.accepted, content="513")
+  inspect(short_probe.released, content="513")
+  inspect(short_probe.rejected, content="0")
+  inspect(short_probe.active, content="0")
+  inspect(short_probe.lifo_violations, content="0")
+  inspect(short_shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(short_interp, 167)
+  match short_interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after result-fed budget failure")
+  }
+  match
+    run_direct_return_result_fed_shell_once(
+      short_interp,
+      DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+    ) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected result-fed result after budget failure: " +
+        other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(short_interp, 167)
+  match short_interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after result-fed budget reuse")
+  }
+}
+
+///|
+test "direct-return result-fed leaf rejects a changed prepared parameter" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+  )
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected result-fed direct-return preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let leaf = match registry.leaf {
+    Some(found) => found
+    None => fail("expected a trusted result-fed helper")
+  }
+  let call_loc = match registry.entry.syntax.recursive_completion {
+    DirectReturnRecursiveResultFedLeafCall(plan) => plan.call_loc
+    _ => fail("expected the result-fed helper call plan")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    direct_return_root_preflight=Some(preflight),
+    direct_return_root_stmts=Some(stmts),
+    direct_return_registry=Some(registry),
+  )
+  let cursor = match
+    shell.enter_direct_return_call(
+      DispatchCallRequest(
+        callee=leaf.callee,
+        this_value=Undefined,
+        args=[String_("done")],
+        loc=call_loc,
+      ),
+    ) {
+    DispatchCallAccepted(_, DispatchCallBody(cursor)) => cursor
+    _ => fail("expected the result-fed helper activation to be accepted")
+  }
+  guard cursor.env.bindings.get("x") is Some(binding) else {
+    fail("expected the prepared result-fed helper parameter")
+  }
+  binding.value = String_("changed")
+  let result = try {
+    let _ = shell.execute_direct_return_leaf_statement(
+      { ctx: cursor.ctx, stmt: leaf.body[0], env: cursor.env, index: 0 },
+      registry,
+      leaf,
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  inspect(
+    result,
+    content="direct-return leaf parameter lost its sealed binding provenance",
+  )
+  shell.restore_all_cleanup()
+  inspect(shell.cleanup_stack.length(), content="0")
 }

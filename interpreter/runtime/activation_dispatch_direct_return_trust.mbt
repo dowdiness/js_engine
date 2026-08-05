@@ -168,7 +168,8 @@ fn direct_return_base_completions_match(
     (DirectReturnBaseValue(expected), DirectReturnBaseValue(actual))
     | (DirectReturnBaseThrow(expected), DirectReturnBaseThrow(actual)) =>
       direct_return_closed_literals_match(expected, actual)
-    (DirectReturnBaseLeafCall, DirectReturnBaseLeafCall) => true
+    (DirectReturnBaseLeafCall(expected), DirectReturnBaseLeafCall(actual)) =>
+      direct_return_leaf_call_plans_match(expected, actual)
     _ => false
   }
 }
@@ -203,20 +204,15 @@ fn direct_return_leaf_argument_sources_match(
 
 ///|
 fn direct_return_leaf_call_plans_match(
-  expected : DirectReturnLeafCallPlan?,
-  actual : DirectReturnLeafCallPlan?,
+  expected : DirectReturnLeafCallPlan,
+  actual : DirectReturnLeafCallPlan,
 ) -> Bool {
-  match (expected, actual) {
-    (None, None) => true
-    (Some(expected), Some(actual)) =>
-      expected.callee_name == actual.callee_name &&
-      expected.call_loc == actual.call_loc &&
-      direct_return_leaf_argument_sources_match(
-        expected.argument_sources,
-        actual.argument_sources,
-      )
-    _ => false
-  }
+  expected.callee_name == actual.callee_name &&
+  expected.call_loc == actual.call_loc &&
+  direct_return_leaf_argument_sources_match(
+    expected.argument_sources,
+    actual.argument_sources,
+  )
 }
 
 ///|
@@ -225,11 +221,11 @@ fn direct_return_recursive_completions_match(
   actual : DirectReturnRecursiveCompletion,
 ) -> Bool {
   match (expected, actual) {
-    (DirectReturnRecursiveSelfCall, DirectReturnRecursiveSelfCall)
-    | (
-      DirectReturnRecursiveResultFedLeafCall,
-      DirectReturnRecursiveResultFedLeafCall,
-    ) => true
+    (DirectReturnRecursiveSelfCall, DirectReturnRecursiveSelfCall) => true
+    (
+      DirectReturnRecursiveResultFedLeafCall(expected),
+      DirectReturnRecursiveResultFedLeafCall(actual),
+    ) => direct_return_leaf_call_plans_match(expected, actual)
     _ => false
   }
 }
@@ -309,7 +305,6 @@ fn direct_return_function_syntaxes_match(
     expected.recursive_completion,
     actual.recursive_completion,
   ) &&
-  direct_return_leaf_call_plans_match(expected.leaf_call, actual.leaf_call) &&
   direct_return_base_completions_match(
     expected.base_completion,
     actual.base_completion,
@@ -924,12 +919,16 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
           (Object(expected), Object(actual)) => physical_equal(expected, actual)
           _ => false
         }) {
-        let leaf_call = match self.entry.syntax.leaf_call {
-          Some(found) => found
-          None =>
-            invalid_activation_dispatch_shell(
-              "direct-return leaf call lost its sealed call plan",
-            )
+        let leaf_call = match self.entry.syntax.base_completion {
+          DirectReturnBaseLeafCall(plan) => plan
+          _ =>
+            match self.entry.syntax.recursive_completion {
+              DirectReturnRecursiveResultFedLeafCall(plan) => plan
+              _ =>
+                invalid_activation_dispatch_shell(
+                  "direct-return leaf registry lost its leaf completion plan",
+                )
+            }
         }
         guard leaf_call.callee_name == leaf.syntax.name &&
           this_value is Undefined &&

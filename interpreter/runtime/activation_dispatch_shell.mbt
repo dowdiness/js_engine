@@ -1944,12 +1944,16 @@ fn direct_return_leaf_parameter_value(
   parameter : DirectReturnBoundParameter,
   actual_arguments : Array[Value],
 ) -> Value raise InvalidActivationDispatchShell {
-  let leaf_call = match registry.entry.syntax.leaf_call {
-    Some(found) => found
-    None =>
-      invalid_activation_dispatch_shell(
-        "direct-return leaf lost its sealed call plan",
-      )
+  let leaf_call = match registry.entry.syntax.base_completion {
+    DirectReturnBaseLeafCall(plan) => plan
+    _ =>
+      match registry.entry.syntax.recursive_completion {
+        DirectReturnRecursiveResultFedLeafCall(plan) => plan
+        _ =>
+          invalid_activation_dispatch_shell(
+            "direct-return leaf registry lost its leaf completion plan",
+          )
+      }
   }
   guard syntax.parameters.length() == actual_arguments.length() &&
     parameter.index >= 0 &&
@@ -2124,19 +2128,12 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
                 JsException(direct_return_closed_literal_value(literal)),
               ),
             )
-          DirectReturnBaseLeafCall => {
+          DirectReturnBaseLeafCall(leaf_call) => {
             let leaf = match registry.leaf {
               Some(leaf) => leaf
               None =>
                 invalid_activation_dispatch_shell(
                   "direct-return base call lost its sealed leaf",
-                )
-            }
-            let leaf_call = match syntax.leaf_call {
-              Some(found) => found
-              None =>
-                invalid_activation_dispatch_shell(
-                  "direct-return base call lost its sealed call plan",
                 )
             }
             let request = DispatchCallRequest(
@@ -2194,19 +2191,12 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
       )
       let continuation = match syntax.recursive_completion {
         DirectReturnRecursiveSelfCall => DispatchCompleteReturn
-        DirectReturnRecursiveResultFedLeafCall => {
+        DirectReturnRecursiveResultFedLeafCall(leaf_call) => {
           let leaf = match registry.leaf {
             Some(leaf) => leaf
             None =>
               invalid_activation_dispatch_shell(
                 "direct-return result-fed call lost its sealed leaf",
-              )
-          }
-          let leaf_call = match syntax.leaf_call {
-            Some(found) => found
-            None =>
-              invalid_activation_dispatch_shell(
-                "direct-return result-fed call lost its sealed call plan",
               )
           }
           guard leaf_call.callee_name == leaf.syntax.name else {
