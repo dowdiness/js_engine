@@ -20,6 +20,8 @@ fn[T] invalid_activation_dispatch_shell(
 priv enum ProgramCleanupOwner {
   AcceptedProgram
   RejectedProgram
+  AcceptedDirectReturnCall
+  RejectedDirectReturnCall
   AcceptedNumericCall
   RejectedNumericCall
   AcceptedGetterCall
@@ -138,6 +140,25 @@ priv struct DispatchNumericCallRealmCleanup {
 }
 
 ///|
+// Shared imperative resources for sealed ordinary UserFunc activations. The
+// direct-return family is the first producer; later ordinary-call families can
+// reuse this boundary without changing the dispatch core.
+priv struct DispatchOrdinaryCallRealmCleanup {
+  cleared_realm : ClearedActiveCalleeRealmScope
+  active_realm : ActiveCalleeRealmValueScope
+  parameter_gate : SimpleUserFuncParameterGateScope
+}
+
+///|
+fn DispatchOrdinaryCallRealmCleanup::DispatchOrdinaryCallRealmCleanup(
+  cleared_realm~ : ClearedActiveCalleeRealmScope,
+  active_realm~ : ActiveCalleeRealmValueScope,
+  parameter_gate~ : SimpleUserFuncParameterGateScope,
+) -> DispatchOrdinaryCallRealmCleanup {
+  { cleared_realm, active_realm, parameter_gate }
+}
+
+///|
 fn DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
   cleared_realm~ : ClearedActiveCalleeRealmScope,
   active_realm~ : ActiveCalleeRealmValueScope,
@@ -220,6 +241,7 @@ priv enum DispatchActivationObservation {
 #warnings("-unused_constructor")
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
+  DispatchDirectReturnRootRealmCleanup(FunctionRealmProtos)
   DispatchControlRootRealmCleanup(FunctionRealmProtos)
   DispatchNumericRootRealmCleanup(FunctionRealmProtos)
   DispatchGetterRootRealmCleanup(FunctionRealmProtos)
@@ -230,6 +252,7 @@ priv enum DispatchShellCleanupResources {
   DispatchNumericMapCompositionRootRealmCleanup(FunctionRealmProtos)
   DispatchDeniedActivationCleanup
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
+  DispatchOrdinaryRealmCleanup(DispatchOrdinaryCallRealmCleanup)
   DispatchGetterRealmCleanup(DispatchGetterCallRealmCleanup)
   DispatchProxyRealmCleanup(DispatchProxyCallRealmCleanup)
   DispatchReceiverRealmCleanup(DispatchReceiverCallRealmCleanup)
@@ -257,6 +280,9 @@ priv struct PrimitiveProgramDispatchShell {
   mut control_phase : ControlLifecyclePhase
   mut control_try_env : Environment?
   mut control_finalizer_env : Environment?
+  direct_return_root_preflight : DirectReturnRecursionPreflight?
+  direct_return_root_stmts : Array[@ast.Stmt]?
+  mut direct_return_registry : TrustedDirectReturnRecursionRegistry?
   numeric_root_preflight : NumericRecursionPreflight?
   mut numeric_registry : TrustedNumericRecursionRegistry?
   getter_root_preflight : GetterRecursionPreflight?
@@ -294,6 +320,9 @@ priv struct PrimitiveProgramDispatchShell {
 fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   interp : Interpreter,
   control_root_preflight? : ControlLifecyclePreflight? = None,
+  direct_return_root_preflight? : DirectReturnRecursionPreflight? = None,
+  direct_return_root_stmts? : Array[@ast.Stmt]? = None,
+  direct_return_registry? : TrustedDirectReturnRecursionRegistry? = None,
   numeric_root_preflight? : NumericRecursionPreflight? = None,
   numeric_registry? : TrustedNumericRecursionRegistry? = None,
   getter_root_preflight? : GetterRecursionPreflight? = None,
@@ -332,6 +361,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     control_phase: ControlAwaitRoot,
     control_try_env: None,
     control_finalizer_env: None,
+    direct_return_root_preflight,
+    direct_return_root_stmts: direct_return_root_stmts.map(stmts => stmts.copy()),
+    direct_return_registry,
     numeric_root_preflight,
     numeric_registry,
     getter_root_preflight,
@@ -451,8 +483,9 @@ fn dispatch_signal_completion(signal : Signal) -> DispatchCompletion {
 ///|
 fn activation_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
   match owner {
-    AcceptedProgram | AcceptedNumericCall => true
+    AcceptedProgram | AcceptedDirectReturnCall | AcceptedNumericCall => true
     RejectedProgram
+    | RejectedDirectReturnCall
     | RejectedNumericCall
     | AcceptedGetterCall
     | RejectedGetterCall
@@ -475,6 +508,7 @@ fn activation_cleanup_owner_matches(
 ) -> Bool {
   match (owner, accepted) {
     (AcceptedProgram, true)
+    | (AcceptedDirectReturnCall, true)
     | (AcceptedNumericCall, true)
     | (AcceptedGetterCall, true)
     | (AcceptedProxyCall, true)
@@ -482,6 +516,7 @@ fn activation_cleanup_owner_matches(
     | (AcceptedConstructorCall, true)
     | (AcceptedArrayMapCall, true) => true
     (RejectedProgram, false)
+    | (RejectedDirectReturnCall, false)
     | (RejectedNumericCall, false)
     | (RejectedGetterCall, false)
     | (RejectedProxyCall, false)
@@ -558,7 +593,8 @@ fn PrimitiveProgramDispatchShell::reject_denied_managed_activation(
   error : Error,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   match owner {
-    RejectedNumericCall
+    RejectedDirectReturnCall
+    | RejectedNumericCall
     | RejectedGetterCall
     | RejectedProxyCall
     | RejectedReceiverCall
@@ -630,6 +666,21 @@ fn PrimitiveProgramDispatchShell::push_numeric_root_cleanup(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::push_direct_return_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchDirectReturnRootRealmCleanup(previous_realm_protos),
+    capabilities: None,
+    observation: None,
+  })
+}
+
+///|
 fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -643,6 +694,23 @@ fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
     owner,
     resources: DispatchNumericRealmCleanup(resources),
     capabilities,
+    observation,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_ordinary_call_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  owner : ProgramCleanupOwner,
+  resources : DispatchOrdinaryCallRealmCleanup,
+  observation : DispatchActivationObservation?,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchOrdinaryRealmCleanup(resources),
+    capabilities: None,
     observation,
   })
 }
@@ -1041,6 +1109,10 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
   match cleanup.resources {
     DispatchProgramRealmCleanup(previous_realm_protos) =>
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    DispatchDirectReturnRootRealmCleanup(previous_realm_protos) => {
+      self.direct_return_registry = None
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchControlRootRealmCleanup(previous_realm_protos) => {
       self.control_registry = None
       self.control_try_env = None
@@ -1085,6 +1157,20 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
     DispatchDeniedActivationCleanup => ()
+    DispatchOrdinaryRealmCleanup(resources) => {
+      self.interp.finish_simple_user_func_parameter_gate(
+        resources.parameter_gate,
+      )
+      finish_active_callee_realm_value(
+        self.interp.realm_state,
+        resources.active_realm,
+        failure~,
+      )
+      finish_cleared_active_callee_realm(
+        self.interp.realm_state,
+        resources.cleared_realm,
+      )
+    }
     DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
@@ -1258,6 +1344,19 @@ fn PrimitiveProgramDispatchShell::require_control_registry(
     None =>
       invalid_activation_dispatch_shell(
         "control lifecycle registry is unavailable",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::require_direct_return_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedDirectReturnRecursionRegistry raise InvalidActivationDispatchShell {
+  match self.direct_return_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct-return activation requires a sealed trust registry",
       )
   }
 }
@@ -1481,6 +1580,21 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  cursor : DispatchStatementCursor,
+  previous_realm_protos : FunctionRealmProtos,
+  preflight : DirectReturnRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  self.push_direct_return_root_cleanup(id, previous_realm_protos)
+  self.direct_return_registry = Some(
+    self.interp.seal_direct_return_recursion_registry(preflight, cursor.stmts),
+  )
+  DispatchProgramAccepted(DispatchActivationCleanup(id))
+}
+
+///|
 fn PrimitiveProgramDispatchShell::complete_constructor_root_preparation(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1522,6 +1636,13 @@ fn PrimitiveProgramDispatchShell::enter_program(
       match self.constructor_root_preflight {
         Some(preflight) =>
           return self.complete_constructor_root_preparation(
+            id, cursor, previous_realm_protos, preflight,
+          )
+        None => ()
+      }
+      match self.direct_return_root_preflight {
+        Some(preflight) =>
+          return self.complete_direct_return_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
         None => ()
@@ -1688,6 +1809,274 @@ fn PrimitiveProgramDispatchShell::enter_numeric_call(
   self.complete_numeric_call_preparation(
     id, syntax, resources, observation, setup,
   )
+}
+
+///|
+// Shared ordinary-UserFunc activation boundary for the first sealed direct
+// return family. Preparation, realm ownership, observation, and cleanup stay
+// here; family-specific statement execution remains below.
+fn PrimitiveProgramDispatchShell::enter_direct_return_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_direct_return_registry()
+  let _ = registry.require_call(
+    self.interp,
+    request.callee,
+    request.this_value,
+    request.args,
+    request.loc,
+  )
+  guard request.callee is Object(callee_object) &&
+    callee_object.callable is Some(UserFunc(data)) else {
+    invalid_activation_dispatch_shell(
+      "direct-return activation lost its exact UserFunc provenance",
+    )
+  }
+  let id = self.reserve_program_cleanup_id()
+  let observation = match self.begin_managed_activation_observation() {
+    Ok(attempt) => attempt
+    Err(error) =>
+      return self.reject_denied_managed_activation(
+        id,
+        RejectedDirectReturnCall,
+        error,
+      )
+  }
+  let cleared_realm = begin_cleared_active_callee_realm(self.interp.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.interp.realm_state,
+    request.callee,
+  )
+  let parameter_gate = self.interp.begin_simple_user_func_parameter_gate()
+  let setup : Result[PreparedUserFuncActivation, Error] = Ok(
+    self.interp.prepare_user_func_activation(
+      request.callee,
+      request.this_value,
+      request.args,
+      data,
+      throw_type_error_source=UsePreResolvedThrowTypeError(
+        registry.throw_type_error,
+      ),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  let resources = DispatchOrdinaryCallRealmCleanup(
+    cleared_realm~,
+    active_realm~,
+    parameter_gate~,
+  )
+  match setup {
+    Ok(prepared) => {
+      let token = accept_managed_activation_observation(observation)
+      self.push_ordinary_call_cleanup(
+        id,
+        AcceptedDirectReturnCall,
+        resources,
+        Some(AcceptedActivationObservation(token)),
+      )
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id),
+        DispatchCallBody(
+          DispatchStatementCursor(
+            ctx=prepared.ctx,
+            stmts=data.body,
+            env=prepared.env,
+            production=true,
+          ),
+        ),
+      )
+    }
+    Err(error) => {
+      reject_managed_activation_observation(observation)
+      self.push_ordinary_call_cleanup(
+        id,
+        RejectedDirectReturnCall,
+        resources,
+        Some(RejectedActivationObservation(observation)),
+      )
+      DispatchActivationRejected(
+        DispatchRejectedEntryCleanup(id),
+        dispatch_entry_rejection(error),
+      )
+    }
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_direct_return_registry()
+  let syntax = registry.require_callee(self.interp, registry.entry.callee)
+  guard step.ctx.current_generator is None &&
+    !step.ctx.strict &&
+    step.index >= 0 &&
+    step.index < registry.entry.body.length() &&
+    physical_equal(step.stmt, registry.entry.body[step.index]) else {
+    invalid_activation_dispatch_shell(
+      "direct-return statement lost its sealed body provenance",
+    )
+  }
+  let parameter_value = match step.env.bindings.get(syntax.parameter) {
+    Some(binding) if binding.initialized &&
+      binding.kind == LetBinding &&
+      binding.is_parameter => binding.value
+    _ =>
+      invalid_activation_dispatch_shell(
+        "direct-return parameter binding lost its trusted provenance",
+      )
+  }
+  let n = match parameter_value {
+    Number(value) if !value.is_nan() && !value.is_inf() => value
+    _ =>
+      invalid_activation_dispatch_shell(
+        "direct-return parameter value is not a finite Number",
+      )
+  }
+  match self.observe_managed_execution_steps(1) {
+    Some(completion) => return DispatchWorkCompleted(completion)
+    None => ()
+  }
+  match step.index {
+    0 => {
+      guard step.stmt
+        is (@ast.IfStmt(_, @ast.ReturnStmt(_, _), None, _)
+        | @ast.IfStmt(_, @ast.ThrowStmt(_, _), None, _)) else {
+        invalid_activation_dispatch_shell(
+          "direct-return base statement changed after sealing",
+        )
+      }
+      if n == DIRECT_RETURN_RECURSION_BASE_ARGUMENT {
+        match syntax.base_completion {
+          DirectReturnBaseValue(literal) =>
+            DispatchWorkCompleted(
+              DispatchReturn(direct_return_closed_literal_value(literal)),
+            )
+          DirectReturnBaseThrow(literal) =>
+            DispatchWorkCompleted(
+              DispatchThrow(
+                JsException(direct_return_closed_literal_value(literal)),
+              ),
+            )
+        }
+      } else {
+        guard n > DIRECT_RETURN_RECURSION_BASE_ARGUMENT && n.floor() == n else {
+          invalid_activation_dispatch_shell(
+            "direct-return parameter escaped the admitted decrement domain",
+          )
+        }
+        DispatchWorkCompleted(DispatchNormal(Undefined))
+      }
+    }
+    1 => {
+      guard step.stmt is @ast.ReturnStmt(Some(@ast.Call(_, _, _)), _) else {
+        invalid_activation_dispatch_shell(
+          "direct-return recursive statement changed after sealing",
+        )
+      }
+      guard n > DIRECT_RETURN_RECURSION_BASE_ARGUMENT && n.floor() == n else {
+        invalid_activation_dispatch_shell(
+          "direct-return recursive argument escaped the admitted domain",
+        )
+      }
+      let request = DispatchCallRequest(
+        callee=registry.entry.callee,
+        this_value=Undefined,
+        args=[Number(n - DIRECT_RETURN_RECURSION_STEP)],
+        loc=syntax.recursive_call_loc,
+      )
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+        request.loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendCall(request, DispatchCompleteReturn),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "direct-return body index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_direct_return_registry()
+  let root_stmts = match self.direct_return_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct-return root statements are unavailable",
+      )
+  }
+  guard root_stmts.length() == 2 else {
+    invalid_activation_dispatch_shell(
+      "direct-return root statements changed after sealing",
+    )
+  }
+  guard physical_equal(step.env, self.interp.global) &&
+    step.index >= 0 &&
+    step.index < 2 else {
+    invalid_activation_dispatch_shell(
+      "direct-return root statement lost its global provenance",
+    )
+  }
+  match step.index {
+    0 => {
+      guard physical_equal(step.stmt, root_stmts[0]) else {
+        invalid_activation_dispatch_shell(
+          "direct-return root declaration changed after sealing",
+        )
+      }
+      self.execute_statement_with_legacy_adapter(step)
+    }
+    1 => {
+      guard physical_equal(step.stmt, root_stmts[1]) else {
+        invalid_activation_dispatch_shell(
+          "direct-return root call changed after sealing",
+        )
+      }
+      guard step.stmt is @ast.ExprStmt(@ast.Call(_, _, _), _) else {
+        invalid_activation_dispatch_shell(
+          "direct-return root call changed after sealing",
+        )
+      }
+      match self.observe_managed_execution_steps(1) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let request = DispatchCallRequest(
+        callee=registry.entry.callee,
+        this_value=Undefined,
+        args=[Number(DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT)],
+        loc=registry.plan.root_call_loc,
+      )
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+        request.loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendCall(request, DispatchDeliverCallResult),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "direct-return root statement index is outside exact admission",
+      )
+  }
 }
 
 ///|
@@ -2191,6 +2580,10 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match self.direct_return_registry {
+    Some(_) => return self.enter_direct_return_call(request)
+    None => ()
+  }
   match self.managed_user_func_catalog {
     Some(catalog) => {
       let map_state : MapState? = if self.array_map_states.is_empty() {
@@ -3782,6 +4175,15 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
     Some(registry) => return self.execute_control_statement(step, registry)
     None => ()
   }
+  match self.direct_return_root_preflight {
+    Some(_) =>
+      if physical_equal(step.env, self.interp.global) {
+        return self.execute_direct_return_root_statement(step)
+      } else {
+        return self.execute_direct_return_statement(step)
+      }
+    None => ()
+  }
   match self.expression_root_preflight {
     Some(preflight) =>
       if physical_equal(step.env, self.interp.global) {
@@ -4116,6 +4518,7 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
   }
   let production = self.control_root_preflight is Some(_) ||
     self.constructor_root_preflight is Some(_) ||
+    self.direct_return_root_preflight is Some(_) ||
     self.composition_root_preflight is Some(_) ||
     self.expression_root_preflight is Some(_) ||
     self.array_map_root_preflight is Some(_) ||
@@ -4315,6 +4718,28 @@ fn Interpreter::run_activation_dispatch_numeric_program(
 }
 
 ///|
+fn Interpreter::run_activation_dispatch_direct_return_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : DirectReturnRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    direct_return_root_preflight=Some(preflight),
+    direct_return_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.direct_return_registry is None else {
+    invalid_activation_dispatch_shell(
+      "direct-return registry outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
 fn Interpreter::run_activation_dispatch_constructor_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -4460,6 +4885,8 @@ fn Interpreter::run_activation_dispatch_root_program(
       self.run_activation_dispatch_control_program(stmts, ctx, preflight)
     ActivationDispatchConstructorRoot(preflight) =>
       self.run_activation_dispatch_constructor_program(stmts, ctx, preflight)
+    ActivationDispatchDirectReturnRoot(preflight) =>
+      self.run_activation_dispatch_direct_return_program(stmts, ctx, preflight)
     ActivationDispatchNumericMapExpressionRoot(preflight) =>
       self.run_activation_dispatch_numeric_map_expression_program(
         stmts, ctx, preflight,

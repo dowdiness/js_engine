@@ -159,12 +159,10 @@ test "execution stack safety: self recursion at depth 256" {
 
 ///|
 test "execution stack safety: direct-return ordinary recursion at depth 256" {
-  match
-    run(
-      "function f(n){if(n===0)return \"done\";return f(n-1);}f(256);",
-    ) {
+  match run("function f(n){if(n===0)return \"done\";return f(n-1);}f(256);") {
     Value::String_("done") => ()
-    other => fail("expected direct-return recursion done, got " + other.to_string())
+    other =>
+      fail("expected direct-return recursion done, got " + other.to_string())
   }
 }
 

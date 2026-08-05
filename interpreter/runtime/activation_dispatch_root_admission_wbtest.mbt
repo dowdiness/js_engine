@@ -12,6 +12,8 @@ fn root_admission_test_kind(
     ActivationDispatchManagedRoot(ActivationDispatchControlRoot(_)) => "control"
     ActivationDispatchManagedRoot(ActivationDispatchConstructorRoot(_)) =>
       "constructor"
+    ActivationDispatchManagedRoot(ActivationDispatchDirectReturnRoot(_)) =>
+      "direct-return"
     ActivationDispatchManagedRoot(ActivationDispatchNumericMapExpressionRoot(_)) =>
       "numeric map expression"
     ActivationDispatchManagedRoot(
