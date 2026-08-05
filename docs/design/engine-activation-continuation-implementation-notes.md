@@ -1,7 +1,7 @@
 # Activation continuation implementation notes
 
 Date: 2026-07-29. Revised 2026-08-05 after reconciling the notes with the first
-#800 ordinary direct-return slice.
+ordinary direct-return slice in #809 under #800.
 
 This note maps the accepted
 [activation and continuation contract](../decisions/engine-activation-continuation-contract.md)

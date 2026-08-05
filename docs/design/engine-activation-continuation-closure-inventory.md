@@ -1,7 +1,7 @@
 # Activation-continuation closure inventory
 
 Date: 2026-07-29. Reconciled against the production admission boundary on
-2026-08-05 after the first #800 ordinary direct-return slice.
+2026-08-05 after the first ordinary direct-return slice in #809 under #800.
 
 This is the source-backed implementation inventory required by #630. It maps
 the accepted
