@@ -901,6 +901,15 @@ test "five-call expression reducer preserves fifth-call and final-binary abrupt 
     [],
     DispatchRuntimeAbrupt(runtime_error),
   )
+  // The fourth source call is the second forwarding-map leaf; its abrupt
+  // completion must suppress the fifth call and both pending binaries.
+  expression_test_expect_abrupt(plan, 5, [Number(9.0)], guest_throw)
+  expression_test_expect_abrupt(
+    plan,
+    5,
+    [Number(9.0)],
+    DispatchRuntimeAbrupt(runtime_error),
+  )
   expression_test_expect_binary_abrupt(
     plan,
     8,
