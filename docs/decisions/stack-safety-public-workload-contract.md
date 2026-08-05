@@ -32,6 +32,7 @@ focused and core evidence that #619 also requires.
 | Exact numeric mutual recursion at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact ordinary direct-return self recursion at depth 256, returning `"done"` | Production-admitted exact slice | #809 | Required |
 | Exact ordinary direct-return self recursion crossing one closed zero-argument leaf call, returning `"done"` | Production-admitted exact slice | #811 | Required |
+| Exact ordinary direct-return self recursion crossing one single-parameter leaf call that returns its bound `"done"` argument | Production-admitted exact slice | #813 | Required |
 | Exact ordinary getter re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact Proxy `get` re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact protected normal/abrupt completion, control, and lifecycle cases | Production-admitted exact slice | #630 | Required |
