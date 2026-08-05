@@ -1913,6 +1913,10 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
   let syntax = registry.require_callee(self.interp, registry.entry.callee)
   guard step.ctx.current_generator is None &&
     !step.ctx.strict &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, self.interp.global) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
     step.index >= 0 &&
     step.index < registry.entry.body.length() &&
     physical_equal(step.stmt, registry.entry.body[step.index]) else {

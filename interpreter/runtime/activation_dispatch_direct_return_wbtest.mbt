@@ -262,6 +262,50 @@ test "direct-return trust revalidates binding and mirror after sealing" {
 }
 
 ///|
+test "direct-return execution rejects a foreign activation environment" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected direct-return preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    direct_return_root_preflight=Some(preflight),
+    direct_return_root_stmts=Some(stmts),
+    direct_return_registry=Some(registry),
+  )
+  let foreign_parent = Environment::new()
+  let wrong_parent = Environment::new(parent=Some(foreign_parent))
+  wrong_parent.is_var_scope = true
+  let with_object = Environment::new(parent=Some(interp.global))
+  with_object.is_var_scope = true
+  with_object.with_object = Some(Undefined)
+  let non_var_scope = Environment::new(parent=Some(interp.global))
+  for env in [wrong_parent, with_object, non_var_scope] {
+    env.def_parameter("n", Number(1.0))
+    let result = try {
+      let _ = shell.execute_direct_return_statement({
+        ctx: { strict: false, current_generator: None },
+        stmt: registry.entry.body[0],
+        env,
+        index: 0,
+      })
+      "accepted"
+    } catch {
+      InvalidActivationDispatchShell(message) => message
+    }
+    inspect(
+      result,
+      content="direct-return statement lost its sealed body provenance",
+    )
+  }
+}
+
+///|
 test "direct-return trust rejects source identity drift during hoisting" {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = Some("preflight.js")
