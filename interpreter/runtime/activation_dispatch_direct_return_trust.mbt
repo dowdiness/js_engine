@@ -417,6 +417,26 @@ fn TrustedDirectReturnRecursionRegistry::require_callee(
       "direct-return registry lost its function object",
     )
   }
+  guard interp.global.bindings.get(self.entry.syntax.name) is Some(binding) &&
+    binding.initialized &&
+    binding.kind == VarBinding &&
+    binding.value is Object(bound) &&
+    physical_equal(bound, actual) else {
+    invalid_activation_dispatch_shell(
+      "direct-return callee diverged from its global binding",
+    )
+  }
+  guard global_object.bag.properties.get(self.entry.syntax.name)
+    is Some(Object(mirrored)) &&
+    physical_equal(mirrored, actual) &&
+    numeric_recursion_global_property_is_canonical(
+      global_object,
+      self.entry.syntax.name,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return callee diverged from its global mirror",
+    )
+  }
   guard actual.class_name == "Function" &&
     actual.callable is Some(UserFunc(data)) &&
     data.name == Some(self.entry.syntax.name) &&

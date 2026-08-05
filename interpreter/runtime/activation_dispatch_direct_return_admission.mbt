@@ -225,7 +225,7 @@ fn classify_direct_return_recursion_program(
       @ast.Call(
         @ast.Ident(root_name, _),
         [@ast.NumberLit(argument, @token.LexForm::LexNormal, _)],
-        root_call_loc,
+        root_call_loc
       ),
       _
     ) if root_name == entry.syntax.name &&

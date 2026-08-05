@@ -57,6 +57,9 @@ test "direct-return admission rejects exact-shape near misses" {
       "function f(n){if(n===0)return \"done\";return f(n-1);}f(255);", "function f(n){if(n===0)return \"done\";return f(n-1);}f(256);0;",
       "function f(n=0){if(n===0)return \"done\";return f(n-1);}f(256);", "function* f(n){if(n===0)return \"done\";return f(n-1);}f(256);",
       "function eval(n){if(n===0)return \"done\";return eval(n-1);}eval(256);", "function arguments(n){if(n===0)return \"done\";return arguments(n-1);}arguments(256);",
+      "function f(n){return f(n-1);if(n===0)return \"done\";}f(256);", "function f(n){if(n===0)return \"done\";return f(n-1);}f(256,0);",
+      "function f(n){if(n===0)return \"done\";return f(n-1);}({f:f}).f(256);", "function f(n){if(n===0)return \"done\";return f(n-1);}g(256);",
+      "function f(n){\"use strict\";if(n===0)return \"done\";return f(n-1);}f(256);",
     ] {
     guard classify_direct_return_recursion_program(
         direct_return_test_program(source),
@@ -210,6 +213,55 @@ test "direct-return trust rejects post-seal UserFunc mutation" {
 }
 
 ///|
+test "direct-return trust revalidates binding and mirror after sealing" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected direct-return preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let callee = registry.entry.callee
+  guard callee is Object({ callable: Some(UserFunc(data)), .. }) &&
+    interp.global.bindings.get("f") is Some(binding) &&
+    interp.global_this is Object(global_object) else {
+    fail("expected trusted direct-return global UserFunc provenance")
+  }
+  let replacement = make_func(data)
+
+  let original_binding = binding.value
+  binding.value = replacement
+  let binding_result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  binding.value = original_binding
+
+  let original_mirror = global_object.bag.properties["f"]
+  global_object.bag.properties["f"] = replacement
+  let mirror_result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  global_object.bag.properties["f"] = original_mirror
+
+  inspect(
+    binding_result,
+    content="direct-return callee diverged from its global binding",
+  )
+  inspect(
+    mirror_result,
+    content="direct-return callee diverged from its global mirror",
+  )
+}
+
+///|
 test "direct-return trust rejects source identity drift during hoisting" {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = Some("preflight.js")
@@ -279,6 +331,53 @@ test "direct-return one-short budget stops before later recursive calls" {
   inspect(probe.attempts, content="256")
   inspect(probe.accepted, content=probe.released.to_string())
   inspect(probe.active, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "direct-return interruption suppresses later recursive calls" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let interruption = ExecutionInterruptionRequest()
+  let base_port = probe.port()
+  let port = ActivationObservationPort(
+    begin_entry=() => {
+      let hooks = (base_port.begin_entry)()
+      if probe.attempts == 128 {
+        interruption.request()
+      }
+      hooks
+    },
+    denied=() => (base_port.denied)(),
+  )
+  let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected exact direct-return preflight")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    direct_return_root_preflight=Some(preflight),
+    direct_return_root_stmts=Some(stmts),
+    activation_observation_port=port,
+  )
+  let control = ExecutionControl(
+    remaining_steps=1000,
+    maximum_active_depth=300,
+    interruption~,
+  )
+  let completion = interp.with_execution_control(control, () => {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None })
+  })
+  match completion {
+    DispatchRuntimeAbrupt(ExecutionControlError(Interrupted)) => ()
+    _ => fail("expected direct-return interruption identity")
+  }
+  inspect(probe.attempts, content="128")
+  inspect(probe.accepted, content=probe.released.to_string())
+  inspect(probe.active, content="0")
+  inspect(probe.lifo_violations, content="0")
   inspect(shell.cleanup_stack.length(), content="0")
 }
 
