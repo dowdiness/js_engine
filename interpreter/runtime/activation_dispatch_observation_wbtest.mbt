@@ -207,25 +207,34 @@ fn dispatch_observation_proxy_fixture(
 }
 
 ///|
-fn expect_nested_dispatch_observation_balanced(
+fn expect_dispatch_observation_balanced(
   probe : DispatchObservationProbe,
+  expected_count : Int,
 ) -> Unit raise {
-  inspect(probe.attempts, content="257")
-  inspect(probe.acquired, content="257")
-  inspect(probe.accepted, content="257")
+  let expected = expected_count.to_string()
+  inspect(probe.attempts, content=expected)
+  inspect(probe.acquired, content=expected)
+  inspect(probe.accepted, content=expected)
   inspect(probe.rejected, content="0")
-  inspect(probe.released, content="257")
+  inspect(probe.released, content=expected)
   inspect(probe.denied, content="0")
   inspect(probe.active, content="0")
-  inspect(probe.maximum_active, content="257")
-  inspect(probe.release_ordinals.length(), content="257")
+  inspect(probe.maximum_active, content=expected)
+  inspect(probe.release_ordinals.length(), content=expected)
   let mut releases_are_strictly_lifo = true
   for index in 0..<probe.release_ordinals.length() {
-    if probe.release_ordinals[index] != 257 - index {
+    if probe.release_ordinals[index] != expected_count - index {
       releases_are_strictly_lifo = false
     }
   }
   inspect(releases_are_strictly_lifo, content="true")
+}
+
+///|
+fn expect_nested_dispatch_observation_balanced(
+  probe : DispatchObservationProbe,
+) -> Unit raise {
+  expect_dispatch_observation_balanced(probe, 257)
 }
 
 ///|

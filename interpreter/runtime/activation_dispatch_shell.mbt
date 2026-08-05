@@ -1820,7 +1820,7 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   let registry = self.require_direct_return_registry()
-  let _ = registry.require_call(
+  registry.require_call(
     self.interp,
     request.callee,
     request.this_value,
@@ -1905,11 +1905,59 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  registry : TrustedDirectReturnRecursionRegistry,
+  leaf : TrustedDirectReturnLeafFunction,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let syntax = registry.require_leaf(self.interp, leaf.callee)
+  guard step.ctx.current_generator is None &&
+    !step.ctx.strict &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, self.interp.global) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.index == 0 &&
+    leaf.body.length() == 1 &&
+    physical_equal(step.stmt, leaf.body[0]) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf statement lost its sealed body provenance",
+    )
+  }
+  match self.observe_managed_execution_steps(1) {
+    Some(completion) => return DispatchWorkCompleted(completion)
+    None => ()
+  }
+  match syntax.completion {
+    DirectReturnBaseValue(literal) =>
+      DispatchWorkCompleted(
+        DispatchReturn(direct_return_closed_literal_value(literal)),
+      )
+    DirectReturnBaseThrow(literal) =>
+      DispatchWorkCompleted(
+        DispatchThrow(JsException(direct_return_closed_literal_value(literal))),
+      )
+    DirectReturnBaseLeafCall(_, _) =>
+      invalid_activation_dispatch_shell(
+        "direct-return leaf completion escaped exact admission",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   let registry = self.require_direct_return_registry()
+  match registry.leaf {
+    Some(leaf) if step.index == 0 &&
+      leaf.body.length() == 1 &&
+      physical_equal(step.stmt, leaf.body[0]) =>
+      return self.execute_direct_return_leaf_statement(step, registry, leaf)
+    _ => ()
+  }
   let syntax = registry.require_callee(self.interp, registry.entry.callee)
   guard step.ctx.current_generator is None &&
     !step.ctx.strict &&
@@ -1965,6 +2013,31 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
                 JsException(direct_return_closed_literal_value(literal)),
               ),
             )
+          DirectReturnBaseLeafCall(_, leaf_call_loc) => {
+            let leaf = match registry.leaf {
+              Some(leaf) => leaf
+              None =>
+                invalid_activation_dispatch_shell(
+                  "direct-return base call lost its sealed leaf",
+                )
+            }
+            let request = DispatchCallRequest(
+              callee=leaf.callee,
+              this_value=Undefined,
+              args=[],
+              loc=leaf_call_loc,
+            )
+            let _ = registry.require_call(
+              self.interp,
+              request.callee,
+              request.this_value,
+              request.args,
+              request.loc,
+            )
+            DispatchWorkSuspended(
+              DispatchSuspendCall(request, DispatchCompleteReturn),
+            )
+          }
         }
       } else {
         guard n > DIRECT_RETURN_RECURSION_BASE_ARGUMENT && n.floor() == n else {
@@ -2023,63 +2096,60 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
         "direct-return root statements are unavailable",
       )
   }
-  guard root_stmts.length() == 2 else {
+  let root_index = match registry.plan.leaf {
+    Some(_) => 2
+    None => 1
+  }
+  guard root_stmts.length() == root_index + 1 else {
     invalid_activation_dispatch_shell(
       "direct-return root statements changed after sealing",
     )
   }
   guard physical_equal(step.env, self.interp.global) &&
     step.index >= 0 &&
-    step.index < 2 else {
+    step.index <= root_index else {
     invalid_activation_dispatch_shell(
       "direct-return root statement lost its global provenance",
     )
   }
-  match step.index {
-    0 => {
-      guard physical_equal(step.stmt, root_stmts[0]) else {
-        invalid_activation_dispatch_shell(
-          "direct-return root declaration changed after sealing",
-        )
-      }
-      self.execute_statement_with_legacy_adapter(step)
-    }
-    1 => {
-      guard physical_equal(step.stmt, root_stmts[1]) else {
-        invalid_activation_dispatch_shell(
-          "direct-return root call changed after sealing",
-        )
-      }
-      guard step.stmt is @ast.ExprStmt(@ast.Call(_, _, _), _) else {
-        invalid_activation_dispatch_shell(
-          "direct-return root call changed after sealing",
-        )
-      }
-      match self.observe_managed_execution_steps(1) {
-        Some(completion) => return DispatchWorkCompleted(completion)
-        None => ()
-      }
-      let request = DispatchCallRequest(
-        callee=registry.entry.callee,
-        this_value=Undefined,
-        args=[Number(DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT)],
-        loc=registry.plan.root_call_loc,
-      )
-      let _ = registry.require_call(
-        self.interp,
-        request.callee,
-        request.this_value,
-        request.args,
-        request.loc,
-      )
-      DispatchWorkSuspended(
-        DispatchSuspendCall(request, DispatchDeliverCallResult),
-      )
-    }
-    _ =>
+  if step.index < root_index {
+    guard physical_equal(step.stmt, root_stmts[step.index]) else {
       invalid_activation_dispatch_shell(
-        "direct-return root statement index is outside exact admission",
+        "direct-return root declaration changed after sealing",
       )
+    }
+    self.execute_statement_with_legacy_adapter(step)
+  } else {
+    guard physical_equal(step.stmt, root_stmts[root_index]) else {
+      invalid_activation_dispatch_shell(
+        "direct-return root call changed after sealing",
+      )
+    }
+    guard step.stmt is @ast.ExprStmt(@ast.Call(_, _, _), _) else {
+      invalid_activation_dispatch_shell(
+        "direct-return root call changed after sealing",
+      )
+    }
+    match self.observe_managed_execution_steps(1) {
+      Some(completion) => return DispatchWorkCompleted(completion)
+      None => ()
+    }
+    let request = DispatchCallRequest(
+      callee=registry.entry.callee,
+      this_value=Undefined,
+      args=[Number(DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT)],
+      loc=registry.plan.root_call_loc,
+    )
+    let _ = registry.require_call(
+      self.interp,
+      request.callee,
+      request.this_value,
+      request.args,
+      request.loc,
+    )
+    DispatchWorkSuspended(
+      DispatchSuspendCall(request, DispatchDeliverCallResult),
+    )
   }
 }
 
