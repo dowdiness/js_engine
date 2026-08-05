@@ -118,6 +118,22 @@ const LEFT_ASSOCIATED_NUMERIC_MAP_COMPOSITION_SOURCE =
   #|step(256) + u(256) + step(256);
 
 ///|
+const FOUR_CALL_LEFT_ASSOCIATED_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + step(n - 1);
+  #|}
+  #|function f(t) {
+  #|  if (t === 0) return 0;
+  #|  return u(t);
+  #|}
+  #|function u(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
+  #|}
+  #|step(256) + u(256) + step(256) + u(256);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -212,6 +228,17 @@ test "execution stack safety: left-associated numeric and map calls compose" {
       fail(
         "expected left-associated composition result 768, got " +
         other.to_string(),
+      )
+  }
+}
+
+///|
+test "execution stack safety: four left-associated numeric and map calls compose" {
+  match run(FOUR_CALL_LEFT_ASSOCIATED_SOURCE) {
+    Value::Number(1024.0) => ()
+    other =>
+      fail(
+        "expected four-call composition result 1024, got " + other.to_string(),
       )
   }
 }

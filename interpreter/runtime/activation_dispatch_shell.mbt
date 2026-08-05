@@ -280,6 +280,7 @@ priv struct PrimitiveProgramDispatchShell {
   expression_root_preflight : NumericMapExpressionPreflight?
   expression_root_stmts : Array[@ast.Stmt]?
   mut expression_plan : DispatchExpressionPlan?
+  mut expression_root_call_locs : Array[@token.Loc]
   composition_root_preflight : NumericMapCompositionPreflight?
   composition_root_stmts : Array[@ast.Stmt]?
   mut managed_user_func_catalog : DispatchManagedUserFuncCatalog?
@@ -356,6 +357,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     expression_root_preflight,
     expression_root_stmts: expression_root_stmts.map(stmts => stmts.copy()),
     expression_plan,
+    expression_root_call_locs: [],
     composition_root_preflight,
     composition_root_stmts: composition_root_stmts.map(stmts => stmts.copy()),
     managed_user_func_catalog,
@@ -1077,6 +1079,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.array_map_registry = None
       self.managed_user_func_catalog = None
       self.expression_plan = None
+      self.expression_root_call_locs.clear()
       self.array_map_states.clear()
       self.array_map_activation_envs.clear()
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
@@ -2682,16 +2685,15 @@ fn PrimitiveProgramDispatchShell::execute_numeric_map_expression_root_statement(
           self.array_map_registry = Some(catalog.array_map)
           self.managed_user_func_catalog = Some(catalog)
           self.expression_plan = Some(plan)
+          self.expression_root_call_locs = dispatch_expression_plan_root_call_locs(
+            plan,
+          )
         }
         _ => ()
       }
       result
     }
     3 => {
-      match self.observe_managed_execution_steps(5) {
-        Some(completion) => return DispatchWorkCompleted(completion)
-        None => ()
-      }
       let plan = match self.expression_plan {
         Some(plan) => plan
         None =>
@@ -2703,6 +2705,16 @@ fn PrimitiveProgramDispatchShell::execute_numeric_map_expression_root_statement(
         invalid_activation_dispatch_shell(
           "numeric/map expression plan was empty",
         )
+      }
+      let observation_count = preflight.source.steps.length()
+      guard plan.steps.length() == observation_count else {
+        invalid_activation_dispatch_shell(
+          "numeric/map expression plan observation count drifted",
+        )
+      }
+      match self.observe_managed_execution_steps(observation_count) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
       }
       match plan.steps[0] {
         DispatchExpressionCall(call) => {
