@@ -322,7 +322,8 @@ fn classify_direct_return_recursion_program(
       guard entry.syntax.base_completion
         is DirectReturnBaseLeafCall(leaf_name, _) &&
         leaf_name == leaf.syntax.name &&
-        leaf.syntax.name != entry.syntax.name else {
+        leaf.syntax.name != entry.syntax.name &&
+        leaf.syntax.name != entry.syntax.parameter else {
         return None
       }
       (entry, Some(leaf), 2)

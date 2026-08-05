@@ -91,6 +91,7 @@ test "direct-return leaf admission rejects exact-shape near misses" {
       "function leaf(){return \"done\";}function f(n){if(n===0)return leaf();return f(n-1);}f(255);",
       "function leaf(){return \"done\";}function f(n){if(n===0)return leaf();return f(n-1);}f(256);0;",
       "function leaf(){\"use strict\";return \"done\";}function f(n){if(n===0)return leaf();return f(n-1);}f(256);",
+      "function n(){return \"done\";}function f(n){if(n===0)return n();return f(n-1);}f(256);",
     ] {
     guard classify_direct_return_recursion_program(
         direct_return_test_program(source),
