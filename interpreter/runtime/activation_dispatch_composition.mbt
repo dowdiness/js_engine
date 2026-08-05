@@ -528,9 +528,9 @@ fn expression_source_step_is_add(
 }
 
 ///|
-// The common postfix plan is deliberately closed to the three-call and
-// four-call sources already proven at the public boundary. A longer or
-// reordered call sequence remains on the legacy evaluator.
+// The common postfix plan is deliberately closed to the three-call,
+// four-call, and five-call sources already proven at the public boundary. A
+// longer or reordered call sequence remains on the legacy evaluator.
 fn expression_source_shape_is_admissible(
   steps : Array[DispatchExpressionSourceStep],
 ) -> Bool {
@@ -549,6 +549,16 @@ fn expression_source_shape_is_admissible(
       expression_source_step_is_add(steps, 4) &&
       expression_source_step_is_call_named(steps, 5, "u") &&
       expression_source_step_is_add(steps, 6)
+    9 =>
+      expression_source_step_is_call_named(steps, 0, "step") &&
+      expression_source_step_is_call_named(steps, 1, "u") &&
+      expression_source_step_is_add(steps, 2) &&
+      expression_source_step_is_call_named(steps, 3, "step") &&
+      expression_source_step_is_add(steps, 4) &&
+      expression_source_step_is_call_named(steps, 5, "u") &&
+      expression_source_step_is_add(steps, 6) &&
+      expression_source_step_is_call_named(steps, 7, "step") &&
+      expression_source_step_is_add(steps, 8)
     _ => false
   }
 }
