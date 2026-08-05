@@ -45,6 +45,12 @@ const DIRECT_RETURN_ARGUMENT_LEAF_CALL_SOURCE =
   #|f(256);
 
 ///|
+const DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_CALL_SOURCE =
+  #|function leaf(ignored,value){return value;}
+  #|function f(n){if(n===0)return leaf("ignored","done");return f(n-1);}
+  #|f(256);
+
+///|
 test "external consumer: direct-return ordinary recursion at depth 256" {
   match run_value(DIRECT_RETURN_RECURSION_SOURCE) {
     "done" => ()
@@ -65,6 +71,14 @@ test "external consumer: direct-return leaf binds and returns its argument" {
   match run_value(DIRECT_RETURN_ARGUMENT_LEAF_CALL_SOURCE) {
     "done" => ()
     other => fail("expected bound leaf argument done, got " + other)
+  }
+}
+
+///|
+test "external consumer: direct-return leaf preserves argument order" {
+  match run_value(DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected ordered direct-return argument done, got " + other)
   }
 }
 

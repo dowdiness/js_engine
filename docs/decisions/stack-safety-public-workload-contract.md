@@ -1,7 +1,7 @@
 # Stack-safe public acceptance workload contract
 
-Date: 2026-08-05. Reconciled after #809 added the first ordinary direct-return
-production slice to the public gate.
+Date: 2026-08-05. Reconciled after #815 deepened the ordinary direct-return
+plan to own ordered argument vectors.
 
 ## Purpose
 
@@ -33,6 +33,7 @@ focused and core evidence that #619 also requires.
 | Exact ordinary direct-return self recursion at depth 256, returning `"done"` | Production-admitted exact slice | #809 | Required |
 | Exact ordinary direct-return self recursion crossing one closed zero-argument leaf call, returning `"done"` | Production-admitted exact slice | #811 | Required |
 | Exact ordinary direct-return self recursion crossing one single-parameter leaf call that returns its bound `"done"` argument | Production-admitted exact slice | #813 | Required |
+| Exact ordinary direct-return self recursion crossing one two-parameter leaf call that returns its second ordered `"done"` argument | Production-admitted exact slice | #815 | Required |
 | Exact ordinary getter re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact Proxy `get` re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact protected normal/abrupt completion, control, and lifecycle cases | Production-admitted exact slice | #630 | Required |
