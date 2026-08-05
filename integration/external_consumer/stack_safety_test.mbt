@@ -227,6 +227,22 @@ const FOUR_CALL_LEFT_ASSOCIATED_SOURCE =
   #|step(256) + u(256) + step(256) + u(256);
 
 ///|
+const FIVE_CALL_LEFT_ASSOCIATED_SOURCE =
+  #|function step(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + step(n - 1);
+  #|}
+  #|function f(t) {
+  #|  if (t === 0) return 0;
+  #|  return u(t);
+  #|}
+  #|function u(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + [n - 1, 0].map(function(t) { return f(t); })[0];
+  #|}
+  #|step(256) + u(256) + step(256) + u(256) + step(256);
+
+///|
 const ONE_PARAMETER_EXTRA_ARGUMENT_SOURCE =
   #|function step(n){if(n===0)return 0;return 1+step(n-1);}
   #|step(256,missing);
@@ -289,6 +305,11 @@ test "stack safety public facade left-associated numeric and map calls compose" 
 ///|
 test "frontier probe: four sealed calls compose left-associatively" {
   inspect(run_value(FOUR_CALL_LEFT_ASSOCIATED_SOURCE), content="1024")
+}
+
+///|
+test "frontier probe: five sealed calls compose left-associatively" {
+  inspect(run_value(FIVE_CALL_LEFT_ASSOCIATED_SOURCE), content="1280")
 }
 
 ///|
