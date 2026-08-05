@@ -623,20 +623,17 @@ test "expression reducer keeps the exact nine-step call and binary order" {
   inspect(plan.steps.length(), content="9")
   let state = dispatch_test_ready_state(DispatchFrameStackEmpty)
   let call_cases = [
-    (1, second, "u"),
-    (3, third, "step"),
-    (5, fourth, "u"),
-    (7, fifth, "step"),
+    (second, "u", 5.0),
+    (third, "step", 4.0),
+    (fourth, "u", 3.0),
+    (fifth, "step", 2.0),
   ]
-  let result_values = [5.0, 4.0, 3.0, 2.0]
-  let mut call_case_index = 0
-  let mut values : Array[Value] = []
   let mut next_index = 1
   let mut result_value = 1.0
-  while call_case_index < call_cases.length() {
+  for call_case in call_cases {
     let result = resume_dispatch_expression_plan(
       state,
-      DispatchExpressionPlanResume(plan~, next_index~, values~),
+      DispatchExpressionPlanResume(plan~, next_index~, values=[]),
       Number(result_value),
     )
     let (callee, name) = match result {
@@ -646,15 +643,15 @@ test "expression reducer keeps the exact nine-step call and binary order" {
           _,
           DispatchEnterActivation(DispatchCallActivation(request))
         )
-      ) => (request.callee, call_cases[call_case_index].2)
+      ) => (request.callee, call_case.1)
       _ => fail("nine-step plan must schedule each call leaf in source order")
     }
-    inspect(name, content=call_cases[call_case_index].2)
+    inspect(name, content=call_case.1)
     inspect(
-      array_map_value_identity_matches(callee, call_cases[call_case_index].1),
+      array_map_value_identity_matches(callee, call_case.0),
       content="true",
     )
-    let operand = result_values[call_case_index]
+    let operand = call_case.2
     let binary_result = resume_dispatch_expression_plan(
       state,
       DispatchExpressionPlanResume(plan~, next_index=next_index + 1, values=[
@@ -678,9 +675,7 @@ test "expression reducer keeps the exact nine-step call and binary order" {
       _ => fail("nine-step plan must apply each binary node once")
     }
     result_value += operand
-    call_case_index += 1
     next_index += 2
-    values = []
   }
   match
     resume_dispatch_expression_plan(
