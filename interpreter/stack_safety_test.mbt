@@ -264,7 +264,9 @@ test "execution stack safety: five left-associated numeric and map calls compose
   match run(FIVE_CALL_LEFT_ASSOCIATED_SOURCE) {
     Value::Number(1280.0) => ()
     other =>
-      fail("expected five-call composition result 1280, got " + other.to_string())
+      fail(
+        "expected five-call composition result 1280, got " + other.to_string(),
+      )
   }
 }
 

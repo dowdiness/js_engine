@@ -215,7 +215,10 @@ test "numeric map expression classifier admits the exact nine-step source" {
   match numeric_map_expression_source(stmts) {
     Some(source) => {
       inspect(source.steps.length(), content="9")
-      inspect(expression_source_shape_is_admissible(source.steps), content="true")
+      inspect(
+        expression_source_shape_is_admissible(source.steps),
+        content="true",
+      )
       let expected_names = ["step", "u", "step", "u", "step"]
       let mut call_index = 0
       for step in source.steps {

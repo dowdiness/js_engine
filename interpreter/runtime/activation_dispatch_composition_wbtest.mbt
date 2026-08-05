@@ -186,8 +186,7 @@ test "four-call expression driver releases two numeric and two map trees" {
 
 ///|
 test "five-call expression driver releases three numeric and two map trees" {
-  let (interp, stmts, preflight) =
-    five_call_numeric_map_expression_observation_fixture()
+  let (interp, stmts, preflight) = five_call_numeric_map_expression_observation_fixture()
   dispatch_shell_test_install_realm_sentinel(interp, 807)
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
   let shell = PrimitiveProgramDispatchShell(
@@ -645,7 +644,7 @@ test "expression reducer keeps the exact nine-step call and binary order" {
         _,
         DispatchPerform(
           _,
-          DispatchEnterActivation(DispatchCallActivation(request)),
+          DispatchEnterActivation(DispatchCallActivation(request))
         )
       ) => (request.callee, call_cases[call_case_index].2)
       _ => fail("nine-step plan must schedule each call leaf in source order")
@@ -658,11 +657,9 @@ test "expression reducer keeps the exact nine-step call and binary order" {
     let operand = result_values[call_case_index]
     let binary_result = resume_dispatch_expression_plan(
       state,
-      DispatchExpressionPlanResume(
-        plan~,
-        next_index=next_index + 1,
-        values=[Number(result_value)],
-      ),
+      DispatchExpressionPlanResume(plan~, next_index=next_index + 1, values=[
+        Number(result_value),
+      ]),
       Number(operand),
     )
     match binary_result {
@@ -671,9 +668,9 @@ test "expression reducer keeps the exact nine-step call and binary order" {
         DispatchPerform(
           _,
           DispatchRunProduction(
-            DispatchNumericApplyBinaryRight(binary, Number(right)),
-          ),
-        ),
+            DispatchNumericApplyBinaryRight(binary, Number(right))
+          )
+        )
       ) => {
         inspect(binary.left, content=result_value.to_string())
         inspect(right, content=operand.to_string())
@@ -805,10 +802,7 @@ fn expression_test_expect_binary_abrupt(
   }
   let (_, decision) = reduce_activation_dispatch(
     waiting,
-    DispatchEffectCompleted(
-      ticket,
-      DispatchWorkCompleted(completion),
-    ),
+    DispatchEffectCompleted(ticket, DispatchWorkCompleted(completion)),
   )
   match decision {
     DispatchFinish(DispatchThrow(JsException(found))) =>
@@ -1008,8 +1002,7 @@ fn four_call_expression_seal_mutation_result(
 fn five_call_expression_seal_mutation_result(
   final_source : String,
 ) -> String raise Error {
-  let (interp, stmts, preflight) =
-    five_call_numeric_map_expression_observation_fixture()
+  let (interp, stmts, preflight) = five_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let ctx : ExecContext = { strict: false, current_generator: None }
   for index in 0..<3 {
@@ -1062,10 +1055,8 @@ test "four-call expression sealing rejects source and location drift" {
 ///|
 test "five-call expression sealing rejects source and location drift" {
   let cases = [
-    "step(256)+(u(256)+step(256)+u(256)+step(256));",
-    "step(256)+u(256)+step(256)+u(256)-step(256);",
-    "step(256)+u(256)+step(256)+u(255)+step(256);",
-    "step(256)+u(256)+u(256)+step(256)+step(256);",
+    "step(256)+(u(256)+step(256)+u(256)+step(256));", "step(256)+u(256)+step(256)+u(256)-step(256);",
+    "step(256)+u(256)+step(256)+u(255)+step(256);", "step(256)+u(256)+u(256)+step(256)+step(256);",
     " step(256)+u(256)+step(256)+u(256)+step(256);",
   ]
   for source in cases {
@@ -1257,8 +1248,7 @@ test "four-call expression plan seals adapter families arguments and locations" 
 
 ///|
 test "five-call expression plan seals adapter families arguments and locations" {
-  let (interp, stmts, preflight) =
-    five_call_numeric_map_expression_observation_fixture()
+  let (interp, stmts, preflight) = five_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let ctx : ExecContext = { strict: false, current_generator: None }
   for index in 0..<3 {
@@ -1274,7 +1264,9 @@ test "five-call expression plan seals adapter families arguments and locations" 
     match step {
       DispatchExpressionCall(call) => {
         let expected_source_index = source_call_indices[call_index]
-        let expected_name = if call_index == 0 || call_index == 2 || call_index == 4 {
+        let expected_name = if call_index == 0 ||
+          call_index == 2 ||
+          call_index == 4 {
           "step"
         } else {
           "u"
