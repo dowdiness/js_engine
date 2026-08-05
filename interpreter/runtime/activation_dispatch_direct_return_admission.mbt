@@ -23,6 +23,23 @@ priv enum DirectReturnClosedLiteral {
 priv enum DirectReturnBaseCompletion {
   DirectReturnBaseValue(DirectReturnClosedLiteral)
   DirectReturnBaseThrow(DirectReturnClosedLiteral)
+  DirectReturnBaseLeafCall(String, @token.Loc)
+}
+
+///|
+priv struct DirectReturnLeafSyntax {
+  name : String
+  literal_loc : @token.Loc
+  completion : DirectReturnBaseCompletion
+}
+
+///|
+fn DirectReturnLeafSyntax::DirectReturnLeafSyntax(
+  name~ : String,
+  literal_loc~ : @token.Loc,
+  completion~ : DirectReturnBaseCompletion,
+) -> DirectReturnLeafSyntax {
+  { name, literal_loc, completion }
 }
 
 ///|
@@ -67,6 +84,20 @@ priv struct DirectReturnFunctionPlan {
 }
 
 ///|
+priv struct DirectReturnLeafPlan {
+  syntax : DirectReturnLeafSyntax
+  declaration_index : Int
+}
+
+///|
+fn DirectReturnLeafPlan::DirectReturnLeafPlan(
+  syntax~ : DirectReturnLeafSyntax,
+  declaration_index~ : Int,
+) -> DirectReturnLeafPlan {
+  { syntax, declaration_index }
+}
+
+///|
 fn DirectReturnFunctionPlan::DirectReturnFunctionPlan(
   syntax~ : DirectReturnFunctionSyntax,
   declaration_index~ : Int,
@@ -77,6 +108,7 @@ fn DirectReturnFunctionPlan::DirectReturnFunctionPlan(
 ///|
 priv struct DirectReturnRecursionPlan {
   entry : DirectReturnFunctionPlan
+  leaf : DirectReturnLeafPlan?
   initial_argument : Double
   root_call_loc : @token.Loc
 }
@@ -84,10 +116,11 @@ priv struct DirectReturnRecursionPlan {
 ///|
 fn DirectReturnRecursionPlan::DirectReturnRecursionPlan(
   entry~ : DirectReturnFunctionPlan,
+  leaf? : DirectReturnLeafPlan? = None,
   initial_argument~ : Double,
   root_call_loc~ : @token.Loc,
 ) -> DirectReturnRecursionPlan {
-  { entry, initial_argument, root_call_loc }
+  { entry, leaf, initial_argument, root_call_loc }
 }
 
 ///|
@@ -144,7 +177,18 @@ fn classify_direct_return_function_syntax(
           match classify_direct_return_closed_literal(expr) {
             Some((literal, literal_loc)) =>
               (condition_loc, literal_loc, DirectReturnBaseValue(literal))
-            None => return None
+            None =>
+              match expr {
+                @ast.Call(@ast.Ident(leaf_name, _), [], leaf_call_loc) if direct_return_identifier_is_safe(
+                    leaf_name,
+                  ) =>
+                  (
+                    condition_loc,
+                    leaf_call_loc,
+                    DirectReturnBaseLeafCall(leaf_name, leaf_call_loc),
+                  )
+                _ => return None
+              }
           }
         @ast.ThrowStmt(expr, _) =>
           match classify_direct_return_closed_literal(expr) {
@@ -197,6 +241,48 @@ fn classify_direct_return_function_syntax(
 }
 
 ///|
+fn classify_direct_return_leaf_syntax(
+  name : String,
+  params : Array[String],
+  body : Array[@ast.Stmt],
+) -> DirectReturnLeafSyntax? {
+  guard direct_return_identifier_is_safe(name) &&
+    params.is_empty() &&
+    body.length() == 1 else {
+    return None
+  }
+  let (literal_loc, completion) = match body[0] {
+    @ast.ReturnStmt(Some(expr), _) =>
+      match classify_direct_return_closed_literal(expr) {
+        Some((literal, loc)) => (loc, DirectReturnBaseValue(literal))
+        None => return None
+      }
+    @ast.ThrowStmt(expr, _) =>
+      match classify_direct_return_closed_literal(expr) {
+        Some((literal, loc)) => (loc, DirectReturnBaseThrow(literal))
+        None => return None
+      }
+    _ => return None
+  }
+  Some(DirectReturnLeafSyntax(name~, literal_loc~, completion~))
+}
+
+///|
+fn classify_direct_return_leaf(
+  stmt : @ast.Stmt,
+  declaration_index : Int,
+) -> DirectReturnLeafPlan? {
+  match stmt {
+    @ast.FuncDecl(name, params, body, _, _) =>
+      match classify_direct_return_leaf_syntax(name, params, body) {
+        Some(syntax) => Some(DirectReturnLeafPlan(syntax~, declaration_index~))
+        None => None
+      }
+    _ => None
+  }
+}
+
+///|
 fn classify_direct_return_function(
   stmt : @ast.Stmt,
   declaration_index : Int,
@@ -216,11 +302,35 @@ fn classify_direct_return_function(
 fn classify_direct_return_recursion_program(
   stmts : Array[@ast.Stmt],
 ) -> DirectReturnRecursionPlan? {
-  guard stmts.length() == 2 else { return None }
-  guard classify_direct_return_function(stmts[0], 0) is Some(entry) else {
-    return None
+  let (entry, leaf, root_index) = match stmts.length() {
+    2 =>
+      match classify_direct_return_function(stmts[0], 0) {
+        Some(entry) => {
+          guard entry.syntax.base_completion
+            is (DirectReturnBaseValue(_) | DirectReturnBaseThrow(_)) else {
+            return None
+          }
+          (entry, None, 1)
+        }
+        None => return None
+      }
+    3 => {
+      guard classify_direct_return_leaf(stmts[0], 0) is Some(leaf) &&
+        classify_direct_return_function(stmts[1], 1) is Some(entry) else {
+        return None
+      }
+      guard entry.syntax.base_completion
+        is DirectReturnBaseLeafCall(leaf_name, _) &&
+        leaf_name == leaf.syntax.name &&
+        leaf.syntax.name != entry.syntax.name &&
+        leaf.syntax.name != entry.syntax.parameter else {
+        return None
+      }
+      (entry, Some(leaf), 2)
+    }
+    _ => return None
   }
-  match stmts[1] {
+  match stmts[root_index] {
     @ast.ExprStmt(
       @ast.Call(
         @ast.Ident(root_name, _),
@@ -233,6 +343,7 @@ fn classify_direct_return_recursion_program(
       Some(
         DirectReturnRecursionPlan(
           entry~,
+          leaf~,
           initial_argument=argument,
           root_call_loc~,
         ),

@@ -5,6 +5,7 @@
 priv struct DirectReturnRecursionPreflight {
   plan : DirectReturnRecursionPlan
   previous_entry_object : ObjectData?
+  previous_leaf_object : ObjectData?
   throw_type_error_snapshot : CallbackFreeBindingSnapshot
   expected_global_object : ObjectData
   expected_realm_protos : FunctionRealmProtos
@@ -23,9 +24,21 @@ priv struct TrustedDirectReturnRecursionFunction {
 }
 
 ///|
+priv struct TrustedDirectReturnLeafFunction {
+  syntax : DirectReturnLeafSyntax
+  callee : Value
+  params : Array[String]
+  body : Array[@ast.Stmt]
+  source_text : String?
+  expected_realm_protos : FunctionRealmProtos
+  expected_source_identity : String?
+}
+
+///|
 priv struct TrustedDirectReturnRecursionRegistry {
   plan : DirectReturnRecursionPlan
   entry : TrustedDirectReturnRecursionFunction
+  leaf : TrustedDirectReturnLeafFunction?
   throw_type_error : Value?
   throw_type_error_snapshot : CallbackFreeBindingSnapshot
   expected_global_object : ObjectData
@@ -35,6 +48,7 @@ priv struct TrustedDirectReturnRecursionRegistry {
 fn DirectReturnRecursionPreflight::DirectReturnRecursionPreflight(
   plan~ : DirectReturnRecursionPlan,
   previous_entry_object~ : ObjectData?,
+  previous_leaf_object~ : ObjectData?,
   throw_type_error_snapshot~ : CallbackFreeBindingSnapshot,
   expected_global_object~ : ObjectData,
   expected_realm_protos~ : FunctionRealmProtos,
@@ -43,8 +57,30 @@ fn DirectReturnRecursionPreflight::DirectReturnRecursionPreflight(
   {
     plan,
     previous_entry_object,
+    previous_leaf_object,
     throw_type_error_snapshot,
     expected_global_object,
+    expected_realm_protos,
+    expected_source_identity,
+  }
+}
+
+///|
+fn TrustedDirectReturnLeafFunction::TrustedDirectReturnLeafFunction(
+  syntax~ : DirectReturnLeafSyntax,
+  callee~ : Value,
+  params~ : Array[String],
+  body~ : Array[@ast.Stmt],
+  source_text~ : String?,
+  expected_realm_protos~ : FunctionRealmProtos,
+  expected_source_identity~ : String?,
+) -> TrustedDirectReturnLeafFunction {
+  {
+    syntax,
+    callee,
+    params,
+    body,
+    source_text,
     expected_realm_protos,
     expected_source_identity,
   }
@@ -75,6 +111,7 @@ fn TrustedDirectReturnRecursionFunction::TrustedDirectReturnRecursionFunction(
 fn TrustedDirectReturnRecursionRegistry::TrustedDirectReturnRecursionRegistry(
   plan~ : DirectReturnRecursionPlan,
   entry~ : TrustedDirectReturnRecursionFunction,
+  leaf? : TrustedDirectReturnLeafFunction? = None,
   throw_type_error~ : Value?,
   throw_type_error_snapshot~ : CallbackFreeBindingSnapshot,
   expected_global_object~ : ObjectData,
@@ -82,6 +119,7 @@ fn TrustedDirectReturnRecursionRegistry::TrustedDirectReturnRecursionRegistry(
   {
     plan,
     entry,
+    leaf,
     throw_type_error,
     throw_type_error_snapshot,
     expected_global_object,
@@ -115,8 +153,22 @@ fn direct_return_base_completions_match(
     (DirectReturnBaseValue(expected), DirectReturnBaseValue(actual))
     | (DirectReturnBaseThrow(expected), DirectReturnBaseThrow(actual)) =>
       direct_return_closed_literals_match(expected, actual)
+    (
+      DirectReturnBaseLeafCall(expected_name, expected_loc),
+      DirectReturnBaseLeafCall(actual_name, actual_loc),
+    ) => expected_name == actual_name && expected_loc == actual_loc
     _ => false
   }
+}
+
+///|
+fn direct_return_leaf_syntaxes_match(
+  expected : DirectReturnLeafSyntax,
+  actual : DirectReturnLeafSyntax,
+) -> Bool {
+  expected.name == actual.name &&
+  expected.literal_loc == actual.literal_loc &&
+  direct_return_base_completions_match(expected.completion, actual.completion)
 }
 
 ///|
@@ -147,13 +199,28 @@ fn direct_return_function_plans_match(
 }
 
 ///|
+fn direct_return_leaf_plans_match(
+  expected : DirectReturnLeafPlan,
+  actual : DirectReturnLeafPlan,
+) -> Bool {
+  expected.declaration_index == actual.declaration_index &&
+  direct_return_leaf_syntaxes_match(expected.syntax, actual.syntax)
+}
+
+///|
 fn direct_return_recursion_plans_match(
   expected : DirectReturnRecursionPlan,
   actual : DirectReturnRecursionPlan,
 ) -> Bool {
   expected.initial_argument == actual.initial_argument &&
   expected.root_call_loc == actual.root_call_loc &&
-  direct_return_function_plans_match(expected.entry, actual.entry)
+  direct_return_function_plans_match(expected.entry, actual.entry) &&
+  (match (expected.leaf, actual.leaf) {
+    (None, None) => true
+    (Some(expected), Some(actual)) =>
+      direct_return_leaf_plans_match(expected, actual)
+    _ => false
+  })
 }
 
 ///|
@@ -198,6 +265,23 @@ fn Interpreter::preflight_direct_return_recursion_program(
     plan.entry.syntax.name,
   )
   guard entry_ok else { return None }
+  let previous_leaf_object = match plan.leaf {
+    Some(leaf) => {
+      guard numeric_recursion_global_declaration_is_sealable(
+        expected_global_object,
+        leaf.syntax.name,
+      ) else {
+        return None
+      }
+      let (leaf_ok, previous_leaf_object) = numeric_recursion_existing_binding_snapshot(
+        self.global,
+        leaf.syntax.name,
+      )
+      guard leaf_ok else { return None }
+      previous_leaf_object
+    }
+    None => None
+  }
   let throw_type_error_snapshot = numeric_recursion_callback_free_throw_type_error(
     self.global,
   )
@@ -209,6 +293,7 @@ fn Interpreter::preflight_direct_return_recursion_program(
     DirectReturnRecursionPreflight(
       plan~,
       previous_entry_object~,
+      previous_leaf_object~,
       throw_type_error_snapshot~,
       expected_global_object~,
       expected_realm_protos=function_realm_protos_from_realm_state(
@@ -330,6 +415,104 @@ fn direct_return_recursion_trusted_declaration(
 }
 
 ///|
+fn direct_return_leaf_trusted_declaration(
+  interp : Interpreter,
+  plan : DirectReturnLeafPlan,
+  previous_object~ : ObjectData?,
+  expected_global_object~ : ObjectData,
+  expected_realm_protos~ : FunctionRealmProtos,
+  expected_source_identity~ : String?,
+  stmts~ : Array[@ast.Stmt],
+) -> TrustedDirectReturnLeafFunction raise InvalidActivationDispatchShell {
+  guard plan.declaration_index >= 0 && plan.declaration_index < stmts.length() else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf declaration index is outside the admitted program",
+    )
+  }
+  guard stmts[plan.declaration_index]
+    is @ast.FuncDecl(ast_name, ast_params, ast_body, _, ast_source_text) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf declaration no longer matches its admitted syntax",
+    )
+  }
+  let syntax = plan.syntax
+  guard interp.global.bindings.get(syntax.name) is Some(binding) &&
+    binding.initialized &&
+    binding.kind == VarBinding else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf binding was not created by root hoisting",
+    )
+  }
+  let callee = binding.value
+  guard callee is Object(object_identity) &&
+    object_identity.class_name == "Function" else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf did not hoist a function object",
+    )
+  }
+  guard interp.global_this is Object(global_object) &&
+    physical_equal(global_object, expected_global_object) &&
+    global_object.bag.properties.get(syntax.name) is Some(Object(mirrored)) &&
+    physical_equal(mirrored, object_identity) &&
+    numeric_recursion_global_property_is_canonical(global_object, syntax.name) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf diverged from its global mirror",
+    )
+  }
+  match previous_object {
+    Some(previous) if physical_equal(previous, object_identity) =>
+      invalid_activation_dispatch_shell(
+        "direct-return leaf reused its pre-hoist object identity",
+      )
+    _ => ()
+  }
+  guard object_identity.callable is Some(UserFunc(data)) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf did not hoist an ordinary UserFunc",
+    )
+  }
+  guard classify_direct_return_leaf_syntax(ast_name, ast_params, ast_body)
+    is Some(actual_syntax) &&
+    direct_return_leaf_syntaxes_match(syntax, actual_syntax) &&
+    data.name == Some(syntax.name) &&
+    data.params.is_empty() &&
+    physical_equal(data.params, ast_params) &&
+    physical_equal(data.body, ast_body) &&
+    physical_equal(data.closure, interp.global) &&
+    !data.strict &&
+    !data.has_name_binding &&
+    !data.is_method &&
+    data.source_text == ast_source_text else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf provenance did not match the admitted declaration",
+    )
+  }
+  let source_identity = function_source_identity(callee)
+  guard source_identity == expected_source_identity else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf source identity changed during root hoisting",
+    )
+  }
+  let realm_protos = callee_realm_protos(callee)
+  guard numeric_recursion_realm_protos_match(
+    expected_realm_protos, realm_protos,
+  ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf realm provenance changed during root hoisting",
+    )
+  }
+  TrustedDirectReturnLeafFunction(
+    syntax~,
+    callee~,
+    params=data.params,
+    body=data.body,
+    source_text=data.source_text,
+    expected_realm_protos=realm_protos,
+    expected_source_identity=source_identity,
+  )
+}
+
+///|
 fn Interpreter::seal_direct_return_recursion_registry(
   self : Interpreter,
   preflight : DirectReturnRecursionPreflight,
@@ -367,9 +550,25 @@ fn Interpreter::seal_direct_return_recursion_registry(
     expected_source_identity=preflight.expected_source_identity,
     stmts~,
   )
+  let leaf = match preflight.plan.leaf {
+    Some(plan) =>
+      Some(
+        direct_return_leaf_trusted_declaration(
+          self,
+          plan,
+          previous_object=preflight.previous_leaf_object,
+          expected_global_object=preflight.expected_global_object,
+          expected_realm_protos=preflight.expected_realm_protos,
+          expected_source_identity=preflight.expected_source_identity,
+          stmts~,
+        ),
+      )
+    None => None
+  }
   TrustedDirectReturnRecursionRegistry(
     plan=preflight.plan,
     entry~,
+    leaf~,
     throw_type_error=direct_return_throw_type_error_value(
       throw_type_error_snapshot,
     ),
@@ -469,6 +668,99 @@ fn TrustedDirectReturnRecursionRegistry::require_callee(
 }
 
 ///|
+fn TrustedDirectReturnRecursionRegistry::require_leaf(
+  self : TrustedDirectReturnRecursionRegistry,
+  interp : Interpreter,
+  callee : Value,
+) -> DirectReturnLeafSyntax raise InvalidActivationDispatchShell {
+  let leaf = match self.leaf {
+    Some(leaf) => leaf
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct-return call requested a leaf outside the sealed catalog",
+      )
+  }
+  guard self.plan.leaf is Some(plan) &&
+    direct_return_leaf_syntaxes_match(plan.syntax, leaf.syntax) else {
+    invalid_activation_dispatch_shell(
+      "direct-return registry lost its leaf syntax identity",
+    )
+  }
+  guard interp.numeric_recursion_canonical_global_object()
+    is Some(global_object) &&
+    physical_equal(global_object, self.expected_global_object) else {
+    invalid_activation_dispatch_shell(
+      "direct-return canonical global object changed after sealing",
+    )
+  }
+  guard numeric_recursion_callback_free_binding_snapshots_match(
+    self.throw_type_error_snapshot,
+    numeric_recursion_callback_free_throw_type_error(interp.global),
+  ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return ThrowTypeError binding changed after sealing",
+    )
+  }
+  guard callee is Object(actual) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf call requested an unsealed callee",
+    )
+  }
+  guard (match leaf.callee {
+    Object(expected) => physical_equal(actual, expected)
+    _ => false
+  }) else {
+    invalid_activation_dispatch_shell(
+      "direct-return registry lost its leaf function object",
+    )
+  }
+  guard interp.global.bindings.get(leaf.syntax.name) is Some(binding) &&
+    binding.initialized &&
+    binding.kind == VarBinding &&
+    binding.value is Object(bound) &&
+    physical_equal(bound, actual) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf diverged from its global binding",
+    )
+  }
+  guard global_object.bag.properties.get(leaf.syntax.name)
+    is Some(Object(mirrored)) &&
+    physical_equal(mirrored, actual) &&
+    numeric_recursion_global_property_is_canonical(
+      global_object,
+      leaf.syntax.name,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf diverged from its global mirror",
+    )
+  }
+  guard actual.class_name == "Function" &&
+    actual.callable is Some(UserFunc(data)) &&
+    data.name == Some(leaf.syntax.name) &&
+    data.params.is_empty() &&
+    physical_equal(data.params, leaf.params) &&
+    physical_equal(data.body, leaf.body) &&
+    classify_direct_return_leaf_syntax(leaf.syntax.name, leaf.params, leaf.body)
+    is Some(actual_syntax) &&
+    direct_return_leaf_syntaxes_match(leaf.syntax, actual_syntax) &&
+    physical_equal(data.closure, interp.global) &&
+    !data.strict &&
+    !data.has_name_binding &&
+    !data.is_method &&
+    data.source_text == leaf.source_text &&
+    function_source_identity(callee) == leaf.expected_source_identity &&
+    numeric_recursion_realm_protos_match(
+      leaf.expected_realm_protos,
+      callee_realm_protos(callee),
+    ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf provenance changed after sealing",
+    )
+  }
+  leaf.syntax
+}
+
+///|
 fn TrustedDirectReturnRecursionRegistry::require_call(
   self : TrustedDirectReturnRecursionRegistry,
   interp : Interpreter,
@@ -476,7 +768,31 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
   this_value : Value,
   args : Array[Value],
   loc : @token.Loc,
-) -> DirectReturnFunctionSyntax raise InvalidActivationDispatchShell {
+) -> Unit raise InvalidActivationDispatchShell {
+  match self.leaf {
+    Some(leaf) =>
+      if (match (leaf.callee, callee) {
+          (Object(expected), Object(actual)) => physical_equal(expected, actual)
+          _ => false
+        }) {
+        guard this_value is Undefined && args.is_empty() else {
+          invalid_activation_dispatch_shell(
+            "direct-return leaf activation requires undefined this and no arguments",
+          )
+        }
+        guard self.entry.syntax.base_completion
+          is DirectReturnBaseLeafCall(leaf_name, leaf_call_loc) &&
+          leaf_name == leaf.syntax.name &&
+          loc == leaf_call_loc else {
+          invalid_activation_dispatch_shell(
+            "direct-return leaf call location escaped the sealed source recipe",
+          )
+        }
+        let _ = self.require_leaf(interp, callee)
+        return
+      }
+    None => ()
+  }
   guard this_value is Undefined && args.length() == 1 else {
     invalid_activation_dispatch_shell(
       "direct-return activation requires undefined this and one argument",
@@ -493,5 +809,5 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
       "direct-return call location escaped the sealed source recipe",
     )
   }
-  self.require_callee(interp, callee)
+  let _ = self.require_callee(interp, callee)
 }
