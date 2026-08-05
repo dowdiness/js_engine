@@ -39,6 +39,12 @@ const DIRECT_RETURN_LEAF_CALL_SOURCE =
   #|f(256);
 
 ///|
+const DIRECT_RETURN_ARGUMENT_LEAF_CALL_SOURCE =
+  #|function leaf(value){return value;}
+  #|function f(n){if(n===0)return leaf("done");return f(n-1);}
+  #|f(256);
+
+///|
 test "external consumer: direct-return ordinary recursion at depth 256" {
   match run_value(DIRECT_RETURN_RECURSION_SOURCE) {
     "done" => ()
@@ -51,6 +57,14 @@ test "external consumer: direct-return recursion crosses a leaf call" {
   match run_value(DIRECT_RETURN_LEAF_CALL_SOURCE) {
     "done" => ()
     other => fail("expected cross-callee direct return done, got " + other)
+  }
+}
+
+///|
+test "external consumer: direct-return leaf binds and returns its argument" {
+  match run_value(DIRECT_RETURN_ARGUMENT_LEAF_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected bound leaf argument done, got " + other)
   }
 }
 

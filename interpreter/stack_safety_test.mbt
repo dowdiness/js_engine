@@ -180,6 +180,18 @@ test "execution stack safety: direct-return ordinary recursion crosses a leaf ca
 }
 
 ///|
+test "execution stack safety: direct-return leaf binds and returns its argument" {
+  let source =
+    #|function leaf(value){return value;}
+    #|function f(n){if(n===0)return leaf("done");return f(n-1);}
+    #|f(256);
+  match run(source) {
+    Value::String_("done") => ()
+    other => fail("expected bound leaf argument done, got " + other.to_string())
+  }
+}
+
+///|
 // Regression coverage for the exact #790 retained-argument managed slice.
 test "execution stack safety: retained numeric argument across tree-walker activations" {
   match run(retained_numeric_argument_source()) {
