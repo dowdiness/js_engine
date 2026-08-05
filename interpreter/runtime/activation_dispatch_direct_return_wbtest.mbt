@@ -105,6 +105,7 @@ test "direct-return leaf admission rejects exact-shape near misses" {
 test "direct-return admission rejects exact-shape near misses" {
   for
     source in [
+      "function f(n){if(n===0)return leaf();return f(n-1);}f(256);", "function f(n){if(n===0)return missing();return f(n-1);}f(256);",
       "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", "function f(n){if(n==0)return \"done\";return f(n-1);}f(256);",
       "function f(n){if(n===0){return \"done\";}return f(n-1);}f(256);", "function f(n){if(n===0)return n;return f(n-1);}f(256);",
       "function f(n){if(n===0)return \"done\";return f(n-2);}f(256);", "function f(n){if(n===0)return \"done\";return (f)(n-1);}f(256);",

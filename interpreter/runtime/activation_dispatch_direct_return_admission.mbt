@@ -305,7 +305,13 @@ fn classify_direct_return_recursion_program(
   let (entry, leaf, root_index) = match stmts.length() {
     2 =>
       match classify_direct_return_function(stmts[0], 0) {
-        Some(entry) => (entry, None, 1)
+        Some(entry) => {
+          guard entry.syntax.base_completion
+            is (DirectReturnBaseValue(_) | DirectReturnBaseThrow(_)) else {
+            return None
+          }
+          (entry, None, 1)
+        }
         None => return None
       }
     3 => {
