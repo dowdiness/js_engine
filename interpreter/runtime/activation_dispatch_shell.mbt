@@ -1905,6 +1905,27 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
 }
 
 ///|
+fn direct_return_leaf_parameter_value(
+  step : DispatchStatementStep,
+  registry : TrustedDirectReturnRecursionRegistry,
+  syntax : DirectReturnLeafSyntax,
+  name : String,
+) -> Value raise InvalidActivationDispatchShell {
+  guard syntax.parameter == Some(name) &&
+    registry.entry.syntax.base_call_argument is Some(expected) &&
+    step.env.bindings.get(name) is Some(binding) &&
+    binding.initialized &&
+    binding.kind == LetBinding &&
+    binding.is_parameter &&
+    direct_return_closed_literal_matches_value(expected, binding.value) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf parameter lost its sealed binding provenance",
+    )
+  }
+  binding.value
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
@@ -1929,18 +1950,28 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
     Some(completion) => return DispatchWorkCompleted(completion)
     None => ()
   }
-  match syntax.completion {
-    DirectReturnBaseValue(literal) =>
+  match syntax.leaf_completion {
+    DirectReturnLeafClosedValue(literal) =>
       DispatchWorkCompleted(
         DispatchReturn(direct_return_closed_literal_value(literal)),
       )
-    DirectReturnBaseThrow(literal) =>
+    DirectReturnLeafClosedThrow(literal) =>
       DispatchWorkCompleted(
         DispatchThrow(JsException(direct_return_closed_literal_value(literal))),
       )
-    DirectReturnBaseLeafCall(_, _) =>
-      invalid_activation_dispatch_shell(
-        "direct-return leaf completion escaped exact admission",
+    DirectReturnLeafParameterValue(name, _) =>
+      DispatchWorkCompleted(
+        DispatchReturn(
+          direct_return_leaf_parameter_value(step, registry, syntax, name),
+        ),
+      )
+    DirectReturnLeafParameterThrow(name, _) =>
+      DispatchWorkCompleted(
+        DispatchThrow(
+          JsException(
+            direct_return_leaf_parameter_value(step, registry, syntax, name),
+          ),
+        ),
       )
   }
 }
@@ -2024,7 +2055,10 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
             let request = DispatchCallRequest(
               callee=leaf.callee,
               this_value=Undefined,
-              args=[],
+              args=match syntax.base_call_argument {
+                Some(argument) => [direct_return_closed_literal_value(argument)]
+                None => []
+              },
               loc=leaf_call_loc,
             )
             let _ = registry.require_call(

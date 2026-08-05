@@ -27,19 +27,27 @@ priv enum DirectReturnBaseCompletion {
 }
 
 ///|
+priv enum DirectReturnLeafCompletion {
+  DirectReturnLeafClosedValue(DirectReturnClosedLiteral)
+  DirectReturnLeafClosedThrow(DirectReturnClosedLiteral)
+  DirectReturnLeafParameterValue(String, @token.Loc)
+  DirectReturnLeafParameterThrow(String, @token.Loc)
+}
+
+///|
 priv struct DirectReturnLeafSyntax {
   name : String
-  literal_loc : @token.Loc
-  completion : DirectReturnBaseCompletion
+  parameter : String?
+  leaf_completion : DirectReturnLeafCompletion
 }
 
 ///|
 fn DirectReturnLeafSyntax::DirectReturnLeafSyntax(
   name~ : String,
-  literal_loc~ : @token.Loc,
-  completion~ : DirectReturnBaseCompletion,
+  parameter? : String? = None,
+  leaf_completion~ : DirectReturnLeafCompletion,
 ) -> DirectReturnLeafSyntax {
-  { name, literal_loc, completion }
+  { name, parameter, leaf_completion }
 }
 
 ///|
@@ -52,6 +60,8 @@ priv struct DirectReturnFunctionSyntax {
   recursive_call_loc : @token.Loc
   recursive_subtract_loc : @token.Loc
   base_completion : DirectReturnBaseCompletion
+  base_call_argument : DirectReturnClosedLiteral?
+  base_call_argument_loc : @token.Loc?
 }
 
 ///|
@@ -64,6 +74,8 @@ fn DirectReturnFunctionSyntax::DirectReturnFunctionSyntax(
   recursive_call_loc~ : @token.Loc,
   recursive_subtract_loc~ : @token.Loc,
   base_completion~ : DirectReturnBaseCompletion,
+  base_call_argument? : DirectReturnClosedLiteral? = None,
+  base_call_argument_loc? : @token.Loc? = None,
 ) -> DirectReturnFunctionSyntax {
   {
     name,
@@ -74,6 +86,8 @@ fn DirectReturnFunctionSyntax::DirectReturnFunctionSyntax(
     recursive_call_loc,
     recursive_subtract_loc,
     base_completion,
+    base_call_argument,
+    base_call_argument_loc,
   }
 }
 
@@ -159,7 +173,13 @@ fn classify_direct_return_function_syntax(
   guard direct_return_identifier_is_safe(parameter) && parameter != name else {
     return None
   }
-  let (base_condition_loc, base_literal_loc, base_completion) = match body[0] {
+  let (
+    base_condition_loc,
+    base_literal_loc,
+    base_completion,
+    base_call_argument,
+    base_call_argument_loc,
+  ) = match body[0] {
     @ast.IfStmt(
       @ast.Binary(
         @ast.EqEqEq,
@@ -176,24 +196,48 @@ fn classify_direct_return_function_syntax(
         @ast.ReturnStmt(Some(expr), _) =>
           match classify_direct_return_closed_literal(expr) {
             Some((literal, literal_loc)) =>
-              (condition_loc, literal_loc, DirectReturnBaseValue(literal))
+              (
+                condition_loc,
+                literal_loc,
+                DirectReturnBaseValue(literal),
+                None,
+                None,
+              )
             None =>
               match expr {
-                @ast.Call(@ast.Ident(leaf_name, _), [], leaf_call_loc) if direct_return_identifier_is_safe(
+                @ast.Call(@ast.Ident(leaf_name, _), args, leaf_call_loc) if direct_return_identifier_is_safe(
                     leaf_name,
-                  ) =>
+                  ) => {
+                  let (argument, argument_loc) = match args {
+                    [] => (None, None)
+                    [argument] =>
+                      match classify_direct_return_closed_literal(argument) {
+                        Some((literal, loc)) => (Some(literal), Some(loc))
+                        None => return None
+                      }
+                    _ => return None
+                  }
                   (
                     condition_loc,
                     leaf_call_loc,
                     DirectReturnBaseLeafCall(leaf_name, leaf_call_loc),
+                    argument,
+                    argument_loc,
                   )
+                }
                 _ => return None
               }
           }
         @ast.ThrowStmt(expr, _) =>
           match classify_direct_return_closed_literal(expr) {
             Some((literal, literal_loc)) =>
-              (condition_loc, literal_loc, DirectReturnBaseThrow(literal))
+              (
+                condition_loc,
+                literal_loc,
+                DirectReturnBaseThrow(literal),
+                None,
+                None,
+              )
             None => return None
           }
         _ => return None
@@ -236,6 +280,8 @@ fn classify_direct_return_function_syntax(
     recursive_call_loc~,
     recursive_subtract_loc~,
     base_completion~,
+    base_call_argument~,
+    base_call_argument_loc~,
   )
   |> Some
 }
@@ -246,25 +292,33 @@ fn classify_direct_return_leaf_syntax(
   params : Array[String],
   body : Array[@ast.Stmt],
 ) -> DirectReturnLeafSyntax? {
-  guard direct_return_identifier_is_safe(name) &&
-    params.is_empty() &&
-    body.length() == 1 else {
+  guard direct_return_identifier_is_safe(name) && body.length() == 1 else {
     return None
   }
-  let (literal_loc, completion) = match body[0] {
+  let parameter = match params {
+    [] => None
+    [parameter] if direct_return_identifier_is_safe(parameter) &&
+      parameter != name => Some(parameter)
+    _ => return None
+  }
+  let leaf_completion = match body[0] {
     @ast.ReturnStmt(Some(expr), _) =>
-      match classify_direct_return_closed_literal(expr) {
-        Some((literal, loc)) => (loc, DirectReturnBaseValue(literal))
-        None => return None
+      match (parameter, classify_direct_return_closed_literal(expr), expr) {
+        (None, Some((literal, _)), _) => DirectReturnLeafClosedValue(literal)
+        (Some(parameter), None, @ast.Ident(actual, loc)) if actual == parameter =>
+          DirectReturnLeafParameterValue(parameter, loc)
+        _ => return None
       }
     @ast.ThrowStmt(expr, _) =>
-      match classify_direct_return_closed_literal(expr) {
-        Some((literal, loc)) => (loc, DirectReturnBaseThrow(literal))
-        None => return None
+      match (parameter, classify_direct_return_closed_literal(expr), expr) {
+        (None, Some((literal, _)), _) => DirectReturnLeafClosedThrow(literal)
+        (Some(parameter), None, @ast.Ident(actual, loc)) if actual == parameter =>
+          DirectReturnLeafParameterThrow(parameter, loc)
+        _ => return None
       }
     _ => return None
   }
-  Some(DirectReturnLeafSyntax(name~, literal_loc~, completion~))
+  Some(DirectReturnLeafSyntax(name~, parameter~, leaf_completion~))
 }
 
 ///|
@@ -323,7 +377,17 @@ fn classify_direct_return_recursion_program(
         is DirectReturnBaseLeafCall(leaf_name, _) &&
         leaf_name == leaf.syntax.name &&
         leaf.syntax.name != entry.syntax.name &&
-        leaf.syntax.name != entry.syntax.parameter else {
+        leaf.syntax.name != entry.syntax.parameter &&
+        (match
+          (
+            leaf.syntax.parameter,
+            entry.syntax.base_call_argument,
+            entry.syntax.base_call_argument_loc,
+          ) {
+          (None, None, None) => true
+          (Some(_), Some(_), Some(_)) => true
+          _ => false
+        }) else {
         return None
       }
       (entry, Some(leaf), 2)
