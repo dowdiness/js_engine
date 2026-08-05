@@ -1944,16 +1944,12 @@ fn direct_return_leaf_parameter_value(
   parameter : DirectReturnBoundParameter,
   actual_arguments : Array[Value],
 ) -> Value raise InvalidActivationDispatchShell {
-  let leaf_call = match registry.entry.syntax.base_completion {
-    DirectReturnBaseLeafCall(plan) => plan
-    _ =>
-      match registry.entry.syntax.recursive_completion {
-        DirectReturnRecursiveResultFedLeafCall(plan) => plan
-        _ =>
-          invalid_activation_dispatch_shell(
-            "direct-return leaf registry lost its leaf completion plan",
-          )
-      }
+  let leaf_call = match direct_return_leaf_call_plan(registry.entry.syntax) {
+    Some(plan) => plan
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct-return leaf registry lost its leaf completion plan",
+      )
   }
   guard syntax.parameters.length() == actual_arguments.length() &&
     parameter.index >= 0 &&

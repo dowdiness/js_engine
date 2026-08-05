@@ -207,7 +207,7 @@ test "execution stack safety: direct-return leaf preserves argument order" {
 }
 
 ///|
-test "direct-return recursive result feeds a sealed ordinary call" {
+test "execution stack safety: direct-return recursive result feeds a sealed ordinary call" {
   let source =
     #|function id(x) { return x; }
     #|function f(n) {

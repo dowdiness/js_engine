@@ -312,6 +312,20 @@ fn direct_return_function_syntaxes_match(
 }
 
 ///|
+fn direct_return_leaf_call_plan(
+  syntax : DirectReturnFunctionSyntax,
+) -> DirectReturnLeafCallPlan? {
+  match syntax.base_completion {
+    DirectReturnBaseLeafCall(plan) => Some(plan)
+    _ =>
+      match syntax.recursive_completion {
+        DirectReturnRecursiveResultFedLeafCall(plan) => Some(plan)
+        _ => None
+      }
+  }
+}
+
+///|
 fn direct_return_function_plans_match(
   expected : DirectReturnFunctionPlan,
   actual : DirectReturnFunctionPlan,
@@ -919,16 +933,12 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
           (Object(expected), Object(actual)) => physical_equal(expected, actual)
           _ => false
         }) {
-        let leaf_call = match self.entry.syntax.base_completion {
-          DirectReturnBaseLeafCall(plan) => plan
-          _ =>
-            match self.entry.syntax.recursive_completion {
-              DirectReturnRecursiveResultFedLeafCall(plan) => plan
-              _ =>
-                invalid_activation_dispatch_shell(
-                  "direct-return leaf registry lost its leaf completion plan",
-                )
-            }
+        let leaf_call = match direct_return_leaf_call_plan(self.entry.syntax) {
+          Some(plan) => plan
+          None =>
+            invalid_activation_dispatch_shell(
+              "direct-return leaf registry lost its leaf completion plan",
+            )
         }
         guard leaf_call.callee_name == leaf.syntax.name &&
           this_value is Undefined &&
