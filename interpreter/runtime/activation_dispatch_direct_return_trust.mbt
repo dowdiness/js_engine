@@ -177,16 +177,29 @@ fn direct_return_base_completions_match(
 }
 
 ///|
-fn direct_return_optional_closed_literals_match(
-  expected : DirectReturnClosedLiteral?,
-  actual : DirectReturnClosedLiteral?,
+fn direct_return_closed_arguments_match(
+  expected : Array[DirectReturnClosedArgument],
+  actual : Array[DirectReturnClosedArgument],
 ) -> Bool {
-  match (expected, actual) {
-    (None, None) => true
-    (Some(expected), Some(actual)) =>
-      direct_return_closed_literals_match(expected, actual)
-    _ => false
+  guard expected.length() == actual.length() else { return false }
+  for index, expected in expected {
+    let actual = actual[index]
+    guard expected.loc == actual.loc &&
+      direct_return_closed_literals_match(expected.literal, actual.literal) else {
+      return false
+    }
   }
+  true
+}
+
+///|
+fn direct_return_bound_parameters_match(
+  expected : DirectReturnBoundParameter,
+  actual : DirectReturnBoundParameter,
+) -> Bool {
+  expected.name == actual.name &&
+  expected.index == actual.index &&
+  expected.loc == actual.loc
 }
 
 ///|
@@ -201,26 +214,27 @@ fn direct_return_leaf_completions_match(
       DirectReturnLeafClosedThrow(actual),
     ) => direct_return_closed_literals_match(expected, actual)
     (
-      DirectReturnLeafParameterValue(expected_name, expected_loc),
-      DirectReturnLeafParameterValue(actual_name, actual_loc),
+      DirectReturnLeafParameterValue(expected),
+      DirectReturnLeafParameterValue(actual),
     )
     | (
-      DirectReturnLeafParameterThrow(expected_name, expected_loc),
-      DirectReturnLeafParameterThrow(actual_name, actual_loc),
-    ) => expected_name == actual_name && expected_loc == actual_loc
+      DirectReturnLeafParameterThrow(expected),
+      DirectReturnLeafParameterThrow(actual),
+    ) => direct_return_bound_parameters_match(expected, actual)
     _ => false
   }
 }
 
 ///|
 fn direct_return_leaf_parameters_match(
-  expected : String?,
+  expected : Array[String],
   actual : Array[String],
 ) -> Bool {
-  match expected {
-    None => actual.is_empty()
-    Some(expected) => actual.length() == 1 && actual[0] == expected
+  guard expected.length() == actual.length() else { return false }
+  for index, expected in expected {
+    guard expected == actual[index] else { return false }
   }
+  true
 }
 
 ///|
@@ -229,7 +243,7 @@ fn direct_return_leaf_syntaxes_match(
   actual : DirectReturnLeafSyntax,
 ) -> Bool {
   expected.name == actual.name &&
-  expected.parameter == actual.parameter &&
+  direct_return_leaf_parameters_match(expected.parameters, actual.parameters) &&
   expected.completion_loc == actual.completion_loc &&
   direct_return_leaf_completions_match(
     expected.leaf_completion,
@@ -249,11 +263,10 @@ fn direct_return_function_syntaxes_match(
   expected.base_literal_loc == actual.base_literal_loc &&
   expected.recursive_call_loc == actual.recursive_call_loc &&
   expected.recursive_subtract_loc == actual.recursive_subtract_loc &&
-  direct_return_optional_closed_literals_match(
-    expected.base_call_argument,
-    actual.base_call_argument,
+  direct_return_closed_arguments_match(
+    expected.base_call_arguments,
+    actual.base_call_arguments,
   ) &&
-  expected.base_call_argument_loc == actual.base_call_argument_loc &&
   direct_return_base_completions_match(
     expected.base_completion,
     actual.base_completion,
@@ -546,7 +559,7 @@ fn direct_return_leaf_trusted_declaration(
     is Some(actual_syntax) &&
     direct_return_leaf_syntaxes_match(syntax, actual_syntax) &&
     data.name == Some(syntax.name) &&
-    direct_return_leaf_parameters_match(syntax.parameter, data.params) &&
+    direct_return_leaf_parameters_match(syntax.parameters, data.params) &&
     physical_equal(data.params, ast_params) &&
     physical_equal(data.body, ast_body) &&
     physical_equal(data.closure, interp.global) &&
@@ -808,7 +821,7 @@ fn TrustedDirectReturnRecursionRegistry::require_leaf(
   guard actual.class_name == "Function" &&
     actual.callable is Some(UserFunc(data)) &&
     data.name == Some(leaf.syntax.name) &&
-    direct_return_leaf_parameters_match(leaf.syntax.parameter, data.params) &&
+    direct_return_leaf_parameters_match(leaf.syntax.parameters, data.params) &&
     physical_equal(data.params, leaf.params) &&
     physical_equal(data.body, leaf.body) &&
     classify_direct_return_leaf_syntax(leaf.syntax.name, leaf.params, leaf.body)
@@ -846,15 +859,20 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
           (Object(expected), Object(actual)) => physical_equal(expected, actual)
           _ => false
         }) {
-        let arguments_match = match
-          (leaf.syntax.parameter, self.entry.syntax.base_call_argument) {
-          (None, None) =>
-            args.is_empty() && self.entry.syntax.base_call_argument_loc is None
-          (Some(_), Some(expected)) =>
-            args.length() == 1 &&
-            self.entry.syntax.base_call_argument_loc is Some(_) &&
-            direct_return_closed_literal_matches_value(expected, args[0])
-          _ => false
+        let expected_arguments = self.entry.syntax.base_call_arguments
+        let arguments_match = if args.length() != expected_arguments.length() {
+          false
+        } else {
+          for index, expected in expected_arguments {
+            guard direct_return_closed_literal_matches_value(
+              expected.literal,
+              args[index],
+            ) else {
+              break false
+            }
+          } nobreak {
+            true
+          }
         }
         guard this_value is Undefined && arguments_match else {
           invalid_activation_dispatch_shell(

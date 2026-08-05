@@ -200,7 +200,9 @@ test "execution stack safety: direct-return leaf preserves argument order" {
   match run(source) {
     Value::String_("done") => ()
     other =>
-      fail("expected ordered direct-return argument done, got " + other.to_string())
+      fail(
+        "expected ordered direct-return argument done, got " + other.to_string(),
+      )
   }
 }
 

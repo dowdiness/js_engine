@@ -19,6 +19,12 @@ const DIRECT_RETURN_ARGUMENT_LEAF_TEST_SOURCE = "function leaf(value){return val
 const DIRECT_RETURN_ARGUMENT_LEAF_THROW_SOURCE = "function leaf(value){throw value;}function f(n){if(n===0)return leaf(\"boom\");return f(n-1);}f(256);"
 
 ///|
+const DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE = "function leaf(ignored,value){return value;}function f(n){if(n===0)return leaf(\"ignored\",\"done\");return f(n-1);}f(256);"
+
+///|
+const DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_THROW_SOURCE = "function leaf(ignored,value){throw value;}function f(n){if(n===0)return leaf(\"ignored\",\"boom\");return f(n-1);}f(256);"
+
+///|
 test "direct-return admission recognizes the exact ordinary function shape" {
   let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
   let plan = match classify_direct_return_recursion_program(stmts) {
@@ -98,19 +104,66 @@ test "direct-return admission owns a bound leaf argument plan" {
     Some(found) => found
     None => fail("expected a bound direct-return leaf plan")
   }
-  guard leaf.syntax.parameter is Some("value") else {
-    fail("expected one sealed leaf parameter")
-  }
+  json_inspect(leaf.syntax.parameters, content=["value"])
   guard leaf.syntax.leaf_completion
-    is DirectReturnLeafParameterValue("value", _) else {
+    is DirectReturnLeafParameterValue({ name: "value", index: 0, .. }) else {
     fail("expected the leaf to return its sealed parameter")
   }
-  guard plan.entry.syntax.base_call_argument
-    is Some(DirectReturnClosedString("done")) else {
-    fail("expected one sealed string call argument")
+  guard plan.entry.syntax.base_call_arguments
+    is [{ literal: DirectReturnClosedString("done"), .. }] else {
+    fail("expected one sealed string call argument with its location")
   }
-  guard plan.entry.syntax.base_call_argument_loc is Some(_) else {
-    fail("expected the sealed call argument location")
+}
+
+///|
+test "direct-return admission owns an ordered argument vector plan" {
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE,
+  )
+  let plan = match classify_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the ordered direct-return leaf shape to be admitted")
+  }
+  let leaf = match plan.leaf {
+    Some(found) => found
+    None => fail("expected an ordered direct-return leaf plan")
+  }
+  json_inspect(leaf.syntax.parameters, content=["ignored", "value"])
+  guard leaf.syntax.leaf_completion
+    is DirectReturnLeafParameterValue({ name: "value", index: 1, .. }) else {
+    fail("expected the leaf to return argument index one")
+  }
+  guard plan.entry.syntax.base_call_arguments
+    is [
+      { literal: DirectReturnClosedString("ignored"), loc: first_loc },
+      { literal: DirectReturnClosedString("done"), loc: second_loc },
+    ] &&
+    first_loc != second_loc else {
+    fail("expected two ordered sealed arguments with distinct locations")
+  }
+}
+
+///|
+test "direct-return argument vector rejects unsupported arity" {
+  guard classify_direct_return_recursion_program(
+      direct_return_test_program(
+        "function leaf(a,b,c){return c;}function f(n){if(n===0)return leaf(\"a\",\"b\",\"c\");return f(n-1);}f(256);",
+      ),
+    )
+    is None else {
+    fail("unexpectedly admitted a three-argument direct-return leaf")
+  }
+}
+
+///|
+test "direct-return argument vector rejects duplicate parameters" {
+  guard classify_direct_return_recursion_program(
+      direct_return_test_program(
+        "function leaf(value,value){return value;}function f(n){if(n===0)return leaf(\"first\",\"second\");return f(n-1);}f(256);",
+      ),
+    )
+    is None else {
+    fail("unexpectedly admitted duplicate direct-return parameters")
   }
 }
 
@@ -299,6 +352,33 @@ test "direct-return bound leaf balances argument activation lifecycle" {
 }
 
 ///|
+test "direct-return argument vector balances activation lifecycle" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 143)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE,
+  )
+  match activation_dispatch_root_value(shell.drive_root_program(stmts, ctx)) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "expected ordered direct-return leaf result, got " + other.to_string(),
+      )
+  }
+  expect_dispatch_observation_balanced(probe, 258)
+  inspect(shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 143)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected caller source identity to be restored")
+  }
+}
+
+///|
 test "direct-return closed throw crosses depth 256 without host recursion" {
   let interp = Interpreter::new()
   let source = "function f(n){if(n===0)throw \"boom\";return f(n-1);}f(256);"
@@ -333,6 +413,23 @@ test "direct-return bound leaf throw preserves the parameter value" {
   let result = try {
     let _ = interp.run(
       direct_return_test_program(DIRECT_RETURN_ARGUMENT_LEAF_THROW_SOURCE),
+    )
+    "no throw"
+  } catch {
+    JsException(String_(value)) => value
+    _ => "wrong throw"
+  }
+  inspect(result, content="boom")
+}
+
+///|
+test "direct-return argument vector throw preserves the selected parameter" {
+  let interp = Interpreter::new()
+  let result = try {
+    let _ = interp.run(
+      direct_return_test_program(
+        DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_THROW_SOURCE,
+      ),
     )
     "no throw"
   } catch {
@@ -544,6 +641,52 @@ test "direct-return trust rejects a changed bound leaf argument" {
 }
 
 ///|
+test "direct-return trust rejects reordered argument vectors" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE,
+  )
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected ordered direct-return leaf preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let leaf = match registry.leaf {
+    Some(found) => found
+    None => fail("expected a trusted ordered direct-return leaf")
+  }
+  let call_loc = match registry.entry.syntax.base_completion {
+    DirectReturnBaseLeafCall(_, loc) => loc
+    _ => fail("expected a sealed leaf call location")
+  }
+  let result = try {
+    registry.require_call(
+      interp,
+      leaf.callee,
+      Undefined,
+      [String_("done"), String_("ignored")],
+      call_loc,
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  inspect(
+    result,
+    content="direct-return leaf activation escaped its sealed argument plan",
+  )
+  registry.require_call(
+    interp,
+    leaf.callee,
+    Undefined,
+    [String_("ignored"), String_("done")],
+    call_loc,
+  )
+}
+
+///|
 test "direct-return bound leaf rejects a changed prepared parameter" {
   let interp = Interpreter::new()
   let stmts = direct_return_test_program(
@@ -574,12 +717,69 @@ test "direct-return bound leaf rejects a changed prepared parameter" {
     ),
   )
   prepared.env.assign("value", String_("changed"))
+  let parameter = match leaf.syntax.leaf_completion {
+    DirectReturnLeafParameterValue(parameter) => parameter
+    _ => fail("expected a sealed leaf parameter completion")
+  }
   let result = try {
     let _ = direct_return_leaf_parameter_value(
       { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0 },
       registry,
       leaf.syntax,
-      "value",
+      parameter,
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  interp.finish_simple_user_func_parameter_gate(gate)
+  inspect(
+    result,
+    content="direct-return leaf parameter lost its sealed binding provenance",
+  )
+}
+
+///|
+test "direct-return argument vector validates every prepared binding" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE,
+  )
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected ordered direct-return leaf preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let leaf = match registry.leaf {
+    Some(found) => found
+    None => fail("expected a trusted ordered direct-return leaf")
+  }
+  guard leaf.callee is Object({ callable: Some(UserFunc(data)), .. }) else {
+    fail("expected a trusted ordered direct-return UserFunc")
+  }
+  let gate = interp.begin_simple_user_func_parameter_gate()
+  let prepared = interp.prepare_user_func_activation(
+    leaf.callee,
+    Undefined,
+    [String_("ignored"), String_("done")],
+    data,
+    throw_type_error_source=UsePreResolvedThrowTypeError(
+      registry.throw_type_error,
+    ),
+  )
+  prepared.env.assign("ignored", String_("changed"))
+  let parameter = match leaf.syntax.leaf_completion {
+    DirectReturnLeafParameterValue(parameter) => parameter
+    _ => fail("expected a sealed argument-vector completion")
+  }
+  let result = try {
+    let _ = direct_return_leaf_parameter_value(
+      { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0 },
+      registry,
+      leaf.syntax,
+      parameter,
     )
     "accepted"
   } catch {
@@ -862,6 +1062,13 @@ test "direct-return bound leaf interruption bypasses saved return consumers" {
 }
 
 ///|
+test "direct-return argument vector interruption bypasses saved return consumers" {
+  expect_direct_return_interruption_at_leaf(
+    DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE,
+  )
+}
+
+///|
 test "direct-return cleanup permits same-interpreter reuse" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 113)
@@ -927,5 +1134,13 @@ test "direct-return bound leaf cleanup permits same-interpreter reuse" {
   expect_direct_return_leaf_cleanup_permits_reuse(
     DIRECT_RETURN_ARGUMENT_LEAF_TEST_SOURCE,
     139,
+  )
+}
+
+///|
+test "direct-return argument vector cleanup permits same-interpreter reuse" {
+  expect_direct_return_leaf_cleanup_permits_reuse(
+    DIRECT_RETURN_ARGUMENT_VECTOR_LEAF_TEST_SOURCE,
+    149,
   )
 }
