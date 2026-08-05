@@ -580,7 +580,7 @@ fn expression_test_expect_binary_abrupt(
   next_index : Int,
   values : Array[Value],
   right_value : Value,
-  error : Error,
+  completion : DispatchCompletion,
 ) -> Unit raise Error {
   let plan_resume = DispatchExpressionPlanResume(plan~, next_index~, values~)
   let result = resume_dispatch_expression_plan(
@@ -602,13 +602,26 @@ fn expression_test_expect_binary_abrupt(
     waiting,
     DispatchEffectCompleted(
       ticket,
-      DispatchWorkCompleted(DispatchRuntimeAbrupt(error)),
+      DispatchWorkCompleted(completion),
     ),
   )
   match decision {
+    DispatchFinish(DispatchThrow(JsException(found))) =>
+      match completion {
+        DispatchThrow(JsException(expected)) =>
+          inspect(
+            array_map_value_identity_matches(found, expected),
+            content="true",
+          )
+        _ => fail("binary completion changed into a guest throw")
+      }
     DispatchFinish(DispatchRuntimeAbrupt(found)) =>
-      inspect(physical_equal(found, error), content="true")
-    _ => fail("binary runtime abrupt must suppress remaining expression work")
+      match completion {
+        DispatchRuntimeAbrupt(expected) =>
+          inspect(physical_equal(found, expected), content="true")
+        _ => fail("binary completion changed into a runtime abrupt")
+      }
+    _ => fail("binary abrupt must suppress remaining expression work")
   }
 }
 
@@ -625,14 +638,14 @@ test "expression reducer preserves abrupt identity at both binary boundaries" {
     2,
     [Number(3.0)],
     Number(2.0),
-    error,
+    DispatchRuntimeAbrupt(error),
   )
   expression_test_expect_binary_abrupt(
     plan,
     4,
     [Number(5.0)],
     Number(4.0),
-    error,
+    DispatchRuntimeAbrupt(error),
   )
 }
 
@@ -659,14 +672,14 @@ test "four-call expression reducer preserves fourth-call and third-binary abrupt
     6,
     [Number(9.0)],
     Number(1.0),
-    runtime_error,
+    DispatchRuntimeAbrupt(runtime_error),
   )
   expression_test_expect_binary_abrupt(
     plan,
     6,
     [Number(9.0)],
     Number(1.0),
-    JsException(guest_marker),
+    DispatchThrow(JsException(guest_marker)),
   )
 }
 
