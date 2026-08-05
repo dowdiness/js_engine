@@ -167,6 +167,19 @@ test "execution stack safety: direct-return ordinary recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: direct-return ordinary recursion crosses a leaf call" {
+  let source =
+    #|function leaf(){return "done";}
+    #|function f(n){if(n===0)return leaf();return f(n-1);}
+    #|f(256);
+  match run(source) {
+    Value::String_("done") => ()
+    other =>
+      fail("expected cross-callee direct return done, got " + other.to_string())
+  }
+}
+
+///|
 // Regression coverage for the exact #790 retained-argument managed slice.
 test "execution stack safety: retained numeric argument across tree-walker activations" {
   match run(retained_numeric_argument_source()) {

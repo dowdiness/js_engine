@@ -33,10 +33,24 @@ const DIRECT_RETURN_RECURSION_SOURCE =
   #|function f(n){if(n===0)return "done";return f(n-1);}f(256);
 
 ///|
+const DIRECT_RETURN_LEAF_CALL_SOURCE =
+  #|function leaf(){return "done";}
+  #|function f(n){if(n===0)return leaf();return f(n-1);}
+  #|f(256);
+
+///|
 test "external consumer: direct-return ordinary recursion at depth 256" {
   match run_value(DIRECT_RETURN_RECURSION_SOURCE) {
     "done" => ()
     other => fail("expected direct-return recursion done, got " + other)
+  }
+}
+
+///|
+test "external consumer: direct-return recursion crosses a leaf call" {
+  match run_value(DIRECT_RETURN_LEAF_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected cross-callee direct return done, got " + other)
   }
 }
 
