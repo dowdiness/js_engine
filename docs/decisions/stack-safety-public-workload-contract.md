@@ -1,6 +1,7 @@
 # Stack-safe public acceptance workload contract
 
-Date: 2026-08-03. Reconciled by #790 from the public workload boundary in #692.
+Date: 2026-08-05. Reconciled after #809 added the first ordinary direct-return
+production slice to the public gate.
 
 ## Purpose
 
@@ -29,6 +30,7 @@ focused and core evidence that #619 also requires.
 |---|---|---|---|
 | Exact numeric self recursion at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact numeric mutual recursion at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
+| Exact ordinary direct-return self recursion at depth 256, returning `"done"` | Production-admitted exact slice | #809 | Required |
 | Exact ordinary getter re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact Proxy `get` re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact protected normal/abrupt completion, control, and lifecycle cases | Production-admitted exact slice | #630 | Required |

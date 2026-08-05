@@ -1,7 +1,7 @@
 # Activation-continuation closure inventory
 
 Date: 2026-07-29. Reconciled against the production admission boundary on
-2026-07-31.
+2026-08-05 after the first ordinary direct-return slice in #809 under #800.
 
 This is the source-backed implementation inventory required by #630. It maps
 the accepted
@@ -44,6 +44,7 @@ The authoritative root ordering and legacy disposition live in
 The exact recipe boundaries remain the classifiers in
 [`activation_dispatch_admission.mbt`](../../interpreter/runtime/activation_dispatch_admission.mbt),
 [`activation_dispatch_direct_call_admission.mbt`](../../interpreter/runtime/activation_dispatch_direct_call_admission.mbt),
+[`activation_dispatch_direct_return_admission.mbt`](../../interpreter/runtime/activation_dispatch_direct_return_admission.mbt),
 [`activation_dispatch_getter_admission.mbt`](../../interpreter/runtime/activation_dispatch_getter_admission.mbt),
 [`activation_dispatch_proxy_admission.mbt`](../../interpreter/runtime/activation_dispatch_proxy_admission.mbt),
 and
@@ -73,6 +74,7 @@ blocks integration, not a new JavaScript-visible error or a basis for recursive
 | Reproducer | Interpreted activation edge | Values consumed after the edge | Other reachable call-capable operations | Runtime-type proof for this slice |
 |---|---|---|---|---|
 | Self recursion | `eval_call` invokes an `Object(UserFunc)` for `f` | The recursive result is the right operand of numeric `+`, then the value of `ReturnStmt` | None | The callee is the hoisted declaration, both operands are `Number`, and the argument expression is numeric `n - 1` |
+| Direct-return self recursion | The root and recursive `DispatchCallRequest` values enter the sealed ordinary `Object(UserFunc)` for `f` | The recursive result crosses function-exit cleanup and resumes the saved return consumer exactly once | None | The non-strict named callee is the hoisted declaration; `this` is `Undefined`; the sole argument is a finite integer `Number`; the base return or throw is a closed literal; and the recursive expression is exactly `f(n - 1)` |
 | Mutual recursion | `eval_call` alternates `Object(UserFunc)` values for `f` and `g` | The recursive result is the right operand of numeric `+`, then the value of `ReturnStmt` | None | Both callees are hoisted declarations, both operands are `Number`, and the argument expression is numeric `n - 1` |
 | Getter re-entry | `get_property_of_object` invokes the own getter stored as `Object(UserFunc)` | The getter result completes `o.x`, then numeric `+`, then `ReturnStmt` | The property slow path temporarily clears the caller's active callee realm | `o` is an ordinary `Object`, `x` is an own accessor, the receiver is `o`, and all binary operands are `Number` |
 | Proxy `get` re-entry | `proxy_get_key` invokes the handler's `get` trap stored as `Object(UserFunc)` | The trap result first passes ordinary-target invariant checks, then completes `p.x`, numeric `+`, and `ReturnStmt` | Native `Proxy` construction; handler `get` lookup; target own-property invariant lookup | Construction is a native no-callback leaf; the handler has an own data property; the key is `String_("x")`; the target is an ordinary empty `Object` |
@@ -89,10 +91,10 @@ and must return the exact value `256`.
 
 | Boundary | Production claim | What remains outside the claim |
 |---|---|---|
-| `Interpreter::run` | Literal-only leaf programs and the exact numeric, getter, Proxy `get`, and protected-control classifiers enter `PrimitiveProgramDispatchShell` from the root | Every program rejected by those preflights starts on the legacy `exec_stmt` path |
+| `Interpreter::run` | Literal-only leaf programs and the exact numeric, ordinary direct-return, getter, Proxy `get`, and protected-control classifiers enter `PrimitiveProgramDispatchShell` from the root | Every program rejected by those preflights starts on the legacy `exec_stmt` path |
 | Direct `Interpreter::call_value` | `this` is `Undefined`, the sole argument is `Number(256)`, and the sealed callee is the exact self/mutual numeric `Object(UserFunc)` recipe | Every other direct call uses the legacy `call_value_impl` path |
-| Managed guest activation | A sealed registry admits only the exact `Object(UserFunc)` identities created by the admitted numeric declaration, ordinary getter, or Proxy handler method | General `UserFunc`, `ArrowFunc`, `UserFuncExt`, `ArrowFuncExt`, callable Proxy, and interpreter-backed native callables are not admitted |
-| Call, return, and binary work | The exact numeric recipe retains the left `Number`, performs `+`, `-`, or `===` in the closed numeric set, delivers the callee result once, and routes the admitted return | Arbitrary calls, arguments, operators, coercions, return expressions, and throw expressions are residuals |
+| Managed guest activation | A sealed registry admits only the exact `Object(UserFunc)` identities created by the admitted numeric or direct-return declaration, ordinary getter, or Proxy handler method | General `UserFunc`, `ArrowFunc`, `UserFuncExt`, `ArrowFuncExt`, callable Proxy, and interpreter-backed native callables are not admitted |
+| Call, return, and binary work | The exact numeric recipe retains the left `Number`, performs `+`, `-`, or `===` in the closed numeric set, delivers the callee result once, and routes the admitted return. The exact ordinary direct-return recipe routes `f(n - 1)` through `DispatchCompleteReturn` to one closed literal return or throw | Arbitrary calls, arguments, operators, coercions, return expressions, and throw expressions outside those exact recipes are residuals |
 | Protected numeric completion | The admitted root may evaluate or throw the exact `f(256)` call; catch/finally bodies are empty or one closed numeric/binding value or throw. A recursive function return may cross one closed finalizer | General statement bodies, catch bindings, handlers, and finalizers are not production-admitted merely because the reducer can represent their completions |
 | Protected structural control | Exactly `label: try { break label; } finally { 1; } 9;` and `do try { continue; } finally { 2; } while (false); 8;` use the control lifecycle shell | Other labels, loops, conditions, catch clauses, finalizer bodies, and break/continue shapes remain on the legacy path |
 | Ordinary getter | One ordinary non-callable `Object` owns the exact accessor, or another ordinary `Object` has that holder as its direct prototype. The getter is the sealed zero-argument `Object(UserFunc)` recipe | `Array`, `Map`, `Set`, `Promise`, deeper or exotic prototype chains, Proxy receivers, and other getter callable families are residuals |
@@ -198,7 +200,7 @@ legacy `with_active_property_access_value` wrapper and remain #608 work.
 
 | Evidence class | What it proves | What it does not prove |
 |---|---|---|
-| Public production | The exact #616 depth-256 programs (including the #790 retained-argument comma workload), exact direct numeric `call_value`, admitted protected numeric completions, and the two exact protected-control roots pass through public adapters | General programs or callable families are stack-safe |
+| Public production | The exact #616 depth-256 programs (including the #790 retained-argument comma workload), exact direct numeric `call_value`, exact #809 ordinary direct-return recursion, admitted protected numeric completions, and the two exact protected-control roots pass through public adapters | General programs or callable families are stack-safe |
 | Direct shell and lifecycle | Exact admission/sealing, activation identity, normal/return/guest-throw/runtime-abrupt cleanup, property-scope LIFO restoration, observation acceptance/rejection/release, and finalizer-before-release ordering | A shell state without public admission is production reachable |
 | Core representability | Every completion category, parameter-default resume, general handler/finalizer precedence, loop/label routing, nested property cleanup, and Proxy invariant ordering reduce deterministically | The production shell implements or admits every represented state |
 | Legacy compatibility | Shallow bound/call/apply, accessor/Proxy lookalikes, existing interpreter behavior, error ordering, borrowed realm, source identity, and bytecode equivalence do not regress | Those fallback paths use managed continuation execution |
