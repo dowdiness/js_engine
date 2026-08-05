@@ -141,7 +141,7 @@ replacement remain separate downstream work.
 ## Verification and maintenance
 
 The exact #616 programs, the retained-argument slice landed in #790, and the
-exact #809/#811/#813 ordinary direct-return programs supply end-to-end red-to-green
+exact #809/#811/#813/#815 ordinary direct-return programs supply end-to-end red-to-green
 evidence.
 Reducer tests separately cover deterministic transition, pathological
 continuation depth, handler/finalizer precedence, and one-time ownership. Shell
