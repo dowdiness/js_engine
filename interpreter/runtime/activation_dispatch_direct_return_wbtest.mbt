@@ -451,6 +451,53 @@ test "direct-return trust rejects post-seal leaf mutation" {
 }
 
 ///|
+test "direct-return trust rejects post-seal closed leaf location drift" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(DIRECT_RETURN_LEAF_TEST_SOURCE)
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected direct-return leaf preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let leaf = match registry.leaf {
+    Some(found) => found
+    None => fail("expected a trusted direct-return leaf")
+  }
+  guard leaf.callee is Object({ callable: Some(UserFunc(data)), .. }) else {
+    fail("expected a trusted direct-return leaf UserFunc")
+  }
+  let original_stmt = data.body[0]
+  let replacement_stmt = @parser.parse("return \"done\";").stmts[0]
+  guard original_stmt
+    is @ast.ReturnStmt(
+      Some(@ast.StringLit(_, _, @token.LexForm::LexNormal, original_loc)),
+      _
+    ) &&
+    replacement_stmt
+    is @ast.ReturnStmt(
+      Some(@ast.StringLit(_, _, @token.LexForm::LexNormal, replacement_loc)),
+      _
+    ) &&
+    original_loc != replacement_loc else {
+    fail("expected the replacement literal to have a different location")
+  }
+  data.body[0] = replacement_stmt
+  let result = try {
+    let _ = registry.require_leaf(interp, leaf.callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  data.body[0] = original_stmt
+  guard result == "direct-return leaf provenance changed after sealing" else {
+    fail("expected closed leaf location drift rejection, got " + result)
+  }
+  let _ = registry.require_leaf(interp, leaf.callee)
+}
+
+///|
 test "direct-return trust rejects a changed bound leaf argument" {
   let interp = Interpreter::new()
   let stmts = direct_return_test_program(

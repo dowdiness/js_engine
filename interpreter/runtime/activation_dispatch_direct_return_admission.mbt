@@ -39,6 +39,7 @@ priv struct DirectReturnLeafSyntax {
   name : String
   parameter : String?
   leaf_completion : DirectReturnLeafCompletion
+  completion_loc : @token.Loc
 }
 
 ///|
@@ -46,8 +47,9 @@ fn DirectReturnLeafSyntax::DirectReturnLeafSyntax(
   name~ : String,
   parameter? : String? = None,
   leaf_completion~ : DirectReturnLeafCompletion,
+  completion_loc~ : @token.Loc,
 ) -> DirectReturnLeafSyntax {
-  { name, parameter, leaf_completion }
+  { name, parameter, leaf_completion, completion_loc }
 }
 
 ///|
@@ -301,24 +303,28 @@ fn classify_direct_return_leaf_syntax(
       parameter != name => Some(parameter)
     _ => return None
   }
-  let leaf_completion = match body[0] {
+  let (leaf_completion, completion_loc) = match body[0] {
     @ast.ReturnStmt(Some(expr), _) =>
       match (parameter, classify_direct_return_closed_literal(expr), expr) {
-        (None, Some((literal, _)), _) => DirectReturnLeafClosedValue(literal)
+        (None, Some((literal, loc)), _) =>
+          (DirectReturnLeafClosedValue(literal), loc)
         (Some(parameter), None, @ast.Ident(actual, loc)) if actual == parameter =>
-          DirectReturnLeafParameterValue(parameter, loc)
+          (DirectReturnLeafParameterValue(parameter, loc), loc)
         _ => return None
       }
     @ast.ThrowStmt(expr, _) =>
       match (parameter, classify_direct_return_closed_literal(expr), expr) {
-        (None, Some((literal, _)), _) => DirectReturnLeafClosedThrow(literal)
+        (None, Some((literal, loc)), _) =>
+          (DirectReturnLeafClosedThrow(literal), loc)
         (Some(parameter), None, @ast.Ident(actual, loc)) if actual == parameter =>
-          DirectReturnLeafParameterThrow(parameter, loc)
+          (DirectReturnLeafParameterThrow(parameter, loc), loc)
         _ => return None
       }
     _ => return None
   }
-  Some(DirectReturnLeafSyntax(name~, parameter~, leaf_completion~))
+  Some(
+    DirectReturnLeafSyntax(name~, parameter~, leaf_completion~, completion_loc~),
+  )
 }
 
 ///|

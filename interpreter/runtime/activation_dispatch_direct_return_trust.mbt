@@ -230,6 +230,7 @@ fn direct_return_leaf_syntaxes_match(
 ) -> Bool {
   expected.name == actual.name &&
   expected.parameter == actual.parameter &&
+  expected.completion_loc == actual.completion_loc &&
   direct_return_leaf_completions_match(
     expected.leaf_completion,
     actual.leaf_completion,
