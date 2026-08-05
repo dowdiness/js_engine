@@ -122,6 +122,13 @@ test "numeric map expression classifier keeps order and arity near misses legacy
     prefix + "step(256)+u(256)+step(256);0;",
     prefix + "step(256)+u(256)+step(256)+0;",
     prefix + "step(256)+u(256)+step(256)+step(256)+u(256);",
+    prefix + "step(256)+u(256)+step(256)+u(256)+step(256);0;",
+    prefix + "step(256)+u(256)+step(256)+u(256)+step(256)+u(256);",
+    prefix + "step(256)+u(256)+u(256)+step(256)+step(256);",
+    prefix + "step(256)+(u(256)+step(256)+u(256)+step(256));",
+    prefix + "step(256)+u(256)+step(256)+u(256)-step(256);",
+    prefix + "step(256)+u(256)+step(256)+u(255)+step(256);",
+    prefix + "step.call(undefined,256)+u(256)+step(256)+u(256)+step(256);",
     prefix + "step(256)+(u(256)+step(256)+u(256));",
     prefix + "step(256)+u(256)+step(256)-u(256);",
     prefix + "step(256)+u(256)+step(256)+u(255);",
@@ -197,6 +204,33 @@ test "numeric map expression classifier admits the exact seven-step source" {
       )
     }
     None => fail("expected the exact seven-step source to classify")
+  }
+}
+
+///|
+test "numeric map expression classifier admits the exact nine-step source" {
+  let stmts = root_admission_test_program(
+    FIVE_CALL_NUMERIC_MAP_EXPRESSION_SOURCE,
+  )
+  match numeric_map_expression_source(stmts) {
+    Some(source) => {
+      inspect(source.steps.length(), content="9")
+      inspect(expression_source_shape_is_admissible(source.steps), content="true")
+      let expected_names = ["step", "u", "step", "u", "step"]
+      let mut call_index = 0
+      for step in source.steps {
+        match step {
+          DispatchExpressionCallSourceStep({ name, argument, .. }) => {
+            inspect(name, content=expected_names[call_index])
+            inspect(argument, content="256")
+            call_index += 1
+          }
+          DispatchExpressionAddSourceStep(_) => ()
+        }
+      }
+      inspect(call_index, content="5")
+    }
+    None => fail("expected the exact nine-step source to classify")
   }
 }
 
