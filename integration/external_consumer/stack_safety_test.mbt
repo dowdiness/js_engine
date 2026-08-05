@@ -92,7 +92,7 @@ const DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE =
   #|f(256);
 
 ///|
-test "RED external consumer: recursive result feeds a sealed ordinary call" {
+test "external consumer: recursive result feeds a sealed ordinary call" {
   match run_value(DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE) {
     "done" => ()
     other => fail("expected result-fed direct return done, got " + other)

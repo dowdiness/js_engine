@@ -1369,6 +1369,55 @@ test "normal call result resumes its caller once after child release" {
 }
 
 ///|
+test "result-fed leaf continuation defensively inserts the recursive result" {
+  let id = 1150
+  let template_args = [Undefined]
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let (running_value, value_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchFeedDirectReturnLeafResult(
+            DispatchResultFedLeafCallResume(
+              call_template=DispatchCallRequest(
+                callee=String_("id"),
+                this_value=Undefined,
+                args=template_args,
+                loc=@token.Loc::default(),
+              ),
+              result_argument_index=0,
+            ),
+          ),
+          DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
+        ),
+      ),
+    ),
+  )
+  let value_ticket = match value_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("expected result-fed continuation input work")
+  }
+  let (_, resume_decision) = reduce_activation_dispatch(
+    running_value,
+    DispatchEffectCompleted(
+      value_ticket,
+      DispatchWorkCompleted(DispatchNormal(String_("done"))),
+    ),
+  )
+  match resume_decision {
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(request))) => {
+      guard request.args is [String_("done")] else {
+        fail("expected the recursive result in the leaf argument slot")
+      }
+      inspect(dispatch_test_value_tag(template_args[0]), content="undefined")
+    }
+    _ => fail("expected the result-fed leaf call activation")
+  }
+}
+
+///|
 test "throw-value continuation consumes one normal value" {
   let id = 1100
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)

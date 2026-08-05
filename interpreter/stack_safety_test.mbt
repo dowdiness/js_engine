@@ -207,7 +207,7 @@ test "execution stack safety: direct-return leaf preserves argument order" {
 }
 
 ///|
-test "RED: direct-return recursive result feeds a sealed ordinary call" {
+test "direct-return recursive result feeds a sealed ordinary call" {
   let source =
     #|function id(x) { return x; }
     #|function f(n) {
@@ -218,9 +218,7 @@ test "RED: direct-return recursive result feeds a sealed ordinary call" {
   match run(source) {
     Value::String_("done") => ()
     other =>
-      fail(
-        "expected result-fed direct return done, got " + other.to_string(),
-      )
+      fail("expected result-fed direct return done, got " + other.to_string())
   }
 }
 
