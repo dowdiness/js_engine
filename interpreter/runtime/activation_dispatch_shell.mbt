@@ -313,6 +313,7 @@ priv struct PrimitiveProgramDispatchShell {
   expression_root_preflight : NumericMapExpressionPreflight?
   expression_root_stmts : Array[@ast.Stmt]?
   mut expression_plan : DispatchExpressionPlan?
+  mut direct_return_result_pipeline : DispatchResultPipeline?
   mut expression_root_call_locs : Array[@token.Loc]
   composition_root_preflight : NumericMapCompositionPreflight?
   composition_root_stmts : Array[@ast.Stmt]?
@@ -353,6 +354,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   expression_root_preflight? : NumericMapExpressionPreflight? = None,
   expression_root_stmts? : Array[@ast.Stmt]? = None,
   expression_plan? : DispatchExpressionPlan? = None,
+  direct_return_result_pipeline? : DispatchResultPipeline? = None,
   composition_root_preflight? : NumericMapCompositionPreflight? = None,
   composition_root_stmts? : Array[@ast.Stmt]? = None,
   managed_user_func_catalog? : DispatchManagedUserFuncCatalog? = None,
@@ -396,6 +398,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     expression_root_preflight,
     expression_root_stmts: expression_root_stmts.map(stmts => stmts.copy()),
     expression_plan,
+    direct_return_result_pipeline,
     expression_root_call_locs: [],
     composition_root_preflight,
     composition_root_stmts: composition_root_stmts.map(stmts => stmts.copy()),
@@ -1118,7 +1121,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     DispatchDirectReturnRootRealmCleanup(previous_realm_protos) => {
       self.direct_return_registry = None
-      self.expression_plan = None
+      self.direct_return_result_pipeline = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
     DispatchControlRootRealmCleanup(previous_realm_protos) => {
@@ -1588,6 +1591,24 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 }
 
 ///|
+fn validate_direct_return_result_pipeline(
+  completion : DirectReturnRecursiveCompletion,
+  pipeline : DispatchResultPipeline?,
+) -> DispatchResultPipeline? raise InvalidActivationDispatchShell {
+  match completion {
+    DirectReturnRecursiveSelfCall => pipeline
+    DirectReturnRecursiveResultFedCallChain(_) =>
+      match pipeline {
+        Some(pipeline) => Some(pipeline)
+        None =>
+          invalid_activation_dispatch_shell(
+            "direct-return result-fed pipeline was not sealed",
+          )
+      }
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1600,8 +1621,12 @@ fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
     preflight,
     cursor.stmts,
   )
+  let pipeline = validate_direct_return_result_pipeline(
+    registry.entry.syntax.recursive_completion,
+    direct_return_result_pipeline(registry),
+  )
   self.direct_return_registry = Some(registry)
-  self.expression_plan = direct_return_expression_plan(registry)
+  self.direct_return_result_pipeline = pipeline
   DispatchProgramAccepted(DispatchActivationCleanup(id))
 }
 
@@ -2181,7 +2206,10 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
             )
           DirectReturnBaseLeafCall(leaf_call) => {
             let helper = match
-              direct_return_expression_helper(registry, leaf_call.callee_name) {
+              direct_return_result_pipeline_helper(
+                registry,
+                leaf_call.callee_name,
+              ) {
               Some(helper) => helper
               None =>
                 invalid_activation_dispatch_shell(
@@ -2243,48 +2271,15 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
       )
       let continuation = match syntax.recursive_completion {
         DirectReturnRecursiveSelfCall => DispatchCompleteReturn
-        DirectReturnRecursiveResultFedLeafCall(_)
-        | DirectReturnRecursiveResultFedCallChain(_) => {
-          let plan = match self.expression_plan {
-            Some(plan) => plan
+        DirectReturnRecursiveResultFedCallChain(_) => {
+          let pipeline = match self.direct_return_result_pipeline {
+            Some(pipeline) => pipeline
             None =>
               invalid_activation_dispatch_shell(
-                "direct-return result-fed call plan was not sealed",
+                "direct-return result-fed pipeline was not sealed",
               )
           }
-          guard plan.steps.length() > 0 else {
-            invalid_activation_dispatch_shell(
-              "direct-return result-fed call plan is empty",
-            )
-          }
-          match plan.steps[0] {
-            DispatchExpressionCall(call) => {
-              guard dispatch_managed_user_func_adapter_token_matches(
-                  call.adapter,
-                  call.request.callee,
-                ) &&
-                dispatch_expression_adapter_matches_name(
-                  call.adapter,
-                  call.name,
-                ) else {
-                invalid_activation_dispatch_shell(
-                  "direct-return result-fed initial adapter drifted",
-                )
-              }
-            }
-            DispatchExpressionNumericAdd(_) =>
-              invalid_activation_dispatch_shell(
-                "direct-return result-fed plan began with a binary step",
-              )
-          }
-          DispatchContinueExpressionPlan(
-            DispatchExpressionPlanResume(
-              plan~,
-              next_index=0,
-              values=[],
-              terminal=DispatchExpressionPlanReturn,
-            ),
-          )
+          DispatchContinueResultPipeline(pipeline.start())
         }
       }
       let _ = registry.require_call(
@@ -2908,10 +2903,6 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
           return self.enter_numeric_call(request)
         Some(DispatchArrayMapUserFuncAdapterToken(_)) =>
           return self.enter_array_map_call(request)
-        Some(DispatchDirectReturnUserFuncAdapterToken(_, _)) =>
-          invalid_activation_dispatch_shell(
-            "direct-return adapter reached the non-direct catalog path",
-          )
         None =>
           invalid_activation_dispatch_shell(
             "managed call is outside the sealed UserFunc adapter catalog",
@@ -3431,7 +3422,10 @@ fn PrimitiveProgramDispatchShell::execute_numeric_map_expression_root_statement(
               call.adapter,
               call.request.callee,
             ) &&
-            dispatch_expression_adapter_matches_name(call.adapter, call.name) else {
+            dispatch_numeric_map_expression_adapter_matches_name(
+              call.adapter,
+              call.name,
+            ) else {
             invalid_activation_dispatch_shell(
               "numeric/map expression initial adapter drifted",
             )
@@ -4765,6 +4759,9 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     | DispatchRun(
       DispatchResumeContinuation(DispatchContinueExpressionPlan(_), _)
     )
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchContinueResultPipeline(_), _)
+    )
     | DispatchRun(DispatchResumeContinuation(DispatchContinueMap(_), _))
     | DispatchRun(DispatchResumeContinuation(DispatchMapStartMemberCall(_), _))
     | DispatchRun(
@@ -5047,7 +5044,8 @@ fn Interpreter::run_activation_dispatch_direct_return_program(
     activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
-  guard shell.direct_return_registry is None && shell.expression_plan is None else {
+  guard shell.direct_return_registry is None &&
+    shell.direct_return_result_pipeline is None else {
     invalid_activation_dispatch_shell(
       "direct-return registry outlived its root activation",
     )

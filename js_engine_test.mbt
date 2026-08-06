@@ -98,6 +98,22 @@ test "run facade direct-return linear call chain at depth 256" {
 }
 
 ///|
+test "run facade direct-return one-stage result pipeline at depth 256" {
+  let src =
+    #|function id(value) { return value; }
+    #|function f(n) {
+    #|  if (n === 0) return "done";
+    #|  return id(f(n - 1));
+    #|}
+    #|f(256);
+  expect_string(
+    run_outcome(src),
+    "value:done",
+    "direct-return one-stage result pipeline",
+  )
+}
+
+///|
 test "run_compiled facade closure factory" {
   let src =
     #|function makeCounter(start) {

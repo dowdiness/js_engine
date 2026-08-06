@@ -783,6 +783,10 @@ fn snapshot_dispatch_continuation(
       DispatchContinueExpressionPlan(
         snapshot_dispatch_expression_plan_resume(plan),
       )
+    DispatchContinueResultPipeline(cursor) =>
+      DispatchContinueResultPipeline(
+        snapshot_dispatch_result_pipeline_cursor(cursor),
+      )
     DispatchContinueNumericStatement(numeric) =>
       DispatchContinueNumericStatement(
         snapshot_dispatch_numeric_statement_continuation(numeric),
@@ -872,6 +876,7 @@ priv enum DispatchContinuation {
   DispatchBindParameterDefault(DispatchParameterDefaultResume)
   DispatchContinueNumericExpression(DispatchNumericExpressionContinuation)
   DispatchContinueExpressionPlan(DispatchExpressionPlanResume)
+  DispatchContinueResultPipeline(DispatchResultPipelineCursor)
   DispatchContinueNumericStatement(DispatchNumericStatementContinuation)
   DispatchContinueMap(MapState)
   DispatchMapStartMemberCall(DispatchMapMemberCallResume)
@@ -1697,6 +1702,19 @@ fn route_dispatch_completion(
                   DispatchResumeCompletion(next) => routed = next
                   DispatchResumeDecision(next_state, decision) =>
                     return (next_state, decision)
+                }
+              (DispatchContinueResultPipeline(cursor), DispatchNormal(value)) =>
+                match dispatch_result_pipeline_transition(cursor, value) {
+                  DispatchResultPipelineSuspend(request, next_cursor) =>
+                    return suspend_dispatch_work(
+                      popped,
+                      DispatchSuspendCall(
+                        request,
+                        DispatchContinueResultPipeline(next_cursor),
+                      ),
+                    )
+                  DispatchResultPipelineComplete(value) =>
+                    routed = DispatchReturn(value)
                 }
               (DispatchApplyNumericBinaryRight(binary), DispatchNormal(value)) =>
                 return schedule_dispatch_production_work(

@@ -10,6 +10,8 @@ CONSUMER_PACKAGE="$ROOT_DIR/integration/external_consumer/moon.pkg"
 CONSUMER_SUITE="$ROOT_DIR/integration/external_consumer/stack_safety_test.mbt"
 BOUNDED_SUITE="$ROOT_DIR/integration/external_consumer/bounded_eval_test.mbt"
 ACTIVATION_SUITE="$ROOT_DIR/interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt"
+RESULT_PIPELINE_SOURCE="$ROOT_DIR/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
+COMPOSITION_SOURCE="$ROOT_DIR/interpreter/runtime/activation_dispatch_composition.mbt"
 CHECK_ONLY=false
 
 if [[ ${1:-} == "--check-only" ]]; then
@@ -31,6 +33,17 @@ fail() {
 [[ -f "$CONSUMER_SUITE" ]] || fail 'external-consumer stack-safety suite is missing'
 [[ -f "$BOUNDED_SUITE" ]] || fail 'bounded external-consumer suite is missing'
 [[ -f "$ACTIVATION_SUITE" ]] || fail 'numeric activation cleanup suite is missing'
+[[ -f "$RESULT_PIPELINE_SOURCE" ]] || fail 'result pipeline source is missing'
+[[ -f "$COMPOSITION_SOURCE" ]] || fail 'dispatch composition source is missing'
+
+if grep -Eq '@ast|DispatchExpressionPlan|DispatchContinuation|DispatchRun|DispatchReturn|DispatchResume' \
+  "$RESULT_PIPELINE_SOURCE"; then
+  fail 'result pipeline source regained AST or dispatch-routing capabilities'
+fi
+if grep -Eq 'result_argument_index|DispatchExpressionPlanTerminal|DispatchExpressionPlanReturn|direct_return_expression_(plan|helper)|DispatchDirectReturnUserFuncAdapterToken' \
+  "$COMPOSITION_SOURCE"; then
+  fail 'dispatch composition source regained direct-return lowering state'
+fi
 
 grep -Fq 'stack-safety-test' "$MAKEFILE" ||
   fail 'focused stack-safety Make target is missing'
@@ -191,6 +204,34 @@ require_two_helper_result_workload \
   '"done" => ()' \
   'expected two-helper result pipeline done, got'
 
+require_one_helper_result_workload() {
+  local suite=$1
+  local label=$2
+  local success_assertion=$3
+  local failure_evidence=$4
+  grep -Fq 'function id(x) { return x; }' "$suite" ||
+    fail "$label selected suite omits the one-helper inner source"
+  grep -Fq 'return id(f(n - 1));' "$suite" ||
+    fail "$label one-helper workload does not preserve the result-fed call"
+  grep -Fq 'f(256);' "$suite" ||
+    fail "$label one-helper workload does not preserve the exact depth-256 root call"
+  grep -Fq "$success_assertion" "$suite" ||
+    fail "$label one-helper workload omits the exact success assertion"
+  grep -Fq "$failure_evidence" "$suite" ||
+    fail "$label one-helper workload omits its failure-message evidence"
+}
+
+require_one_helper_result_workload \
+  "$ROOT_DIR/interpreter/stack_safety_test.mbt" \
+  'engine' \
+  'Value::String_("done")' \
+  'expected result-fed direct return done, got'
+require_one_helper_result_workload \
+  "$CONSUMER_SUITE" \
+  'external-consumer' \
+  '"done" => ()' \
+  'expected result-fed direct return done, got'
+
 for suite in \
   'interpreter/stack_safety_test.mbt' \
   'interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt' \
@@ -279,6 +320,8 @@ copy_fixture() {
   cp "$CONSUMER_SUITE" "$fixture/integration/external_consumer/stack_safety_test.mbt"
   cp "$BOUNDED_SUITE" "$fixture/integration/external_consumer/bounded_eval_test.mbt"
   cp "$ROOT_DIR/interpreter/stack_safety_test.mbt" "$fixture/interpreter/stack_safety_test.mbt"
+  cp "$RESULT_PIPELINE_SOURCE" "$fixture/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
+  cp "$COMPOSITION_SOURCE" "$fixture/interpreter/runtime/activation_dispatch_composition.mbt"
   cp \
     "$ROOT_DIR/interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt" \
     "$fixture/interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt"
@@ -339,6 +382,18 @@ awk '
 mv "$fixture/adoption.yml.tmp" "$fixture/.github/workflows/adoption.yml"
 expect_fixture_failure "$fixture" 'decoy-pair'
 
+fixture="$GATE_TMP_ROOT/pipeline-capability-leak"
+copy_fixture "$fixture"
+sed -i '$a // @ast' \
+  "$fixture/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
+expect_fixture_failure "$fixture" 'pipeline-capability-leak'
+
+fixture="$GATE_TMP_ROOT/composition-direct-return-lowering"
+copy_fixture "$fixture"
+sed -i '$a // result_argument_index' \
+  "$fixture/interpreter/runtime/activation_dispatch_composition.mbt"
+expect_fixture_failure "$fixture" 'composition-direct-return-lowering'
+
 fixture="$GATE_TMP_ROOT/missing-engine-comma-workload"
 copy_fixture "$fixture"
 sed -i '/nested_comma_source(512, "7")/d' \
@@ -380,6 +435,12 @@ copy_fixture "$fixture"
 sed -i 's/Value::String_("done") => ()/Value::String_("not-done") => ()/' \
   "$fixture/interpreter/stack_safety_test.mbt"
 expect_fixture_failure "$fixture" 'missing-engine-two-helper-success-assertion'
+
+fixture="$GATE_TMP_ROOT/missing-engine-one-helper-workload"
+copy_fixture "$fixture"
+sed -i '/return id(f(n - 1));/d' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-one-helper-workload'
 
 fixture="$GATE_TMP_ROOT/missing-facade-two-helper-done-evidence"
 copy_fixture "$fixture"

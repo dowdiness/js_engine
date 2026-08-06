@@ -1369,24 +1369,28 @@ test "normal call result resumes its caller once after child release" {
 }
 
 ///|
-test "expression plan defensively inserts and consumes the recursive result" {
+test "result pipeline defensively inserts and consumes the recursive result" {
   let id = 1150
   let template_args = [Undefined]
-  let plan = DispatchExpressionPlan(steps=[
-    DispatchExpressionCall(
-      DispatchExpressionCallStep(
-        request=DispatchCallRequest(
-          callee=String_("id"),
-          this_value=Undefined,
-          args=template_args,
-          loc=@token.Loc::default(),
-        ),
-        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
-        name="id",
-        result_argument_index=Some(0),
+  let stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("id"),
+        this_value=Undefined,
+        args=template_args,
+        loc=@token.Loc::default(),
       ),
-    ),
-  ])
+      callee_token=DispatchResultPipelineCalleeToken(String_("id")),
+      result_argument_index=0,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid result pipeline stage")
+  }
+  let pipeline = match validate_dispatch_result_pipeline(stages=[stage]) {
+    Some(pipeline) => pipeline
+    None => fail("expected the valid result pipeline")
+  }
+  let cursor = pipeline.start()
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let (running_value, value_decision) = reduce_activation_dispatch(
     running_root,
@@ -1394,9 +1398,7 @@ test "expression plan defensively inserts and consumes the recursive result" {
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchContinueExpressionPlan(
-            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
-          ),
+          DispatchContinueResultPipeline(cursor),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
@@ -1404,7 +1406,7 @@ test "expression plan defensively inserts and consumes the recursive result" {
   )
   let value_ticket = match value_decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    _ => fail("expected expression-plan continuation input work")
+    _ => fail("expected result-pipeline continuation input work")
   }
   let (_, resume_decision) = reduce_activation_dispatch(
     running_value,
@@ -1425,23 +1427,27 @@ test "expression plan defensively inserts and consumes the recursive result" {
 }
 
 ///|
-test "expression plan preserves abrupt result without entering helper" {
+test "result pipeline preserves abrupt result without entering helper" {
   let id = 1160
-  let plan = DispatchExpressionPlan(steps=[
-    DispatchExpressionCall(
-      DispatchExpressionCallStep(
-        request=DispatchCallRequest(
-          callee=String_("id"),
-          this_value=Undefined,
-          args=[Undefined],
-          loc=@token.Loc::default(),
-        ),
-        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
-        name="id",
-        result_argument_index=Some(0),
+  let stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("id"),
+        this_value=Undefined,
+        args=[Undefined],
+        loc=@token.Loc::default(),
       ),
-    ),
-  ])
+      callee_token=DispatchResultPipelineCalleeToken(String_("id")),
+      result_argument_index=0,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid result pipeline stage")
+  }
+  let pipeline = match validate_dispatch_result_pipeline(stages=[stage]) {
+    Some(pipeline) => pipeline
+    None => fail("expected the valid result pipeline")
+  }
+  let cursor = pipeline.start()
   let thrown : Error = JsException(String_("boom"))
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let (running_value, decision) = reduce_activation_dispatch(
@@ -1450,9 +1456,7 @@ test "expression plan preserves abrupt result without entering helper" {
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchContinueExpressionPlan(
-            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
-          ),
+          DispatchContinueResultPipeline(cursor),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
@@ -1460,7 +1464,7 @@ test "expression plan preserves abrupt result without entering helper" {
   )
   let value_ticket = match decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    _ => fail("expected expression-plan continuation input work")
+    _ => fail("expected result-pipeline continuation input work")
   }
   let (_, release_decision) = reduce_activation_dispatch(
     running_value,
@@ -1479,23 +1483,27 @@ test "expression plan preserves abrupt result without entering helper" {
 }
 
 ///|
-test "expression plan preserves runtime abrupt result without entering helper" {
+test "result pipeline preserves runtime abrupt result without entering helper" {
   let id = 1170
-  let plan = DispatchExpressionPlan(steps=[
-    DispatchExpressionCall(
-      DispatchExpressionCallStep(
-        request=DispatchCallRequest(
-          callee=String_("id"),
-          this_value=Undefined,
-          args=[Undefined],
-          loc=@token.Loc::default(),
-        ),
-        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
-        name="id",
-        result_argument_index=Some(0),
+  let stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("id"),
+        this_value=Undefined,
+        args=[Undefined],
+        loc=@token.Loc::default(),
       ),
-    ),
-  ])
+      callee_token=DispatchResultPipelineCalleeToken(String_("id")),
+      result_argument_index=0,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid result pipeline stage")
+  }
+  let pipeline = match validate_dispatch_result_pipeline(stages=[stage]) {
+    Some(pipeline) => pipeline
+    None => fail("expected the valid result pipeline")
+  }
+  let cursor = pipeline.start()
   let runtime_error : Error = ExecutionControlError(Interrupted)
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let (running_value, decision) = reduce_activation_dispatch(
@@ -1504,9 +1512,7 @@ test "expression plan preserves runtime abrupt result without entering helper" {
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchContinueExpressionPlan(
-            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
-          ),
+          DispatchContinueResultPipeline(cursor),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
@@ -1514,7 +1520,7 @@ test "expression plan preserves runtime abrupt result without entering helper" {
   )
   let value_ticket = match decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    _ => fail("expected expression-plan continuation input work")
+    _ => fail("expected result-pipeline continuation input work")
   }
   let (releasing, release_decision) = reduce_activation_dispatch(
     running_value,
@@ -1549,41 +1555,41 @@ test "expression plan preserves runtime abrupt result without entering helper" {
 }
 
 ///|
-fn direct_return_two_stage_expression_test_plan() -> DispatchExpressionPlan {
-  DispatchExpressionPlan(steps=[
-    DispatchExpressionCall(
-      DispatchExpressionCallStep(
-        request=DispatchCallRequest(
-          callee=String_("inner"),
-          this_value=Undefined,
-          args=[Undefined],
-          loc=@token.Loc::default(),
-        ),
-        adapter=DispatchDirectReturnUserFuncAdapterToken(
-          String_("inner"),
-          "inner",
-        ),
-        name="inner",
-        result_argument_index=Some(0),
+fn direct_return_two_stage_result_pipeline() -> DispatchResultPipelineCursor raise Error {
+  let inner_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("inner"),
+        this_value=Undefined,
+        args=[Undefined],
+        loc=@token.Loc::default(),
       ),
-    ),
-    DispatchExpressionCall(
-      DispatchExpressionCallStep(
-        request=DispatchCallRequest(
-          callee=String_("outer"),
-          this_value=Undefined,
-          args=[Undefined, Undefined],
-          loc=@token.Loc::default(),
-        ),
-        adapter=DispatchDirectReturnUserFuncAdapterToken(
-          String_("outer"),
-          "outer",
-        ),
-        name="outer",
-        result_argument_index=Some(1),
+      callee_token=DispatchResultPipelineCalleeToken(String_("inner")),
+      result_argument_index=0,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid inner result pipeline stage")
+  }
+  let outer_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("outer"),
+        this_value=Undefined,
+        args=[String_("ignored"), Undefined],
+        loc=@token.Loc::default(),
       ),
-    ),
-  ])
+      callee_token=DispatchResultPipelineCalleeToken(String_("outer")),
+      result_argument_index=1,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid outer result pipeline stage")
+  }
+  let pipeline = match
+    validate_dispatch_result_pipeline(stages=[inner_stage, outer_stage]) {
+    Some(pipeline) => pipeline
+    None => fail("expected the valid result pipeline")
+  }
+  pipeline.start()
 }
 
 ///|
@@ -1618,7 +1624,7 @@ fn expect_direct_return_two_stage_failure_completion(
       inspect(physical_equal(actual, expected), content="true")
     (DispatchRuntimeAbrupt(actual), DispatchRuntimeAbrupt(expected)) =>
       inspect(physical_equal(actual, expected), content="true")
-    _ => fail("two-stage expression plan changed its failure completion")
+    _ => fail("two-stage result pipeline changed its failure completion")
   }
 }
 
@@ -1692,7 +1698,7 @@ fn expect_direct_return_two_stage_failure(
   } else {
     DispatchThrow(expected_error)
   }
-  let plan = direct_return_two_stage_expression_test_plan()
+  let pipeline_cursor = direct_return_two_stage_result_pipeline()
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let (waiting_for_expression, root_decision) = reduce_activation_dispatch(
     running_root,
@@ -1700,9 +1706,7 @@ fn expect_direct_return_two_stage_failure(
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchContinueExpressionPlan(
-            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
-          ),
+          DispatchContinueResultPipeline(pipeline_cursor),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 1)),
         ),
       ),
@@ -1805,22 +1809,22 @@ fn expect_direct_return_two_stage_failure(
 }
 
 ///|
-test "expression plan preserves inner guest Error identity" {
+test "result pipeline preserves inner guest Error identity" {
   expect_direct_return_two_stage_failure(true, false)
 }
 
 ///|
-test "expression plan preserves outer guest Error identity" {
+test "result pipeline preserves outer guest Error identity" {
   expect_direct_return_two_stage_failure(false, false)
 }
 
 ///|
-test "expression plan preserves inner runtime-abrupt Error identity" {
+test "result pipeline preserves inner runtime-abrupt Error identity" {
   expect_direct_return_two_stage_failure(true, true)
 }
 
 ///|
-test "expression plan preserves outer runtime-abrupt Error identity" {
+test "result pipeline preserves outer runtime-abrupt Error identity" {
   expect_direct_return_two_stage_failure(false, true)
 }
 
