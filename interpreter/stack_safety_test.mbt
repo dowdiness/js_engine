@@ -223,6 +223,24 @@ test "execution stack safety: direct-return recursive result feeds a sealed ordi
 }
 
 ///|
+test "execution stack safety: direct-return recursive result preserves ordered closed arguments" {
+  let source =
+    #|function leaf(ignored, value) { return value; }
+    #|function f(n) {
+    #|  if (n === 0) return "done";
+    #|  return leaf("ignored", f(n - 1));
+    #|}
+    #|f(256);
+  match run(source) {
+    Value::String_("done") => ()
+    other =>
+      fail(
+        "expected mixed result-fed direct return done, got " + other.to_string(),
+      )
+  }
+}
+
+///|
 test "execution stack safety: ordinary root wrapper returns a managed recursive call" {
   let source =
     #|function id(x) { return x; }

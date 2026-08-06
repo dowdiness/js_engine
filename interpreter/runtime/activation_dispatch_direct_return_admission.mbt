@@ -312,18 +312,106 @@ fn classify_direct_return_closed_literal(
 }
 
 ///|
+fn classify_direct_return_closed_argument(
+  expr : @ast.Expr,
+) -> DirectReturnClosedArgument? {
+  match classify_direct_return_closed_literal(expr) {
+    Some((literal, loc)) => Some(DirectReturnClosedArgument(literal~, loc~))
+    None => None
+  }
+}
+
+///|
 fn classify_direct_return_closed_arguments(
   args : Array[@ast.Expr],
 ) -> Array[DirectReturnClosedArgument]? {
   guard args.length() <= DIRECT_RETURN_MAX_LEAF_ARGUMENTS else { return None }
   let arguments : Array[DirectReturnClosedArgument] = []
   for expr in args {
-    guard classify_direct_return_closed_literal(expr) is Some((literal, loc)) else {
+    guard classify_direct_return_closed_argument(expr) is Some(argument) else {
       return None
     }
-    arguments.push(DirectReturnClosedArgument(literal~, loc~))
+    arguments.push(argument)
   }
   Some(arguments)
+}
+
+///|
+priv struct DirectReturnResultFedArgumentPlan {
+  argument_sources : Array[DirectReturnLeafArgumentSource]
+  recursive_call_loc : @token.Loc
+  recursive_subtract_loc : @token.Loc
+}
+
+///|
+fn DirectReturnResultFedArgumentPlan::DirectReturnResultFedArgumentPlan(
+  argument_sources~ : Array[DirectReturnLeafArgumentSource],
+  recursive_call_loc~ : @token.Loc,
+  recursive_subtract_loc~ : @token.Loc,
+) -> DirectReturnResultFedArgumentPlan {
+  {
+    argument_sources: argument_sources.copy(),
+    recursive_call_loc,
+    recursive_subtract_loc,
+  }
+}
+
+///|
+fn classify_direct_return_result_fed_arguments(
+  args : Array[@ast.Expr],
+  entry_name : String,
+  parameter : String,
+) -> DirectReturnResultFedArgumentPlan? {
+  guard args.length() > 0 && args.length() <= DIRECT_RETURN_MAX_LEAF_ARGUMENTS else {
+    return None
+  }
+  let argument_sources : Array[DirectReturnLeafArgumentSource] = []
+  let mut recursive_call_loc : @token.Loc? = None
+  let mut recursive_subtract_loc : @token.Loc? = None
+  for expr in args {
+    match classify_direct_return_closed_argument(expr) {
+      Some(argument) =>
+        argument_sources.push(DirectReturnLeafClosedArgument(argument))
+      None =>
+        match expr {
+          @ast.Call(
+            @ast.Ident(callee_name, _),
+            [
+              @ast.Binary(
+                @ast.Sub,
+                @ast.Ident(step_parameter, _),
+                @ast.NumberLit(
+                  decrement,
+                  @token.LexForm::LexNormal,
+                  subtract_loc
+                ),
+                _
+              ),
+            ],
+            call_loc
+          ) if callee_name == entry_name &&
+            step_parameter == parameter &&
+            decrement == DIRECT_RETURN_RECURSION_STEP &&
+            recursive_call_loc is None => {
+            recursive_call_loc = Some(call_loc)
+            recursive_subtract_loc = Some(subtract_loc)
+            argument_sources.push(DirectReturnLeafRecursiveResult(call_loc))
+          }
+          _ => return None
+        }
+    }
+  }
+  guard recursive_call_loc is Some(recursive_call_loc) &&
+    recursive_subtract_loc is Some(recursive_subtract_loc) else {
+    return None
+  }
+  Some(
+    DirectReturnResultFedArgumentPlan(
+      argument_sources~,
+      recursive_call_loc~,
+      recursive_subtract_loc~,
+    ),
+  )
 }
 
 ///|
@@ -461,52 +549,29 @@ fn classify_direct_return_function_syntax(
       callee_name == name =>
       (callee_name, call_loc, subtract_loc, DirectReturnRecursiveSelfCall)
     @ast.ReturnStmt(
-      Some(
-        @ast.Call(
-          @ast.Ident(helper_name, _),
-          [
-            @ast.Call(
-              @ast.Ident(callee_name, _),
-              [
-                @ast.Binary(
-                  @ast.Sub,
-                  @ast.Ident(step_parameter, _),
-                  @ast.NumberLit(
-                    decrement,
-                    @token.LexForm::LexNormal,
-                    subtract_loc
-                  ),
-                  _
-                ),
-              ],
-              recursive_call_loc
-            ),
-          ],
-          helper_call_loc
-        )
-      ),
+      Some(@ast.Call(@ast.Ident(helper_name, _), args, helper_call_loc)),
       _
     ) if direct_return_identifier_is_safe(helper_name) &&
-      direct_return_identifier_is_safe(callee_name) &&
       helper_name != name &&
-      helper_name != parameter &&
-      callee_name == name &&
-      step_parameter == parameter &&
-      decrement == DIRECT_RETURN_RECURSION_STEP =>
+      helper_name != parameter => {
+      let argument_plan = match
+        classify_direct_return_result_fed_arguments(args, name, parameter) {
+        Some(plan) => plan
+        None => return None
+      }
       (
-        callee_name,
-        recursive_call_loc,
-        subtract_loc,
+        name,
+        argument_plan.recursive_call_loc,
+        argument_plan.recursive_subtract_loc,
         DirectReturnRecursiveResultFedLeafCall(
           DirectReturnLeafCallPlan(
             callee_name=helper_name,
             call_loc=helper_call_loc,
-            argument_sources=[
-              DirectReturnLeafRecursiveResult(recursive_call_loc),
-            ],
+            argument_sources=argument_plan.argument_sources,
           ),
         ),
       )
+    }
     _ => return None
   }
   DirectReturnFunctionSyntax(

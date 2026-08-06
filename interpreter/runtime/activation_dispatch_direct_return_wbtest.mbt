@@ -31,6 +31,15 @@ const DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE = "function id(x){return x;}func
 const DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE = "function id(x){throw x;}function f(n){if(n===0)return \"boom\";return id(f(n-1));}f(256);"
 
 ///|
+const DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE = "function leaf(ignored,value){return value;}function f(n){if(n===0)return \"done\";return leaf(\"ignored\",f(n-1));}f(256);"
+
+///|
+const DIRECT_RETURN_REVERSED_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE = "function leaf(value,ignored){return value;}function f(n){if(n===0)return \"done\";return leaf(f(n-1),\"ignored\");}f(256);"
+
+///|
+const DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_LEAF_THROW_SOURCE = "function leaf(ignored,value){throw value;}function f(n){if(n===0)return \"boom\";return leaf(\"ignored\",f(n-1));}f(256);"
+
+///|
 const DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE = "function id(x){return x;}function f(n){if(n===0)return \"done\";return id(f(n-1));}function entry(){return f(256);}entry();"
 
 ///|
@@ -150,6 +159,93 @@ test "direct-return admission owns a result-fed leaf call plan" {
   guard leaf.syntax.leaf_completion
     is DirectReturnLeafParameterValue({ name: "x", index: 0, .. }) else {
     fail("expected the helper to return its sole parameter")
+  }
+}
+
+///|
+test "direct-return admission owns ordered closed and recursive argument sources" {
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE,
+  )
+  let plan = match classify_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the mixed result-fed direct-return shape")
+  }
+  guard plan.entry.syntax.recursive_completion
+    is DirectReturnRecursiveResultFedLeafCall(
+      {
+        callee_name: "leaf",
+        call_loc: outer_loc,
+        argument_sources: [
+          DirectReturnLeafClosedArgument(
+            { literal: DirectReturnClosedString("ignored"), loc: closed_loc }
+          ),
+          DirectReturnLeafRecursiveResult(inner_loc),
+        ],
+      }
+    ) &&
+    outer_loc != inner_loc &&
+    closed_loc != inner_loc else {
+    fail("expected ordered closed and recursive argument sources")
+  }
+  let leaf = match plan.leaf {
+    Some(found) => found
+    None => fail("expected the sealed mixed-argument helper")
+  }
+  json_inspect(leaf.syntax.parameters, content=["ignored", "value"])
+  guard leaf.syntax.leaf_completion
+    is DirectReturnLeafParameterValue({ name: "value", index: 1, .. }) else {
+    fail("expected the helper to return the recursive-result parameter")
+  }
+}
+
+///|
+test "direct-return admission owns recursive and closed argument sources in order" {
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_REVERSED_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE,
+  )
+  let plan = match classify_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the reverse mixed result-fed direct-return shape")
+  }
+  guard plan.entry.syntax.recursive_completion
+    is DirectReturnRecursiveResultFedLeafCall(
+      {
+        callee_name: "leaf",
+        call_loc: outer_loc,
+        argument_sources: [
+          DirectReturnLeafRecursiveResult(inner_loc),
+          DirectReturnLeafClosedArgument(
+            { literal: DirectReturnClosedString("ignored"), loc: closed_loc }
+          ),
+        ],
+      }
+    ) &&
+    outer_loc != inner_loc &&
+    closed_loc != inner_loc else {
+    fail("expected recursive and closed argument sources in source order")
+  }
+  let leaf = match plan.leaf {
+    Some(found) => found
+    None => fail("expected the sealed reverse mixed-argument helper")
+  }
+  json_inspect(leaf.syntax.parameters, content=["value", "ignored"])
+  guard leaf.syntax.leaf_completion
+    is DirectReturnLeafParameterValue({ name: "value", index: 0, .. }) else {
+    fail("expected the helper to return its recursive-result parameter")
+  }
+}
+
+///|
+test "direct-return admission rejects multiple recursive-result arguments" {
+  let source = "function leaf(left,right){return right;}" +
+    "function f(n){if(n===0)return \"done\";return leaf(f(n-1),f(n-1));}" +
+    "f(256);"
+  guard classify_direct_return_recursion_program(
+      direct_return_test_program(source),
+    )
+    is None else {
+    fail("multiple recursive-result arguments must remain outside admission")
   }
 }
 
@@ -710,6 +806,30 @@ test "direct-return result-fed leaf balances every ordinary activation" {
 }
 
 ///|
+test "direct-return recursive-result and closed argument order balances every ordinary activation" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 133)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  match
+    run_direct_return_result_fed_shell_once(
+      interp,
+      DIRECT_RETURN_REVERSED_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE,
+    ) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "expected recursive-result/closed mixed direct-return result, got " +
+        other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 133)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected caller source identity to be restored")
+  }
+}
+
+///|
 test "direct-return bound leaf balances argument activation lifecycle" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 137)
@@ -776,11 +896,12 @@ test "direct-return closed throw crosses depth 256 without host recursion" {
 }
 
 ///|
-fn run_direct_return_result_fed_throw(interp : Interpreter) -> String {
+fn run_direct_return_result_fed_throw(
+  interp : Interpreter,
+  source : String,
+) -> String {
   let result = try {
-    let _ = interp.run(
-      direct_return_test_program(DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE),
-    )
+    let _ = interp.run(direct_return_test_program(source))
     "no throw"
   } catch {
     JsException(String_(value)) => value
@@ -792,7 +913,10 @@ fn run_direct_return_result_fed_throw(interp : Interpreter) -> String {
 ///|
 test "direct-return result-fed helper throw preserves guest value" {
   inspect(
-    run_direct_return_result_fed_throw(Interpreter::new()),
+    run_direct_return_result_fed_throw(
+      Interpreter::new(),
+      DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE,
+    ),
     content="boom",
   )
 }
@@ -802,7 +926,13 @@ test "direct-return result-fed helper throw permits same-interpreter reuse" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 161)
   interp.realm_state.active_source_identity.val = Some("caller.js")
-  inspect(run_direct_return_result_fed_throw(interp), content="boom")
+  inspect(
+    run_direct_return_result_fed_throw(
+      interp,
+      DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE,
+    ),
+    content="boom",
+  )
   dispatch_shell_test_expect_realm_sentinel(interp, 161)
   match interp.realm_state.active_source_identity.val {
     Some(source) => inspect(source, content="caller.js")
@@ -823,6 +953,42 @@ test "direct-return result-fed helper throw permits same-interpreter reuse" {
   match interp.realm_state.active_source_identity.val {
     Some(source) => inspect(source, content="caller.js")
     None => fail("expected source identity after helper-throw reuse")
+  }
+}
+
+///|
+test "direct-return mixed helper throw preserves guest value and permits same-interpreter reuse" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 162)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  inspect(
+    run_direct_return_result_fed_throw(
+      interp,
+      DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_LEAF_THROW_SOURCE,
+    ),
+    content="boom",
+  )
+  dispatch_shell_test_expect_realm_sentinel(interp, 162)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after mixed helper throw")
+  }
+  match
+    run_direct_return_result_fed_shell_once(
+      interp,
+      DIRECT_RETURN_REVERSED_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE,
+    ) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected mixed result-fed result after helper throw: " +
+        other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 162)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after mixed helper-throw reuse")
   }
 }
 
@@ -1927,13 +2093,14 @@ test "direct-return result-fed cleanup permits same-interpreter reuse" {
 }
 
 ///|
-test "direct-return result-fed one-short budget bypasses saved return consumer" {
+fn expect_direct_return_result_fed_one_short_budget(
+  source : String,
+  sentinel : Int,
+) -> Unit raise {
   let exact_interp = Interpreter::new()
   let exact_probe = DispatchObservationProbe(observed_interp=Some(exact_interp))
   let (exact_shell, exact_stmts, exact_ctx) = direct_return_observation_fixture_for_source(
-    exact_interp,
-    exact_probe,
-    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+    exact_interp, exact_probe, source,
   )
   let full_budget = 10000L
   let exact_control = ExecutionControl(
@@ -1954,13 +2121,11 @@ test "direct-return result-fed one-short budget bypasses saved return consumer" 
   }
 
   let short_interp = Interpreter::new()
-  dispatch_shell_test_install_realm_sentinel(short_interp, 167)
+  dispatch_shell_test_install_realm_sentinel(short_interp, sentinel)
   short_interp.realm_state.active_source_identity.val = Some("caller.js")
   let short_probe = DispatchObservationProbe(observed_interp=Some(short_interp))
   let (short_shell, short_stmts, short_ctx) = direct_return_observation_fixture_for_source(
-    short_interp,
-    short_probe,
-    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+    short_interp, short_probe, source,
   )
   let short_control = ExecutionControl(
     remaining_steps=used_steps - 1L,
@@ -1982,16 +2147,12 @@ test "direct-return result-fed one-short budget bypasses saved return consumer" 
   inspect(short_probe.active, content="0")
   inspect(short_probe.lifo_violations, content="0")
   inspect(short_shell.cleanup_stack.length(), content="0")
-  dispatch_shell_test_expect_realm_sentinel(short_interp, 167)
+  dispatch_shell_test_expect_realm_sentinel(short_interp, sentinel)
   match short_interp.realm_state.active_source_identity.val {
     Some(source) => inspect(source, content="caller.js")
     None => fail("expected source identity after result-fed budget failure")
   }
-  match
-    run_direct_return_result_fed_shell_once(
-      short_interp,
-      DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
-    ) {
+  match run_direct_return_result_fed_shell_once(short_interp, source) {
     String_(value) => inspect(value, content="done")
     other =>
       fail(
@@ -1999,11 +2160,27 @@ test "direct-return result-fed one-short budget bypasses saved return consumer" 
         other.to_string(),
       )
   }
-  dispatch_shell_test_expect_realm_sentinel(short_interp, 167)
+  dispatch_shell_test_expect_realm_sentinel(short_interp, sentinel)
   match short_interp.realm_state.active_source_identity.val {
     Some(source) => inspect(source, content="caller.js")
     None => fail("expected source identity after result-fed budget reuse")
   }
+}
+
+///|
+test "direct-return result-fed one-short budget bypasses saved return consumer" {
+  expect_direct_return_result_fed_one_short_budget(
+    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
+    167,
+  )
+}
+
+///|
+test "direct-return mixed result-fed one-short budget bypasses saved return consumer" {
+  expect_direct_return_result_fed_one_short_budget(
+    DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_TEST_SOURCE,
+    169,
+  )
 }
 
 ///|

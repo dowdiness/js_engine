@@ -1,8 +1,8 @@
 # Activation continuation implementation notes
 
-Date: 2026-07-29. Revised 2026-08-06 after reconciling the notes with the
-result-fed ordinary direct-return plan in #817, following the ordered-argument
-plan in #815 under #800.
+Date: 2026-07-29. Revised 2026-08-06 after reconciling the notes with #608's
+mixed ordered-source direct-return slice, following the result-fed plan in
+#817 and the ordered-argument plan in #815 under #800.
 
 This note maps the accepted
 [activation and continuation contract](../decisions/engine-activation-continuation-contract.md)
@@ -63,8 +63,14 @@ The production claim is limited to these admitted recipes:
   separately sealed ordinary leaf call. The owned plan preserves the inner and
   outer source locations, copies the call template defensively, validates the
   actual argument snapshot with JavaScript value/identity semantics, and routes
-  abrupt results around the helper; the depth-256 path observes 257 `f`
-  activations plus 256 `id` activations;
+  abrupt results around the helper; direct-shell/lifecycle observation of the
+  depth-256 path records 257 `f` activations plus 256 `id` activations;
+- the exact #608 extension whose recursive return crosses a separately sealed
+  ordinary leaf call with exactly two ordered arguments: one closed literal
+  source and one recursive-result source. The owned plan preserves
+  either source order and the closed literal location; the required public
+  workload fixes `leaf("ignored", f(n - 1))`. Direct-shell/lifecycle observation
+  of that depth-256 path records 257 `f` activations plus 256 leaf activations;
 - the exact #819 extension whose program root is either the existing direct
   entry call or a sealed zero-parameter ordinary `entry()` wrapper around
   `f(256)`. The wrapper owns its declaration index, call locations, UserFunc
@@ -111,8 +117,9 @@ the same LIFO order. A rejected entry restores partial setup but has no release
 event because no activation was acquired.
 
 The observation port is policy-free and covers guest activations admitted by
-the exact production recipes, including #809, #811, #813, #815, and #817. It
-does not make legacy call paths observable or stack-safe. #617 owns the logical-depth policy,
+the exact production recipes, including #809, #811, #813, #815, #817, and
+#608's mixed ordered-source extension. It does not make legacy call paths
+observable or stack-safe. #617 owns the logical-depth policy,
 configuration validation, and engine-created error that will consume this
 seam.
 
@@ -121,7 +128,9 @@ seam.
 The following paths remain outside #630 even when the reducer has a state that
 could eventually represent their continuation:
 
-- general interpreted functions outside the exact #809/#811/#813/#815/#817 direct-return recipes,
+- general interpreted functions outside the exact #809/#811/#813/#815/#817
+  direct-return recipes and #608 mixed ordered-source slice, including shapes
+  other than exactly one closed literal plus one recursive result at arity two;
   arrow and extended callable forms, bound calls, and call/apply forwarding;
 - general statements, expressions, loops, labels, catch/finally shapes, and
   parameter-default or destructuring evaluation;
@@ -155,9 +164,9 @@ replacement remain separate downstream work.
 
 ## Verification and maintenance
 
-The exact #616 programs, the retained-argument slice landed in #790, and the
-exact #809/#811/#813/#815/#817 ordinary direct-return programs supply
-end-to-end red-to-green evidence.
+The exact #616 programs, the retained-argument slice landed in #790, the exact
+#809/#811/#813/#815/#817 ordinary direct-return programs, and #608's mixed
+ordered-source slice supply end-to-end red-to-green evidence.
 Reducer tests separately cover deterministic transition, pathological
 continuation depth, handler/finalizer precedence, and one-time ownership. Shell
 tests cover effect order, runtime provenance, cleanup restoration, and adapter
