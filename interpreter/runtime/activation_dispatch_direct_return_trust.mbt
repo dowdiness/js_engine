@@ -279,10 +279,6 @@ fn direct_return_recursive_completions_match(
   match (expected, actual) {
     (DirectReturnRecursiveSelfCall, DirectReturnRecursiveSelfCall) => true
     (
-      DirectReturnRecursiveResultFedLeafCall(expected),
-      DirectReturnRecursiveResultFedLeafCall(actual),
-    ) => direct_return_leaf_call_plans_match(expected, actual)
-    (
       DirectReturnRecursiveResultFedCallChain(expected),
       DirectReturnRecursiveResultFedCallChain(actual),
     ) => {
@@ -394,8 +390,6 @@ fn direct_return_helper_call_plan(
       Some(plan)
     _ =>
       match syntax.recursive_completion {
-        DirectReturnRecursiveResultFedLeafCall(plan) if plan.callee_name ==
-          helper_name => Some(plan)
         DirectReturnRecursiveResultFedCallChain(chain) => {
           for call in chain.calls {
             if call.callee_name == helper_name {
@@ -414,7 +408,6 @@ fn direct_return_recursive_call_plans(
   syntax : DirectReturnFunctionSyntax,
 ) -> Array[DirectReturnLeafCallPlan]? {
   match syntax.recursive_completion {
-    DirectReturnRecursiveResultFedLeafCall(plan) => Some([plan])
     DirectReturnRecursiveResultFedCallChain(chain) => Some(chain.calls)
     _ => None
   }

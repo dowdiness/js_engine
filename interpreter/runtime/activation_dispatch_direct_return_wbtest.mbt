@@ -94,6 +94,45 @@ test "direct-return admission recognizes the exact ordinary function shape" {
 }
 
 ///|
+test "result-fed chain validator rejects an empty chain" {
+  guard validate_direct_return_result_fed_call_chain_plan(calls=[]) is None else {
+    fail("expected an empty result-fed chain to be rejected")
+  }
+}
+
+///|
+test "result-fed chain validator rejects duplicate carried results" {
+  let loc = @token.Loc::default()
+  let result = validate_direct_return_result_fed_call_chain_plan(calls=[
+    DirectReturnLeafCallPlan(callee_name="id", call_loc=loc, argument_sources=[
+      DirectReturnLeafCarriedResult(loc),
+      DirectReturnLeafCarriedResult(loc),
+    ]),
+  ])
+  guard result is None else {
+    fail("expected duplicate carried results to be rejected")
+  }
+}
+
+///|
+test "result-fed chain constructor rejects a missing carried result" {
+  let loc = @token.Loc::default()
+  let result = validate_direct_return_result_fed_call_chain_plan(calls=[
+    DirectReturnLeafCallPlan(callee_name="id", call_loc=loc, argument_sources=[
+      DirectReturnLeafClosedArgument(
+        DirectReturnClosedArgument(
+          literal=DirectReturnClosedString("closed"),
+          loc~,
+        ),
+      ),
+    ]),
+  ])
+  guard result is None else {
+    fail("expected missing carried result to be rejected")
+  }
+}
+
+///|
 test "direct-return admission recognizes the closed throw twin" {
   let stmts = direct_return_test_program(
     "function f(n){if(n===0)throw \"boom\";return f(n-1);}f(256);",
@@ -150,11 +189,15 @@ test "direct-return admission owns a result-fed leaf call plan" {
     fail("expected a closed base value before the result-fed call")
   }
   guard plan.entry.syntax.recursive_completion
-    is DirectReturnRecursiveResultFedLeafCall(
+    is DirectReturnRecursiveResultFedCallChain(
       {
-        callee_name: "id",
-        call_loc: outer_loc,
-        argument_sources: [DirectReturnLeafCarriedResult(inner_loc)],
+        calls: [
+          {
+            callee_name: "id",
+            call_loc: outer_loc,
+            argument_sources: [DirectReturnLeafCarriedResult(inner_loc)],
+          },
+        ],
       }
     ) &&
     outer_loc != inner_loc else {
@@ -208,6 +251,7 @@ test "direct-return admission rejects two-helper order and shape drift" {
       "function outer(ignored,value){return value;}function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1),0));}f(256);",
+      "function a(value){return value;}function b(value){return value;}function c(value){return value;}function f(n){if(n===0)return \"done\";return c(b(a(f(n-1))));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",(inner)(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(wrap(f(n-1))));}f(256);",
@@ -232,15 +276,22 @@ test "direct-return admission owns ordered closed and recursive argument sources
     None => fail("expected the mixed result-fed direct-return shape")
   }
   guard plan.entry.syntax.recursive_completion
-    is DirectReturnRecursiveResultFedLeafCall(
+    is DirectReturnRecursiveResultFedCallChain(
       {
-        callee_name: "leaf",
-        call_loc: outer_loc,
-        argument_sources: [
-          DirectReturnLeafClosedArgument(
-            { literal: DirectReturnClosedString("ignored"), loc: closed_loc }
-          ),
-          DirectReturnLeafCarriedResult(inner_loc),
+        calls: [
+          {
+            callee_name: "leaf",
+            call_loc: outer_loc,
+            argument_sources: [
+              DirectReturnLeafClosedArgument(
+                {
+                  literal: DirectReturnClosedString("ignored"),
+                  loc: closed_loc,
+                }
+              ),
+              DirectReturnLeafCarriedResult(inner_loc),
+            ],
+          },
         ],
       }
     ) &&
@@ -269,15 +320,22 @@ test "direct-return admission owns recursive and closed argument sources in orde
     None => fail("expected the reverse mixed result-fed direct-return shape")
   }
   guard plan.entry.syntax.recursive_completion
-    is DirectReturnRecursiveResultFedLeafCall(
+    is DirectReturnRecursiveResultFedCallChain(
       {
-        callee_name: "leaf",
-        call_loc: outer_loc,
-        argument_sources: [
-          DirectReturnLeafCarriedResult(inner_loc),
-          DirectReturnLeafClosedArgument(
-            { literal: DirectReturnClosedString("ignored"), loc: closed_loc }
-          ),
+        calls: [
+          {
+            callee_name: "leaf",
+            call_loc: outer_loc,
+            argument_sources: [
+              DirectReturnLeafCarriedResult(inner_loc),
+              DirectReturnLeafClosedArgument(
+                {
+                  literal: DirectReturnClosedString("ignored"),
+                  loc: closed_loc,
+                }
+              ),
+            ],
+          },
         ],
       }
     ) &&
@@ -319,7 +377,7 @@ test "direct-return admission owns a wrapped root invocation" {
     None => fail("expected the wrapped result-fed direct-return shape")
   }
   guard plan.entry.syntax.recursive_completion
-    is DirectReturnRecursiveResultFedLeafCall(_) else {
+    is DirectReturnRecursiveResultFedCallChain({ calls: [_] }) else {
     fail("expected wrapper fixture to retain its result-fed completion")
   }
   guard plan.first_helper() is Some(_) else {
@@ -466,6 +524,11 @@ test "direct-return syntax snapshots payload leaf plans" {
     call_loc=loc,
     argument_sources=recursive_sources,
   )
+  let recursive_chain_plan = match
+    validate_direct_return_result_fed_call_chain_plan(calls=[recursive_plan]) {
+    Some(plan) => plan
+    None => fail("expected the valid result-fed chain to be accepted")
+  }
   let syntax = DirectReturnFunctionSyntax(
     name="f",
     parameter="n",
@@ -475,7 +538,9 @@ test "direct-return syntax snapshots payload leaf plans" {
     recursive_call_loc=loc,
     recursive_subtract_loc=loc,
     base_completion=DirectReturnBaseLeafCall(plan),
-    recursive_completion=DirectReturnRecursiveResultFedLeafCall(recursive_plan),
+    recursive_completion=DirectReturnRecursiveResultFedCallChain(
+      recursive_chain_plan,
+    ),
   )
   argument_sources[0] = DirectReturnLeafClosedArgument(
     DirectReturnClosedArgument(
@@ -505,8 +570,8 @@ test "direct-return syntax snapshots payload leaf plans" {
     fail("expected syntax to own an immutable leaf-plan snapshot")
   }
   guard syntax.recursive_completion
-    is DirectReturnRecursiveResultFedLeafCall(
-      { argument_sources: [DirectReturnLeafCarriedResult(_)], .. }
+    is DirectReturnRecursiveResultFedCallChain(
+      { calls: [{ argument_sources: [DirectReturnLeafCarriedResult(_)], .. }] }
     ) else {
     fail("expected recursive syntax to own an immutable leaf-plan snapshot")
   }
@@ -1461,7 +1526,7 @@ test "direct-return result-fed trust rejects helper binding mutation" {
     None => fail("expected a trusted result-fed helper")
   }
   let call_loc = match registry.entry.syntax.recursive_completion {
-    DirectReturnRecursiveResultFedLeafCall(plan) => plan.call_loc
+    DirectReturnRecursiveResultFedCallChain({ calls: [plan] }) => plan.call_loc
     _ => fail("expected the result-fed call plan")
   }
   guard interp.global.bindings.get("id") is Some(binding) else {
@@ -2549,7 +2614,7 @@ test "direct-return result-fed leaf rejects a changed prepared parameter" {
     None => fail("expected a trusted result-fed helper")
   }
   let call_loc = match registry.entry.syntax.recursive_completion {
-    DirectReturnRecursiveResultFedLeafCall(plan) => plan.call_loc
+    DirectReturnRecursiveResultFedCallChain({ calls: [plan] }) => plan.call_loc
     _ => fail("expected the result-fed helper call plan")
   }
   let shell = PrimitiveProgramDispatchShell(

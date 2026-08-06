@@ -57,11 +57,37 @@ priv struct DirectReturnResultFedCallChainPlan {
 }
 
 ///|
-fn DirectReturnResultFedCallChainPlan::DirectReturnResultFedCallChainPlan(
+fn validate_direct_return_result_fed_call_chain_plan(
   calls~ : Array[DirectReturnLeafCallPlan],
+) -> DirectReturnResultFedCallChainPlan? {
+  guard !calls.is_empty() else { return None }
+  for call in calls {
+    let mut carried_result_count = 0
+    for source in call.argument_sources {
+      match source {
+        DirectReturnLeafClosedArgument(_) => ()
+        DirectReturnLeafCarriedResult(_) => carried_result_count += 1
+      }
+    }
+    guard carried_result_count == 1 else { return None }
+  }
+  Some({
+    calls: calls.map(call => {
+      DirectReturnLeafCallPlan(
+        callee_name=call.callee_name,
+        call_loc=call.call_loc,
+        argument_sources=call.argument_sources,
+      )
+    }),
+  })
+}
+
+///|
+fn snapshot_direct_return_result_fed_call_chain_plan(
+  plan : DirectReturnResultFedCallChainPlan,
 ) -> DirectReturnResultFedCallChainPlan {
   {
-    calls: calls.map(call => {
+    calls: plan.calls.map(call => {
       DirectReturnLeafCallPlan(
         callee_name=call.callee_name,
         call_loc=call.call_loc,
@@ -92,7 +118,6 @@ fn direct_return_base_completion_copy(
 ///|
 priv enum DirectReturnRecursiveCompletion {
   DirectReturnRecursiveSelfCall
-  DirectReturnRecursiveResultFedLeafCall(DirectReturnLeafCallPlan)
   DirectReturnRecursiveResultFedCallChain(DirectReturnResultFedCallChainPlan)
 }
 
@@ -102,17 +127,9 @@ fn direct_return_recursive_completion_copy(
 ) -> DirectReturnRecursiveCompletion {
   match completion {
     DirectReturnRecursiveSelfCall => DirectReturnRecursiveSelfCall
-    DirectReturnRecursiveResultFedLeafCall(plan) =>
-      DirectReturnRecursiveResultFedLeafCall(
-        DirectReturnLeafCallPlan(
-          callee_name=plan.callee_name,
-          call_loc=plan.call_loc,
-          argument_sources=plan.argument_sources,
-        ),
-      )
     DirectReturnRecursiveResultFedCallChain(plan) =>
       DirectReturnRecursiveResultFedCallChain(
-        DirectReturnResultFedCallChainPlan(calls=plan.calls),
+        snapshot_direct_return_result_fed_call_chain_plan(plan),
       )
   }
 }
@@ -473,20 +490,19 @@ fn classify_direct_return_result_fed_call_chain(
     Some(loc) => loc
     None => return None
   }
-  Some(
-    (
-      DirectReturnResultFedCallChainPlan(calls=[
-        inner,
-        DirectReturnLeafCallPlan(
-          callee_name=outer_name,
-          call_loc=outer_call_loc,
-          argument_sources=outer_sources,
-        ),
-      ]),
-      recursive_call_loc,
-      recursive_subtract_loc,
-    ),
-  )
+  let chain = match
+    validate_direct_return_result_fed_call_chain_plan(calls=[
+      inner,
+      DirectReturnLeafCallPlan(
+        callee_name=outer_name,
+        call_loc=outer_call_loc,
+        argument_sources=outer_sources,
+      ),
+    ]) {
+    Some(chain) => chain
+    None => return None
+  }
+  Some((chain, recursive_call_loc, recursive_subtract_loc))
 }
 
 ///|
@@ -704,17 +720,22 @@ fn classify_direct_return_function_syntax(
             Some(plan) => plan
             None => return None
           }
-          (
-            name,
-            argument_plan.recursive_call_loc,
-            argument_plan.recursive_subtract_loc,
-            DirectReturnRecursiveResultFedLeafCall(
+          let chain = match
+            validate_direct_return_result_fed_call_chain_plan(calls=[
               DirectReturnLeafCallPlan(
                 callee_name=helper_name,
                 call_loc=helper_call_loc,
                 argument_sources=argument_plan.argument_sources,
               ),
-            ),
+            ]) {
+            Some(chain) => chain
+            None => return None
+          }
+          (
+            name,
+            argument_plan.recursive_call_loc,
+            argument_plan.recursive_subtract_loc,
+            DirectReturnRecursiveResultFedCallChain(chain),
           )
         }
       }
@@ -1003,8 +1024,11 @@ fn classify_direct_return_recursion_program(
         (
           DirectReturnBaseValue(_)
           | DirectReturnBaseThrow(_),
-          DirectReturnRecursiveResultFedLeafCall(leaf_call),
-        ) => leaf_call
+          DirectReturnRecursiveResultFedCallChain(chain),
+        ) => {
+          guard chain.calls.length() == 1 else { return None }
+          chain.calls[0]
+        }
         _ => return None
       }
       guard leaf_call.callee_name == leaf.syntax.name &&

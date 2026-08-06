@@ -1,13 +1,12 @@
 // Closed composition admission for the exact numeric-plus-Array.map root. The
-// catalog is deliberately private: only the sealed numeric, Array.map, and
-// direct-return UserFunc adapters can be selected, and no arbitrary callback
-// or closure enters the production driver through this seam.
+// catalog is deliberately private: only the sealed numeric and Array.map
+// UserFunc adapters can be selected, and no arbitrary callback or closure
+// enters the production driver through this seam.
 
 ///|
 priv enum DispatchManagedUserFuncAdapterToken {
   DispatchNumericUserFuncAdapterToken(Value)
   DispatchArrayMapUserFuncAdapterToken(Value)
-  DispatchDirectReturnUserFuncAdapterToken(Value, String)
 }
 
 ///|
@@ -97,8 +96,6 @@ fn dispatch_managed_user_func_adapter_token_matches(
     DispatchNumericUserFuncAdapterToken(expected)
     | DispatchArrayMapUserFuncAdapterToken(expected) =>
       array_map_value_identity_matches(expected, callee)
-    DispatchDirectReturnUserFuncAdapterToken(expected, _) =>
-      same_value(expected, callee)
   }
 }
 
@@ -317,7 +314,6 @@ priv struct DispatchExpressionCallStep {
   request : DispatchCallRequest
   adapter : DispatchManagedUserFuncAdapterToken
   name : String
-  result_argument_index : Int?
 }
 
 ///|
@@ -325,7 +321,6 @@ fn DispatchExpressionCallStep::DispatchExpressionCallStep(
   request~ : DispatchCallRequest,
   adapter~ : DispatchManagedUserFuncAdapterToken,
   name~ : String,
-  result_argument_index? : Int? = None,
 ) -> DispatchExpressionCallStep {
   {
     request: DispatchCallRequest(
@@ -336,7 +331,6 @@ fn DispatchExpressionCallStep::DispatchExpressionCallStep(
     ),
     adapter,
     name,
-    result_argument_index,
   }
 }
 
@@ -353,17 +347,10 @@ fn DispatchExpressionPlan::DispatchExpressionPlan(
 }
 
 ///|
-priv enum DispatchExpressionPlanTerminal {
-  DispatchExpressionPlanNormal
-  DispatchExpressionPlanReturn
-}
-
-///|
 priv struct DispatchExpressionPlanResume {
   plan : DispatchExpressionPlan
   next_index : Int
   values : Array[Value]
-  terminal : DispatchExpressionPlanTerminal
 }
 
 ///|
@@ -371,13 +358,11 @@ fn DispatchExpressionPlanResume::DispatchExpressionPlanResume(
   plan~ : DispatchExpressionPlan,
   next_index~ : Int,
   values~ : Array[Value],
-  terminal? : DispatchExpressionPlanTerminal = DispatchExpressionPlanNormal,
 ) -> DispatchExpressionPlanResume {
   {
     plan: snapshot_dispatch_expression_plan(plan),
     next_index,
     values: values.copy(),
-    terminal,
   }
 }
 
@@ -417,7 +402,6 @@ fn snapshot_dispatch_expression_call_step(
     request=step.request,
     adapter=step.adapter,
     name=step.name,
-    result_argument_index=step.result_argument_index,
   )
 }
 
@@ -447,7 +431,6 @@ fn snapshot_dispatch_expression_plan_resume(
     plan=plan_resume.plan,
     next_index=plan_resume.next_index,
     values=plan_resume.values,
-    terminal=plan_resume.terminal,
   )
 }
 
@@ -462,8 +445,7 @@ fn dispatch_expression_plan_root_call_locs(
         match call.adapter {
           DispatchArrayMapUserFuncAdapterToken(_) =>
             locations.push(call.request.loc)
-          DispatchNumericUserFuncAdapterToken(_)
-          | DispatchDirectReturnUserFuncAdapterToken(_, _) => ()
+          _ => ()
         }
       DispatchExpressionNumericAdd(_) => ()
     }
@@ -701,82 +683,15 @@ fn source_steps_match(
 }
 
 ///|
-fn dispatch_expression_adapter_matches_name(
+fn dispatch_numeric_map_expression_adapter_matches_name(
   adapter : DispatchManagedUserFuncAdapterToken,
   name : String,
 ) -> Bool {
   match (adapter, name) {
     (DispatchNumericUserFuncAdapterToken(_), "step") => true
     (DispatchArrayMapUserFuncAdapterToken(_), "u") => true
-    (DispatchDirectReturnUserFuncAdapterToken(_, expected), actual) =>
-      expected == actual
     _ => false
   }
-}
-
-///|
-fn direct_return_expression_helper(
-  registry : TrustedDirectReturnRecursionRegistry,
-  name : String,
-) -> TrustedDirectReturnLeafFunction? {
-  for helper in registry.helpers {
-    if helper.syntax.name == name {
-      return Some(helper)
-    }
-  }
-  None
-}
-
-///|
-fn direct_return_expression_plan(
-  registry : TrustedDirectReturnRecursionRegistry,
-) -> DispatchExpressionPlan? {
-  let call_plans = match
-    direct_return_recursive_call_plans(registry.entry.syntax) {
-    Some(call_plans) => call_plans
-    None => return None
-  }
-  let steps : Array[DispatchExpressionPlanStep] = []
-  for call in call_plans {
-    let helper = match
-      direct_return_expression_helper(registry, call.callee_name) {
-      Some(helper) => helper
-      None => return None
-    }
-    let args : Array[Value] = []
-    let mut result_argument_index : Int? = None
-    for index, source in call.argument_sources {
-      match source {
-        DirectReturnLeafClosedArgument(argument) =>
-          args.push(direct_return_closed_literal_value(argument.literal))
-        DirectReturnLeafCarriedResult(_) => {
-          guard result_argument_index is None else { return None }
-          result_argument_index = Some(index)
-          args.push(Undefined)
-        }
-      }
-    }
-    guard result_argument_index is Some(index) else { return None }
-    steps.push(
-      DispatchExpressionCall(
-        DispatchExpressionCallStep(
-          request=DispatchCallRequest(
-            callee=helper.callee,
-            this_value=Undefined,
-            args~,
-            loc=call.call_loc,
-          ),
-          adapter=DispatchDirectReturnUserFuncAdapterToken(
-            helper.callee,
-            helper.syntax.name,
-          ),
-          name=helper.syntax.name,
-          result_argument_index=Some(index),
-        ),
-      ),
-    )
-  }
-  Some(DispatchExpressionPlan(steps~))
 }
 
 ///|
@@ -822,7 +737,10 @@ fn Interpreter::seal_numeric_map_expression_catalog(
               "numeric/map expression adapter selection was not unique",
             )
         }
-        guard dispatch_expression_adapter_matches_name(adapter, call.name) else {
+        guard dispatch_numeric_map_expression_adapter_matches_name(
+          adapter,
+          call.name,
+        ) else {
           invalid_activation_dispatch_shell(
             "numeric/map expression adapter family drifted",
           )
@@ -872,53 +790,24 @@ fn resume_dispatch_expression_plan(
             call.adapter,
             call.request.callee,
           ) &&
-          dispatch_expression_adapter_matches_name(call.adapter, call.name) else {
+          dispatch_numeric_map_expression_adapter_matches_name(
+            call.adapter,
+            call.name,
+          ) else {
           invalid_dispatch_transition("expression plan call adapter drifted")
-        }
-        let (request, next_values) = match call.result_argument_index {
-          Some(result_argument_index) => {
-            guard values.length() == 1 else {
-              invalid_dispatch_transition(
-                "expression plan carried result was not unique",
-              )
-            }
-            guard result_argument_index >= 0 &&
-              result_argument_index < call.request.args.length() else {
-              invalid_dispatch_transition(
-                "expression plan carried result index is outside request args",
-              )
-            }
-            let carried = match values.pop() {
-              Some(carried) => carried
-              None =>
-                invalid_dispatch_transition(
-                  "expression plan carried result was consumed twice",
-                )
-            }
-            let args = call.request.args.copy()
-            args[result_argument_index] = carried
-            (
-              DispatchCallRequest(
-                callee=call.request.callee,
-                this_value=call.request.this_value,
-                args~,
-                loc=call.request.loc,
-              ),
-              values,
-            )
-          }
-          None => (call.request, values)
         }
         let next = DispatchExpressionPlanResume(
           plan=plan_resume.plan,
           next_index=index + 1,
-          values=next_values,
-          terminal=plan_resume.terminal,
+          values~,
         )
         return dispatch_resume_decision(
           suspend_dispatch_work(
             state,
-            DispatchSuspendCall(request, DispatchContinueExpressionPlan(next)),
+            DispatchSuspendCall(
+              call.request,
+              DispatchContinueExpressionPlan(next),
+            ),
           ),
         )
       }
@@ -942,7 +831,6 @@ fn resume_dispatch_expression_plan(
           plan=plan_resume.plan,
           next_index=index + 1,
           values~,
-          terminal=plan_resume.terminal,
         )
         return dispatch_resume_decision(
           suspend_dispatch_work(
@@ -963,10 +851,5 @@ fn resume_dispatch_expression_plan(
   guard values.length() == 1 else {
     invalid_dispatch_transition("expression plan did not produce one value")
   }
-  match plan_resume.terminal {
-    DispatchExpressionPlanNormal =>
-      DispatchResumeCompletion(DispatchNormal(values[0]))
-    DispatchExpressionPlanReturn =>
-      DispatchResumeCompletion(DispatchReturn(values[0]))
-  }
+  DispatchResumeCompletion(DispatchNormal(values[0]))
 }
