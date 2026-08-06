@@ -147,6 +147,7 @@ priv struct DispatchOrdinaryCallRealmCleanup {
   cleared_realm : ClearedActiveCalleeRealmScope
   active_realm : ActiveCalleeRealmValueScope
   parameter_gate : SimpleUserFuncParameterGateScope
+  actual_arguments : Array[Value]
 }
 
 ///|
@@ -154,8 +155,14 @@ fn DispatchOrdinaryCallRealmCleanup::DispatchOrdinaryCallRealmCleanup(
   cleared_realm~ : ClearedActiveCalleeRealmScope,
   active_realm~ : ActiveCalleeRealmValueScope,
   parameter_gate~ : SimpleUserFuncParameterGateScope,
+  actual_arguments~ : Array[Value],
 ) -> DispatchOrdinaryCallRealmCleanup {
-  { cleared_realm, active_realm, parameter_gate }
+  {
+    cleared_realm,
+    active_realm,
+    parameter_gate,
+    actual_arguments: actual_arguments.copy(),
+  }
 }
 
 ///|
@@ -1866,6 +1873,7 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
     cleared_realm~,
     active_realm~,
     parameter_gate~,
+    actual_arguments=request.args,
   )
   match setup {
     Ok(prepared) => {
@@ -1905,14 +1913,45 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::direct_return_call_arguments(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[Value] raise InvalidActivationDispatchShell {
+  guard !self.cleanup_stack.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf execution has no active ordinary cleanup",
+    )
+  }
+  let cleanup = self.cleanup_stack[self.cleanup_stack.length() - 1]
+  guard cleanup.owner is AcceptedDirectReturnCall else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf execution lost its ordinary cleanup owner",
+    )
+  }
+  match cleanup.resources {
+    DispatchOrdinaryRealmCleanup(resources) => resources.actual_arguments.copy()
+    _ =>
+      invalid_activation_dispatch_shell(
+        "direct-return leaf execution lost its ordinary argument snapshot",
+      )
+  }
+}
+
+///|
 fn direct_return_leaf_parameter_value(
   step : DispatchStatementStep,
   registry : TrustedDirectReturnRecursionRegistry,
   syntax : DirectReturnLeafSyntax,
   parameter : DirectReturnBoundParameter,
+  actual_arguments : Array[Value],
 ) -> Value raise InvalidActivationDispatchShell {
-  let arguments = registry.entry.syntax.base_call_arguments
-  guard syntax.parameters.length() == arguments.length() &&
+  let leaf_call = match direct_return_leaf_call_plan(registry.entry.syntax) {
+    Some(plan) => plan
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct-return leaf registry lost its leaf completion plan",
+      )
+  }
+  guard syntax.parameters.length() == actual_arguments.length() &&
     parameter.index >= 0 &&
     parameter.index < syntax.parameters.length() &&
     syntax.parameters[parameter.index] == parameter.name else {
@@ -1931,14 +1970,19 @@ fn direct_return_leaf_parameter_value(
     guard binding.initialized &&
       binding.kind == LetBinding &&
       binding.is_parameter &&
-      direct_return_closed_literal_matches_value(
-        arguments[index].literal,
-        binding.value,
-      ) else {
+      same_value(actual_arguments[index], binding.value) else {
       invalid_activation_dispatch_shell(
         "direct-return leaf parameter lost its sealed binding provenance",
       )
     }
+  }
+  guard direct_return_leaf_argument_sources_match_values(
+    leaf_call.argument_sources,
+    actual_arguments,
+  ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return leaf arguments lost their sealed source plan",
+    )
   }
   match step.env.bindings.get(parameter.name) {
     Some(binding) => binding.value
@@ -1986,7 +2030,13 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
     DirectReturnLeafParameterValue(parameter) =>
       DispatchWorkCompleted(
         DispatchReturn(
-          direct_return_leaf_parameter_value(step, registry, syntax, parameter),
+          direct_return_leaf_parameter_value(
+            step,
+            registry,
+            syntax,
+            parameter,
+            self.direct_return_call_arguments(),
+          ),
         ),
       )
     DirectReturnLeafParameterThrow(parameter) =>
@@ -1994,7 +2044,11 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
         DispatchThrow(
           JsException(
             direct_return_leaf_parameter_value(
-              step, registry, syntax, parameter,
+              step,
+              registry,
+              syntax,
+              parameter,
+              self.direct_return_call_arguments(),
             ),
           ),
         ),
@@ -2070,7 +2124,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
                 JsException(direct_return_closed_literal_value(literal)),
               ),
             )
-          DirectReturnBaseLeafCall(_, leaf_call_loc) => {
+          DirectReturnBaseLeafCall(leaf_call) => {
             let leaf = match registry.leaf {
               Some(leaf) => leaf
               None =>
@@ -2081,10 +2135,17 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
             let request = DispatchCallRequest(
               callee=leaf.callee,
               this_value=Undefined,
-              args=syntax.base_call_arguments.map(argument => {
-                direct_return_closed_literal_value(argument.literal)
+              args=leaf_call.argument_sources.map(source => {
+                match source {
+                  DirectReturnLeafClosedArgument(argument) =>
+                    direct_return_closed_literal_value(argument.literal)
+                  DirectReturnLeafRecursiveResult(_) =>
+                    invalid_activation_dispatch_shell(
+                      "direct-return base call unexpectedly consumes a recursive result",
+                    )
+                }
               }),
-              loc=leaf_call_loc,
+              loc=leaf_call.call_loc,
             )
             let _ = registry.require_call(
               self.interp,
@@ -2124,6 +2185,61 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
         args=[Number(n - DIRECT_RETURN_RECURSION_STEP)],
         loc=syntax.recursive_call_loc,
       )
+      let continuation = match syntax.recursive_completion {
+        DirectReturnRecursiveSelfCall => DispatchCompleteReturn
+        DirectReturnRecursiveResultFedLeafCall(leaf_call) => {
+          let leaf = match registry.leaf {
+            Some(leaf) => leaf
+            None =>
+              invalid_activation_dispatch_shell(
+                "direct-return result-fed call lost its sealed leaf",
+              )
+          }
+          guard leaf_call.callee_name == leaf.syntax.name else {
+            invalid_activation_dispatch_shell(
+              "direct-return result-fed call selected the wrong leaf binding",
+            )
+          }
+          let mut result_argument_index : Int? = None
+          let template_args : Array[Value] = []
+          for index, source in leaf_call.argument_sources {
+            match source {
+              DirectReturnLeafClosedArgument(argument) =>
+                template_args.push(
+                  direct_return_closed_literal_value(argument.literal),
+                )
+              DirectReturnLeafRecursiveResult(source_loc) => {
+                guard source_loc == syntax.recursive_call_loc &&
+                  result_argument_index is None else {
+                  invalid_activation_dispatch_shell(
+                    "direct-return result-fed argument source drifted",
+                  )
+                }
+                result_argument_index = Some(index)
+                template_args.push(Undefined)
+              }
+            }
+          }
+          let result_argument_index = match result_argument_index {
+            Some(index) => index
+            None =>
+              invalid_activation_dispatch_shell(
+                "direct-return result-fed call has no recursive-result argument",
+              )
+          }
+          DispatchFeedDirectReturnLeafResult(
+            DispatchResultFedLeafCallResume(
+              call_template=DispatchCallRequest(
+                callee=leaf.callee,
+                this_value=Undefined,
+                args=template_args,
+                loc=leaf_call.call_loc,
+              ),
+              result_argument_index~,
+            ),
+          )
+        }
+      }
       let _ = registry.require_call(
         self.interp,
         request.callee,
@@ -2131,9 +2247,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
         request.args,
         request.loc,
       )
-      DispatchWorkSuspended(
-        DispatchSuspendCall(request, DispatchCompleteReturn),
-      )
+      DispatchWorkSuspended(DispatchSuspendCall(request, continuation))
     }
     _ =>
       invalid_activation_dispatch_shell(
@@ -4560,6 +4674,9 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     | DispatchRun(DispatchResumeContinuation(DispatchCompleteReturn, _))
     | DispatchRun(DispatchResumeContinuation(DispatchCompleteThrow, _))
     | DispatchRun(DispatchResumeContinuation(DispatchDeliverCallResult, _))
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchFeedDirectReturnLeafResult(_), _)
+    )
     | DispatchRun(
       DispatchResumeContinuation(DispatchApplyConstructProperty(_), _)
     )

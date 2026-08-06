@@ -1369,6 +1369,189 @@ test "normal call result resumes its caller once after child release" {
 }
 
 ///|
+test "result-fed leaf continuation defensively inserts the recursive result" {
+  let id = 1150
+  let template_args = [Undefined]
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let (running_value, value_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchFeedDirectReturnLeafResult(
+            DispatchResultFedLeafCallResume(
+              call_template=DispatchCallRequest(
+                callee=String_("id"),
+                this_value=Undefined,
+                args=template_args,
+                loc=@token.Loc::default(),
+              ),
+              result_argument_index=0,
+            ),
+          ),
+          DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
+        ),
+      ),
+    ),
+  )
+  let value_ticket = match value_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("expected result-fed continuation input work")
+  }
+  let (_, resume_decision) = reduce_activation_dispatch(
+    running_value,
+    DispatchEffectCompleted(
+      value_ticket,
+      DispatchWorkCompleted(DispatchNormal(String_("done"))),
+    ),
+  )
+  match resume_decision {
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(request))) => {
+      guard request.args is [String_("done")] else {
+        fail("expected the recursive result in the leaf argument slot")
+      }
+      inspect(dispatch_test_value_tag(template_args[0]), content="undefined")
+    }
+    _ => fail("expected the result-fed leaf call activation")
+  }
+}
+
+///|
+test "result-fed leaf continuation bypasses helper activation for guest throw" {
+  let id = 1160
+  let template_args = [Undefined]
+  let thrown : Error = JsException(String_("boom"))
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let (running_value, value_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchFeedDirectReturnLeafResult(
+            DispatchResultFedLeafCallResume(
+              call_template=DispatchCallRequest(
+                callee=String_("id"),
+                this_value=Undefined,
+                args=template_args,
+                loc=@token.Loc::default(),
+              ),
+              result_argument_index=0,
+            ),
+          ),
+          DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
+        ),
+      ),
+    ),
+  )
+  let value_ticket = match value_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
+      fail("abrupt result-fed continuation must not enter a helper activation")
+    _ => fail("expected result-fed continuation input work")
+  }
+  let (releasing, release_decision) = reduce_activation_dispatch(
+    running_value,
+    DispatchEffectCompleted(
+      value_ticket,
+      DispatchWorkCompleted(DispatchThrow(thrown)),
+    ),
+  )
+  let release_ticket = match release_decision {
+    DispatchPerform(ticket, DispatchReleaseActivation(_, DispatchThrow(found))) => {
+      inspect(physical_equal(found, thrown), content="true")
+      ticket
+    }
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
+      fail("guest throw must bypass the result-fed helper activation")
+    _ => fail("expected activation release for guest throw")
+  }
+  let (_, finish_decision) = reduce_activation_dispatch(
+    releasing,
+    DispatchEffectCompleted(release_ticket, DispatchCleanupCompleted),
+  )
+  match finish_decision {
+    DispatchFinish(DispatchThrow(found)) => {
+      inspect(physical_equal(found, thrown), content="true")
+      inspect(
+        dispatch_test_value_tag(dispatch_test_js_exception_value(found)),
+        content="boom",
+      )
+    }
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
+      fail("cleanup must not enter the result-fed helper activation")
+    _ => fail("expected guest throw completion after cleanup")
+  }
+}
+
+///|
+test "result-fed leaf continuation bypasses helper activation for runtime abrupt" {
+  let id = 1170
+  let template_args = [Undefined]
+  let runtime_error : Error = ExecutionControlError(Interrupted)
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let (running_value, value_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchFeedDirectReturnLeafResult(
+            DispatchResultFedLeafCallResume(
+              call_template=DispatchCallRequest(
+                callee=String_("id"),
+                this_value=Undefined,
+                args=template_args,
+                loc=@token.Loc::default(),
+              ),
+              result_argument_index=0,
+            ),
+          ),
+          DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
+        ),
+      ),
+    ),
+  )
+  let value_ticket = match value_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
+      fail("abrupt result-fed continuation must not enter a helper activation")
+    _ => fail("expected result-fed continuation input work")
+  }
+  let (releasing, release_decision) = reduce_activation_dispatch(
+    running_value,
+    DispatchEffectCompleted(
+      value_ticket,
+      DispatchWorkCompleted(DispatchRuntimeAbrupt(runtime_error)),
+    ),
+  )
+  let release_ticket = match release_decision {
+    DispatchPerform(
+      ticket,
+      DispatchReleaseActivation(_, DispatchRuntimeAbrupt(found))
+    ) => {
+      inspect(physical_equal(found, runtime_error), content="true")
+      ticket
+    }
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
+      fail("runtime abrupt must bypass the result-fed helper activation")
+    _ => fail("expected activation release for runtime abrupt")
+  }
+  let (_, finish_decision) = reduce_activation_dispatch(
+    releasing,
+    DispatchEffectCompleted(release_ticket, DispatchCleanupCompleted),
+  )
+  match finish_decision {
+    DispatchFinish(DispatchRuntimeAbrupt(found)) =>
+      inspect(physical_equal(found, runtime_error), content="true")
+    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
+      fail("cleanup must not enter the result-fed helper activation")
+    _ => fail("expected runtime abrupt completion after cleanup")
+  }
+}
+
+///|
 test "throw-value continuation consumes one normal value" {
   let id = 1100
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)

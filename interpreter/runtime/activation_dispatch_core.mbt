@@ -105,6 +105,31 @@ fn DispatchCallRequest::DispatchCallRequest(
 }
 
 ///|
+// The result-fed direct-return continuation owns a defensive call template.
+// The reducer resolves its single recursive-result slot before entering the
+// existing ordinary-call path.
+priv struct DispatchResultFedLeafCallResume {
+  call_template : DispatchCallRequest
+  result_argument_index : Int
+}
+
+///|
+fn DispatchResultFedLeafCallResume::DispatchResultFedLeafCallResume(
+  call_template~ : DispatchCallRequest,
+  result_argument_index~ : Int,
+) -> DispatchResultFedLeafCallResume {
+  {
+    call_template: DispatchCallRequest(
+      callee=call_template.callee,
+      this_value=call_template.this_value,
+      args=call_template.args,
+      loc=call_template.loc,
+    ),
+    result_argument_index,
+  }
+}
+
+///|
 #warnings("-unused_field")
 priv struct DispatchConstructRequest {
   ctor : Value
@@ -746,6 +771,13 @@ fn snapshot_dispatch_continuation(
     DispatchCompleteReturn => DispatchCompleteReturn
     DispatchCompleteThrow => DispatchCompleteThrow
     DispatchDeliverCallResult => DispatchDeliverCallResult
+    DispatchFeedDirectReturnLeafResult(payload) =>
+      DispatchFeedDirectReturnLeafResult(
+        DispatchResultFedLeafCallResume(
+          call_template=payload.call_template,
+          result_argument_index=payload.result_argument_index,
+        ),
+      )
     DispatchApplyConstructProperty(property) =>
       DispatchApplyConstructProperty(property)
     DispatchAssignConstructResult(assign) =>
@@ -860,6 +892,7 @@ priv enum DispatchContinuation {
   DispatchCompleteReturn
   DispatchCompleteThrow
   DispatchDeliverCallResult
+  DispatchFeedDirectReturnLeafResult(DispatchResultFedLeafCallResume)
   DispatchApplyConstructProperty(DispatchPropertyGetResume)
   DispatchAssignConstructResult(DispatchConstructAssignResume)
   DispatchApplyBinaryRight(DispatchBinaryResume)
@@ -1682,6 +1715,32 @@ fn route_dispatch_completion(
               (DispatchCompleteThrow, DispatchNormal(value)) =>
                 routed = DispatchThrow(JsException(value))
               (DispatchDeliverCallResult, DispatchNormal(_)) => ()
+              (
+                DispatchFeedDirectReturnLeafResult(payload),
+                DispatchNormal(value),
+              ) => {
+                guard payload.result_argument_index >= 0 &&
+                  payload.result_argument_index <
+                  payload.call_template.args.length() else {
+                  invalid_dispatch_transition(
+                    "result-fed direct-return argument index is outside its call template",
+                  )
+                }
+                let args = payload.call_template.args.copy()
+                args[payload.result_argument_index] = value
+                return suspend_dispatch_work(
+                  popped,
+                  DispatchSuspendCall(
+                    DispatchCallRequest(
+                      callee=payload.call_template.callee,
+                      this_value=payload.call_template.this_value,
+                      args~,
+                      loc=payload.call_template.loc,
+                    ),
+                    DispatchCompleteReturn,
+                  ),
+                )
+              }
               (DispatchContinueNumericExpression(numeric), DispatchNormal(value)
               ) =>
                 match

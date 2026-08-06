@@ -83,6 +83,23 @@ test "external consumer: direct-return leaf preserves argument order" {
 }
 
 ///|
+const DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE =
+  #|function id(x) { return x; }
+  #|function f(n) {
+  #|  if (n === 0) return "done";
+  #|  return id(f(n - 1));
+  #|}
+  #|f(256);
+
+///|
+test "external consumer: recursive result feeds a sealed ordinary call" {
+  match run_value(DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected result-fed direct return done, got " + other)
+  }
+}
+
+///|
 const RECEIVER_RECURSION_SOURCE =
   #|function step(n){if(n===0)return this.marker;return 1+this.step(n-1);}
   #|let receiver={marker:0,step:step};

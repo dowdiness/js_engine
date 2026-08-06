@@ -168,28 +168,66 @@ fn direct_return_base_completions_match(
     (DirectReturnBaseValue(expected), DirectReturnBaseValue(actual))
     | (DirectReturnBaseThrow(expected), DirectReturnBaseThrow(actual)) =>
       direct_return_closed_literals_match(expected, actual)
-    (
-      DirectReturnBaseLeafCall(expected_name, expected_loc),
-      DirectReturnBaseLeafCall(actual_name, actual_loc),
-    ) => expected_name == actual_name && expected_loc == actual_loc
+    (DirectReturnBaseLeafCall(expected), DirectReturnBaseLeafCall(actual)) =>
+      direct_return_leaf_call_plans_match(expected, actual)
     _ => false
   }
 }
 
 ///|
-fn direct_return_closed_arguments_match(
-  expected : Array[DirectReturnClosedArgument],
-  actual : Array[DirectReturnClosedArgument],
+fn direct_return_leaf_argument_sources_match(
+  expected : Array[DirectReturnLeafArgumentSource],
+  actual : Array[DirectReturnLeafArgumentSource],
 ) -> Bool {
   guard expected.length() == actual.length() else { return false }
   for index, expected in expected {
     let actual = actual[index]
-    guard expected.loc == actual.loc &&
-      direct_return_closed_literals_match(expected.literal, actual.literal) else {
-      return false
+    match (expected, actual) {
+      (
+        DirectReturnLeafClosedArgument(expected),
+        DirectReturnLeafClosedArgument(actual),
+      ) => {
+        guard expected.loc == actual.loc &&
+          direct_return_closed_literals_match(expected.literal, actual.literal) else {
+          return false
+        }
+      }
+      (
+        DirectReturnLeafRecursiveResult(expected),
+        DirectReturnLeafRecursiveResult(actual),
+      ) if expected == actual => ()
+      _ => return false
     }
   }
   true
+}
+
+///|
+fn direct_return_leaf_call_plans_match(
+  expected : DirectReturnLeafCallPlan,
+  actual : DirectReturnLeafCallPlan,
+) -> Bool {
+  expected.callee_name == actual.callee_name &&
+  expected.call_loc == actual.call_loc &&
+  direct_return_leaf_argument_sources_match(
+    expected.argument_sources,
+    actual.argument_sources,
+  )
+}
+
+///|
+fn direct_return_recursive_completions_match(
+  expected : DirectReturnRecursiveCompletion,
+  actual : DirectReturnRecursiveCompletion,
+) -> Bool {
+  match (expected, actual) {
+    (DirectReturnRecursiveSelfCall, DirectReturnRecursiveSelfCall) => true
+    (
+      DirectReturnRecursiveResultFedLeafCall(expected),
+      DirectReturnRecursiveResultFedLeafCall(actual),
+    ) => direct_return_leaf_call_plans_match(expected, actual)
+    _ => false
+  }
 }
 
 ///|
@@ -263,14 +301,28 @@ fn direct_return_function_syntaxes_match(
   expected.base_literal_loc == actual.base_literal_loc &&
   expected.recursive_call_loc == actual.recursive_call_loc &&
   expected.recursive_subtract_loc == actual.recursive_subtract_loc &&
-  direct_return_closed_arguments_match(
-    expected.base_call_arguments,
-    actual.base_call_arguments,
+  direct_return_recursive_completions_match(
+    expected.recursive_completion,
+    actual.recursive_completion,
   ) &&
   direct_return_base_completions_match(
     expected.base_completion,
     actual.base_completion,
   )
+}
+
+///|
+fn direct_return_leaf_call_plan(
+  syntax : DirectReturnFunctionSyntax,
+) -> DirectReturnLeafCallPlan? {
+  match syntax.base_completion {
+    DirectReturnBaseLeafCall(plan) => Some(plan)
+    _ =>
+      match syntax.recursive_completion {
+        DirectReturnRecursiveResultFedLeafCall(plan) => Some(plan)
+        _ => None
+      }
+  }
 }
 
 ///|
@@ -305,6 +357,28 @@ fn direct_return_recursion_plans_match(
       direct_return_leaf_plans_match(expected, actual)
     _ => false
   })
+}
+
+///|
+fn direct_return_leaf_argument_sources_match_values(
+  sources : Array[DirectReturnLeafArgumentSource],
+  values : Array[Value],
+) -> Bool {
+  guard sources.length() == values.length() else { return false }
+  for index, source in sources {
+    match source {
+      DirectReturnLeafClosedArgument(argument) => {
+        guard direct_return_closed_literal_matches_value(
+          argument.literal,
+          values[index],
+        ) else {
+          return false
+        }
+      }
+      DirectReturnLeafRecursiveResult(_) => ()
+    }
+  }
+  true
 }
 
 ///|
@@ -859,30 +933,24 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
           (Object(expected), Object(actual)) => physical_equal(expected, actual)
           _ => false
         }) {
-        let expected_arguments = self.entry.syntax.base_call_arguments
-        let arguments_match = if args.length() != expected_arguments.length() {
-          false
-        } else {
-          for index, expected in expected_arguments {
-            guard direct_return_closed_literal_matches_value(
-              expected.literal,
-              args[index],
-            ) else {
-              break false
-            }
-          } nobreak {
-            true
-          }
+        let leaf_call = match direct_return_leaf_call_plan(self.entry.syntax) {
+          Some(plan) => plan
+          None =>
+            invalid_activation_dispatch_shell(
+              "direct-return leaf registry lost its leaf completion plan",
+            )
         }
-        guard this_value is Undefined && arguments_match else {
+        guard leaf_call.callee_name == leaf.syntax.name &&
+          this_value is Undefined &&
+          direct_return_leaf_argument_sources_match_values(
+            leaf_call.argument_sources,
+            args,
+          ) else {
           invalid_activation_dispatch_shell(
             "direct-return leaf activation escaped its sealed argument plan",
           )
         }
-        guard self.entry.syntax.base_completion
-          is DirectReturnBaseLeafCall(leaf_name, leaf_call_loc) &&
-          leaf_name == leaf.syntax.name &&
-          loc == leaf_call_loc else {
+        guard loc == leaf_call.call_loc else {
           invalid_activation_dispatch_shell(
             "direct-return leaf call location escaped the sealed source recipe",
           )
