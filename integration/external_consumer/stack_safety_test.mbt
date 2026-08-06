@@ -92,10 +92,28 @@ const DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE =
   #|f(256);
 
 ///|
+const DIRECT_RETURN_WRAPPED_RESULT_FED_CALL_SOURCE =
+  #|function id(x) { return x; }
+  #|function f(n) {
+  #|  if (n === 0) return "done";
+  #|  return id(f(n - 1));
+  #|}
+  #|function entry() { return f(256); }
+  #|entry();
+
+///|
 test "external consumer: recursive result feeds a sealed ordinary call" {
   match run_value(DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE) {
     "done" => ()
     other => fail("expected result-fed direct return done, got " + other)
+  }
+}
+
+///|
+test "external consumer: ordinary root wrapper returns a managed recursive call" {
+  match run_value(DIRECT_RETURN_WRAPPED_RESULT_FED_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected wrapped managed return done, got " + other)
   }
 }
 
