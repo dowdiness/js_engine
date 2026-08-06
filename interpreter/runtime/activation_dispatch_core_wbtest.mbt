@@ -1369,9 +1369,24 @@ test "normal call result resumes its caller once after child release" {
 }
 
 ///|
-test "result-fed leaf continuation defensively inserts the recursive result" {
+test "expression plan defensively inserts and consumes the recursive result" {
   let id = 1150
   let template_args = [Undefined]
+  let plan = DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("id"),
+          this_value=Undefined,
+          args=template_args,
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
+        name="id",
+        result_argument_index=Some(0),
+      ),
+    ),
+  ])
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let (running_value, value_decision) = reduce_activation_dispatch(
     running_root,
@@ -1379,16 +1394,8 @@ test "result-fed leaf continuation defensively inserts the recursive result" {
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchFeedDirectReturnLeafResult(
-            DispatchResultFedLeafCallResume(
-              call_template=DispatchCallRequest(
-                callee=String_("id"),
-                this_value=Undefined,
-                args=template_args,
-                loc=@token.Loc::default(),
-              ),
-              result_argument_index=0,
-            ),
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
           ),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
@@ -1397,7 +1404,7 @@ test "result-fed leaf continuation defensively inserts the recursive result" {
   )
   let value_ticket = match value_decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    _ => fail("expected result-fed continuation input work")
+    _ => fail("expected expression-plan continuation input work")
   }
   let (_, resume_decision) = reduce_activation_dispatch(
     running_value,
@@ -1409,115 +1416,105 @@ test "result-fed leaf continuation defensively inserts the recursive result" {
   match resume_decision {
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(request))) => {
       guard request.args is [String_("done")] else {
-        fail("expected the recursive result in the leaf argument slot")
+        fail("expected the recursive result in the helper argument slot")
       }
       inspect(dispatch_test_value_tag(template_args[0]), content="undefined")
     }
-    _ => fail("expected the result-fed leaf call activation")
+    _ => fail("expected the result-fed helper call activation")
   }
 }
 
 ///|
-test "result-fed leaf continuation bypasses helper activation for guest throw" {
+test "expression plan preserves abrupt result without entering helper" {
   let id = 1160
-  let template_args = [Undefined]
+  let plan = DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("id"),
+          this_value=Undefined,
+          args=[Undefined],
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
+        name="id",
+        result_argument_index=Some(0),
+      ),
+    ),
+  ])
   let thrown : Error = JsException(String_("boom"))
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
-  let (running_value, value_decision) = reduce_activation_dispatch(
+  let (running_value, decision) = reduce_activation_dispatch(
     running_root,
     DispatchEffectCompleted(
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchFeedDirectReturnLeafResult(
-            DispatchResultFedLeafCallResume(
-              call_template=DispatchCallRequest(
-                callee=String_("id"),
-                this_value=Undefined,
-                args=template_args,
-                loc=@token.Loc::default(),
-              ),
-              result_argument_index=0,
-            ),
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
           ),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
     ),
   )
-  let value_ticket = match value_decision {
+  let value_ticket = match decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("abrupt result-fed continuation must not enter a helper activation")
-    _ => fail("expected result-fed continuation input work")
+    _ => fail("expected expression-plan continuation input work")
   }
-  let (releasing, release_decision) = reduce_activation_dispatch(
+  let (_, release_decision) = reduce_activation_dispatch(
     running_value,
     DispatchEffectCompleted(
       value_ticket,
       DispatchWorkCompleted(DispatchThrow(thrown)),
     ),
   )
-  let release_ticket = match release_decision {
-    DispatchPerform(ticket, DispatchReleaseActivation(_, DispatchThrow(found))) => {
+  match release_decision {
+    DispatchPerform(_, DispatchReleaseActivation(_, DispatchThrow(found))) =>
       inspect(physical_equal(found, thrown), content="true")
-      ticket
-    }
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("guest throw must bypass the result-fed helper activation")
-    _ => fail("expected activation release for guest throw")
-  }
-  let (_, finish_decision) = reduce_activation_dispatch(
-    releasing,
-    DispatchEffectCompleted(release_ticket, DispatchCleanupCompleted),
-  )
-  match finish_decision {
-    DispatchFinish(DispatchThrow(found)) => {
-      inspect(physical_equal(found, thrown), content="true")
-      inspect(
-        dispatch_test_value_tag(dispatch_test_js_exception_value(found)),
-        content="boom",
-      )
-    }
-    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("cleanup must not enter the result-fed helper activation")
-    _ => fail("expected guest throw completion after cleanup")
+      fail("abrupt result must bypass helper activation")
+    _ => fail("expected activation release for abrupt result")
   }
 }
 
 ///|
-test "result-fed leaf continuation bypasses helper activation for runtime abrupt" {
+test "expression plan preserves runtime abrupt result without entering helper" {
   let id = 1170
-  let template_args = [Undefined]
+  let plan = DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("id"),
+          this_value=Undefined,
+          args=[Undefined],
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
+        name="id",
+        result_argument_index=Some(0),
+      ),
+    ),
+  ])
   let runtime_error : Error = ExecutionControlError(Interrupted)
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
-  let (running_value, value_decision) = reduce_activation_dispatch(
+  let (running_value, decision) = reduce_activation_dispatch(
     running_root,
     DispatchEffectCompleted(
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchFeedDirectReturnLeafResult(
-            DispatchResultFedLeafCallResume(
-              call_template=DispatchCallRequest(
-                callee=String_("id"),
-                this_value=Undefined,
-                args=template_args,
-                loc=@token.Loc::default(),
-              ),
-              result_argument_index=0,
-            ),
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
           ),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
     ),
   )
-  let value_ticket = match value_decision {
+  let value_ticket = match decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("abrupt result-fed continuation must not enter a helper activation")
-    _ => fail("expected result-fed continuation input work")
+    _ => fail("expected expression-plan continuation input work")
   }
   let (releasing, release_decision) = reduce_activation_dispatch(
     running_value,
@@ -1535,7 +1532,7 @@ test "result-fed leaf continuation bypasses helper activation for runtime abrupt
       ticket
     }
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("runtime abrupt must bypass the result-fed helper activation")
+      fail("runtime abrupt must bypass helper activation")
     _ => fail("expected activation release for runtime abrupt")
   }
   let (_, finish_decision) = reduce_activation_dispatch(
@@ -1546,9 +1543,285 @@ test "result-fed leaf continuation bypasses helper activation for runtime abrupt
     DispatchFinish(DispatchRuntimeAbrupt(found)) =>
       inspect(physical_equal(found, runtime_error), content="true")
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("cleanup must not enter the result-fed helper activation")
+      fail("cleanup must not enter the runtime-abrupt helper activation")
     _ => fail("expected runtime abrupt completion after cleanup")
   }
+}
+
+///|
+fn direct_return_two_stage_expression_test_plan() -> DispatchExpressionPlan {
+  DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("inner"),
+          this_value=Undefined,
+          args=[Undefined],
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(
+          String_("inner"),
+          "inner",
+        ),
+        name="inner",
+        result_argument_index=Some(0),
+      ),
+    ),
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("outer"),
+          this_value=Undefined,
+          args=[Undefined, Undefined],
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(
+          String_("outer"),
+          "outer",
+        ),
+        name="outer",
+        result_argument_index=Some(1),
+      ),
+    ),
+  ])
+}
+
+///|
+fn direct_return_two_stage_failure_error(
+  failure_after_inner : Bool,
+  runtime_abrupt : Bool,
+) -> Error {
+  let stage = if failure_after_inner { "inner" } else { "outer" }
+  if runtime_abrupt {
+    @errors.InternalError(message="two-stage runtime " + stage)
+  } else {
+    JsException(
+      Object({
+        bag: PropertyBag(),
+        prototype: Null,
+        callable: None,
+        class_name: "Error",
+        extensible: true,
+        arraybuffer_state: None,
+      }),
+    )
+  }
+}
+
+///|
+fn expect_direct_return_two_stage_failure_completion(
+  actual : DispatchCompletion,
+  expected : DispatchCompletion,
+) -> Unit raise {
+  match (actual, expected) {
+    (DispatchThrow(actual), DispatchThrow(expected)) =>
+      inspect(physical_equal(actual, expected), content="true")
+    (DispatchRuntimeAbrupt(actual), DispatchRuntimeAbrupt(expected)) =>
+      inspect(physical_equal(actual, expected), content="true")
+    _ => fail("two-stage expression plan changed its failure completion")
+  }
+}
+
+///|
+fn finish_direct_return_two_stage_failure(
+  running : ActivationDispatchState,
+  body_ticket : DispatchTicket,
+  expected_completion : DispatchCompletion,
+  stage : String,
+) -> Unit raise {
+  let (releasing, release_decision) = reduce_activation_dispatch(
+    running,
+    DispatchEffectCompleted(
+      body_ticket,
+      DispatchWorkCompleted(expected_completion),
+    ),
+  )
+  let release_ticket = match release_decision {
+    DispatchPerform(ticket, DispatchReleaseActivation(_, actual_completion)) => {
+      expect_direct_return_two_stage_failure_completion(
+        actual_completion, expected_completion,
+      )
+      ticket
+    }
+    DispatchPerform(_, DispatchEnterActivation(_)) =>
+      fail(stage + " failure must not enter a later helper activation")
+    _ => fail(stage + " failure must release its activation")
+  }
+  let (releasing_root, root_release_decision) = reduce_activation_dispatch(
+    releasing,
+    DispatchEffectCompleted(release_ticket, DispatchCleanupCompleted),
+  )
+  let root_release_ticket = match root_release_decision {
+    DispatchPerform(ticket, DispatchReleaseActivation(_, actual_completion)) => {
+      expect_direct_return_two_stage_failure_completion(
+        actual_completion, expected_completion,
+      )
+      ticket
+    }
+    DispatchPerform(_, DispatchEnterActivation(_)) =>
+      fail(stage + " failure cleanup must not enter a later helper activation")
+    _ => fail(stage + " failure cleanup must release the root activation")
+  }
+  let (_, finish_decision) = reduce_activation_dispatch(
+    releasing_root,
+    DispatchEffectCompleted(root_release_ticket, DispatchCleanupCompleted),
+  )
+  match finish_decision {
+    DispatchFinish(actual_completion) =>
+      expect_direct_return_two_stage_failure_completion(
+        actual_completion, expected_completion,
+      )
+    DispatchPerform(_, DispatchEnterActivation(_)) =>
+      fail(stage + " failure cleanup must not enter a later helper activation")
+    _ => fail(stage + " failure must finish after cleanup")
+  }
+}
+
+///|
+fn expect_direct_return_two_stage_failure(
+  failure_after_inner : Bool,
+  runtime_abrupt : Bool,
+) -> Unit raise {
+  let id = if failure_after_inner { 1180 } else { 1190 }
+  let id = if runtime_abrupt { id + 1 } else { id }
+  let expected_error = direct_return_two_stage_failure_error(
+    failure_after_inner, runtime_abrupt,
+  )
+  let expected_completion = if runtime_abrupt {
+    DispatchRuntimeAbrupt(expected_error)
+  } else {
+    DispatchThrow(expected_error)
+  }
+  let plan = direct_return_two_stage_expression_test_plan()
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let (waiting_for_expression, root_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
+          ),
+          DispatchExecuteStatement(dispatch_test_statement_step(id + 1)),
+        ),
+      ),
+    ),
+  )
+  let expression_ticket = match root_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("two-stage plan did not schedule its recursive result")
+  }
+  let (waiting_inner, inner_decision) = reduce_activation_dispatch(
+    waiting_for_expression,
+    DispatchEffectCompleted(
+      expression_ticket,
+      DispatchWorkCompleted(DispatchNormal(Number(41.0))),
+    ),
+  )
+  let inner_entry_ticket = match inner_decision {
+    DispatchPerform(
+      ticket,
+      DispatchEnterActivation(DispatchCallActivation(request))
+    ) => {
+      guard request.callee is String_("inner") else {
+        fail("two-stage plan did not enter inner first")
+      }
+      ticket
+    }
+    _ => fail("two-stage plan did not schedule inner activation")
+  }
+  let (running_inner, inner_decision) = reduce_activation_dispatch(
+    waiting_inner,
+    DispatchEffectCompleted(
+      inner_entry_ticket,
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id + 2),
+        DispatchCallBody(dispatch_test_statement_work(id + 3)),
+      ),
+    ),
+  )
+  let inner_body_ticket = match inner_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("two-stage plan did not run inner body")
+  }
+  if failure_after_inner {
+    finish_direct_return_two_stage_failure(
+      running_inner, inner_body_ticket, expected_completion, "inner",
+    )
+  } else {
+    let (releasing_inner, inner_release_decision) = reduce_activation_dispatch(
+      running_inner,
+      DispatchEffectCompleted(
+        inner_body_ticket,
+        DispatchWorkCompleted(DispatchReturn(Number(42.0))),
+      ),
+    )
+    let inner_release_ticket = match inner_release_decision {
+      DispatchPerform(
+        ticket,
+        DispatchReleaseActivation(_, DispatchNormal(Number(value)))
+      ) => {
+        inspect(value, content="42")
+        ticket
+      }
+      _ => fail("inner normal result must release inner activation")
+    }
+    let (waiting_outer, outer_decision) = reduce_activation_dispatch(
+      releasing_inner,
+      DispatchEffectCompleted(inner_release_ticket, DispatchCleanupCompleted),
+    )
+    let outer_entry_ticket = match outer_decision {
+      DispatchPerform(
+        ticket,
+        DispatchEnterActivation(DispatchCallActivation(request))
+      ) => {
+        guard request.callee is String_("outer") else {
+          fail("two-stage plan did not enter outer second")
+        }
+        ticket
+      }
+      _ => fail("inner success did not schedule outer activation")
+    }
+    let (running_outer, outer_decision) = reduce_activation_dispatch(
+      waiting_outer,
+      DispatchEffectCompleted(
+        outer_entry_ticket,
+        DispatchCallAccepted(
+          DispatchActivationCleanup(id + 4),
+          DispatchCallBody(dispatch_test_statement_work(id + 5)),
+        ),
+      ),
+    )
+    let outer_body_ticket = match outer_decision {
+      DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) =>
+        ticket
+      _ => fail("two-stage plan did not run outer body")
+    }
+    finish_direct_return_two_stage_failure(
+      running_outer, outer_body_ticket, expected_completion, "outer",
+    )
+  }
+}
+
+///|
+test "expression plan preserves inner guest Error identity" {
+  expect_direct_return_two_stage_failure(true, false)
+}
+
+///|
+test "expression plan preserves outer guest Error identity" {
+  expect_direct_return_two_stage_failure(false, false)
+}
+
+///|
+test "expression plan preserves inner runtime-abrupt Error identity" {
+  expect_direct_return_two_stage_failure(true, true)
+}
+
+///|
+test "expression plan preserves outer runtime-abrupt Error identity" {
+  expect_direct_return_two_stage_failure(false, true)
 }
 
 ///|

@@ -81,6 +81,23 @@ test "run fibonacci" {
 }
 
 ///|
+test "run facade direct-return linear call chain at depth 256" {
+  let src =
+    #|function inner(value) { return value; }
+    #|function outer(ignored, value) { return value; }
+    #|function f(n) {
+    #|  if (n === 0) return "done";
+    #|  return outer("ignored", inner(f(n - 1)));
+    #|}
+    #|f(256);
+  expect_string(
+    run_outcome(src),
+    "value:done",
+    "direct-return linear call chain",
+  )
+}
+
+///|
 test "run_compiled facade closure factory" {
   let src =
     #|function makeCounter(start) {

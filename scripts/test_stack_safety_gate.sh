@@ -161,6 +161,36 @@ require_mixed_ordered_argument_result_workload \
   'external-consumer' \
   '"done" => ()'
 
+require_two_helper_result_workload() {
+  local suite=$1
+  local label=$2
+  local success_assertion=$3
+  local failure_evidence=$4
+  grep -Fq 'function inner(value) { return value; }' "$suite" ||
+    fail "$label selected suite omits the two-helper inner source"
+  grep -Fq 'function outer(ignored, value) { return value; }' "$suite" ||
+    fail "$label selected suite omits the two-helper outer source"
+  grep -Fq 'return outer("ignored", inner(f(n - 1)));' "$suite" ||
+    fail "$label two-helper workload does not preserve helper order"
+  grep -Fq 'f(256);' "$suite" ||
+    fail "$label two-helper workload does not preserve the exact depth-256 root call"
+  grep -Fq "$success_assertion" "$suite" ||
+    fail "$label two-helper workload omits the exact success assertion"
+  grep -Fq "$failure_evidence" "$suite" ||
+    fail "$label two-helper workload omits its failure-message evidence"
+}
+
+require_two_helper_result_workload \
+  "$ROOT_DIR/interpreter/stack_safety_test.mbt" \
+  'engine' \
+  'Value::String_("done")' \
+  'expected two-helper result-fed direct return done, got'
+require_two_helper_result_workload \
+  "$CONSUMER_SUITE" \
+  'external-consumer' \
+  '"done" => ()' \
+  'expected two-helper result pipeline done, got'
+
 for suite in \
   'interpreter/stack_safety_test.mbt' \
   'interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt' \
@@ -338,6 +368,24 @@ copy_fixture "$fixture"
 sed -i 's/expected mixed result-fed direct return done, got/expected changed result/' \
   "$fixture/integration/external_consumer/stack_safety_test.mbt"
 expect_fixture_failure "$fixture" 'missing-facade-mixed-done-evidence'
+
+fixture="$GATE_TMP_ROOT/missing-engine-two-helper-workload"
+copy_fixture "$fixture"
+sed -i '/return outer("ignored", inner(f(n - 1)));/d' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-two-helper-workload'
+
+fixture="$GATE_TMP_ROOT/missing-engine-two-helper-success-assertion"
+copy_fixture "$fixture"
+sed -i 's/Value::String_("done") => ()/Value::String_("not-done") => ()/' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-two-helper-success-assertion'
+
+fixture="$GATE_TMP_ROOT/missing-facade-two-helper-done-evidence"
+copy_fixture "$fixture"
+sed -i 's/"done" => ()/"not-done" => ()/' \
+  "$fixture/integration/external_consumer/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-facade-two-helper-done-evidence'
 
 fixture="$GATE_TMP_ROOT/missing-aggregator"
 copy_fixture "$fixture"
