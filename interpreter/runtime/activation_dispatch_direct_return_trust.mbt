@@ -410,6 +410,18 @@ fn direct_return_wrapper_plans_match(
 }
 
 ///|
+fn direct_return_wrapper_body_snapshots_match(
+  expected : Array[@ast.Stmt],
+  actual : Array[@ast.Stmt],
+) -> Bool {
+  guard expected.length() == actual.length() else { return false }
+  for index in 0..<expected.length() {
+    guard physical_equal(expected[index], actual[index]) else { return false }
+  }
+  true
+}
+
+///|
 fn direct_return_root_invocations_match(
   expected : DirectReturnRootInvocation,
   actual : DirectReturnRootInvocation,
@@ -871,8 +883,8 @@ fn direct_return_wrapper_trusted_declaration(
   TrustedDirectReturnWrapperFunction(
     plan~,
     callee~,
-    params=data.params,
-    body=data.body,
+    params=data.params.copy(),
+    body=data.body.copy(),
     source_text=data.source_text,
     expected_realm_protos=realm_protos,
     expected_source_identity=source_identity,
@@ -1212,8 +1224,8 @@ fn TrustedDirectReturnRecursionRegistry::require_wrapper(
     actual.callable is Some(UserFunc(data)) &&
     data.name == Some(wrapper.plan.syntax.name) &&
     data.params.is_empty() &&
-    physical_equal(data.params, wrapper.params) &&
-    physical_equal(data.body, wrapper.body) &&
+    data.params == wrapper.params &&
+    direct_return_wrapper_body_snapshots_match(wrapper.body, data.body) &&
     physical_equal(data.closure, interp.global) &&
     !data.strict &&
     !data.has_name_binding &&

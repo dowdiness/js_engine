@@ -575,6 +575,40 @@ fn run_direct_return_result_fed_shell_once(
 }
 
 ///|
+fn expect_wrapped_result_fed_dispatch_observation_balanced(
+  probe : DispatchObservationProbe,
+) -> Unit raise {
+  inspect(probe.attempts, content="514")
+  inspect(probe.acquired, content="514")
+  inspect(probe.accepted, content="514")
+  inspect(probe.rejected, content="0")
+  inspect(probe.released, content="514")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="258")
+  inspect(probe.release_ordinals.length(), content="514")
+  inspect(probe.lifo_violations, content="0")
+}
+
+///|
+fn run_direct_return_wrapped_result_fed_shell_once(
+  interp : Interpreter,
+) -> Value raise Error {
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  let value = activation_dispatch_root_value(
+    shell.drive_root_program(stmts, ctx),
+  )
+  expect_wrapped_result_fed_dispatch_observation_balanced(probe)
+  inspect(shell.cleanup_stack.length(), content="0")
+  value
+}
+
+///|
 fn run_direct_return_shell_once(interp : Interpreter) -> Value raise Error {
   run_direct_return_shell_source_once(interp, DIRECT_RETURN_TEST_SOURCE, 257)
 }
@@ -1334,6 +1368,148 @@ test "direct-return trust revalidates binding and mirror after sealing" {
 }
 
 ///|
+fn direct_return_wrapped_entry_attempt(
+  interp : Interpreter,
+  preflight : DirectReturnRecursionPreflight,
+  stmts : Array[@ast.Stmt],
+  registry : TrustedDirectReturnRecursionRegistry,
+  wrapper : TrustedDirectReturnWrapperFunction,
+  probe : DispatchObservationProbe,
+) -> String {
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    direct_return_root_preflight=Some(preflight),
+    direct_return_root_stmts=Some(stmts),
+    direct_return_registry=Some(registry),
+    activation_observation_port=probe.port(),
+  )
+  let request = DispatchCallRequest(
+    callee=wrapper.callee,
+    this_value=Undefined,
+    args=[],
+    loc=wrapper.plan.outer_call_loc,
+  )
+  try {
+    match shell.enter_direct_return_call(request) {
+      DispatchCallAccepted(_, _) => {
+        shell.restore_all_cleanup()
+        "accepted"
+      }
+      _ => "unexpected dispatch result"
+    }
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+}
+
+///|
+test "direct-return wrapped trust rejects post-seal root mutations before observation" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected wrapped direct-return preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let wrapper = match registry.root {
+    TrustedDirectReturnWrapperRoot(found) => found
+    TrustedDirectReturnEntryRoot =>
+      fail("expected a trusted wrapped direct-return root")
+  }
+  guard wrapper.callee is Object({ callable: Some(UserFunc(data)), .. }) &&
+    interp.global.bindings.get("entry") is Some(binding) &&
+    interp.global_this is Object(global_object) else {
+    fail("expected trusted wrapped root provenance")
+  }
+  let replacement = make_func(data)
+
+  let binding_probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let original_binding = binding.value
+  binding.value = replacement
+  let binding_result = direct_return_wrapped_entry_attempt(
+    interp, preflight, stmts, registry, wrapper, binding_probe,
+  )
+  binding.value = original_binding
+  inspect(binding_probe.attempts, content="0")
+  inspect(
+    binding_result,
+    content="direct-return wrapper diverged from its global binding",
+  )
+  let _ = registry.require_wrapper(interp, wrapper.callee)
+
+  let mirror_probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let original_mirror = global_object.bag.properties["entry"]
+  global_object.bag.properties["entry"] = replacement
+  let mirror_result = direct_return_wrapped_entry_attempt(
+    interp, preflight, stmts, registry, wrapper, mirror_probe,
+  )
+  global_object.bag.properties["entry"] = original_mirror
+  inspect(mirror_probe.attempts, content="0")
+  inspect(
+    mirror_result,
+    content="direct-return wrapper diverged from its global mirror",
+  )
+  let _ = registry.require_wrapper(interp, wrapper.callee)
+
+  // The exact zero-parameter guard rejects this too; keep the mutation to
+  // prove that the sealed parameter snapshot is independently owned.
+  let params_probe = DispatchObservationProbe(observed_interp=Some(interp))
+  wrapper.params.push("changed")
+  let params_result = direct_return_wrapped_entry_attempt(
+    interp, preflight, stmts, registry, wrapper, params_probe,
+  )
+  let _ = wrapper.params.pop()
+  inspect(params_probe.attempts, content="0")
+  inspect(
+    params_result,
+    content="direct-return wrapper provenance changed after sealing",
+  )
+  let _ = registry.require_wrapper(interp, wrapper.callee)
+
+  let body_probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let original_body = data.body[0]
+  data.body[0] = @parser.parse("return 0;").stmts[0]
+  let body_result = direct_return_wrapped_entry_attempt(
+    interp, preflight, stmts, registry, wrapper, body_probe,
+  )
+  data.body[0] = original_body
+  inspect(body_probe.attempts, content="0")
+  inspect(
+    body_result,
+    content="direct-return wrapper provenance changed after sealing",
+  )
+  let _ = registry.require_wrapper(interp, wrapper.callee)
+
+  let root_probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let altered_registry = {
+    ..registry,
+    plan: {
+      ..registry.plan,
+      root_invocation: DirectReturnEntryInvocation(
+        DirectReturnEntryRootPlan(
+          entry_name="f",
+          call_loc=wrapper.plan.outer_call_loc,
+          initial_argument=256.0,
+        ),
+      ),
+    },
+  }
+  let root_result = direct_return_wrapped_entry_attempt(
+    interp, preflight, stmts, altered_registry, wrapper, root_probe,
+  )
+  inspect(root_probe.attempts, content="0")
+  inspect(
+    root_result,
+    content="direct-return registry lost its wrapper root-plan ownership",
+  )
+  let _ = registry.require_wrapper(interp, wrapper.callee)
+}
+
+///|
 test "direct-return execution rejects a foreign activation environment" {
   let interp = Interpreter::new()
   let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
@@ -1797,6 +1973,166 @@ test "direct-return result-fed one-short budget bypasses saved return consumer" 
   match short_interp.realm_state.active_source_identity.val {
     Some(source) => inspect(source, content="caller.js")
     None => fail("expected source identity after result-fed budget reuse")
+  }
+}
+
+///|
+test "direct-return wrapped result-fed one-short budget bypasses saved return consumer" {
+  let exact_interp = Interpreter::new()
+  let exact_probe = DispatchObservationProbe(observed_interp=Some(exact_interp))
+  let (exact_shell, exact_stmts, exact_ctx) = direct_return_observation_fixture_for_source(
+    exact_interp,
+    exact_probe,
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  let full_budget = 10000L
+  let exact_control = ExecutionControl(
+    remaining_steps=full_budget,
+    maximum_active_depth=300L,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let exact_completion = exact_interp.with_execution_control(exact_control, () => {
+    exact_shell.drive_root_program(exact_stmts, exact_ctx)
+  })
+  match exact_completion {
+    DispatchNormal(String_(value)) => inspect(value, content="done")
+    _ => fail("expected exact wrapped result-fed budget to complete normally")
+  }
+  let used_steps = full_budget - exact_control.remaining_steps()
+  guard used_steps > 0L else {
+    fail("expected wrapped result-fed execution to charge steps")
+  }
+
+  let short_interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(short_interp, 179)
+  short_interp.realm_state.active_source_identity.val = Some("caller.js")
+  let short_probe = DispatchObservationProbe(observed_interp=Some(short_interp))
+  let (short_shell, short_stmts, short_ctx) = direct_return_observation_fixture_for_source(
+    short_interp,
+    short_probe,
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  let short_control = ExecutionControl(
+    remaining_steps=used_steps - 1L,
+    maximum_active_depth=300L,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let short_completion = short_interp.with_execution_control(short_control, () => {
+    short_shell.drive_root_program(short_stmts, short_ctx)
+  })
+  match short_completion {
+    DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)) => ()
+    _ => fail("expected one-short wrapped result-fed execution limit")
+  }
+  inspect(short_probe.attempts, content="514")
+  inspect(short_probe.acquired, content="514")
+  inspect(short_probe.accepted, content="514")
+  inspect(short_probe.rejected, content="0")
+  inspect(short_probe.released, content="514")
+  inspect(short_probe.denied, content="0")
+  inspect(short_probe.active, content="0")
+  inspect(short_probe.maximum_active, content="258")
+  inspect(short_probe.release_ordinals.length(), content="514")
+  inspect(short_probe.lifo_violations, content="0")
+  inspect(short_shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(short_interp, 179)
+  match short_interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after wrapped budget failure")
+  }
+  match run_direct_return_wrapped_result_fed_shell_once(short_interp) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected wrapped result-fed result after budget failure: " +
+        other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(short_interp, 179)
+  match short_interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after wrapped budget reuse")
+  }
+}
+
+///|
+fn run_direct_return_wrapped_result_fed_interruption(
+  interp : Interpreter,
+) -> Unit raise {
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let interruption = ExecutionInterruptionRequest()
+  let base_port = probe.port()
+  let port = ActivationObservationPort(
+    begin_entry=() => {
+      let hooks = (base_port.begin_entry)()
+      if probe.attempts == 259 {
+        interruption.request()
+      }
+      hooks
+    },
+    denied=() => (base_port.denied)(),
+  )
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected wrapped result-fed direct-return preflight")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    direct_return_root_preflight=Some(preflight),
+    direct_return_root_stmts=Some(stmts),
+    activation_observation_port=port,
+  )
+  let control = ExecutionControl(
+    remaining_steps=1000,
+    maximum_active_depth=300,
+    interruption~,
+  )
+  let completion = interp.with_execution_control(control, () => {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None })
+  })
+  match completion {
+    DispatchRuntimeAbrupt(ExecutionControlError(Interrupted)) => ()
+    _ => fail("expected interruption at the wrapped result-fed helper")
+  }
+  inspect(probe.attempts, content="259")
+  inspect(probe.acquired, content="259")
+  inspect(probe.accepted, content="259")
+  inspect(probe.rejected, content="0")
+  inspect(probe.released, content="259")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="258")
+  inspect(probe.release_ordinals.length(), content="259")
+  inspect(probe.lifo_violations, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "direct-return wrapped interruption bypasses saved return consumers and permits reuse" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 181)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  run_direct_return_wrapped_result_fed_interruption(interp)
+  dispatch_shell_test_expect_realm_sentinel(interp, 181)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after wrapped interruption")
+  }
+  match run_direct_return_wrapped_result_fed_shell_once(interp) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected wrapped result-fed result after interruption: " +
+        other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 181)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after wrapped interruption reuse")
   }
 }
 
