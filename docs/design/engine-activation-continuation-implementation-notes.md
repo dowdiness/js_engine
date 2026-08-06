@@ -65,6 +65,13 @@ The production claim is limited to these admitted recipes:
   actual argument snapshot with JavaScript value/identity semantics, and routes
   abrupt results around the helper; the depth-256 path observes 257 `f`
   activations plus 256 `id` activations;
+- the exact #819 extension whose program root is either the existing direct
+  entry call or a sealed zero-parameter ordinary `entry()` wrapper around
+  `f(256)`. The wrapper owns its declaration index, call locations, UserFunc
+  identity, global mirror, closure, body, and realm provenance; its inner call
+  uses the existing `DispatchCompleteReturn` continuation. The wrapped
+  result-fed path observes 1 wrapper, 257 `f`, and 256 `id` activations (514
+  total) with a peak managed depth of 258;
 - the exact #790 retained numeric second-argument comma workload entered
   through the tree-walker program root, including its iterative closed-argument
   observations and retained-parameter return;

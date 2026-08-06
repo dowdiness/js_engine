@@ -2057,6 +2057,47 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::execute_direct_return_wrapper_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  registry : TrustedDirectReturnRecursionRegistry,
+  wrapper : TrustedDirectReturnWrapperFunction,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let trusted = registry.require_wrapper(self.interp, wrapper.callee)
+  guard step.ctx.current_generator is None &&
+    !step.ctx.strict &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, self.interp.global) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.index == 0 &&
+    trusted.body.length() == 1 &&
+    physical_equal(step.stmt, trusted.body[0]) else {
+    invalid_activation_dispatch_shell(
+      "direct-return wrapper statement lost its sealed body provenance",
+    )
+  }
+  match self.observe_managed_execution_steps(1) {
+    Some(completion) => return DispatchWorkCompleted(completion)
+    None => ()
+  }
+  let request = DispatchCallRequest(
+    callee=registry.entry.callee,
+    this_value=Undefined,
+    args=[Number(trusted.plan.initial_argument)],
+    loc=trusted.plan.syntax.inner_call_loc,
+  )
+  let _ = registry.require_call(
+    self.interp,
+    request.callee,
+    request.this_value,
+    request.args,
+    request.loc,
+  )
+  DispatchWorkSuspended(DispatchSuspendCall(request, DispatchCompleteReturn))
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
@@ -2067,6 +2108,15 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
       leaf.body.length() == 1 &&
       physical_equal(step.stmt, leaf.body[0]) =>
       return self.execute_direct_return_leaf_statement(step, registry, leaf)
+    _ => ()
+  }
+  match registry.root {
+    TrustedDirectReturnWrapperRoot(wrapper) if step.index == 0 &&
+      wrapper.body.length() == 1 &&
+      physical_equal(step.stmt, wrapper.body[0]) =>
+      return self.execute_direct_return_wrapper_statement(
+        step, registry, wrapper,
+      )
     _ => ()
   }
   let syntax = registry.require_callee(self.interp, registry.entry.callee)
@@ -2269,9 +2319,13 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
         "direct-return root statements are unavailable",
       )
   }
-  let root_index = match registry.plan.leaf {
-    Some(_) => 2
-    None => 1
+  let root_index = match registry.plan.root_invocation {
+    DirectReturnEntryInvocation(_) =>
+      match registry.plan.leaf {
+        Some(_) => 2
+        None => 1
+      }
+    DirectReturnWrappedInvocation(_) => 3
   }
   guard root_stmts.length() == root_index + 1 else {
     invalid_activation_dispatch_shell(
@@ -2307,12 +2361,30 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
       Some(completion) => return DispatchWorkCompleted(completion)
       None => ()
     }
-    let request = DispatchCallRequest(
-      callee=registry.entry.callee,
-      this_value=Undefined,
-      args=[Number(DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT)],
-      loc=registry.plan.root_call_loc,
-    )
+    let request = match registry.root {
+      TrustedDirectReturnEntryRoot => {
+        let root = match registry.plan.root_invocation {
+          DirectReturnEntryInvocation(root) => root
+          DirectReturnWrappedInvocation(_) =>
+            invalid_activation_dispatch_shell(
+              "direct-return entry root role lost its owned invocation",
+            )
+        }
+        DispatchCallRequest(
+          callee=registry.entry.callee,
+          this_value=Undefined,
+          args=[Number(root.initial_argument)],
+          loc=root.call_loc,
+        )
+      }
+      TrustedDirectReturnWrapperRoot(wrapper) =>
+        DispatchCallRequest(
+          callee=wrapper.callee,
+          this_value=Undefined,
+          args=[],
+          loc=wrapper.plan.outer_call_loc,
+        )
+    }
     let _ = registry.require_call(
       self.interp,
       request.callee,

@@ -31,6 +31,15 @@ const DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE = "function id(x){return x;}func
 const DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE = "function id(x){throw x;}function f(n){if(n===0)return \"boom\";return id(f(n-1));}f(256);"
 
 ///|
+const DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE = "function id(x){return x;}function f(n){if(n===0)return \"done\";return id(f(n-1));}function entry(){return f(256);}entry();"
+
+///|
+const DIRECT_RETURN_WRAPPED_RESULT_FED_THROW_SOURCE = "function id(x){throw x;}function f(n){if(n===0)return \"done\";return id(f(n-1));}function entry(){return f(256);}entry();"
+
+///|
+const DIRECT_RETURN_WRAPPED_BASE_LEAF_TEST_SOURCE = "function id(){return \"done\";}function f(n){if(n===0)return id();return f(n-1);}function entry(){return f(256);}entry();"
+
+///|
 test "direct-return admission recognizes the exact ordinary function shape" {
   let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
   let plan = match classify_direct_return_recursion_program(stmts) {
@@ -40,7 +49,12 @@ test "direct-return admission recognizes the exact ordinary function shape" {
   inspect(plan.entry.syntax.name, content="f")
   inspect(plan.entry.syntax.parameter, content="n")
   inspect(plan.entry.syntax.recursive_callee, content="f")
-  inspect(plan.initial_argument, content="256")
+  match plan.root_invocation {
+    DirectReturnEntryInvocation(root) =>
+      inspect(root.initial_argument, content="256")
+    DirectReturnWrappedInvocation(_) =>
+      fail("expected direct entry invocation for the direct root fixture")
+  }
   match plan.entry.syntax.base_completion {
     DirectReturnBaseValue(DirectReturnClosedString(value)) =>
       inspect(value, content="done")
@@ -131,6 +145,120 @@ test "direct-return admission owns a result-fed leaf call plan" {
     is DirectReturnLeafParameterValue({ name: "x", index: 0, .. }) else {
     fail("expected the helper to return its sole parameter")
   }
+}
+
+///|
+test "direct-return admission owns a wrapped root invocation" {
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  let plan = match classify_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the wrapped result-fed direct-return shape")
+  }
+  guard plan.entry.syntax.recursive_completion
+    is DirectReturnRecursiveResultFedLeafCall(_) else {
+    fail("expected wrapper fixture to retain its result-fed completion")
+  }
+  guard plan.leaf is Some(_) else {
+    fail("expected wrapper fixture to retain its sealed helper")
+  }
+  match plan.root_invocation {
+    DirectReturnWrappedInvocation(wrapper) => {
+      inspect(wrapper.declaration_index, content="2")
+      inspect(wrapper.syntax.name, content="entry")
+      inspect(wrapper.syntax.entry_name, content="f")
+      inspect(wrapper.initial_argument, content="256")
+      guard wrapper.syntax.inner_call_loc != wrapper.outer_call_loc else {
+        fail("expected distinct inner and outer wrapper locations")
+      }
+    }
+    DirectReturnEntryInvocation(_) =>
+      fail("expected a sealed wrapped root invocation")
+  }
+}
+
+///|
+test "direct-return wrapped root balances the extra ordinary activation" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_WRAPPED_RESULT_FED_TEST_SOURCE,
+  )
+  match activation_dispatch_root_value(shell.drive_root_program(stmts, ctx)) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail("expected wrapped direct-return result, got " + other.to_string())
+  }
+  inspect(probe.attempts, content="514")
+  inspect(probe.acquired, content="514")
+  inspect(probe.accepted, content="514")
+  inspect(probe.rejected, content="0")
+  inspect(probe.released, content="514")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="258")
+  inspect(probe.release_ordinals.length(), content="514")
+  inspect(probe.lifo_violations, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "direct-return wrapped root preserves helper throw identity" {
+  let interp = Interpreter::new()
+  let result = try {
+    let _ = interp.run(
+      direct_return_test_program(DIRECT_RETURN_WRAPPED_RESULT_FED_THROW_SOURCE),
+    )
+    "no throw"
+  } catch {
+    JsException(String_(value)) => value
+    _ => "wrong throw"
+  }
+  inspect(result, content="done")
+}
+
+///|
+test "direct-return wrapped result-fed throw observes its helper activation" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_WRAPPED_RESULT_FED_THROW_SOURCE,
+  )
+  let result = try {
+    let _ = activation_dispatch_root_value(shell.drive_root_program(stmts, ctx))
+    "no throw"
+  } catch {
+    JsException(String_(value)) => value
+    _ => "wrong throw"
+  }
+  inspect(result, content="done")
+  inspect(probe.attempts, content="259")
+  inspect(probe.acquired, content="259")
+  inspect(probe.released, content="259")
+  inspect(probe.active, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "direct-return wrapped root routes a base leaf call" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_WRAPPED_BASE_LEAF_TEST_SOURCE,
+  )
+  match activation_dispatch_root_value(shell.drive_root_program(stmts, ctx)) {
+    String_(value) => inspect(value, content="done")
+    other => fail("expected wrapped base leaf result, got " + other.to_string())
+  }
+  expect_dispatch_observation_balanced(probe, 259)
+  inspect(shell.cleanup_stack.length(), content="0")
 }
 
 ///|
