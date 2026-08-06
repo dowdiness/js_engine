@@ -1,8 +1,8 @@
 # Activation continuation implementation notes
 
-Date: 2026-07-29. Revised 2026-08-06 after reconciling the notes with the
-result-fed ordinary direct-return plan in #817, following the ordered-argument
-plan in #815 under #800.
+Date: 2026-07-29. Revised 2026-08-06 after reconciling the notes with #608's
+mixed ordered-source direct-return slice, following the result-fed plan in
+#817 and the ordered-argument plan in #815 under #800.
 
 This note maps the accepted
 [activation and continuation contract](../decisions/engine-activation-continuation-contract.md)
@@ -164,9 +164,9 @@ replacement remain separate downstream work.
 
 ## Verification and maintenance
 
-The exact #616 programs, the retained-argument slice landed in #790, and the
-exact #809/#811/#813/#815/#817 ordinary direct-return programs supply
-end-to-end red-to-green evidence.
+The exact #616 programs, the retained-argument slice landed in #790, the exact
+#809/#811/#813/#815/#817 ordinary direct-return programs, and #608's mixed
+ordered-source slice supply end-to-end red-to-green evidence.
 Reducer tests separately cover deterministic transition, pathological
 continuation depth, handler/finalizer precedence, and one-time ownership. Shell
 tests cover effect order, runtime provenance, cleanup restoration, and adapter
