@@ -40,6 +40,12 @@ const DIRECT_RETURN_WRAPPED_RESULT_FED_THROW_SOURCE = "function id(x){throw x;}f
 const DIRECT_RETURN_WRAPPED_BASE_LEAF_TEST_SOURCE = "function id(){return \"done\";}function f(n){if(n===0)return id();return f(n-1);}function entry(){return f(256);}entry();"
 
 ///|
+const DIRECT_RETURN_WRAPPED_RECURSIVE_NAME_COLLISION_SOURCE = "function id(x){return x;}function entry(n){if(n===0)return \"done\";return id(entry(n-1));}function entry(){return entry(256);}entry();"
+
+///|
+const DIRECT_RETURN_WRAPPED_LEAF_NAME_COLLISION_SOURCE = "function entry(x){return x;}function f(n){if(n===0)return \"done\";return entry(f(n-1));}function entry(){return f(256);}entry();"
+
+///|
 test "direct-return admission recognizes the exact ordinary function shape" {
   let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
   let plan = match classify_direct_return_recursion_program(stmts) {
@@ -175,6 +181,30 @@ test "direct-return admission owns a wrapped root invocation" {
     }
     DirectReturnEntryInvocation(_) =>
       fail("expected a sealed wrapped root invocation")
+  }
+}
+
+///|
+test "direct-return wrapped root rejects a recursive-name collision" {
+  guard classify_direct_return_recursion_program(
+      direct_return_test_program(
+        DIRECT_RETURN_WRAPPED_RECURSIVE_NAME_COLLISION_SOURCE,
+      ),
+    )
+    is None else {
+    fail("RED: wrapper name collision with recursive entry was admitted")
+  }
+}
+
+///|
+test "direct-return wrapped root rejects a leaf-name collision" {
+  guard classify_direct_return_recursion_program(
+      direct_return_test_program(
+        DIRECT_RETURN_WRAPPED_LEAF_NAME_COLLISION_SOURCE,
+      ),
+    )
+    is None else {
+    fail("RED: wrapper name collision with leaf was admitted")
   }
 }
 

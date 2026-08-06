@@ -791,6 +791,7 @@ fn direct_return_wrapper_trusted_declaration(
   interp : Interpreter,
   plan : DirectReturnWrapperPlan,
   entry_plan : DirectReturnFunctionPlan,
+  leaf_plan : DirectReturnLeafPlan,
   previous_object~ : ObjectData?,
   expected_global_object~ : ObjectData,
   expected_realm_protos~ : FunctionRealmProtos,
@@ -809,6 +810,15 @@ fn direct_return_wrapper_trusted_declaration(
     )
   }
   let syntax = plan.syntax
+  guard direct_return_wrapper_name_is_distinct(
+    syntax.name,
+    entry_plan,
+    leaf_plan,
+  ) else {
+    invalid_activation_dispatch_shell(
+      "direct-return wrapper name collides with a sealed recursive or leaf declaration",
+    )
+  }
   guard interp.global.bindings.get(syntax.name) is Some(binding) &&
     binding.initialized &&
     binding.kind == VarBinding else {
@@ -848,6 +858,7 @@ fn direct_return_wrapper_trusted_declaration(
       stmts[plan.declaration_index],
       plan.declaration_index,
       entry_plan,
+      leaf_plan,
       plan.outer_call_loc,
     )
     is Some(actual_plan) &&
@@ -946,12 +957,20 @@ fn Interpreter::seal_direct_return_recursion_registry(
   }
   let root = match preflight.plan.root_invocation {
     DirectReturnEntryInvocation(_) => TrustedDirectReturnEntryRoot
-    DirectReturnWrappedInvocation(wrapper) =>
+    DirectReturnWrappedInvocation(wrapper) => {
+      let leaf_plan = match preflight.plan.leaf {
+        Some(plan) => plan
+        None =>
+          invalid_activation_dispatch_shell(
+            "direct-return wrapper root lost its sealed leaf plan",
+          )
+      }
       TrustedDirectReturnWrapperRoot(
         direct_return_wrapper_trusted_declaration(
           self,
           wrapper,
           preflight.plan.entry,
+          leaf_plan,
           previous_object=preflight.previous_wrapper_object,
           expected_global_object=preflight.expected_global_object,
           expected_realm_protos=preflight.expected_realm_protos,
@@ -959,6 +978,7 @@ fn Interpreter::seal_direct_return_recursion_registry(
           stmts~,
         ),
       )
+    }
   }
   TrustedDirectReturnRecursionRegistry(
     plan=preflight.plan,
@@ -1173,6 +1193,20 @@ fn TrustedDirectReturnRecursionRegistry::require_wrapper(
     direct_return_wrapper_plans_match(root_plan, wrapper.plan) else {
     invalid_activation_dispatch_shell(
       "direct-return registry lost its wrapper root-plan ownership",
+    )
+  }
+  let leaf_name_is_distinct = match self.plan.leaf {
+    Some(leaf) =>
+      direct_return_wrapper_name_is_distinct(
+        wrapper.plan.syntax.name,
+        self.plan.entry,
+        leaf,
+      )
+    None => false
+  }
+  guard leaf_name_is_distinct else {
+    invalid_activation_dispatch_shell(
+      "direct-return wrapper name collides with a sealed recursive or leaf declaration",
     )
   }
   guard interp.numeric_recursion_canonical_global_object()

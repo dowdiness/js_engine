@@ -602,15 +602,26 @@ fn classify_direct_return_function(
 }
 
 ///|
+fn direct_return_wrapper_name_is_distinct(
+  wrapper_name : String,
+  entry : DirectReturnFunctionPlan,
+  leaf : DirectReturnLeafPlan,
+) -> Bool {
+  wrapper_name != entry.syntax.name && wrapper_name != leaf.syntax.name
+}
+
+///|
 fn classify_direct_return_wrapper(
   stmt : @ast.Stmt,
   declaration_index : Int,
   entry : DirectReturnFunctionPlan,
+  leaf : DirectReturnLeafPlan,
   outer_call_loc : @token.Loc,
 ) -> DirectReturnWrapperPlan? {
   match stmt {
     @ast.FuncDecl(name, params, body, _, _) if name == "entry" => {
       guard direct_return_identifier_is_safe(name) &&
+        direct_return_wrapper_name_is_distinct(name, entry, leaf) &&
         params.is_empty() &&
         body.length() == 1 else {
         return None
@@ -757,7 +768,13 @@ fn classify_direct_return_recursion_program(
             _
           ) if root_name == "entry" => {
             let wrapper = match
-              classify_direct_return_wrapper(stmts[2], 2, entry, root_call_loc) {
+              classify_direct_return_wrapper(
+                stmts[2],
+                2,
+                entry,
+                leaf,
+                root_call_loc,
+              ) {
               Some(wrapper) => wrapper
               None => return None
             }
