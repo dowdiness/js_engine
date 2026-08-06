@@ -209,6 +209,9 @@ test "direct-return admission rejects two-helper order and shape drift" {
       "function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1),0));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",(inner)(f(n-1)));}f(256);",
+      "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(inner(f(n-1)));}f(256);",
+      "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(wrap(f(n-1))));}f(256);",
+      "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",this.inner(f(n-1)));}f(256);",
     ] {
     guard classify_direct_return_recursion_program(
         direct_return_test_program(source),

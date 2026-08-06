@@ -1,7 +1,7 @@
 // Closed composition admission for the exact numeric-plus-Array.map root. The
-// catalog is deliberately private: only the two sealed UserFunc adapters can
-// be selected, and no arbitrary callback or closure enters the production
-// driver through this seam.
+// catalog is deliberately private: only the sealed numeric, Array.map, and
+// direct-return UserFunc adapters can be selected, and no arbitrary callback
+// or closure enters the production driver through this seam.
 
 ///|
 priv enum DispatchManagedUserFuncAdapterToken {
