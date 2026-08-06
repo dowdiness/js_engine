@@ -1591,6 +1591,24 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 }
 
 ///|
+fn validate_direct_return_result_pipeline(
+  completion : DirectReturnRecursiveCompletion,
+  pipeline : DispatchResultPipeline?,
+) -> DispatchResultPipeline? raise InvalidActivationDispatchShell {
+  match completion {
+    DirectReturnRecursiveSelfCall => pipeline
+    DirectReturnRecursiveResultFedCallChain(_) =>
+      match pipeline {
+        Some(pipeline) => Some(pipeline)
+        None =>
+          invalid_activation_dispatch_shell(
+            "direct-return result-fed pipeline was not sealed",
+          )
+      }
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -1603,8 +1621,12 @@ fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
     preflight,
     cursor.stmts,
   )
+  let pipeline = validate_direct_return_result_pipeline(
+    registry.entry.syntax.recursive_completion,
+    direct_return_result_pipeline(registry),
+  )
   self.direct_return_registry = Some(registry)
-  self.direct_return_result_pipeline = direct_return_result_pipeline(registry)
+  self.direct_return_result_pipeline = pipeline
   DispatchProgramAccepted(DispatchActivationCleanup(id))
 }
 

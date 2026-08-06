@@ -445,7 +445,7 @@ fn dispatch_expression_plan_root_call_locs(
         match call.adapter {
           DispatchArrayMapUserFuncAdapterToken(_) =>
             locations.push(call.request.loc)
-          _ => ()
+          DispatchNumericUserFuncAdapterToken(_) => ()
         }
       DispatchExpressionNumericAdd(_) => ()
     }

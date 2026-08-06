@@ -65,6 +65,40 @@ fn dispatch_shell_test_expect_realm_cleared(interp : Interpreter) -> Unit raise 
 }
 
 ///|
+test "direct-return shell validates result pipeline at sealing" {
+  let loc = @token.Loc::default()
+  let chain = match
+    validate_direct_return_result_fed_call_chain_plan(calls=[
+      DirectReturnLeafCallPlan(callee_name="id", call_loc=loc, argument_sources=[
+        DirectReturnLeafCarriedResult(loc),
+      ]),
+    ]) {
+    Some(chain) => chain
+    None => fail("expected the valid result-fed completion")
+  }
+  let missing_pipeline = try {
+    let _ = validate_direct_return_result_pipeline(
+      DirectReturnRecursiveResultFedCallChain(chain),
+      None,
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  inspect(
+    missing_pipeline,
+    content="direct-return result-fed pipeline was not sealed",
+  )
+  let self_pipeline = validate_direct_return_result_pipeline(
+    DirectReturnRecursiveSelfCall,
+    None,
+  )
+  guard self_pipeline is None else {
+    fail("self-call completion should allow an absent result pipeline")
+  }
+}
+
+///|
 test "leaf program shell returns its last value and restores realm state" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 1)
