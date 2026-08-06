@@ -195,6 +195,64 @@ priv struct DirectReturnFunctionPlan {
 }
 
 ///|
+priv struct DirectReturnWrapperSyntax {
+  name : String
+  entry_name : String
+  inner_call_loc : @token.Loc
+  return_loc : @token.Loc
+}
+
+///|
+fn DirectReturnWrapperSyntax::DirectReturnWrapperSyntax(
+  name~ : String,
+  entry_name~ : String,
+  inner_call_loc~ : @token.Loc,
+  return_loc~ : @token.Loc,
+) -> DirectReturnWrapperSyntax {
+  { name, entry_name, inner_call_loc, return_loc }
+}
+
+///|
+priv struct DirectReturnWrapperPlan {
+  syntax : DirectReturnWrapperSyntax
+  declaration_index : Int
+  outer_call_loc : @token.Loc
+  initial_argument : Double
+}
+
+///|
+fn DirectReturnWrapperPlan::DirectReturnWrapperPlan(
+  syntax~ : DirectReturnWrapperSyntax,
+  declaration_index~ : Int,
+  outer_call_loc~ : @token.Loc,
+  initial_argument~ : Double,
+) -> DirectReturnWrapperPlan {
+  { syntax, declaration_index, outer_call_loc, initial_argument }
+}
+
+///|
+priv struct DirectReturnEntryRootPlan {
+  entry_name : String
+  call_loc : @token.Loc
+  initial_argument : Double
+}
+
+///|
+fn DirectReturnEntryRootPlan::DirectReturnEntryRootPlan(
+  entry_name~ : String,
+  call_loc~ : @token.Loc,
+  initial_argument~ : Double,
+) -> DirectReturnEntryRootPlan {
+  { entry_name, call_loc, initial_argument }
+}
+
+///|
+priv enum DirectReturnRootInvocation {
+  DirectReturnEntryInvocation(DirectReturnEntryRootPlan)
+  DirectReturnWrappedInvocation(DirectReturnWrapperPlan)
+}
+
+///|
 priv struct DirectReturnLeafPlan {
   syntax : DirectReturnLeafSyntax
   declaration_index : Int
@@ -220,18 +278,16 @@ fn DirectReturnFunctionPlan::DirectReturnFunctionPlan(
 priv struct DirectReturnRecursionPlan {
   entry : DirectReturnFunctionPlan
   leaf : DirectReturnLeafPlan?
-  initial_argument : Double
-  root_call_loc : @token.Loc
+  root_invocation : DirectReturnRootInvocation
 }
 
 ///|
 fn DirectReturnRecursionPlan::DirectReturnRecursionPlan(
   entry~ : DirectReturnFunctionPlan,
   leaf? : DirectReturnLeafPlan? = None,
-  initial_argument~ : Double,
-  root_call_loc~ : @token.Loc,
+  root_invocation~ : DirectReturnRootInvocation,
 ) -> DirectReturnRecursionPlan {
-  { entry, leaf, initial_argument, root_call_loc }
+  { entry, leaf, root_invocation }
 }
 
 ///|
@@ -546,10 +602,67 @@ fn classify_direct_return_function(
 }
 
 ///|
+fn direct_return_wrapper_name_is_distinct(
+  wrapper_name : String,
+  entry : DirectReturnFunctionPlan,
+  leaf : DirectReturnLeafPlan,
+) -> Bool {
+  wrapper_name != entry.syntax.name && wrapper_name != leaf.syntax.name
+}
+
+///|
+fn classify_direct_return_wrapper(
+  stmt : @ast.Stmt,
+  declaration_index : Int,
+  entry : DirectReturnFunctionPlan,
+  leaf : DirectReturnLeafPlan,
+  outer_call_loc : @token.Loc,
+) -> DirectReturnWrapperPlan? {
+  match stmt {
+    @ast.FuncDecl(name, params, body, _, _) if name == "entry" => {
+      guard direct_return_identifier_is_safe(name) &&
+        direct_return_wrapper_name_is_distinct(name, entry, leaf) &&
+        params.is_empty() &&
+        body.length() == 1 else {
+        return None
+      }
+      match body[0] {
+        @ast.ReturnStmt(
+          Some(
+            @ast.Call(
+              @ast.Ident(callee_name, _),
+              [@ast.NumberLit(argument, @token.LexForm::LexNormal, _)],
+              inner_call_loc
+            )
+          ),
+          return_loc
+        ) if callee_name == entry.syntax.name &&
+          argument == DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT =>
+          Some(
+            DirectReturnWrapperPlan(
+              syntax=DirectReturnWrapperSyntax(
+                name~,
+                entry_name=callee_name,
+                inner_call_loc~,
+                return_loc~,
+              ),
+              declaration_index~,
+              outer_call_loc~,
+              initial_argument=argument,
+            ),
+          )
+        _ => None
+      }
+    }
+    _ => None
+  }
+}
+
+///|
 fn classify_direct_return_recursion_program(
   stmts : Array[@ast.Stmt],
 ) -> DirectReturnRecursionPlan? {
-  let (entry, leaf, root_index) = match stmts.length() {
+  let (entry, leaf, root_invocation) = match stmts.length() {
     2 =>
       match classify_direct_return_function(stmts[0], 0) {
         Some(entry) => {
@@ -558,11 +671,39 @@ fn classify_direct_return_recursion_program(
             entry.syntax.recursive_completion is DirectReturnRecursiveSelfCall else {
             return None
           }
-          (entry, None, 1)
+          match stmts[1] {
+            @ast.ExprStmt(
+              @ast.Call(
+                @ast.Ident(root_name, _),
+                [
+                  @ast.NumberLit(
+                    argument,
+                    @token.LexForm::LexNormal,
+                    root_call_loc
+                  ),
+                ],
+                _
+              ),
+              _
+            ) if root_name == entry.syntax.name &&
+              argument == DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT =>
+              (
+                entry,
+                None,
+                DirectReturnEntryInvocation(
+                  DirectReturnEntryRootPlan(
+                    entry_name=root_name,
+                    call_loc=root_call_loc,
+                    initial_argument=argument,
+                  ),
+                ),
+              )
+            _ => return None
+          }
         }
         None => return None
       }
-    3 => {
+    3 | 4 => {
       guard classify_direct_return_leaf(stmts[0], 0) is Some(leaf) &&
         classify_direct_return_function(stmts[1], 1) is Some(entry) else {
         return None
@@ -590,30 +731,62 @@ fn classify_direct_return_recursion_program(
         leaf.syntax.parameters.length() == leaf_call.argument_sources.length() else {
         return None
       }
-      (entry, Some(leaf), 2)
+      if stmts.length() == 3 {
+        match stmts[2] {
+          @ast.ExprStmt(
+            @ast.Call(
+              @ast.Ident(root_name, _),
+              [
+                @ast.NumberLit(
+                  argument,
+                  @token.LexForm::LexNormal,
+                  root_call_loc
+                ),
+              ],
+              _
+            ),
+            _
+          ) if root_name == entry.syntax.name &&
+            argument == DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT =>
+            (
+              entry,
+              Some(leaf),
+              DirectReturnEntryInvocation(
+                DirectReturnEntryRootPlan(
+                  entry_name=root_name,
+                  call_loc=root_call_loc,
+                  initial_argument=argument,
+                ),
+              ),
+            )
+          _ => return None
+        }
+      } else {
+        match stmts[3] {
+          @ast.ExprStmt(
+            @ast.Call(@ast.Ident(root_name, _), [], root_call_loc),
+            _
+          ) if root_name == "entry" => {
+            let wrapper = match
+              classify_direct_return_wrapper(
+                stmts[2],
+                2,
+                entry,
+                leaf,
+                root_call_loc,
+              ) {
+              Some(wrapper) => wrapper
+              None => return None
+            }
+            (entry, Some(leaf), DirectReturnWrappedInvocation(wrapper))
+          }
+          _ => return None
+        }
+      }
     }
     _ => return None
   }
-  match stmts[root_index] {
-    @ast.ExprStmt(
-      @ast.Call(
-        @ast.Ident(root_name, _),
-        [@ast.NumberLit(argument, @token.LexForm::LexNormal, _)],
-        root_call_loc
-      ),
-      _
-    ) if root_name == entry.syntax.name &&
-      argument == DIRECT_RETURN_RECURSION_INITIAL_ARGUMENT =>
-      Some(
-        DirectReturnRecursionPlan(
-          entry~,
-          leaf~,
-          initial_argument=argument,
-          root_call_loc~,
-        ),
-      )
-    _ => None
-  }
+  Some(DirectReturnRecursionPlan(entry~, leaf~, root_invocation~))
 }
 
 ///|
