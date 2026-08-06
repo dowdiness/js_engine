@@ -1369,9 +1369,24 @@ test "normal call result resumes its caller once after child release" {
 }
 
 ///|
-test "result-fed leaf continuation defensively inserts the recursive result" {
+test "expression plan defensively inserts and consumes the recursive result" {
   let id = 1150
   let template_args = [Undefined]
+  let plan = DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("id"),
+          this_value=Undefined,
+          args=template_args,
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
+        name="id",
+        result_argument_index=Some(0),
+      ),
+    ),
+  ])
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let (running_value, value_decision) = reduce_activation_dispatch(
     running_root,
@@ -1379,16 +1394,8 @@ test "result-fed leaf continuation defensively inserts the recursive result" {
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchFeedDirectReturnLeafResult(
-            DispatchResultFedLeafCallResume(
-              call_template=DispatchCallRequest(
-                callee=String_("id"),
-                this_value=Undefined,
-                args=template_args,
-                loc=@token.Loc::default(),
-              ),
-              result_argument_index=0,
-            ),
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
           ),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
@@ -1397,7 +1404,7 @@ test "result-fed leaf continuation defensively inserts the recursive result" {
   )
   let value_ticket = match value_decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    _ => fail("expected result-fed continuation input work")
+    _ => fail("expected expression-plan continuation input work")
   }
   let (_, resume_decision) = reduce_activation_dispatch(
     running_value,
@@ -1409,115 +1416,105 @@ test "result-fed leaf continuation defensively inserts the recursive result" {
   match resume_decision {
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(request))) => {
       guard request.args is [String_("done")] else {
-        fail("expected the recursive result in the leaf argument slot")
+        fail("expected the recursive result in the helper argument slot")
       }
       inspect(dispatch_test_value_tag(template_args[0]), content="undefined")
     }
-    _ => fail("expected the result-fed leaf call activation")
+    _ => fail("expected the result-fed helper call activation")
   }
 }
 
 ///|
-test "result-fed leaf continuation bypasses helper activation for guest throw" {
+test "expression plan preserves abrupt result without entering helper" {
   let id = 1160
-  let template_args = [Undefined]
+  let plan = DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("id"),
+          this_value=Undefined,
+          args=[Undefined],
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
+        name="id",
+        result_argument_index=Some(0),
+      ),
+    ),
+  ])
   let thrown : Error = JsException(String_("boom"))
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
-  let (running_value, value_decision) = reduce_activation_dispatch(
+  let (running_value, decision) = reduce_activation_dispatch(
     running_root,
     DispatchEffectCompleted(
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchFeedDirectReturnLeafResult(
-            DispatchResultFedLeafCallResume(
-              call_template=DispatchCallRequest(
-                callee=String_("id"),
-                this_value=Undefined,
-                args=template_args,
-                loc=@token.Loc::default(),
-              ),
-              result_argument_index=0,
-            ),
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
           ),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
     ),
   )
-  let value_ticket = match value_decision {
+  let value_ticket = match decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("abrupt result-fed continuation must not enter a helper activation")
-    _ => fail("expected result-fed continuation input work")
+    _ => fail("expected expression-plan continuation input work")
   }
-  let (releasing, release_decision) = reduce_activation_dispatch(
+  let (_, release_decision) = reduce_activation_dispatch(
     running_value,
     DispatchEffectCompleted(
       value_ticket,
       DispatchWorkCompleted(DispatchThrow(thrown)),
     ),
   )
-  let release_ticket = match release_decision {
-    DispatchPerform(ticket, DispatchReleaseActivation(_, DispatchThrow(found))) => {
+  match release_decision {
+    DispatchPerform(_, DispatchReleaseActivation(_, DispatchThrow(found))) =>
       inspect(physical_equal(found, thrown), content="true")
-      ticket
-    }
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("guest throw must bypass the result-fed helper activation")
-    _ => fail("expected activation release for guest throw")
-  }
-  let (_, finish_decision) = reduce_activation_dispatch(
-    releasing,
-    DispatchEffectCompleted(release_ticket, DispatchCleanupCompleted),
-  )
-  match finish_decision {
-    DispatchFinish(DispatchThrow(found)) => {
-      inspect(physical_equal(found, thrown), content="true")
-      inspect(
-        dispatch_test_value_tag(dispatch_test_js_exception_value(found)),
-        content="boom",
-      )
-    }
-    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("cleanup must not enter the result-fed helper activation")
-    _ => fail("expected guest throw completion after cleanup")
+      fail("abrupt result must bypass helper activation")
+    _ => fail("expected activation release for abrupt result")
   }
 }
 
 ///|
-test "result-fed leaf continuation bypasses helper activation for runtime abrupt" {
+test "expression plan preserves runtime abrupt result without entering helper" {
   let id = 1170
-  let template_args = [Undefined]
+  let plan = DispatchExpressionPlan(steps=[
+    DispatchExpressionCall(
+      DispatchExpressionCallStep(
+        request=DispatchCallRequest(
+          callee=String_("id"),
+          this_value=Undefined,
+          args=[Undefined],
+          loc=@token.Loc::default(),
+        ),
+        adapter=DispatchDirectReturnUserFuncAdapterToken(String_("id"), "id"),
+        name="id",
+        result_argument_index=Some(0),
+      ),
+    ),
+  ])
   let runtime_error : Error = ExecutionControlError(Interrupted)
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
-  let (running_value, value_decision) = reduce_activation_dispatch(
+  let (running_value, decision) = reduce_activation_dispatch(
     running_root,
     DispatchEffectCompleted(
       root_ticket,
       DispatchWorkSuspended(
         DispatchSuspendContinue(
-          DispatchFeedDirectReturnLeafResult(
-            DispatchResultFedLeafCallResume(
-              call_template=DispatchCallRequest(
-                callee=String_("id"),
-                this_value=Undefined,
-                args=template_args,
-                loc=@token.Loc::default(),
-              ),
-              result_argument_index=0,
-            ),
+          DispatchContinueExpressionPlan(
+            DispatchExpressionPlanResume(plan~, next_index=0, values=[]),
           ),
           DispatchExecuteStatement(dispatch_test_statement_step(id + 3)),
         ),
       ),
     ),
   )
-  let value_ticket = match value_decision {
+  let value_ticket = match decision {
     DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
-    DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("abrupt result-fed continuation must not enter a helper activation")
-    _ => fail("expected result-fed continuation input work")
+    _ => fail("expected expression-plan continuation input work")
   }
   let (releasing, release_decision) = reduce_activation_dispatch(
     running_value,
@@ -1535,7 +1532,7 @@ test "result-fed leaf continuation bypasses helper activation for runtime abrupt
       ticket
     }
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("runtime abrupt must bypass the result-fed helper activation")
+      fail("runtime abrupt must bypass helper activation")
     _ => fail("expected activation release for runtime abrupt")
   }
   let (_, finish_decision) = reduce_activation_dispatch(
@@ -1546,7 +1543,7 @@ test "result-fed leaf continuation bypasses helper activation for runtime abrupt
     DispatchFinish(DispatchRuntimeAbrupt(found)) =>
       inspect(physical_equal(found, runtime_error), content="true")
     DispatchPerform(_, DispatchEnterActivation(DispatchCallActivation(_))) =>
-      fail("cleanup must not enter the result-fed helper activation")
+      fail("cleanup must not enter the runtime-abrupt helper activation")
     _ => fail("expected runtime abrupt completion after cleanup")
   }
 }
