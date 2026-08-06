@@ -92,6 +92,15 @@ const DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE =
   #|f(256);
 
 ///|
+const DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_CALL_SOURCE =
+  #|function leaf(ignored, value) { return value; }
+  #|function f(n) {
+  #|  if (n === 0) return "done";
+  #|  return leaf("ignored", f(n - 1));
+  #|}
+  #|f(256);
+
+///|
 const DIRECT_RETURN_WRAPPED_RESULT_FED_CALL_SOURCE =
   #|function id(x) { return x; }
   #|function f(n) {
@@ -106,6 +115,14 @@ test "external consumer: recursive result feeds a sealed ordinary call" {
   match run_value(DIRECT_RETURN_RESULT_FED_LEAF_CALL_SOURCE) {
     "done" => ()
     other => fail("expected result-fed direct return done, got " + other)
+  }
+}
+
+///|
+test "external consumer: recursive result preserves ordered closed arguments" {
+  match run_value(DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected mixed result-fed direct return done, got " + other)
   }
 }
 

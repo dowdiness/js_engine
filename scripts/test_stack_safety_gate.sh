@@ -136,6 +136,31 @@ grep -Fq 'Value::Number(263.0)' "$ROOT_DIR/interpreter/stack_safety_test.mbt" ||
 grep -Fq 'content="263"' "$CONSUMER_SUITE" ||
   fail 'external-consumer retained workload does not assert the exact result 263'
 
+require_mixed_ordered_argument_result_workload() {
+  local suite=$1
+  local label=$2
+  local assertion=$3
+  grep -Fq 'function leaf(ignored, value) { return value; }' "$suite" ||
+    fail "$label selected suite omits the mixed ordered-argument leaf source"
+  grep -Fq 'return leaf("ignored", f(n - 1));' "$suite" ||
+    fail "$label mixed workload does not preserve the closed/result source order"
+  grep -Fq 'f(256);' "$suite" ||
+    fail "$label mixed workload does not preserve the exact depth-256 root call"
+  grep -Fq "$assertion" "$suite" ||
+    fail "$label mixed workload omits the exact done assertion"
+  grep -Fq 'expected mixed result-fed direct return done, got' "$suite" ||
+    fail "$label mixed workload omits its exact done test evidence"
+}
+
+require_mixed_ordered_argument_result_workload \
+  "$ROOT_DIR/interpreter/stack_safety_test.mbt" \
+  'engine' \
+  'Value::String_("done")'
+require_mixed_ordered_argument_result_workload \
+  "$CONSUMER_SUITE" \
+  'external-consumer' \
+  '"done" => ()'
+
 for suite in \
   'interpreter/stack_safety_test.mbt' \
   'interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt' \
@@ -301,6 +326,18 @@ copy_fixture "$fixture"
 sed -i 's/Value::Number(263.0)/Value::Number(262.0)/' \
   "$fixture/interpreter/stack_safety_test.mbt"
 expect_fixture_failure "$fixture" 'missing-retained-result'
+
+fixture="$GATE_TMP_ROOT/missing-engine-mixed-ordered-source"
+copy_fixture "$fixture"
+sed -i '/return leaf("ignored", f(n - 1));/d' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-mixed-ordered-source'
+
+fixture="$GATE_TMP_ROOT/missing-facade-mixed-done-evidence"
+copy_fixture "$fixture"
+sed -i 's/expected mixed result-fed direct return done, got/expected changed result/' \
+  "$fixture/integration/external_consumer/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-facade-mixed-done-evidence'
 
 fixture="$GATE_TMP_ROOT/missing-aggregator"
 copy_fixture "$fixture"
