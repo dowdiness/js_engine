@@ -454,3 +454,34 @@ test "test-only allow rule does not mask production import" {
   )
   assert_true(stderr_lines.any(line => line == "unclassified imports:"))
 }
+
+///|
+test "direct-return result pipeline boundary rejects runtime coupling" {
+  let root = "_build/architecture-boundary-audit-direct-return-pipeline-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  let rel_path = "interpreter/runtime/activation_dispatch_result_pipeline.mbt"
+  write_file(root, rel_path, "fn start() -> Unit { () }")
+
+  let (stdout_lines, stderr_lines, code) = run_direct_return_result_pipeline_boundary(
+    root,
+  )
+  assert_eq(code, 0)
+  assert_eq(stderr_lines.length(), 0)
+  assert_true(
+    stdout_lines.any(line => {
+      line == "ok: direct-return result pipeline remains generic and pure"
+    }),
+  )
+
+  write_file(
+    root, rel_path, "fn start() -> Unit { let _ : SealedDirectReturnProgram? = None; () }",
+  )
+  let (_stdout_lines, forbidden_stderr, forbidden_code) = run_direct_return_result_pipeline_boundary(
+    root,
+  )
+  assert_eq(forbidden_code, 1)
+  assert_true(
+    forbidden_stderr.any(line => line == "- SealedDirectReturnProgram"),
+  )
+}

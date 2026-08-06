@@ -65,36 +65,38 @@ fn dispatch_shell_test_expect_realm_cleared(interp : Interpreter) -> Unit raise 
 }
 
 ///|
-test "direct-return shell validates result pipeline at sealing" {
-  let loc = @token.Loc::default()
-  let chain = match
-    validate_direct_return_result_fed_call_chain_plan(calls=[
-      DirectReturnLeafCallPlan(callee_name="id", call_loc=loc, argument_sources=[
-        DirectReturnLeafCarriedResult(loc),
-      ]),
-    ]) {
-    Some(chain) => chain
-    None => fail("expected the valid result-fed completion")
+test "sealed direct-return self-call exposes complete continuation" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(DIRECT_RETURN_TEST_SOURCE)
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected direct-return preflight")
   }
-  let missing_pipeline = try {
-    let _ = validate_direct_return_result_pipeline(
-      DirectReturnRecursiveResultFedCallChain(chain),
-      None,
-    )
-    "accepted"
-  } catch {
-    InvalidActivationDispatchShell(message) => message
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  match program.recursive_continuation() {
+    DispatchCompleteReturn => ()
+    _ => fail("expected direct self-call to complete its return")
   }
-  inspect(
-    missing_pipeline,
-    content="direct-return result-fed pipeline was not sealed",
+}
+
+///|
+test "sealed direct-return result-fed program exposes pipeline continuation" {
+  let interp = Interpreter::new()
+  let stmts = direct_return_test_program(
+    DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE,
   )
-  let self_pipeline = validate_direct_return_result_pipeline(
-    DirectReturnRecursiveSelfCall,
-    None,
-  )
-  guard self_pipeline is None else {
-    fail("self-call completion should allow an absent result pipeline")
+  let preflight = match
+    interp.preflight_dispatchable_direct_return_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected result-fed direct-return preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  match program.recursive_continuation() {
+    DispatchContinueResultPipeline(_) => ()
+    _ => fail("expected result-fed recursion to continue through its pipeline")
   }
 }
 
