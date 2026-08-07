@@ -140,3 +140,40 @@ test "changing-receiver admission rejects observable receiver shapes" {
     content="true",
   )
 }
+
+///|
+test "changing-receiver dispatch cleans up abrupt calls and supports reuse" {
+  let (interp, callee, receiver) = changing_receiver_fixture("next", "walk")
+  let first = interp.call_value(
+    callee,
+    receiver,
+    [Number(2.0)],
+    @token.Loc::default(),
+  )
+  inspect(first, content="2")
+
+  let control = ExecutionControl(
+    remaining_steps=4,
+    maximum_active_depth=10,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let abrupt = try {
+    let _ = interp.with_execution_control(control, () => {
+      interp.call_value(callee, receiver, [Number(2.0)], @token.Loc::default())
+    })
+    "completed"
+  } catch {
+    ExecutionControlError(ExecutionLimit) => "execution-limit"
+    _ => "unexpected-error"
+  }
+  inspect(abrupt, content="execution-limit")
+  inspect(control.active_depth(), content="0")
+
+  let second = interp.call_value(
+    callee,
+    receiver,
+    [Number(1.0)],
+    @token.Loc::default(),
+  )
+  inspect(second, content="1")
+}

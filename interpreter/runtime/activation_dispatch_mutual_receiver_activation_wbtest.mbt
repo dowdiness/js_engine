@@ -24,7 +24,7 @@ fn mutual_receiver_activation_test_fixture_for(
   )
   let shell = PrimitiveProgramDispatchShell(
     interp,
-    mutual_receiver_registry=Some(registry),
+    owned_receiver_call=Some(owned_mutual_receiver_call(registry)),
   )
   (interp, shell, registry)
 }
@@ -131,12 +131,14 @@ test "mutual receiver body observes five expression steps before cross-call" {
     let (cleanup, cursor) = mutual_receiver_activation_test_enter_root(
       shell, registry,
     )
-    let result = shell.execute_mutual_receiver_body_statement({
-      ctx: cursor.ctx,
-      stmt: cursor.stmts[1],
-      env: cursor.env,
-      index: 1,
-    }) catch {
+    let owned = match shell.owned_receiver_call {
+      Some(owned) => owned
+      None => fail("expected a mutual receiver owner")
+    }
+    let result = shell.execute_mutual_receiver_body_statement(
+      { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1 },
+      owned,
+    ) catch {
       InvalidActivationDispatchShell(message) =>
         fail(
           "mutual receiver body dispatch rejected trusted cursor: " + message,
@@ -217,7 +219,7 @@ fn mutual_receiver_probe_run(
     strict: false,
     current_generator: None,
   })
-  guard shell.mutual_receiver_registry is None else {
+  guard shell.owned_receiver_call is None else {
     fail("mutual receiver registry must be released after the root")
   }
   (activation_dispatch_root_value(completion), events)
