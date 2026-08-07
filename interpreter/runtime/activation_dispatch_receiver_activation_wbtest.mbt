@@ -29,7 +29,7 @@ fn receiver_activation_test_fixture() -> (
   let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
   let shell = PrimitiveProgramDispatchShell(
     interp,
-    receiver_registry=Some(registry),
+    owned_receiver_call=Some(owned_fixed_receiver_call(registry)),
   )
   (
     interp,
@@ -300,9 +300,13 @@ test "receiver body observes five expression steps before recursive call" {
     let (cleanup, cursor) = receiver_activation_test_enter(
       shell, plan, callee, receiver,
     )
+    let owned = match shell.owned_receiver_call {
+      Some(owned) => owned
+      None => fail("expected a fixed receiver owner")
+    }
     let result = shell.execute_receiver_body_statement(
       { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1 },
-      shell.require_receiver_registry(),
+      owned,
     ) catch {
       InvalidActivationDispatchShell(message) =>
         fail("receiver body dispatch rejected the trusted cursor: " + message)
