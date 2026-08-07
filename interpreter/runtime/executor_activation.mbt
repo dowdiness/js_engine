@@ -519,6 +519,14 @@ fn Interpreter::deliver_executor_activation_error(
 }
 
 ///|
+fn deliver_executor_activation_request_error(
+  frame : &ExecutorActivationFrame,
+  error : Error,
+) -> Unit raise Error {
+  frame.deliver_activation_completion(ExecutorActivationCompletionAbrupt(error))
+}
+
+///|
 fn direct_executor_constructor_with_data_prototype(
   ctor : Value,
 ) -> ExecutorCallableData? {
@@ -636,7 +644,7 @@ fn Interpreter::handle_executor_activation_step(
       match requested {
         Ok(_) => None
         Err(error) => {
-          self.deliver_executor_activation_error(stack, index, error)
+          deliver_executor_activation_request_error(frame, error)
           None
         }
       }
@@ -669,7 +677,7 @@ fn Interpreter::handle_executor_activation_step(
       match requested {
         Ok(_) => None
         Err(error) => {
-          self.deliver_executor_activation_error(stack, index, error)
+          deliver_executor_activation_request_error(frame, error)
           None
         }
       }
@@ -713,7 +721,7 @@ fn Interpreter::handle_executor_activation_step(
       match requested {
         Ok(_) => None
         Err(error) => {
-          self.deliver_executor_activation_error(stack, index, error)
+          deliver_executor_activation_request_error(frame, error)
           None
         }
       }
