@@ -26,6 +26,12 @@ pub enum ExecutorActivationCompletion {
 }
 
 ///|
+priv enum ExecutorActivationRequestOutcome {
+  ExecutorActivationRequestChild
+  ExecutorActivationRequestValue(Value)
+}
+
+///|
 pub fn executor_activation_completion_normal(
   value : Value,
 ) -> ExecutorActivationCompletion {
@@ -527,6 +533,21 @@ fn deliver_executor_activation_request_error(
 }
 
 ///|
+fn deliver_executor_activation_request(
+  frame : &ExecutorActivationFrame,
+  requested : Result[ExecutorActivationRequestOutcome, Error],
+) -> Unit raise Error {
+  match requested {
+    Ok(ExecutorActivationRequestChild) => ()
+    Ok(ExecutorActivationRequestValue(value)) =>
+      frame.deliver_activation_completion(
+        ExecutorActivationCompletionNormal(value),
+      )
+    Err(error) => deliver_executor_activation_request_error(frame, error)
+  }
+}
+
+///|
 fn direct_executor_constructor_with_data_prototype(
   ctor : Value,
 ) -> ExecutorCallableData? {
@@ -602,7 +623,7 @@ fn Interpreter::handle_executor_activation_step(
         None
       }
     ExecutorActivationCall(request) => {
-      let requested : Result[Unit, Error] = Ok(
+      let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         {
           let (forwarded_callee, forwarded_this_value, forwarded_args) = self.resolve_call_forwarding(
             request.callee,
@@ -624,35 +645,29 @@ fn Interpreter::handle_executor_activation_step(
                   None,
                 ),
               )
+              ExecutorActivationRequestChild
             }
-            _ => {
-              let value = self.call_value(
-                forwarded_callee,
-                forwarded_this_value,
-                forwarded_args,
-                request.loc,
+            _ =>
+              ExecutorActivationRequestValue(
+                self.call_value(
+                  forwarded_callee,
+                  forwarded_this_value,
+                  forwarded_args,
+                  request.loc,
+                ),
               )
-              frame.deliver_activation_completion(
-                ExecutorActivationCompletionNormal(value),
-              )
-            }
           }
         },
       ) catch {
         error => Err(error)
       }
-      match requested {
-        Ok(_) => None
-        Err(error) => {
-          deliver_executor_activation_request_error(frame, error)
-          None
-        }
-      }
+      deliver_executor_activation_request(frame, requested)
+      None
     }
     ExecutorActivationConstruct(request) => {
-      let requested : Result[Unit, Error] = Ok(
+      let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         match direct_executor_constructor_with_data_prototype(request.ctor) {
-          Some(executable) =>
+          Some(executable) => {
             stack.push(
               self.start_executor_activation(
                 executable,
@@ -660,30 +675,21 @@ fn Interpreter::handle_executor_activation_step(
                 None,
               ),
             )
-          None => {
-            let value = self.construct_value(
-              request.ctor,
-              request.args,
-              request.loc,
-            )
-            frame.deliver_activation_completion(
-              ExecutorActivationCompletionNormal(value),
-            )
+            ExecutorActivationRequestChild
           }
+          None =>
+            ExecutorActivationRequestValue(
+              self.construct_value(request.ctor, request.args, request.loc),
+            )
         },
       ) catch {
         error => Err(error)
       }
-      match requested {
-        Ok(_) => None
-        Err(error) => {
-          deliver_executor_activation_request_error(frame, error)
-          None
-        }
-      }
+      deliver_executor_activation_request(frame, requested)
+      None
     }
     ExecutorActivationPropertyGet(request) => {
-      let requested : Result[Unit, Error] = Ok(
+      let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         match
           direct_executor_property_getter(request.target, request.property_name) {
           Some((getter, executable)) => {
@@ -703,28 +709,22 @@ fn Interpreter::handle_executor_activation_step(
                 Some(property_scope),
               ),
             )
+            ExecutorActivationRequestChild
           }
-          None => {
-            let value = self.get_property(
-              request.target,
-              request.property_name,
-              request.loc,
+          None =>
+            ExecutorActivationRequestValue(
+              self.get_property(
+                request.target,
+                request.property_name,
+                request.loc,
+              ),
             )
-            frame.deliver_activation_completion(
-              ExecutorActivationCompletionNormal(value),
-            )
-          }
         },
       ) catch {
         error => Err(error)
       }
-      match requested {
-        Ok(_) => None
-        Err(error) => {
-          deliver_executor_activation_request_error(frame, error)
-          None
-        }
-      }
+      deliver_executor_activation_request(frame, requested)
+      None
     }
   }
 }

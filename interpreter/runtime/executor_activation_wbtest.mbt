@@ -109,6 +109,14 @@ priv struct ExecutorActivationRecoverRequestFrame {
 }
 
 ///|
+priv struct ExecutorActivationDeliveryErrorFrame {
+  request : ExecutorActivationRecoverRequest
+  expected : Error
+  delivery_count : Ref[Int]
+  mut requested : Bool
+}
+
+///|
 priv struct ExecutorActivationPropertyGetFrame {
   target : Value
   property_name : String
@@ -168,6 +176,15 @@ fn ExecutorActivationRecoverRequestFrame::ExecutorActivationRecoverRequestFrame(
   expected~ : Error,
 ) -> ExecutorActivationRecoverRequestFrame {
   { request, expected, requested: false, result: None, abrupt: None }
+}
+
+///|
+fn ExecutorActivationDeliveryErrorFrame::ExecutorActivationDeliveryErrorFrame(
+  request~ : ExecutorActivationRecoverRequest,
+  expected~ : Error,
+  delivery_count~ : Ref[Int],
+) -> ExecutorActivationDeliveryErrorFrame {
+  { request, expected, delivery_count, requested: false }
 }
 
 ///|
@@ -738,6 +755,43 @@ impl ExecutorActivationFrame for ExecutorActivationRecoverRequestFrame with fn d
 }
 
 ///|
+impl ExecutorActivationFrame for ExecutorActivationDeliveryErrorFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    match self.request {
+      RecoverCall(callee) =>
+        executor_activation_call(callee, Undefined, [], @token.Loc::default())
+      RecoverConstruct(ctor) =>
+        executor_activation_construct(ctor, [], @token.Loc::default())
+      RecoverProperty(target) =>
+        executor_activation_property_get(target, "x", @token.Loc::default())
+    }
+  } else {
+    raise @errors.InternalError(
+      message="delivery error frame resumed after a delivery failure",
+    )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationDeliveryErrorFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  self.delivery_count.val += 1
+  match completion {
+    ExecutorActivationCompletionNormal(_) => raise self.expected
+    ExecutorActivationCompletionAbrupt(_) =>
+      raise @errors.InternalError(
+        message="delivery error frame received an abrupt completion",
+      )
+  }
+}
+
+///|
 impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn step(
   self,
   _interp,
@@ -887,6 +941,63 @@ test "executor function retains an inspectable neutral payload before entry" {
     }
     _ => fail("executor code must remain available as a neutral payload")
   }
+}
+
+///|
+fn assert_executor_activation_delivery_error(
+  request : ExecutorActivationRecoverRequest,
+  sentinel : Error,
+) -> Unit raise {
+  let interp = Interpreter::new()
+  let delivery_count : Ref[Int] = { val: 0 }
+  let root = ExecutorActivationDeliveryErrorFrame(
+      request~,
+      expected=sentinel,
+      delivery_count~,
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("expected normal completion delivery to raise")
+  }
+  inspect(delivery_count.val, content="1")
+}
+
+///|
+test "activation coordinator does not redeliver fallback completion failures" {
+  let call = make_native_func(name="normal-call", _args => Number(1.0))
+  assert_executor_activation_delivery_error(
+    RecoverCall(call),
+    @errors.RangeError(message="call delivery sentinel"),
+  )
+  let ctor = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      ConstructorOnlyCallable("normal-construct", fn(_interp, _args) {
+        Number(2.0)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  assert_executor_activation_delivery_error(
+    RecoverConstruct(ctor),
+    @errors.RangeError(message="construct delivery sentinel"),
+  )
+  let getter = make_native_func(name="normal-property", _args => Number(3.0))
+  let target = make_direct_property_getter_target(getter, None)
+  assert_executor_activation_delivery_error(
+    RecoverProperty(target),
+    @errors.RangeError(message="property delivery sentinel"),
+  )
 }
 
 ///|
