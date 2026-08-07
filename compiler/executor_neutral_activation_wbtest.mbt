@@ -1951,6 +1951,23 @@ test "executor-neutral mixed bytecode to tree call preserves return" {
 }
 
 ///|
+test "mixed bytecode and tree calls complete at deep finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let tree = @parser.parse(
+    "function treeStep(n) { " +
+    "if (n === 0) return 0; return bytecodeStep(n - 1) + 1; }",
+  )
+  let _ = interp.run(tree.stmts)
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "function bytecodeStep(n) { " +
+    "if (n === 0) return 0; return treeStep(n - 1) + 1; } " +
+    "bytecodeStep(2000);",
+  )
+  inspect(result.to_string(), content="2000")
+}
+
+///|
 test "executor-neutral foreign realm receiver call preserves this" {
   let callee_interp = @interpreter.new_interpreter()
   let caller_interp = @interpreter.new_interpreter()
