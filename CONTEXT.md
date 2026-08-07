@@ -73,7 +73,8 @@ _Avoid_: Flaky pass, retry-qualified success, partial matrix success
 
 **Restoration-Compatible Change**:
 A private deepening of the existing execution module for a General Operation
-Slice that leaves the root interface, dependencies, executor selection, and
-JavaScript behavior unchanged. It does not make bytecode mandatory or expose
-tree-walker-specific execution types to bytecode.
+Slice that preserves the root facade interface, dependencies, executor
+selection, and the specified JavaScript semantics outside that failing Slice.
+It may correct behavior within the Slice. It does not make bytecode mandatory
+or expose tree-walker-specific execution types to bytecode.
 _Avoid_: Public restoration interface, executor switch, shared recipe VM

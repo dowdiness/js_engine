@@ -53,11 +53,13 @@ and no retry. Timeout, crash, or failed assertion rejects readiness. Rough.js
 uses the former adapter's fixed seed so the structural path oracle is
 deterministic; a later successful retry cannot replace a failed recorded cell.
 
-Any production fix must remain private to the existing execution module. It may
-not change the root facade interface, dependencies, executor selection, or
-JavaScript behavior; make bytecode execution mandatory; or share private
-tree-walker recipe types with bytecode. The enduring value of the change must be
-the deeper general operation implementation, not a new restoration interface.
+Any production fix must remain private to the existing execution module. It
+must preserve the root facade interface, dependencies, executor selection, and
+the specified JavaScript semantics outside the failing General Operation Slice;
+it may correct behavior within that Slice. It may not make bytecode execution
+mandatory or share private tree-walker recipe types with bytecode. The enduring
+value of the change must be the deeper general operation implementation, not a
+new restoration interface.
 
 Each General Operation Slice will deepen the existing dispatcher rather than
 introduce a parallel execution mechanism. Its deterministic core will express
