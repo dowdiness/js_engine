@@ -1053,6 +1053,40 @@ pub fn Interpreter::call_value(
     callee, this_val, args,
   )
   match
+    self.preflight_changing_receiver_call(
+      current_callee, current_this_val, current_args, loc,
+    ) {
+    Some(preflight) => {
+      let registry = self.seal_changing_receiver_registry(
+        preflight, current_callee, current_this_val, current_args, loc,
+      )
+      let completion = self.run_activation_dispatch_changing_receiver_call(
+        DispatchCallRequest(
+          callee=current_callee,
+          this_value=current_this_val,
+          args=current_args,
+          loc~,
+        ),
+        registry,
+      )
+      return activation_dispatch_root_value(completion) catch {
+        ExecutionControlError(StackDepthLimit) as depth_error => {
+          let translated = JsException(
+            js_error_to_value_with_env(depth_error, Some(self.global)),
+          )
+          remap_observed_source_failure(
+            self.realm_state,
+            depth_error,
+            translated,
+          )
+          raise translated
+        }
+        error => raise error
+      }
+    }
+    None => ()
+  }
+  match
     self.preflight_direct_numeric_recursion_call(
       current_callee, current_this_val, current_args, loc,
     ) {

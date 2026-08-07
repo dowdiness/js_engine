@@ -301,6 +301,7 @@ priv struct PrimitiveProgramDispatchShell {
   receiver_root_preflight : ReceiverRecursionPreflight?
   receiver_root_stmts : Array[@ast.Stmt]?
   mut receiver_registry : TrustedReceiverRecursionRegistry?
+  mut changing_receiver_registry : TrustedChangingReceiverRegistry?
   mutual_receiver_root_preflight : MutualReceiverRecursionPreflight?
   mutual_receiver_root_stmts : Array[@ast.Stmt]?
   mut mutual_receiver_registry : TrustedMutualReceiverRecursionRegistry?
@@ -341,6 +342,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   receiver_root_preflight? : ReceiverRecursionPreflight? = None,
   receiver_root_stmts? : Array[@ast.Stmt]? = None,
   receiver_registry? : TrustedReceiverRecursionRegistry? = None,
+  changing_receiver_registry? : TrustedChangingReceiverRegistry? = None,
   mutual_receiver_root_preflight? : MutualReceiverRecursionPreflight? = None,
   mutual_receiver_root_stmts? : Array[@ast.Stmt]? = None,
   mutual_receiver_registry? : TrustedMutualReceiverRecursionRegistry? = None,
@@ -382,6 +384,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     receiver_root_preflight,
     receiver_root_stmts: receiver_root_stmts.map(stmts => stmts.copy()),
     receiver_registry,
+    changing_receiver_registry,
     mutual_receiver_root_preflight,
     mutual_receiver_root_stmts: mutual_receiver_root_stmts.map(stmts => {
       stmts.copy()
@@ -942,8 +945,13 @@ fn PrimitiveProgramDispatchShell::start_receiver_call(
   request : DispatchCallRequest,
   continuation : DispatchContinuation,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  match (self.receiver_registry, self.mutual_receiver_registry) {
-    (Some(registry), None) => {
+  match
+    (
+      self.receiver_registry,
+      self.changing_receiver_registry,
+      self.mutual_receiver_registry,
+    ) {
+    (Some(registry), None, None) => {
       let _ = registry.require_call(
         self.interp,
         request.callee,
@@ -951,7 +959,15 @@ fn PrimitiveProgramDispatchShell::start_receiver_call(
         request.args,
       )
     }
-    (None, Some(registry)) => {
+    (None, Some(registry), None) => {
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+      )
+    }
+    (None, None, Some(registry)) => {
       let _ = registry.require_call(
         self.interp,
         request.callee,
@@ -1140,6 +1156,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
     }
     DispatchReceiverRootRealmCleanup(previous_realm_protos) => {
       self.receiver_registry = None
+      self.changing_receiver_registry = None
       self.mutual_receiver_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
@@ -2521,19 +2538,43 @@ fn PrimitiveProgramDispatchShell::enter_receiver_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let registry = self.require_receiver_registry()
-  guard request.loc == registry.plan.recipe.root_member_loc ||
-    request.loc == registry.plan.recipe.recursive_call_loc else {
-    invalid_activation_dispatch_shell(
-      "receiver activation call location escaped the sealed syntax recipe",
-    )
+  let throw_type_error = match
+    (self.receiver_registry, self.changing_receiver_registry) {
+    (Some(registry), None) => {
+      guard request.loc == registry.plan.recipe.root_member_loc ||
+        request.loc == registry.plan.recipe.recursive_call_loc else {
+        invalid_activation_dispatch_shell(
+          "receiver activation call location escaped the sealed syntax recipe",
+        )
+      }
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+      )
+      registry.throw_type_error
+    }
+    (None, Some(registry)) => {
+      guard request.loc == registry.root_call_loc ||
+        request.loc == registry.function.plan.recursive_call_loc else {
+        invalid_activation_dispatch_shell(
+          "changing-receiver call location escaped the lowered plan",
+        )
+      }
+      let _ = registry.require_call(
+        self.interp,
+        request.callee,
+        request.this_value,
+        request.args,
+      )
+      registry.throw_type_error
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "receiver activation requires exactly one sealed receiver registry",
+      )
   }
-  let _ = registry.require_call(
-    self.interp,
-    request.callee,
-    request.this_value,
-    request.args,
-  )
   guard request.args.length() == 1 else {
     invalid_activation_dispatch_shell(
       "receiver activation requires exactly one argument",
@@ -2567,9 +2608,7 @@ fn PrimitiveProgramDispatchShell::enter_receiver_call(
       request.this_value,
       request.args,
       data,
-      throw_type_error_source=UsePreResolvedThrowTypeError(
-        registry.throw_type_error,
-      ),
+      throw_type_error_source=UsePreResolvedThrowTypeError(throw_type_error),
     ),
   ) catch {
     error => Err(error)
@@ -2869,18 +2908,25 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
       self.getter_registry,
       self.proxy_registry,
       self.receiver_registry,
+      self.changing_receiver_registry,
       self.mutual_receiver_registry,
       self.array_map_registry,
     ) {
-    (Some(_), None, None, None, None, None) => self.enter_numeric_call(request)
-    (None, Some(_), None, None, None, None) => self.enter_getter_call(request)
-    (None, None, Some(_), None, None, None) => self.enter_proxy_call(request)
-    (None, None, None, Some(_), None, None) => self.enter_receiver_call(request)
-    (None, None, None, None, Some(_), None) =>
+    (Some(_), None, None, None, None, None, None) =>
+      self.enter_numeric_call(request)
+    (None, Some(_), None, None, None, None, None) =>
+      self.enter_getter_call(request)
+    (None, None, Some(_), None, None, None, None) =>
+      self.enter_proxy_call(request)
+    (None, None, None, Some(_), None, None, None) =>
+      self.enter_receiver_call(request)
+    (None, None, None, None, Some(_), None, None) =>
+      self.enter_receiver_call(request)
+    (None, None, None, None, None, Some(_), None) =>
       self.enter_mutual_receiver_call(request)
-    (None, None, None, None, None, Some(_)) =>
+    (None, None, None, None, None, None, Some(_)) =>
       self.enter_array_map_call(request)
-    (None, None, None, None, None, None) =>
+    (None, None, None, None, None, None, None) =>
       invalid_activation_dispatch_shell(
         "managed call requires one sealed runtime registry",
       )
@@ -3672,6 +3718,74 @@ fn PrimitiveProgramDispatchShell::execute_receiver_body_statement(
     _ =>
       invalid_activation_dispatch_shell(
         "receiver body statement index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_changing_receiver_body_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  registry : TrustedChangingReceiverRegistry,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let function = registry.function
+  let plan = function.plan
+  guard step.index < function.body.length() &&
+    physical_equal(step.stmt, function.body[step.index]) &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, function.closure) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.env.bindings.get("this") is Some(this_binding) &&
+    this_binding.initialized else {
+    invalid_activation_dispatch_shell(
+      "changing-receiver body lost its activation provenance",
+    )
+  }
+  let depth = receiver_recursion_parameter_value(step.env, plan.parameter)
+  let call_args = [Number(depth)]
+  let _ = registry.require_call(
+    self.interp,
+    function.callee,
+    this_binding.value,
+    call_args,
+  )
+  match step.index {
+    0 => self.execute_statement_with_legacy_adapter(step)
+    1 => {
+      match self.observe_managed_execution_steps(6) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let next = registry.next_receiver(
+        self.interp,
+        this_binding.value,
+        call_args,
+      )
+      let request = DispatchCallRequest(
+        callee=function.callee,
+        this_value=next,
+        args=[Number(depth - NUMERIC_RECURSION_STEP)],
+        loc=plan.recursive_call_loc,
+      )
+      let binary = DispatchBinaryResume(
+        op=@ast.Add,
+        left=Number(NUMERIC_RECURSION_STEP),
+        loc=plan.recursive_add_loc,
+      )
+      DispatchWorkSuspended(
+        DispatchSuspendContinueProduction(
+          DispatchCompleteReturn,
+          DispatchReceiverStartCall(
+            request,
+            DispatchApplyPropertyBinaryRight(binary),
+          ),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "changing-receiver body statement is outside the lowered plan",
       )
   }
 }
@@ -4474,6 +4588,11 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
       }
     None => ()
   }
+  match self.changing_receiver_registry {
+    Some(registry) =>
+      return self.execute_changing_receiver_body_statement(step, registry)
+    None => ()
+  }
   if activation_dispatch_leaf_statement_is_admissible(step.stmt) {
     return self.execute_statement_with_legacy_adapter(step)
   }
@@ -5045,6 +5164,27 @@ fn Interpreter::run_activation_dispatch_numeric_call(
     )
   }
   shell.numeric_registry = None
+  completion
+}
+
+///|
+fn Interpreter::run_activation_dispatch_changing_receiver_call(
+  self : Interpreter,
+  request : DispatchCallRequest,
+  registry : TrustedChangingReceiverRegistry,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    changing_receiver_registry=Some(registry),
+    activation_observation_port=self.execution_control_activation_observation_port(),
+  )
+  let completion = shell.drive_root_call(request)
+  guard shell.changing_receiver_registry is Some(_) else {
+    invalid_activation_dispatch_shell(
+      "changing-receiver registry was released by a non-root activation",
+    )
+  }
+  shell.changing_receiver_registry = None
   completion
 }
 
