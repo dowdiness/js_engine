@@ -150,9 +150,9 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
 }
 
 ///|
-impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activation_result(
+impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activation_completion(
   self,
-  value,
+  completion,
 ) {
   let destination = match self.pending_activation_result {
     Some(destination) => destination
@@ -162,12 +162,16 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
       )
   }
   self.pending_activation_result = None
-  match destination {
-    PushValue => self.stack.push(value)
-    PushReceiverAndValue(receiver) => {
-      self.stack.push(receiver)
-      self.stack.push(value)
-    }
+  match completion {
+    @runtime.ExecutorActivationCompletionNormal(value) =>
+      match destination {
+        PushValue => self.stack.push(value)
+        PushReceiverAndValue(receiver) => {
+          self.stack.push(receiver)
+          self.stack.push(value)
+        }
+      }
+    @runtime.ExecutorActivationCompletionAbrupt(error) => raise error
   }
 }
 

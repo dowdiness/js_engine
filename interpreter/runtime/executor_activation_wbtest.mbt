@@ -59,6 +59,19 @@ priv struct ExecutorActivationCallCode {
 }
 
 ///|
+priv enum ExecutorActivationRecoverRequest {
+  RecoverCall(Value)
+  RecoverConstruct(Value)
+  RecoverProperty(Value)
+}
+
+///|
+priv struct ExecutorActivationRecoverCode {
+  request : ExecutorActivationRecoverRequest
+  expected : Error
+}
+
+///|
 priv struct ExecutorActivationCallFrame {
   callee : Value
   this_value : Value
@@ -66,6 +79,50 @@ priv struct ExecutorActivationCallFrame {
   loc : @token.Loc
   mut requested : Bool
   mut result : Value?
+}
+
+///|
+priv struct ExecutorActivationConstructFrame {
+  ctor : Value
+  args : Array[Value]
+  loc : @token.Loc
+  mut requested : Bool
+  mut result : Value?
+}
+
+///|
+priv struct ExecutorActivationRecoverFrame {
+  callee : Value
+  expected : Error
+  mut requested : Bool
+  mut result : Value?
+  mut abrupt : Error?
+}
+
+///|
+priv struct ExecutorActivationRecoverRequestFrame {
+  request : ExecutorActivationRecoverRequest
+  expected : Error
+  mut requested : Bool
+  mut result : Value?
+  mut abrupt : Error?
+}
+
+///|
+priv struct ExecutorActivationDeliveryErrorFrame {
+  request : ExecutorActivationRecoverRequest
+  expected : Error
+  delivery_count : Ref[Int]
+  mut requested : Bool
+}
+
+///|
+priv struct ExecutorActivationCleanupObservationFrame {
+  callee : Value
+  expected : Error
+  events : Array[String]
+  mut requested : Bool
+  mut delivered : Bool
 }
 
 ///|
@@ -88,6 +145,14 @@ fn ExecutorActivationCallCode::ExecutorActivationCallCode(
 }
 
 ///|
+fn ExecutorActivationRecoverCode::ExecutorActivationRecoverCode(
+  request~ : ExecutorActivationRecoverRequest,
+  expected~ : Error,
+) -> ExecutorActivationRecoverCode {
+  { request, expected }
+}
+
+///|
 fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
   callee~ : Value,
   this_value~ : Value,
@@ -95,6 +160,49 @@ fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
   loc~ : @token.Loc,
 ) -> ExecutorActivationCallFrame {
   { callee, this_value, args: args.copy(), loc, requested: false, result: None }
+}
+
+///|
+fn ExecutorActivationConstructFrame::ExecutorActivationConstructFrame(
+  ctor~ : Value,
+  args~ : Array[Value],
+  loc~ : @token.Loc,
+) -> ExecutorActivationConstructFrame {
+  { ctor, args: args.copy(), loc, requested: false, result: None }
+}
+
+///|
+fn ExecutorActivationRecoverFrame::ExecutorActivationRecoverFrame(
+  callee~ : Value,
+  expected~ : Error,
+) -> ExecutorActivationRecoverFrame {
+  { callee, expected, requested: false, result: None, abrupt: None }
+}
+
+///|
+fn ExecutorActivationRecoverRequestFrame::ExecutorActivationRecoverRequestFrame(
+  request~ : ExecutorActivationRecoverRequest,
+  expected~ : Error,
+) -> ExecutorActivationRecoverRequestFrame {
+  { request, expected, requested: false, result: None, abrupt: None }
+}
+
+///|
+fn ExecutorActivationDeliveryErrorFrame::ExecutorActivationDeliveryErrorFrame(
+  request~ : ExecutorActivationRecoverRequest,
+  expected~ : Error,
+  delivery_count~ : Ref[Int],
+) -> ExecutorActivationDeliveryErrorFrame {
+  { request, expected, delivery_count, requested: false }
+}
+
+///|
+fn ExecutorActivationCleanupObservationFrame::ExecutorActivationCleanupObservationFrame(
+  callee~ : Value,
+  expected~ : Error,
+  events~ : Array[String],
+) -> ExecutorActivationCleanupObservationFrame {
+  { callee, expected, events, requested: false, delivered: false }
 }
 
 ///|
@@ -181,6 +289,7 @@ fn install_executor_activation_probe(
   interp : Interpreter,
   events : Array[String],
   reject : Error?,
+  control? : ExecutionControl? = None,
 ) -> Unit {
   let observer = make_object(
     Map([]),
@@ -195,6 +304,14 @@ fn install_executor_activation_probe(
               "outer"
             }
             events.push("attempt:" + realm)
+            match control {
+              Some(control) =>
+                match control.observe_activation() {
+                  Ok(_) => ()
+                  Err(failure) => raise ExecutionControlError(failure)
+                }
+              None => ()
+            }
             match reject {
               Some(error) => raise error
               None => Undefined
@@ -207,6 +324,14 @@ fn install_executor_activation_probe(
               "outer"
             }
             events.push("release:" + realm)
+            match control {
+              Some(control) =>
+                match control.release_activation() {
+                  Ok(_) => ()
+                  Err(failure) => raise ExecutionControlError(failure)
+                }
+              None => ()
+            }
             Undefined
           }
           _ => Undefined
@@ -444,9 +569,9 @@ impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn deliver_activation_completion(
   _self,
-  _value,
+  _completion,
 ) {
   ()
 }
@@ -495,6 +620,19 @@ impl ExecutorCode for ExecutorActivationCallCode with fn start(
 }
 
 ///|
+impl ExecutorCode for ExecutorActivationRecoverCode with fn start(
+  self,
+  _interp,
+  _prepared,
+) {
+  ExecutorActivationRecoverRequestFrame(
+    request=self.request,
+    expected=self.expected,
+  )
+  as &ExecutorActivationFrame
+}
+
+///|
 impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn step(
   self,
   _interp,
@@ -514,16 +652,224 @@ impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_activation_completion(
   self,
-  value,
+  completion,
 ) {
   guard self.requested && self.result is None else {
     raise @errors.InternalError(
       message="test call frame received a duplicate result",
     )
   }
-  self.result = Some(value)
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationConstructFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_construct(self.ctor, self.args, self.loc)
+  } else {
+    match self.result {
+      Some(value) => executor_activation_return(value)
+      None =>
+        raise @errors.InternalError(
+          message="test construct frame resumed without a result",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationConstructFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  guard self.requested && self.result is None else {
+    raise @errors.InternalError(
+      message="test construct frame received a duplicate completion",
+    )
+  }
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_call(self.callee, Undefined, [], @token.Loc::default())
+  } else {
+    match (self.result, self.abrupt) {
+      (None, Some(error)) if physical_equal(error, self.expected) =>
+        executor_activation_return(Number(9.0))
+      (Some(_), None) =>
+        raise @errors.InternalError(
+          message="recovering frame received a value instead of an abrupt completion",
+        )
+      _ =>
+        raise @errors.InternalError(
+          message="recovering frame resumed without one child completion",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  guard self.requested && self.result is None && self.abrupt is None else {
+    raise @errors.InternalError(
+      message="recovering frame received a duplicate completion",
+    )
+  }
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => self.abrupt = Some(error)
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecoverRequestFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    match self.request {
+      RecoverCall(callee) =>
+        executor_activation_call(callee, Undefined, [], @token.Loc::default())
+      RecoverConstruct(ctor) =>
+        executor_activation_construct(ctor, [], @token.Loc::default())
+      RecoverProperty(target) =>
+        executor_activation_property_get(target, "x", @token.Loc::default())
+    }
+  } else {
+    match (self.result, self.abrupt) {
+      (None, Some(error)) if physical_equal(error, self.expected) =>
+        executor_activation_return(Number(9.0))
+      (Some(_), None) =>
+        raise @errors.InternalError(
+          message="request recovering frame received a value instead of an abrupt completion",
+        )
+      _ =>
+        raise @errors.InternalError(
+          message="request recovering frame resumed without one child completion",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecoverRequestFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  guard self.requested && self.result is None && self.abrupt is None else {
+    raise @errors.InternalError(
+      message="request recovering frame received a duplicate completion",
+    )
+  }
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => self.abrupt = Some(error)
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationDeliveryErrorFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    match self.request {
+      RecoverCall(callee) =>
+        executor_activation_call(callee, Undefined, [], @token.Loc::default())
+      RecoverConstruct(ctor) =>
+        executor_activation_construct(ctor, [], @token.Loc::default())
+      RecoverProperty(target) =>
+        executor_activation_property_get(target, "x", @token.Loc::default())
+    }
+  } else {
+    raise @errors.InternalError(
+      message="delivery error frame resumed after a delivery failure",
+    )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationDeliveryErrorFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  self.delivery_count.val += 1
+  match completion {
+    ExecutorActivationCompletionNormal(_) => raise self.expected
+    ExecutorActivationCompletionAbrupt(_) =>
+      raise @errors.InternalError(
+        message="delivery error frame received an abrupt completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationCleanupObservationFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_call(self.callee, Undefined, [], @token.Loc::default())
+  } else {
+    guard self.delivered else {
+      raise @errors.InternalError(
+        message="cleanup observation frame resumed without an abrupt delivery",
+      )
+    }
+    executor_activation_return(Number(9.0))
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationCleanupObservationFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => {
+      guard physical_equal(error, self.expected) else {
+        raise @errors.InternalError(
+          message="cleanup observation frame received the wrong error",
+        )
+      }
+      guard self.events.length() == 2 &&
+        self.events[0] == "attempt:cleared" &&
+        self.events[1] == "release:cleared" else {
+        raise @errors.InternalError(
+          message="child release must precede abrupt completion delivery",
+        )
+      }
+      self.delivered = true
+    }
+    ExecutorActivationCompletionNormal(_) =>
+      raise @errors.InternalError(
+        message="cleanup observation frame received a normal completion",
+      )
+  }
 }
 
 ///|
@@ -546,16 +892,19 @@ impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn step
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deliver_activation_completion(
   self,
-  value,
+  completion,
 ) {
   guard self.requested && self.result is None else {
     raise @errors.InternalError(
       message="test property frame received a duplicate result",
     )
   }
-  self.result = Some(value)
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
 }
 
 ///|
@@ -567,9 +916,9 @@ impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn deliver_activation_completion(
   _self,
-  _value,
+  _completion,
 ) {
   ()
 }
@@ -583,9 +932,9 @@ impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn deliver_activation_completion(
   _self,
-  _value,
+  _completion,
 ) {
   ()
 }
@@ -676,6 +1025,63 @@ test "executor function retains an inspectable neutral payload before entry" {
 }
 
 ///|
+fn assert_executor_activation_delivery_error(
+  request : ExecutorActivationRecoverRequest,
+  sentinel : Error,
+) -> Unit raise {
+  let interp = Interpreter::new()
+  let delivery_count : Ref[Int] = { val: 0 }
+  let root = ExecutorActivationDeliveryErrorFrame(
+      request~,
+      expected=sentinel,
+      delivery_count~,
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("expected normal completion delivery to raise")
+  }
+  inspect(delivery_count.val, content="1")
+}
+
+///|
+test "activation coordinator does not redeliver fallback completion failures" {
+  let call = make_native_func(name="normal-call", _args => Number(1.0))
+  assert_executor_activation_delivery_error(
+    RecoverCall(call),
+    @errors.RangeError(message="call delivery sentinel"),
+  )
+  let ctor = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      ConstructorOnlyCallable("normal-construct", fn(_interp, _args) {
+        Number(2.0)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  assert_executor_activation_delivery_error(
+    RecoverConstruct(ctor),
+    @errors.RangeError(message="construct delivery sentinel"),
+  )
+  let getter = make_native_func(name="normal-property", _args => Number(3.0))
+  let target = make_direct_property_getter_target(getter, None)
+  assert_executor_activation_delivery_error(
+    RecoverProperty(target),
+    @errors.RangeError(message="property delivery sentinel"),
+  )
+}
+
+///|
 test "activation coordinator resumes one child result and normalizes it" {
   let interp = Interpreter::new()
   let starts : Ref[Int] = { val: 0 }
@@ -701,6 +1107,241 @@ test "activation coordinator resumes one child result and normalizes it" {
   }
   inspect(starts.val, content="1")
   inspect(steps.val, content="3")
+}
+
+///|
+test "activation coordinator delivers one normalized construct result" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let child = make_executor_function(
+    Some("constructor"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(1.0)),
+  )
+  let root = ExecutorActivationConstructFrame(
+      ctor=child,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Object(_)) => ()
+    _ => fail("constructor completion must deliver its allocated instance")
+  }
+  inspect(starts.val, content="1")
+}
+
+///|
+test "activation coordinator delivers managed child setup errors to the requester" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="setup request sentinel")
+  let child = make_executor_function(
+    Some("setup-fails"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationStartErrorCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationRecoverFrame(callee=child, expected=sentinel)
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("setup errors must be delivered to the requesting frame")
+  }
+}
+
+///|
+test "activation coordinator releases child before abrupt parent delivery" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let sentinel : Error = @errors.RangeError(
+    message="delivery lifecycle sentinel",
+  )
+  let child = make_executor_function(
+    Some("lifecycle-thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationCleanupObservationFrame(
+      callee=child,
+      expected=sentinel,
+      events~,
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("parent must resume after observing child cleanup")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+}
+
+///|
+test "activation coordinator delivers synchronous fallback call errors to the requester" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="call request sentinel")
+  let callee = make_native_func(name="call-error", fn(_args) raise {
+    raise sentinel
+  })
+  let root = ExecutorActivationRecoverRequestFrame(
+      request=RecoverCall(callee),
+      expected=sentinel,
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("call errors must be delivered to the requesting frame")
+  }
+}
+
+///|
+test "activation coordinator delivers synchronous fallback construct errors to the requester" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(
+    message="construct request sentinel",
+  )
+  let ctor = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      ConstructorOnlyCallable("construct-error", fn(_interp, _args) raise {
+        raise sentinel
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let root = ExecutorActivationRecoverRequestFrame(
+      request=RecoverConstruct(ctor),
+      expected=sentinel,
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("construct errors must be delivered to the requesting frame")
+  }
+}
+
+///|
+test "activation coordinator delivers synchronous fallback property errors to the requester" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="property request sentinel")
+  let getter = make_native_func(name="property-error", fn(_args) raise {
+    raise sentinel
+  })
+  let target = make_direct_property_getter_target(getter, None)
+  let root = ExecutorActivationRecoverRequestFrame(
+      request=RecoverProperty(target),
+      expected=sentinel,
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("property errors must be delivered to the requesting frame")
+  }
+}
+
+///|
+test "non-root requester handles fallback error before child cleanup" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let sentinel : Error = @errors.RangeError(message="nested request sentinel")
+  let callee = make_native_func(name="nested-call-error", fn(_args) raise {
+    raise sentinel
+  })
+  let child = make_executor_function(
+    Some("requester"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationRecoverCode(
+      request=RecoverCall(callee),
+      expected=sentinel,
+    ),
+    constructable=false,
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=child,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("non-root requester must remain resumable after request failure")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+}
+
+///|
+test "nested abrupt delivery rethrows after managed cleanup and permits reuse" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=2,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let sentinel : Error = @errors.RangeError(message="nested lifecycle sentinel")
+  let grandchild = make_executor_function(
+    Some("grandchild-thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let parent_code = ExecutorActivationCallCode(
+    callee=grandchild,
+    this_value=Undefined,
+    args=[],
+    loc=@token.Loc::default(),
+  )
+  let parent = make_executor_function(
+    Some("managed-parent"),
+    [],
+    interp.global,
+    false,
+    parent_code,
+    constructable=false,
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=parent,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("nested parent must re-raise the grandchild error")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  assert_true(interp.realm_state.active_overrides.val is None)
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after nested unwind")
+  }
+  inspect(control.active_depth(), content="0")
 }
 
 ///|
@@ -742,6 +1383,50 @@ test "activation coordinator unwinds child errors and restores dynamic state" {
   }
   assert_true(interp.in_nonarrow_param_default_eval)
   inspect(control.active_depth(), content="0")
+}
+
+///|
+test "activation coordinator can deliver one child abrupt completion to its caller" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="recoverable sentinel")
+  let child = make_executor_function(
+    Some("thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationRecoverFrame(callee=child, expected=sentinel)
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("caller frame must be able to handle the child abrupt completion")
+  }
+}
+
+///|
+test "handled child abrupt completion cleans activation before parent delivery" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let sentinel : Error = @errors.RangeError(message="lifecycle sentinel")
+  let child = make_executor_function(
+    Some("thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationRecoverFrame(callee=child, expected=sentinel)
+    as &ExecutorActivationFrame
+  let result = interp.run_executor_activation_coordinator(root)
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("handled abrupt completion must resume the parent")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
 }
 
 ///|

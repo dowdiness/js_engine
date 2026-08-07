@@ -1267,9 +1267,9 @@ test "bytecode frame accepts one pending activation result" {
     current_generator: None,
   })
   frame.pending_activation_result = Some(PushValue)
-  @runtime.ExecutorActivationFrame::deliver_activation_result(
+  @runtime.ExecutorActivationFrame::deliver_activation_completion(
     frame,
-    Number(7.0),
+    @runtime.executor_activation_completion_normal(Number(7.0)),
   )
   inspect(frame.stack.length(), content="1")
   match frame.peek() {
@@ -1277,9 +1277,9 @@ test "bytecode frame accepts one pending activation result" {
     _ => fail("pending activation result must be pushed onto the operand stack")
   }
   let second_delivery : Error? = try {
-    @runtime.ExecutorActivationFrame::deliver_activation_result(
+    @runtime.ExecutorActivationFrame::deliver_activation_completion(
       frame,
-      Number(8.0),
+      @runtime.executor_activation_completion_normal(Number(8.0)),
     )
     None
   } catch {
@@ -1307,7 +1307,10 @@ test "bytecode frame delivers an owned receiver with a plain property result" {
   let receiver = Value::String_("receiver")
   let callee = Value::String_("callee")
   frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
-  @runtime.ExecutorActivationFrame::deliver_activation_result(frame, callee)
+  @runtime.ExecutorActivationFrame::deliver_activation_completion(
+    frame,
+    @runtime.executor_activation_completion_normal(callee),
+  )
   inspect(frame.stack.length(), content="2")
   match frame.stack[0] {
     String_(value) => inspect(value, content="receiver")
@@ -1316,6 +1319,51 @@ test "bytecode frame delivers an owned receiver with a plain property result" {
   match frame.stack[1] {
     String_(value) => inspect(value, content="callee")
     _ => fail("plain property delivery must push the callee second")
+  }
+}
+
+///|
+test "bytecode frame clears its destination before re-raising an abrupt completion" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("0;")
+  let frame = BytecodeFrame(program.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  frame.pending_activation_result = Some(PushValue)
+  let sentinel : Error = @errors.RangeError(
+    message="bytecode completion sentinel",
+  )
+  let caught : Error? = try {
+    @runtime.ExecutorActivationFrame::deliver_activation_completion(
+      frame,
+      @runtime.executor_activation_completion_abrupt(sentinel),
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("bytecode frame must re-raise the original abrupt completion")
+  }
+  assert_true(frame.pending_activation_result is None)
+  let duplicate : Error? = try {
+    @runtime.ExecutorActivationFrame::deliver_activation_completion(
+      frame,
+      @runtime.executor_activation_completion_abrupt(sentinel),
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match duplicate {
+    Some(@errors.InternalError(message~)) =>
+      inspect(
+        message,
+        content="bytecode activation result has no pending consumer",
+      )
+    _ => fail("a consumed destination must reject duplicate delivery")
   }
 }
 
