@@ -69,6 +69,15 @@ priv struct ExecutorActivationCallFrame {
 }
 
 ///|
+priv struct ExecutorActivationRecoverFrame {
+  callee : Value
+  expected : Error
+  mut requested : Bool
+  mut result : Value?
+  mut abrupt : Error?
+}
+
+///|
 priv struct ExecutorActivationPropertyGetFrame {
   target : Value
   property_name : String
@@ -95,6 +104,14 @@ fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
   loc~ : @token.Loc,
 ) -> ExecutorActivationCallFrame {
   { callee, this_value, args: args.copy(), loc, requested: false, result: None }
+}
+
+///|
+fn ExecutorActivationRecoverFrame::ExecutorActivationRecoverFrame(
+  callee~ : Value,
+  expected~ : Error,
+) -> ExecutorActivationRecoverFrame {
+  { callee, expected, requested: false, result: None, abrupt: None }
 }
 
 ///|
@@ -527,6 +544,44 @@ impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_act
 }
 
 ///|
+impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_call(self.callee, Undefined, [], @token.Loc::default())
+  } else {
+    match (self.result, self.abrupt) {
+      (None, Some(error)) if physical_equal(error, self.expected) =>
+        executor_activation_return(Number(9.0))
+      (Some(_), None) =>
+        raise @errors.InternalError(
+          message="recovering frame received a value instead of an abrupt completion",
+        )
+      _ =>
+        raise @errors.InternalError(
+          message="recovering frame resumed without one child completion",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn deliver_activation_result(
+  self,
+  value,
+) {
+  guard self.requested && self.result is None && self.abrupt is None else {
+    raise @errors.InternalError(
+      message="recovering frame received a duplicate completion",
+    )
+  }
+  self.abrupt = None
+  self.result = Some(value)
+}
+
+///|
 impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn step(
   self,
   _interp,
@@ -742,6 +797,26 @@ test "activation coordinator unwinds child errors and restores dynamic state" {
   }
   assert_true(interp.in_nonarrow_param_default_eval)
   inspect(control.active_depth(), content="0")
+}
+
+///|
+test "activation coordinator can deliver one child abrupt completion to its caller" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="recoverable sentinel")
+  let child = make_executor_function(
+    Some("thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationRecoverFrame(callee=child, expected=sentinel)
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("caller frame must be able to handle the child abrupt completion")
+  }
 }
 
 ///|
