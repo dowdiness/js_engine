@@ -117,6 +117,15 @@ priv struct ExecutorActivationDeliveryErrorFrame {
 }
 
 ///|
+priv struct ExecutorActivationCleanupObservationFrame {
+  callee : Value
+  expected : Error
+  events : Array[String]
+  mut requested : Bool
+  mut delivered : Bool
+}
+
+///|
 priv struct ExecutorActivationPropertyGetFrame {
   target : Value
   property_name : String
@@ -185,6 +194,15 @@ fn ExecutorActivationDeliveryErrorFrame::ExecutorActivationDeliveryErrorFrame(
   delivery_count~ : Ref[Int],
 ) -> ExecutorActivationDeliveryErrorFrame {
   { request, expected, delivery_count, requested: false }
+}
+
+///|
+fn ExecutorActivationCleanupObservationFrame::ExecutorActivationCleanupObservationFrame(
+  callee~ : Value,
+  expected~ : Error,
+  events~ : Array[String],
+) -> ExecutorActivationCleanupObservationFrame {
+  { callee, expected, events, requested: false, delivered: false }
 }
 
 ///|
@@ -271,6 +289,7 @@ fn install_executor_activation_probe(
   interp : Interpreter,
   events : Array[String],
   reject : Error?,
+  control? : ExecutionControl? = None,
 ) -> Unit {
   let observer = make_object(
     Map([]),
@@ -285,6 +304,14 @@ fn install_executor_activation_probe(
               "outer"
             }
             events.push("attempt:" + realm)
+            match control {
+              Some(control) =>
+                match control.observe_activation() {
+                  Ok(_) => ()
+                  Err(failure) => raise ExecutionControlError(failure)
+                }
+              None => ()
+            }
             match reject {
               Some(error) => raise error
               None => Undefined
@@ -297,6 +324,14 @@ fn install_executor_activation_probe(
               "outer"
             }
             events.push("release:" + realm)
+            match control {
+              Some(control) =>
+                match control.release_activation() {
+                  Ok(_) => ()
+                  Err(failure) => raise ExecutionControlError(failure)
+                }
+              None => ()
+            }
             Undefined
           }
           _ => Undefined
@@ -792,6 +827,52 @@ impl ExecutorActivationFrame for ExecutorActivationDeliveryErrorFrame with fn de
 }
 
 ///|
+impl ExecutorActivationFrame for ExecutorActivationCleanupObservationFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_call(self.callee, Undefined, [], @token.Loc::default())
+  } else {
+    guard self.delivered else {
+      raise @errors.InternalError(
+        message="cleanup observation frame resumed without an abrupt delivery",
+      )
+    }
+    executor_activation_return(Number(9.0))
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationCleanupObservationFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => {
+      guard physical_equal(error, self.expected) else {
+        raise @errors.InternalError(
+          message="cleanup observation frame received the wrong error",
+        )
+      }
+      guard self.events.length() == 2 &&
+        self.events[0] == "attempt:cleared" &&
+        self.events[1] == "release:cleared" else {
+        raise @errors.InternalError(
+          message="child release must precede abrupt completion delivery",
+        )
+      }
+      self.delivered = true
+    }
+    ExecutorActivationCompletionNormal(_) =>
+      raise @errors.InternalError(
+        message="cleanup observation frame received a normal completion",
+      )
+  }
+}
+
+///|
 impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn step(
   self,
   _interp,
@@ -1073,6 +1154,35 @@ test "activation coordinator delivers managed child setup errors to the requeste
 }
 
 ///|
+test "activation coordinator releases child before abrupt parent delivery" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let sentinel : Error = @errors.RangeError(
+    message="delivery lifecycle sentinel",
+  )
+  let child = make_executor_function(
+    Some("lifecycle-thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationCleanupObservationFrame(
+      callee=child,
+      expected=sentinel,
+      events~,
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("parent must resume after observing child cleanup")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+}
+
+///|
 test "activation coordinator delivers synchronous fallback call errors to the requester" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="call request sentinel")
@@ -1170,6 +1280,68 @@ test "non-root requester handles fallback error before child cleanup" {
     _ => fail("non-root requester must remain resumable after request failure")
   }
   json_inspect(events, content=["attempt:cleared", "release:cleared"])
+}
+
+///|
+test "nested abrupt delivery rethrows after managed cleanup and permits reuse" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=2,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let sentinel : Error = @errors.RangeError(message="nested lifecycle sentinel")
+  let grandchild = make_executor_function(
+    Some("grandchild-thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let parent_code = ExecutorActivationCallCode(
+    callee=grandchild,
+    this_value=Undefined,
+    args=[],
+    loc=@token.Loc::default(),
+  )
+  let parent = make_executor_function(
+    Some("managed-parent"),
+    [],
+    interp.global,
+    false,
+    parent_code,
+    constructable=false,
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=parent,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("nested parent must re-raise the grandchild error")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  assert_true(interp.realm_state.active_overrides.val is None)
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after nested unwind")
+  }
+  inspect(control.active_depth(), content="0")
 }
 
 ///|
