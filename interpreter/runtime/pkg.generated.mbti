@@ -81,6 +81,10 @@ pub fn execution_control_failure_code(Error) -> String?
 
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
+pub fn executor_activation_completion_abrupt(Error) -> ExecutorActivationCompletion
+
+pub fn executor_activation_completion_normal(Value) -> ExecutorActivationCompletion
+
 pub fn executor_activation_construct(Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_continue() -> ExecutorActivationStep
@@ -583,6 +587,11 @@ pub(all) struct ExecutionPolicyError {
 }
 pub fn ExecutionPolicyError::message(Self) -> String
 pub fn ExecutionPolicyError::parameter_code(Self) -> String
+
+pub enum ExecutorActivationCompletion {
+  ExecutorActivationCompletionNormal(Value)
+  ExecutorActivationCompletionAbrupt(Error)
+}
 
 pub enum ExecutorActivationStep {
   ExecutorActivationContinue
@@ -1159,7 +1168,7 @@ pub(all) struct WellKnownSymbols {
 // Traits
 pub(open) trait ExecutorActivationFrame {
   fn step(Self, Interpreter) -> ExecutorActivationStep raise
-  fn deliver_activation_result(Self, Value) -> Unit raise
+  fn deliver_activation_completion(Self, ExecutorActivationCompletion) -> Unit raise
 }
 
 pub(open) trait ExecutorCode {

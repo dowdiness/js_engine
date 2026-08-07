@@ -17,6 +17,29 @@ pub enum ExecutorActivationStep {
 }
 
 ///|
+// A closed child completion. Runtime owns the completion boundary so executor
+// frames can choose whether an abrupt child result is recoverable without
+// translating or copying the original error.
+pub enum ExecutorActivationCompletion {
+  ExecutorActivationCompletionNormal(Value)
+  ExecutorActivationCompletionAbrupt(Error)
+}
+
+///|
+pub fn executor_activation_completion_normal(
+  value : Value,
+) -> ExecutorActivationCompletion {
+  ExecutorActivationCompletionNormal(value)
+}
+
+///|
+pub fn executor_activation_completion_abrupt(
+  error : Error,
+) -> ExecutorActivationCompletion {
+  ExecutorActivationCompletionAbrupt(error)
+}
+
+///|
 // A closed ordinary-call request. Runtime owns the request fields and the
 // coordinator is the only code that may inspect them; executors only create a
 // request and later consume its one-shot result through their frame.
@@ -160,7 +183,7 @@ pub fn PreparedExecutorActivation::arguments(
 ///|
 pub(open) trait ExecutorActivationFrame {
   fn step(Self, Interpreter) -> ExecutorActivationStep raise Error
-  fn deliver_activation_result(Self, Value) -> Unit raise Error
+  fn deliver_activation_completion(Self, ExecutorActivationCompletion) -> Unit raise Error
 }
 
 ///|
@@ -445,21 +468,54 @@ fn Interpreter::start_executor_activation(
 fn Interpreter::complete_executor_child(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
-  step : ExecutorActivationStep,
+  completion : ExecutorActivationCompletion,
 ) -> Unit raise Error {
   let entry = stack.pop().unwrap()
-  let completion = match entry.completion {
-    Some(ExecutorChildCall(kind)) => executor_call_completion(kind, step)
-    Some(ExecutorChildConstruct(instance)) =>
-      executor_construct_completion(step, instance)
-    None => Undefined
+  let failure = match completion {
+    ExecutorActivationCompletionAbrupt(error) => Some(error)
+    ExecutorActivationCompletionNormal(_) => None
   }
   match entry.cleanup {
-    Some(cleanup) => self.finish_executor_activation(cleanup, None)
+    Some(cleanup) => self.finish_executor_activation(cleanup, failure)
     None => ()
   }
   let parent = stack[stack.length() - 1].frame
-  parent.deliver_activation_result(completion)
+  parent.deliver_activation_completion(completion)
+}
+
+///|
+fn Interpreter::complete_executor_step(
+  self : Interpreter,
+  stack : Array[ExecutorActivationStackEntry],
+  step : ExecutorActivationStep,
+) -> Unit raise Error {
+  let completion = match stack[stack.length() - 1].completion {
+    Some(ExecutorChildCall(kind)) =>
+      ExecutorActivationCompletionNormal(executor_call_completion(kind, step))
+    Some(ExecutorChildConstruct(instance)) =>
+      ExecutorActivationCompletionNormal(
+        executor_construct_completion(step, instance),
+      )
+    None => ExecutorActivationCompletionNormal(Undefined)
+  }
+  self.complete_executor_child(stack, completion)
+}
+
+///|
+fn Interpreter::deliver_executor_activation_error(
+  self : Interpreter,
+  stack : Array[ExecutorActivationStackEntry],
+  index : Int,
+  error : Error,
+) -> Unit raise Error {
+  if index == 0 {
+    raise error
+  } else {
+    self.complete_executor_child(
+      stack,
+      ExecutorActivationCompletionAbrupt(error),
+    )
+  }
 }
 
 ///|
@@ -514,38 +570,32 @@ fn direct_executor_property_getter(
 }
 
 ///|
-// Drive one root executor frame and every exact executor-backed ordinary call
-// or static property getter it requests. The root is top-level script state
-// and therefore has no activation observation or cleanup record of its own.
-pub fn Interpreter::run_executor_activation_coordinator(
+fn Interpreter::handle_executor_activation_step(
   self : Interpreter,
-  root : &ExecutorActivationFrame,
-) -> ExecutorActivationStep raise Error {
-  let stack : Array[ExecutorActivationStackEntry] = [
-    { frame: root, completion: None, cleanup: None },
-  ]
-  try {
-    while true {
-      guard !stack.is_empty() else {
-        return ExecutorActivationNormal(Undefined)
+  stack : Array[ExecutorActivationStackEntry],
+  index : Int,
+  step : ExecutorActivationStep,
+) -> ExecutorActivationStep? raise Error {
+  let frame = stack[index].frame
+  match step {
+    ExecutorActivationContinue => None
+    ExecutorActivationNormal(value) =>
+      if index == 0 {
+        Some(ExecutorActivationNormal(value))
+      } else {
+        self.complete_executor_step(stack, ExecutorActivationNormal(value))
+        None
       }
-      let index = stack.length() - 1
-      let frame = stack[index].frame
-      match frame.step(self) {
-        ExecutorActivationContinue => ()
-        ExecutorActivationNormal(value) =>
-          if index == 0 {
-            return ExecutorActivationNormal(value)
-          } else {
-            self.complete_executor_child(stack, ExecutorActivationNormal(value))
-          }
-        ExecutorActivationReturn(value) =>
-          if index == 0 {
-            return ExecutorActivationReturn(value)
-          } else {
-            self.complete_executor_child(stack, ExecutorActivationReturn(value))
-          }
-        ExecutorActivationCall(request) => {
+    ExecutorActivationReturn(value) =>
+      if index == 0 {
+        Some(ExecutorActivationReturn(value))
+      } else {
+        self.complete_executor_step(stack, ExecutorActivationReturn(value))
+        None
+      }
+    ExecutorActivationCall(request) => {
+      let requested : Result[Unit, Error] = Ok(
+        {
           let (forwarded_callee, forwarded_this_value, forwarded_args) = self.resolve_call_forwarding(
             request.callee,
             request.this_value,
@@ -574,61 +624,131 @@ pub fn Interpreter::run_executor_activation_coordinator(
                 forwarded_args,
                 request.loc,
               )
-              frame.deliver_activation_result(value)
+              frame.deliver_activation_completion(
+                ExecutorActivationCompletionNormal(value),
+              )
             }
           }
+        },
+      ) catch {
+        error => Err(error)
+      }
+      match requested {
+        Ok(_) => None
+        Err(error) => {
+          self.deliver_executor_activation_error(stack, index, error)
+          None
         }
-        ExecutorActivationConstruct(request) =>
-          match direct_executor_constructor_with_data_prototype(request.ctor) {
-            Some(executable) =>
-              stack.push(
-                self.start_executor_activation(
-                  executable,
-                  ExecutorStartConstruct(request),
-                  None,
-                ),
-              )
-            None => {
-              let value = self.construct_value(
-                request.ctor,
-                request.args,
-                request.loc,
-              )
-              frame.deliver_activation_result(value)
-            }
+      }
+    }
+    ExecutorActivationConstruct(request) => {
+      let requested : Result[Unit, Error] = Ok(
+        match direct_executor_constructor_with_data_prototype(request.ctor) {
+          Some(executable) =>
+            stack.push(
+              self.start_executor_activation(
+                executable,
+                ExecutorStartConstruct(request),
+                None,
+              ),
+            )
+          None => {
+            let value = self.construct_value(
+              request.ctor,
+              request.args,
+              request.loc,
+            )
+            frame.deliver_activation_completion(
+              ExecutorActivationCompletionNormal(value),
+            )
           }
-        ExecutorActivationPropertyGet(request) =>
-          match
-            direct_executor_property_getter(
+        },
+      ) catch {
+        error => Err(error)
+      }
+      match requested {
+        Ok(_) => None
+        Err(error) => {
+          self.deliver_executor_activation_error(stack, index, error)
+          None
+        }
+      }
+    }
+    ExecutorActivationPropertyGet(request) => {
+      let requested : Result[Unit, Error] = Ok(
+        match
+          direct_executor_property_getter(request.target, request.property_name) {
+          Some((getter, executable)) => {
+            let property_scope = begin_cleared_active_callee_realm(
+              self.realm_state,
+            )
+            let call_request = ExecutorCallRequest(
+              callee=getter,
+              this_value=request.target,
+              args=[],
+              loc=request.loc,
+            )
+            stack.push(
+              self.start_executor_activation(
+                executable,
+                ExecutorStartCall(call_request),
+                Some(property_scope),
+              ),
+            )
+          }
+          None => {
+            let value = self.get_property(
               request.target,
               request.property_name,
-            ) {
-            Some((getter, executable)) => {
-              let property_scope = begin_cleared_active_callee_realm(
-                self.realm_state,
-              )
-              let call_request = ExecutorCallRequest(
-                callee=getter,
-                this_value=request.target,
-                args=[],
-                loc=request.loc,
-              )
-              stack.push(
-                self.start_executor_activation(
-                  executable,
-                  ExecutorStartCall(call_request),
-                  Some(property_scope),
-                ),
-              )
-            }
-            None => {
-              let value = self.get_property(
-                request.target,
-                request.property_name,
-                request.loc,
-              )
-              frame.deliver_activation_result(value)
-            }
+              request.loc,
+            )
+            frame.deliver_activation_completion(
+              ExecutorActivationCompletionNormal(value),
+            )
+          }
+        },
+      ) catch {
+        error => Err(error)
+      }
+      match requested {
+        Ok(_) => None
+        Err(error) => {
+          self.deliver_executor_activation_error(stack, index, error)
+          None
+        }
+      }
+    }
+  }
+}
+
+///|
+// Drive one root executor frame and every exact executor-backed ordinary call
+// or static property getter it requests. The root is top-level script state
+// and therefore has no activation observation or cleanup record of its own.
+pub fn Interpreter::run_executor_activation_coordinator(
+  self : Interpreter,
+  root : &ExecutorActivationFrame,
+) -> ExecutorActivationStep raise Error {
+  let stack : Array[ExecutorActivationStackEntry] = [
+    { frame: root, completion: None, cleanup: None },
+  ]
+  try {
+    while true {
+      guard !stack.is_empty() else {
+        return ExecutorActivationNormal(Undefined)
+      }
+      let index = stack.length() - 1
+      let frame = stack[index].frame
+      let stepped : Result[ExecutorActivationStep, Error] = Ok(frame.step(self)) catch {
+        error => Err(error)
+      }
+      match stepped {
+        Err(error) =>
+          self.deliver_executor_activation_error(stack, index, error)
+        Ok(step) =>
+          match self.handle_executor_activation_step(stack, index, step) {
+            Some(result) => return result
+            None => ()
           }
       }
     }

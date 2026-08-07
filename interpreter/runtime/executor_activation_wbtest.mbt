@@ -69,6 +69,15 @@ priv struct ExecutorActivationCallFrame {
 }
 
 ///|
+priv struct ExecutorActivationConstructFrame {
+  ctor : Value
+  args : Array[Value]
+  loc : @token.Loc
+  mut requested : Bool
+  mut result : Value?
+}
+
+///|
 priv struct ExecutorActivationRecoverFrame {
   callee : Value
   expected : Error
@@ -104,6 +113,15 @@ fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
   loc~ : @token.Loc,
 ) -> ExecutorActivationCallFrame {
   { callee, this_value, args: args.copy(), loc, requested: false, result: None }
+}
+
+///|
+fn ExecutorActivationConstructFrame::ExecutorActivationConstructFrame(
+  ctor~ : Value,
+  args~ : Array[Value],
+  loc~ : @token.Loc,
+) -> ExecutorActivationConstructFrame {
+  { ctor, args: args.copy(), loc, requested: false, result: None }
 }
 
 ///|
@@ -461,9 +479,9 @@ impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationTestFrame with fn deliver_activation_completion(
   _self,
-  _value,
+  _completion,
 ) {
   ()
 }
@@ -531,16 +549,54 @@ impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_activation_completion(
   self,
-  value,
+  completion,
 ) {
   guard self.requested && self.result is None else {
     raise @errors.InternalError(
       message="test call frame received a duplicate result",
     )
   }
-  self.result = Some(value)
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationConstructFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_construct(self.ctor, self.args, self.loc)
+  } else {
+    match self.result {
+      Some(value) => executor_activation_return(value)
+      None =>
+        raise @errors.InternalError(
+          message="test construct frame resumed without a result",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationConstructFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  guard self.requested && self.result is None else {
+    raise @errors.InternalError(
+      message="test construct frame received a duplicate completion",
+    )
+  }
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
 }
 
 ///|
@@ -568,17 +624,19 @@ impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn deliver_activation_completion(
   self,
-  value,
+  completion,
 ) {
   guard self.requested && self.result is None && self.abrupt is None else {
     raise @errors.InternalError(
       message="recovering frame received a duplicate completion",
     )
   }
-  self.abrupt = None
-  self.result = Some(value)
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => self.abrupt = Some(error)
+  }
 }
 
 ///|
@@ -601,16 +659,19 @@ impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn step
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deliver_activation_completion(
   self,
-  value,
+  completion,
 ) {
   guard self.requested && self.result is None else {
     raise @errors.InternalError(
       message="test property frame received a duplicate result",
     )
   }
-  self.result = Some(value)
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
 }
 
 ///|
@@ -622,9 +683,9 @@ impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationThrowFrame with fn deliver_activation_completion(
   _self,
-  _value,
+  _completion,
 ) {
   ()
 }
@@ -638,9 +699,9 @@ impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn step(
 }
 
 ///|
-impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn deliver_activation_result(
+impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn deliver_activation_completion(
   _self,
-  _value,
+  _completion,
 ) {
   ()
 }
@@ -759,6 +820,30 @@ test "activation coordinator resumes one child result and normalizes it" {
 }
 
 ///|
+test "activation coordinator delivers one normalized construct result" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let child = make_executor_function(
+    Some("constructor"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(1.0)),
+  )
+  let root = ExecutorActivationConstructFrame(
+      ctor=child,
+      args=[],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Object(_)) => ()
+    _ => fail("constructor completion must deliver its allocated instance")
+  }
+  inspect(starts.val, content="1")
+}
+
+///|
 test "activation coordinator unwinds child errors and restores dynamic state" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="coordinator sentinel")
@@ -817,6 +902,30 @@ test "activation coordinator can deliver one child abrupt completion to its call
     ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
     _ => fail("caller frame must be able to handle the child abrupt completion")
   }
+}
+
+///|
+test "handled child abrupt completion cleans activation before parent delivery" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let sentinel : Error = @errors.RangeError(message="lifecycle sentinel")
+  let child = make_executor_function(
+    Some("thrower"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let root = ExecutorActivationRecoverFrame(callee=child, expected=sentinel)
+    as &ExecutorActivationFrame
+  let result = interp.run_executor_activation_coordinator(root)
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("handled abrupt completion must resume the parent")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
 }
 
 ///|
