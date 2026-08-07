@@ -485,3 +485,32 @@ test "direct-return result pipeline boundary rejects runtime coupling" {
     forbidden_stderr.any(line => line == "- SealedDirectReturnProgram"),
   )
 }
+
+///|
+test "receiver-call ownership is represented by one closed slot" {
+  let shell_path = "interpreter/runtime/activation_dispatch_shell.mbt"
+  let ownership_path = "interpreter/runtime/activation_dispatch_receiver_ownership.mbt"
+  assert_true(@fs.path_exists(shell_path))
+  assert_true(@fs.path_exists(ownership_path))
+  let shell_source = @fs.read_file_to_string(shell_path)
+  let ownership_source = if @fs.path_exists(ownership_path) {
+    @fs.read_file_to_string(ownership_path)
+  } else {
+    ""
+  }
+  assert_true(
+    shell_source.contains("mut owned_receiver_call : OwnedReceiverCall?"),
+  )
+  for
+    legacy_marker in [
+      "mut receiver_registry : TrustedReceiverRecursionRegistry?", "mut changing_receiver_registry : TrustedChangingReceiverRegistry?",
+      "mut mutual_receiver_registry : TrustedMutualReceiverRecursionRegistry?", "receiver_registry? : TrustedReceiverRecursionRegistry?",
+      "changing_receiver_registry? : TrustedChangingReceiverRegistry?", "mutual_receiver_registry? : TrustedMutualReceiverRecursionRegistry?",
+    ] {
+    assert_true(!shell_source.contains(legacy_marker))
+  }
+  assert_true(ownership_source.contains("priv enum OwnedReceiverCall"))
+  assert_true(ownership_source.contains("OwnedFixedReceiverCall"))
+  assert_true(ownership_source.contains("OwnedChangingReceiverCall"))
+  assert_true(ownership_source.contains("OwnedMutualReceiverCall"))
+}
