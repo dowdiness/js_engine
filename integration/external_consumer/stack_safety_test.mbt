@@ -102,6 +102,10 @@ const DIRECT_RETURN_TWO_HELPER_RESULT_FED_CALL_SOURCE =
   #|f(256);
 
 ///|
+const DIRECT_RETURN_THREE_HELPER_RESULT_FED_CALL_SOURCE =
+  "function inner(value) { return value; } function middle(value) { return value; } function outer(ignored, value) { return value; } function f(n) { if (n === 0) return \"done\"; return outer(\"ignored\", middle(inner(f(n - 1)))); } f(256);"
+
+///|
 const DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_CALL_SOURCE =
   #|function leaf(ignored, value) { return value; }
   #|function f(n) {
@@ -133,6 +137,14 @@ test "external consumer: two-helper linear result pipeline reaches depth 256" {
   match run_value(DIRECT_RETURN_TWO_HELPER_RESULT_FED_CALL_SOURCE) {
     "done" => ()
     other => fail("expected two-helper result pipeline done, got " + other)
+  }
+}
+
+///|
+test "external consumer: three-helper linear result pipeline reaches depth 256" {
+  match run_value(DIRECT_RETURN_THREE_HELPER_RESULT_FED_CALL_SOURCE) {
+    "done" => ()
+    other => fail("expected three-helper result pipeline done, got " + other)
   }
 }
 

@@ -204,6 +204,38 @@ require_two_helper_result_workload \
   '"done" => ()' \
   'expected two-helper result pipeline done, got'
 
+require_three_helper_result_workload() {
+  local suite=$1
+  local label=$2
+  local success_assertion=$3
+  local failure_evidence=$4
+  grep -Fq 'function inner(value) { return value; }' "$suite" ||
+    fail "$label selected suite omits the three-helper inner source"
+  grep -Fq 'function middle(value) { return value; }' "$suite" ||
+    fail "$label selected suite omits the three-helper middle source"
+  grep -Fq 'function outer(ignored, value) { return value; }' "$suite" ||
+    fail "$label selected suite omits the three-helper outer source"
+  grep -Fq 'return outer(\"ignored\", middle(inner(f(n - 1))));' "$suite" ||
+    fail "$label three-helper workload does not preserve helper order"
+  grep -Fq 'f(256);' "$suite" ||
+    fail "$label three-helper workload does not preserve the exact depth-256 root call"
+  grep -Fq "$success_assertion" "$suite" ||
+    fail "$label three-helper workload omits the exact success assertion"
+  grep -Fq "$failure_evidence" "$suite" ||
+    fail "$label three-helper workload omits its failure-message evidence"
+}
+
+require_three_helper_result_workload \
+  "$ROOT_DIR/interpreter/stack_safety_test.mbt" \
+  'engine' \
+  'Value::String_("done")' \
+  'expected three-helper result-fed direct return done, got'
+require_three_helper_result_workload \
+  "$CONSUMER_SUITE" \
+  'external-consumer' \
+  '"done" => ()' \
+  'expected three-helper result pipeline done, got'
+
 require_one_helper_result_workload() {
   local suite=$1
   local label=$2
@@ -447,6 +479,24 @@ copy_fixture "$fixture"
 sed -i 's/"done" => ()/"not-done" => ()/' \
   "$fixture/integration/external_consumer/stack_safety_test.mbt"
 expect_fixture_failure "$fixture" 'missing-facade-two-helper-done-evidence'
+
+fixture="$GATE_TMP_ROOT/missing-engine-three-helper-workload"
+copy_fixture "$fixture"
+sed -i '/middle(inner(f(n - 1))));/d' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-three-helper-workload'
+
+fixture="$GATE_TMP_ROOT/missing-engine-three-helper-success-assertion"
+copy_fixture "$fixture"
+sed -i 's/expected three-helper result-fed direct return done, got/expected changed result/' \
+  "$fixture/interpreter/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-engine-three-helper-success-assertion'
+
+fixture="$GATE_TMP_ROOT/missing-facade-three-helper-done-evidence"
+copy_fixture "$fixture"
+sed -i 's/expected three-helper result pipeline done, got/expected changed result/' \
+  "$fixture/integration/external_consumer/stack_safety_test.mbt"
+expect_fixture_failure "$fixture" 'missing-facade-three-helper-done-evidence'
 
 fixture="$GATE_TMP_ROOT/missing-aggregator"
 copy_fixture "$fixture"

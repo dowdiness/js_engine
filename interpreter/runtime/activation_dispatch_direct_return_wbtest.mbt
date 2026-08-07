@@ -31,6 +31,21 @@ const DIRECT_RETURN_RESULT_FED_LEAF_TEST_SOURCE = "function id(x){return x;}func
 const DIRECT_RETURN_TWO_HELPER_RESULT_FED_TEST_SOURCE = "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);"
 
 ///|
+const DIRECT_RETURN_THREE_HELPER_RESULT_FED_TEST_SOURCE = "function inner(value){return value;}function middle(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",middle(inner(f(n-1))));}f(256);"
+
+///|
+const DIRECT_RETURN_EIGHT_HELPER_RESULT_FED_TEST_SOURCE = "function one(value){return value;}function two(value){return value;}function three(value){return value;}function four(value){return value;}function five(value){return value;}function six(value){return value;}function seven(value){return value;}function eight(value){return value;}function f(n){if(n===0)return \"done\";return eight(seven(six(five(four(three(two(one(f(n-1))))))))); }f(256);"
+
+///|
+const DIRECT_RETURN_THREE_HELPER_INNER_THROW_SOURCE = "function inner(value){throw value;}function middle(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"inner-boom\";return outer(\"ignored\",middle(inner(f(n-1))));}f(256);"
+
+///|
+const DIRECT_RETURN_THREE_HELPER_MIDDLE_THROW_SOURCE = "function inner(value){return value;}function middle(value){throw value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"middle-boom\";return outer(\"ignored\",middle(inner(f(n-1))));}f(256);"
+
+///|
+const DIRECT_RETURN_THREE_HELPER_OUTER_THROW_SOURCE = "function inner(value){return value;}function middle(value){return value;}function outer(ignored,value){throw value;}function f(n){if(n===0)return \"outer-boom\";return outer(\"ignored\",middle(inner(f(n-1))));}f(256);"
+
+///|
 const DIRECT_RETURN_RESULT_FED_LEAF_THROW_SOURCE = "function id(x){throw x;}function f(n){if(n===0)return \"boom\";return id(f(n-1));}f(256);"
 
 ///|
@@ -223,12 +238,9 @@ test "direct-return admission owns an ordered two-helper carried-result plan" {
     Some(found) => found
     None => fail("expected the two-helper direct-return shape to be admitted")
   }
-  inspect(plan.helpers.length(), content="2")
-  inspect(plan.helpers[0].syntax.name, content="inner")
-  inspect(plan.helpers[0].declaration_index, content="0")
-  inspect(plan.helpers[1].syntax.name, content="outer")
-  inspect(plan.helpers[1].declaration_index, content="1")
-  inspect(plan.entry.declaration_index, content="2")
+  json_inspect(plan.helpers.map(helper => helper.syntax.name), content=[
+    "inner", "outer",
+  ])
   guard plan.entry.syntax.recursive_completion
     is DirectReturnRecursiveResultFedCallChain(
       { calls: [inner_call, outer_call] }
@@ -245,13 +257,64 @@ test "direct-return admission owns an ordered two-helper carried-result plan" {
 }
 
 ///|
+test "direct-return admission preserves ordered meaning for a three-helper chain" {
+  let plan = match
+    classify_direct_return_recursion_program(
+      direct_return_test_program(
+        DIRECT_RETURN_THREE_HELPER_RESULT_FED_TEST_SOURCE,
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the three-helper direct-return shape to be admitted")
+  }
+  match plan.entry.syntax.recursive_completion {
+    DirectReturnRecursiveResultFedCallChain({ calls }) => {
+      json_inspect(calls.map(call => call.callee_name), content=[
+        "inner", "middle", "outer",
+      ])
+      guard calls.all(call => call.argument_sources.length() > 0) else {
+        fail("expected every helper stage to carry an argument recipe")
+      }
+    }
+    DirectReturnRecursiveSelfCall =>
+      fail("expected the recursive completion to carry three helper stages")
+  }
+  json_inspect(plan.helpers.map(helper => helper.syntax.name), content=[
+    "inner", "middle", "outer",
+  ])
+}
+
+///|
+test "direct-return admission preserves ordered meaning for an eight-helper chain" {
+  let plan = match
+    classify_direct_return_recursion_program(
+      direct_return_test_program(
+        DIRECT_RETURN_EIGHT_HELPER_RESULT_FED_TEST_SOURCE,
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the eight-helper direct-return shape to be admitted")
+  }
+  match plan.entry.syntax.recursive_completion {
+    DirectReturnRecursiveResultFedCallChain({ calls }) =>
+      json_inspect(calls.map(call => call.callee_name), content=[
+        "one", "two", "three", "four", "five", "six", "seven", "eight",
+      ])
+    DirectReturnRecursiveSelfCall =>
+      fail("expected the recursive completion to carry eight helper stages")
+  }
+  json_inspect(plan.helpers.map(helper => helper.syntax.name), content=[
+    "one", "two", "three", "four", "five", "six", "seven", "eight",
+  ])
+}
+
+///|
 test "direct-return admission rejects two-helper order and shape drift" {
   for
     source in [
       "function outer(ignored,value){return value;}function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1),0));}f(256);",
-      "function a(value){return value;}function b(value){return value;}function c(value){return value;}function f(n){if(n===0)return \"done\";return c(b(a(f(n-1))));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",(inner)(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(inner(f(n-1)));}f(256);",
       "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(wrap(f(n-1))));}f(256);",
@@ -262,6 +325,29 @@ test "direct-return admission rejects two-helper order and shape drift" {
       )
       is None else {
       fail("unexpectedly admitted two-helper near miss: " + source)
+    }
+  }
+}
+
+///|
+test "direct-return admission rejects generalized result-fed near misses" {
+  for
+    source in [
+      "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",(inner)(f(n-1)));}f(256);",
+      "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",this.inner(f(n-1)));}f(256);",
+      "function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(...[inner(f(n-1))]);}f(256);",
+      "function outer(ignored,value){return value;}function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
+      "function inner(value){return value;}function outer(ignored,value){return value;}function extra(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
+      "function inner(value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
+      "function inner(value){return value;}function inner(value){return value;}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
+      "function inner(value){return outer(value);}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
+      "function inner(value){return f(value);}function outer(ignored,value){return value;}function f(n){if(n===0)return \"done\";return outer(\"ignored\",inner(f(n-1)));}f(256);",
+    ] {
+    guard classify_direct_return_recursion_program(
+        direct_return_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted generalized result-fed near miss: " + source)
     }
   }
 }
@@ -825,6 +911,22 @@ fn expect_two_helper_result_fed_dispatch_observation_balanced(
 }
 
 ///|
+fn expect_three_helper_result_fed_dispatch_observation_balanced(
+  probe : DispatchObservationProbe,
+) -> Unit raise {
+  inspect(probe.attempts, content="1025")
+  inspect(probe.acquired, content="1025")
+  inspect(probe.accepted, content="1025")
+  inspect(probe.rejected, content="0")
+  inspect(probe.released, content="1025")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="257")
+  inspect(probe.release_ordinals.length(), content="1025")
+  inspect(probe.lifo_violations, content="0")
+}
+
+///|
 fn run_direct_return_result_fed_shell_once(
   interp : Interpreter,
   source : String,
@@ -840,6 +942,7 @@ fn run_direct_return_result_fed_shell_once(
   match expected_observations {
     513 => expect_result_fed_dispatch_observation_balanced(probe)
     769 => expect_two_helper_result_fed_dispatch_observation_balanced(probe)
+    1025 => expect_three_helper_result_fed_dispatch_observation_balanced(probe)
     _ => fail("unsupported result-fed observation count")
   }
   inspect(shell.cleanup_stack.length(), content="0")
@@ -974,6 +1077,113 @@ test "direct-return two-helper carried-result pipeline balances every activation
     Some(source) => inspect(source, content="caller.js")
     None => fail("expected caller source identity after two-helper run")
   }
+}
+
+///|
+test "direct-return three-helper carried-result pipeline balances exactly 1025 activations" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 134)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_THREE_HELPER_RESULT_FED_TEST_SOURCE,
+  )
+  match activation_dispatch_root_value(shell.drive_root_program(stmts, ctx)) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "expected three-helper direct-return result, got " + other.to_string(),
+      )
+  }
+  inspect(probe.attempts, content="1025")
+  inspect(probe.acquired, content="1025")
+  inspect(probe.accepted, content="1025")
+  inspect(probe.rejected, content="0")
+  inspect(probe.released, content="1025")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="257")
+  inspect(probe.release_ordinals.length(), content="1025")
+  inspect(probe.lifo_violations, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 134)
+}
+
+///|
+test "direct-return three-helper inner throw preserves identity and short-circuits" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_THREE_HELPER_INNER_THROW_SOURCE,
+  )
+  let result = try {
+    let _ = activation_dispatch_root_value(shell.drive_root_program(stmts, ctx))
+    "no throw"
+  } catch {
+    JsException(String_(value)) => value
+    _ => "wrong throw"
+  }
+  inspect(result, content="inner-boom")
+  inspect(probe.attempts, content="258")
+  inspect(probe.accepted, content="258")
+  inspect(probe.released, content="258")
+  inspect(probe.maximum_active, content="257")
+  inspect(probe.active, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "direct-return three-helper middle throw preserves identity and short-circuits" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_THREE_HELPER_MIDDLE_THROW_SOURCE,
+  )
+  let result = try {
+    let _ = activation_dispatch_root_value(shell.drive_root_program(stmts, ctx))
+    "no throw"
+  } catch {
+    JsException(String_(value)) => value
+    _ => "wrong throw"
+  }
+  inspect(result, content="middle-boom")
+  inspect(probe.attempts, content="259")
+  inspect(probe.accepted, content="259")
+  inspect(probe.released, content="259")
+  inspect(probe.maximum_active, content="257")
+  inspect(probe.active, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "direct-return three-helper outer throw preserves identity" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
+    interp,
+    probe,
+    DIRECT_RETURN_THREE_HELPER_OUTER_THROW_SOURCE,
+  )
+  let result = try {
+    let _ = activation_dispatch_root_value(shell.drive_root_program(stmts, ctx))
+    "no throw"
+  } catch {
+    JsException(String_(value)) => value
+    _ => "wrong throw"
+  }
+  inspect(result, content="outer-boom")
+  inspect(probe.attempts, content="260")
+  inspect(probe.accepted, content="260")
+  inspect(probe.released, content="260")
+  inspect(probe.maximum_active, content="257")
+  inspect(probe.active, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
 }
 
 ///|
@@ -1187,6 +1397,47 @@ test "direct-return two-helper abrupt completion permits same-interpreter reuse"
   match interp.realm_state.active_source_identity.val {
     Some(source) => inspect(source, content="caller.js")
     None => fail("expected source identity after two-helper abrupt reuse")
+  }
+}
+
+///|
+test "direct-return three-helper abrupt completion permits same-interpreter reuse" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 165)
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  inspect(
+    run_direct_return_result_fed_throw(
+      interp,
+      DIRECT_RETURN_THREE_HELPER_INNER_THROW_SOURCE,
+    ),
+    content="inner-boom",
+  )
+  dispatch_shell_test_expect_realm_sentinel(interp, 165)
+  inspect(
+    run_direct_return_result_fed_throw(
+      interp,
+      DIRECT_RETURN_THREE_HELPER_MIDDLE_THROW_SOURCE,
+    ),
+    content="middle-boom",
+  )
+  dispatch_shell_test_expect_realm_sentinel(interp, 165)
+  match
+    run_direct_return_result_fed_shell_once(
+      interp,
+      DIRECT_RETURN_THREE_HELPER_RESULT_FED_TEST_SOURCE,
+      expected_observations=1025,
+    ) {
+    String_(value) => inspect(value, content="done")
+    other =>
+      fail(
+        "unexpected three-helper result after abrupt completion: " +
+        other.to_string(),
+      )
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 165)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("expected source identity after three-helper abrupt reuse")
   }
 }
 

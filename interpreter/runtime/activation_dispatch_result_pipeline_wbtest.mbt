@@ -109,6 +109,101 @@ test "result pipeline advances monotonically and completes with its value" {
 }
 
 ///|
+test "result pipeline advances one stage at a time through three helpers" {
+  let loc = @token.Loc::default()
+  let inner_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("inner"),
+        this_value=Undefined,
+        args=[Undefined],
+        loc~,
+      ),
+      callee_token=DispatchResultPipelineCalleeToken(String_("inner")),
+      result_argument_index=0,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid inner result pipeline stage")
+  }
+  let middle_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("middle"),
+        this_value=Undefined,
+        args=[String_("closed-middle"), Undefined],
+        loc~,
+      ),
+      callee_token=DispatchResultPipelineCalleeToken(String_("middle")),
+      result_argument_index=1,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid middle result pipeline stage")
+  }
+  let outer_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("outer"),
+        this_value=Undefined,
+        args=[String_("closed-outer"), Undefined],
+        loc~,
+      ),
+      callee_token=DispatchResultPipelineCalleeToken(String_("outer")),
+      result_argument_index=1,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid outer result pipeline stage")
+  }
+  let pipeline = match
+    validate_dispatch_result_pipeline(stages=[
+      inner_stage, middle_stage, outer_stage,
+    ]) {
+    Some(pipeline) => pipeline
+    None => fail("expected the valid three-stage result pipeline")
+  }
+  let (inner_request, middle_cursor) = match
+    dispatch_result_pipeline_transition(pipeline.start(), String_("seed")) {
+    DispatchResultPipelineSuspend(request, next_cursor) =>
+      (request, next_cursor)
+    DispatchResultPipelineComplete(_) =>
+      fail("three-stage result pipeline completed before inner")
+  }
+  guard inner_request.callee is String_("inner") &&
+    inner_request.args is [String_("seed")] else {
+    fail("three-stage result pipeline changed inner semantics")
+  }
+  let (middle_request, outer_cursor) = match
+    dispatch_result_pipeline_transition(middle_cursor, String_("inner-result")) {
+    DispatchResultPipelineSuspend(request, next_cursor) =>
+      (request, next_cursor)
+    DispatchResultPipelineComplete(_) =>
+      fail("three-stage result pipeline completed before middle")
+  }
+  guard middle_request.callee is String_("middle") &&
+    middle_request.args is [String_("closed-middle"), String_("inner-result")] else {
+    fail("three-stage result pipeline changed middle semantics")
+  }
+  let (outer_request, final_cursor) = match
+    dispatch_result_pipeline_transition(outer_cursor, String_("middle-result")) {
+    DispatchResultPipelineSuspend(request, next_cursor) =>
+      (request, next_cursor)
+    DispatchResultPipelineComplete(_) =>
+      fail("three-stage result pipeline completed before outer")
+  }
+  guard outer_request.callee is String_("outer") &&
+    outer_request.args is [String_("closed-outer"), String_("middle-result")] else {
+    fail("three-stage result pipeline changed outer semantics")
+  }
+  match dispatch_result_pipeline_transition(final_cursor, String_("done")) {
+    DispatchResultPipelineComplete(String_(value)) =>
+      inspect(value, content="done")
+    DispatchResultPipelineComplete(_) =>
+      fail("three-stage result pipeline changed its final value")
+    DispatchResultPipelineSuspend(_, _) =>
+      fail("three-stage result pipeline suspended after its final stage")
+  }
+}
+
+///|
 test "result pipeline rejects a drifted sealed callee" {
   let request = DispatchCallRequest(
     callee=String_("changed"),
