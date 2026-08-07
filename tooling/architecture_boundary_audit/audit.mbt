@@ -662,6 +662,38 @@ fn append_lines(target : Array[String], source : Array[String]) -> Unit {
 }
 
 ///|
+const DIRECT_RETURN_RESULT_PIPELINE_REL_PATH = "interpreter/runtime/activation_dispatch_result_pipeline.mbt"
+
+///|
+fn run_direct_return_result_pipeline_boundary(
+  root : String,
+) -> (Array[String], Array[String], Int) raise {
+  let stdout_lines : Array[String] = []
+  let stderr_lines : Array[String] = []
+  let path = @path_utils.join_path(root, DIRECT_RETURN_RESULT_PIPELINE_REL_PATH)
+  guard @fs.is_file(path) else { return (stdout_lines, stderr_lines, 0) }
+  let source = @fs.read_file_to_string(path)
+  let forbidden = [
+    "TrustedDirectReturnRecursionRegistry", "SealedDirectReturnProgram", "DirectReturn",
+    "@ast", "Interpreter",
+  ]
+  let violations = forbidden.filter(marker => source.contains(marker))
+  if violations.is_empty() {
+    stdout_lines.push(
+      "ok: direct-return result pipeline remains generic and pure",
+    )
+    (stdout_lines, stderr_lines, 0)
+  } else {
+    stderr_lines.push("direct-return result pipeline boundary audit failed:")
+    stderr_lines.push("\{path} contains forbidden references:")
+    for marker in violations {
+      stderr_lines.push("- \{marker}")
+    }
+    (stdout_lines, stderr_lines, 1)
+  }
+}
+
+///|
 pub fn run(
   root~ : String,
   list_imports~ : Bool,
@@ -691,9 +723,16 @@ pub fn run(
   append_lines(stdout_lines, surf_stdout)
   append_lines(stderr_lines, surf_stderr)
 
+  let (pipeline_stdout, pipeline_stderr, pipeline_code) = run_direct_return_result_pipeline_boundary(
+    root,
+  )
+  append_lines(stdout_lines, pipeline_stdout)
+  append_lines(stderr_lines, pipeline_stderr)
+
   let code = if import_code != 0 ||
     representation_code != 0 ||
-    surface_code != 0 {
+    surface_code != 0 ||
+    pipeline_code != 0 {
     1
   } else {
     0

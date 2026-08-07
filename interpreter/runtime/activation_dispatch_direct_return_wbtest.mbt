@@ -1323,7 +1323,7 @@ test "direct-return trust rejects global binding mutation before sealing" {
   let original = binding.value
   binding.value = Number(0.0)
   let result = try {
-    let _ = interp.seal_direct_return_recursion_registry(preflight, stmts)
+    let _ = interp.seal_direct_return_program(preflight, stmts)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -1345,8 +1345,8 @@ test "direct-return trust rejects post-seal UserFunc mutation" {
     None => fail("expected direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let callee = registry.entry.callee
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let callee = program.entry.callee
   guard callee is Object({ callable: Some(UserFunc(data)), .. }) else {
     fail("expected a trusted direct-return UserFunc")
   }
@@ -1354,7 +1354,7 @@ test "direct-return trust rejects post-seal UserFunc mutation" {
   let original_parameter = data.params[0]
   data.params[0] = "changed"
   let parameter_result = try {
-    let _ = registry.require_callee(interp, callee)
+    let _ = program.require_callee(interp, callee)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -1364,7 +1364,7 @@ test "direct-return trust rejects post-seal UserFunc mutation" {
   let original_base_case = data.body[0]
   data.body[0] = @parser.parse("0;").stmts[0]
   let body_result = try {
-    let _ = registry.require_callee(interp, callee)
+    let _ = program.require_callee(interp, callee)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -1379,7 +1379,7 @@ test "direct-return trust rejects post-seal UserFunc mutation" {
     body_result,
     content="direct-return callee provenance changed after sealing",
   )
-  let restored = registry.require_callee(interp, callee)
+  let restored = program.require_callee(interp, callee)
   inspect(restored.name, content="f")
 }
 
@@ -1393,8 +1393,8 @@ test "direct-return trust rejects post-seal leaf mutation" {
     None => fail("expected direct-return leaf preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted direct-return leaf")
   }
@@ -1404,14 +1404,14 @@ test "direct-return trust rejects post-seal leaf mutation" {
   let original_stmt = data.body[0]
   data.body[0] = @parser.parse("return 0;").stmts[0]
   let result = try {
-    let _ = registry.require_leaf(interp, leaf.callee)
+    let _ = program.require_leaf(interp, leaf.callee)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
   }
   data.body[0] = original_stmt
   inspect(result, content="direct-return leaf provenance changed after sealing")
-  let restored = registry.require_leaf(interp, leaf.callee)
+  let restored = program.require_leaf(interp, leaf.callee)
   inspect(restored.name, content="leaf")
 }
 
@@ -1425,8 +1425,8 @@ test "direct-return trust rejects post-seal closed leaf location drift" {
     None => fail("expected direct-return leaf preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted direct-return leaf")
   }
@@ -1450,7 +1450,7 @@ test "direct-return trust rejects post-seal closed leaf location drift" {
   }
   data.body[0] = replacement_stmt
   let result = try {
-    let _ = registry.require_leaf(interp, leaf.callee)
+    let _ = program.require_leaf(interp, leaf.callee)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -1459,7 +1459,7 @@ test "direct-return trust rejects post-seal closed leaf location drift" {
   guard result == "direct-return leaf provenance changed after sealing" else {
     fail("expected closed leaf location drift rejection, got " + result)
   }
-  let _ = registry.require_leaf(interp, leaf.callee)
+  let _ = program.require_leaf(interp, leaf.callee)
 }
 
 ///|
@@ -1474,17 +1474,17 @@ test "direct-return trust rejects a changed bound leaf argument" {
     None => fail("expected bound direct-return leaf preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted bound direct-return leaf")
   }
-  let call_loc = match registry.entry.syntax.base_completion {
+  let call_loc = match program.entry.syntax.base_completion {
     DirectReturnBaseLeafCall(plan) => plan.call_loc
     _ => fail("expected a sealed leaf call location")
   }
   let result = try {
-    registry.require_call(
+    program.require_call(
       interp,
       leaf.callee,
       Undefined,
@@ -1499,7 +1499,7 @@ test "direct-return trust rejects a changed bound leaf argument" {
     result,
     content="direct-return leaf activation escaped its sealed argument plan",
   )
-  registry.require_call(
+  program.require_call(
     interp,
     leaf.callee,
     Undefined,
@@ -1520,12 +1520,12 @@ test "direct-return result-fed trust rejects helper binding mutation" {
     None => fail("expected result-fed direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted result-fed helper")
   }
-  let call_loc = match registry.entry.syntax.recursive_completion {
+  let call_loc = match program.entry.syntax.recursive_completion {
     DirectReturnRecursiveResultFedCallChain({ calls: [plan] }) => plan.call_loc
     _ => fail("expected the result-fed call plan")
   }
@@ -1535,7 +1535,7 @@ test "direct-return result-fed trust rejects helper binding mutation" {
   let original = binding.value
   binding.value = Number(0.0)
   let result = try {
-    registry.require_call(
+    program.require_call(
       interp,
       leaf.callee,
       Undefined,
@@ -1562,17 +1562,17 @@ test "direct-return trust rejects reordered argument vectors" {
     None => fail("expected ordered direct-return leaf preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted ordered direct-return leaf")
   }
-  let call_loc = match registry.entry.syntax.base_completion {
+  let call_loc = match program.entry.syntax.base_completion {
     DirectReturnBaseLeafCall(plan) => plan.call_loc
     _ => fail("expected a sealed leaf call location")
   }
   let result = try {
-    registry.require_call(
+    program.require_call(
       interp,
       leaf.callee,
       Undefined,
@@ -1587,7 +1587,7 @@ test "direct-return trust rejects reordered argument vectors" {
     result,
     content="direct-return leaf activation escaped its sealed argument plan",
   )
-  registry.require_call(
+  program.require_call(
     interp,
     leaf.callee,
     Undefined,
@@ -1608,8 +1608,8 @@ test "direct-return bound leaf rejects a changed prepared parameter" {
     None => fail("expected bound direct-return leaf preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted bound direct-return leaf")
   }
@@ -1623,7 +1623,7 @@ test "direct-return bound leaf rejects a changed prepared parameter" {
     [String_("done")],
     data,
     throw_type_error_source=UsePreResolvedThrowTypeError(
-      registry.throw_type_error,
+      program.throw_type_error,
     ),
   )
   prepared.env.assign("value", String_("changed"))
@@ -1634,7 +1634,7 @@ test "direct-return bound leaf rejects a changed prepared parameter" {
   let result = try {
     let _ = direct_return_leaf_parameter_value(
       { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0 },
-      registry,
+      program,
       leaf.syntax,
       parameter,
       [String_("done")],
@@ -1662,8 +1662,8 @@ test "direct-return argument vector validates every prepared binding" {
     None => fail("expected ordered direct-return leaf preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted ordered direct-return leaf")
   }
@@ -1677,7 +1677,7 @@ test "direct-return argument vector validates every prepared binding" {
     [String_("ignored"), String_("done")],
     data,
     throw_type_error_source=UsePreResolvedThrowTypeError(
-      registry.throw_type_error,
+      program.throw_type_error,
     ),
   )
   prepared.env.assign("ignored", String_("changed"))
@@ -1688,7 +1688,7 @@ test "direct-return argument vector validates every prepared binding" {
   let result = try {
     let _ = direct_return_leaf_parameter_value(
       { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0 },
-      registry,
+      program,
       leaf.syntax,
       parameter,
       [String_("ignored"), String_("done")],
@@ -1716,8 +1716,8 @@ test "direct-return ordinary cleanup owns an argument snapshot" {
     None => fail("expected bound direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted direct-return leaf")
   }
@@ -1725,7 +1725,7 @@ test "direct-return ordinary cleanup owns an argument snapshot" {
     callee=leaf.callee,
     this_value=Undefined,
     args=[String_("done")],
-    loc=match registry.entry.syntax.base_completion {
+    loc=match program.entry.syntax.base_completion {
       DirectReturnBaseLeafCall(plan) => plan.call_loc
       _ => fail("expected the sealed leaf call plan")
     },
@@ -1734,7 +1734,7 @@ test "direct-return ordinary cleanup owns an argument snapshot" {
     interp,
     direct_return_root_preflight=Some(preflight),
     direct_return_root_stmts=Some(stmts),
-    direct_return_registry=Some(registry),
+    direct_return_program=Some(program),
   )
   match shell.enter_direct_return_call(request) {
     DispatchCallAccepted(_, _) => ()
@@ -1758,8 +1758,8 @@ test "direct-return trust revalidates binding and mirror after sealing" {
     None => fail("expected direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let callee = registry.entry.callee
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let callee = program.entry.callee
   guard callee is Object({ callable: Some(UserFunc(data)), .. }) &&
     interp.global.bindings.get("f") is Some(binding) &&
     interp.global_this is Object(global_object) else {
@@ -1770,7 +1770,7 @@ test "direct-return trust revalidates binding and mirror after sealing" {
   let original_binding = binding.value
   binding.value = replacement
   let binding_result = try {
-    let _ = registry.require_callee(interp, callee)
+    let _ = program.require_callee(interp, callee)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -1780,7 +1780,7 @@ test "direct-return trust revalidates binding and mirror after sealing" {
   let original_mirror = global_object.bag.properties["f"]
   global_object.bag.properties["f"] = replacement
   let mirror_result = try {
-    let _ = registry.require_callee(interp, callee)
+    let _ = program.require_callee(interp, callee)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -1802,7 +1802,7 @@ fn direct_return_wrapped_entry_attempt(
   interp : Interpreter,
   preflight : DirectReturnRecursionPreflight,
   stmts : Array[@ast.Stmt],
-  registry : TrustedDirectReturnRecursionRegistry,
+  program : SealedDirectReturnProgram,
   wrapper : TrustedDirectReturnWrapperFunction,
   probe : DispatchObservationProbe,
 ) -> String {
@@ -1810,7 +1810,7 @@ fn direct_return_wrapped_entry_attempt(
     interp,
     direct_return_root_preflight=Some(preflight),
     direct_return_root_stmts=Some(stmts),
-    direct_return_registry=Some(registry),
+    direct_return_program=Some(program),
     activation_observation_port=probe.port(),
   )
   let request = DispatchCallRequest(
@@ -1844,8 +1844,8 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
     None => fail("expected wrapped direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let wrapper = match registry.root {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let wrapper = match program.root {
     TrustedDirectReturnWrapperRoot(found) => found
     TrustedDirectReturnEntryRoot =>
       fail("expected a trusted wrapped direct-return root")
@@ -1861,7 +1861,7 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
   let original_binding = binding.value
   binding.value = replacement
   let binding_result = direct_return_wrapped_entry_attempt(
-    interp, preflight, stmts, registry, wrapper, binding_probe,
+    interp, preflight, stmts, program, wrapper, binding_probe,
   )
   binding.value = original_binding
   inspect(binding_probe.attempts, content="0")
@@ -1869,13 +1869,13 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
     binding_result,
     content="direct-return wrapper diverged from its global binding",
   )
-  let _ = registry.require_wrapper(interp, wrapper.callee)
+  let _ = program.require_wrapper(interp, wrapper.callee)
 
   let mirror_probe = DispatchObservationProbe(observed_interp=Some(interp))
   let original_mirror = global_object.bag.properties["entry"]
   global_object.bag.properties["entry"] = replacement
   let mirror_result = direct_return_wrapped_entry_attempt(
-    interp, preflight, stmts, registry, wrapper, mirror_probe,
+    interp, preflight, stmts, program, wrapper, mirror_probe,
   )
   global_object.bag.properties["entry"] = original_mirror
   inspect(mirror_probe.attempts, content="0")
@@ -1883,14 +1883,14 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
     mirror_result,
     content="direct-return wrapper diverged from its global mirror",
   )
-  let _ = registry.require_wrapper(interp, wrapper.callee)
+  let _ = program.require_wrapper(interp, wrapper.callee)
 
   // The exact zero-parameter guard rejects this too; keep the mutation to
   // prove that the sealed parameter snapshot is independently owned.
   let params_probe = DispatchObservationProbe(observed_interp=Some(interp))
   wrapper.params.push("changed")
   let params_result = direct_return_wrapped_entry_attempt(
-    interp, preflight, stmts, registry, wrapper, params_probe,
+    interp, preflight, stmts, program, wrapper, params_probe,
   )
   let _ = wrapper.params.pop()
   inspect(params_probe.attempts, content="0")
@@ -1898,13 +1898,13 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
     params_result,
     content="direct-return wrapper provenance changed after sealing",
   )
-  let _ = registry.require_wrapper(interp, wrapper.callee)
+  let _ = program.require_wrapper(interp, wrapper.callee)
 
   let body_probe = DispatchObservationProbe(observed_interp=Some(interp))
   let original_body = data.body[0]
   data.body[0] = @parser.parse("return 0;").stmts[0]
   let body_result = direct_return_wrapped_entry_attempt(
-    interp, preflight, stmts, registry, wrapper, body_probe,
+    interp, preflight, stmts, program, wrapper, body_probe,
   )
   data.body[0] = original_body
   inspect(body_probe.attempts, content="0")
@@ -1912,13 +1912,13 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
     body_result,
     content="direct-return wrapper provenance changed after sealing",
   )
-  let _ = registry.require_wrapper(interp, wrapper.callee)
+  let _ = program.require_wrapper(interp, wrapper.callee)
 
   let root_probe = DispatchObservationProbe(observed_interp=Some(interp))
-  let altered_registry = {
-    ..registry,
+  let altered_program = {
+    ..program,
     plan: {
-      ..registry.plan,
+      ..program.plan,
       root_invocation: DirectReturnEntryInvocation(
         DirectReturnEntryRootPlan(
           entry_name="f",
@@ -1929,14 +1929,14 @@ test "direct-return wrapped trust rejects post-seal root mutations before observ
     },
   }
   let root_result = direct_return_wrapped_entry_attempt(
-    interp, preflight, stmts, altered_registry, wrapper, root_probe,
+    interp, preflight, stmts, altered_program, wrapper, root_probe,
   )
   inspect(root_probe.attempts, content="0")
   inspect(
     root_result,
-    content="direct-return registry lost its wrapper root-plan ownership",
+    content="direct-return program lost its wrapper root-plan ownership",
   )
-  let _ = registry.require_wrapper(interp, wrapper.callee)
+  let _ = program.require_wrapper(interp, wrapper.callee)
 }
 
 ///|
@@ -1949,12 +1949,12 @@ test "direct-return execution rejects a foreign activation environment" {
     None => fail("expected direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
+  let program = interp.seal_direct_return_program(preflight, stmts)
   let shell = PrimitiveProgramDispatchShell(
     interp,
     direct_return_root_preflight=Some(preflight),
     direct_return_root_stmts=Some(stmts),
-    direct_return_registry=Some(registry),
+    direct_return_program=Some(program),
   )
   let foreign_parent = Environment::new()
   let wrong_parent = Environment::new(parent=Some(foreign_parent))
@@ -1968,7 +1968,7 @@ test "direct-return execution rejects a foreign activation environment" {
     let result = try {
       let _ = shell.execute_direct_return_statement({
         ctx: { strict: false, current_generator: None },
-        stmt: registry.entry.body[0],
+        stmt: program.entry.body[0],
         env,
         index: 0,
       })
@@ -1997,7 +1997,7 @@ test "direct-return trust rejects source identity drift during hoisting" {
   interp.prepare_root_program_execution(stmts, interp.global, false)
   interp.realm_state.active_source_identity.val = Some("preflight.js")
   let result = try {
-    let _ = interp.seal_direct_return_recursion_registry(preflight, stmts)
+    let _ = interp.seal_direct_return_program(preflight, stmts)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -2022,7 +2022,7 @@ test "direct-return trust rejects foreign realm metadata during hoisting" {
   interp.prepare_root_program_execution(stmts, interp.global, false)
   interp.global.interpreter_context = Some(interp)
   let result = try {
-    let _ = interp.seal_direct_return_recursion_registry(preflight, stmts)
+    let _ = interp.seal_direct_return_program(preflight, stmts)
     "accepted"
   } catch {
     InvalidActivationDispatchShell(message) => message
@@ -2608,12 +2608,12 @@ test "direct-return result-fed leaf rejects a changed prepared parameter" {
     None => fail("expected result-fed direct-return preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let registry = interp.seal_direct_return_recursion_registry(preflight, stmts)
-  let leaf = match registry.first_helper() {
+  let program = interp.seal_direct_return_program(preflight, stmts)
+  let leaf = match program.first_helper() {
     Some(found) => found
     None => fail("expected a trusted result-fed helper")
   }
-  let call_loc = match registry.entry.syntax.recursive_completion {
+  let call_loc = match program.entry.syntax.recursive_completion {
     DirectReturnRecursiveResultFedCallChain({ calls: [plan] }) => plan.call_loc
     _ => fail("expected the result-fed helper call plan")
   }
@@ -2621,7 +2621,7 @@ test "direct-return result-fed leaf rejects a changed prepared parameter" {
     interp,
     direct_return_root_preflight=Some(preflight),
     direct_return_root_stmts=Some(stmts),
-    direct_return_registry=Some(registry),
+    direct_return_program=Some(program),
   )
   let cursor = match
     shell.enter_direct_return_call(
@@ -2642,7 +2642,7 @@ test "direct-return result-fed leaf rejects a changed prepared parameter" {
   let result = try {
     let _ = shell.execute_direct_return_leaf_statement(
       { ctx: cursor.ctx, stmt: leaf.body[0], env: cursor.env, index: 0 },
-      registry,
+      program,
       leaf,
     )
     "accepted"

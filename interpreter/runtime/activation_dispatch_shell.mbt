@@ -289,7 +289,7 @@ priv struct PrimitiveProgramDispatchShell {
   mut control_finalizer_env : Environment?
   direct_return_root_preflight : DirectReturnRecursionPreflight?
   direct_return_root_stmts : Array[@ast.Stmt]?
-  mut direct_return_registry : TrustedDirectReturnRecursionRegistry?
+  mut direct_return_program : SealedDirectReturnProgram?
   numeric_root_preflight : NumericRecursionPreflight?
   mut numeric_registry : TrustedNumericRecursionRegistry?
   getter_root_preflight : GetterRecursionPreflight?
@@ -313,7 +313,6 @@ priv struct PrimitiveProgramDispatchShell {
   expression_root_preflight : NumericMapExpressionPreflight?
   expression_root_stmts : Array[@ast.Stmt]?
   mut expression_plan : DispatchExpressionPlan?
-  mut direct_return_result_pipeline : DispatchResultPipeline?
   mut expression_root_call_locs : Array[@token.Loc]
   composition_root_preflight : NumericMapCompositionPreflight?
   composition_root_stmts : Array[@ast.Stmt]?
@@ -330,7 +329,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   control_root_preflight? : ControlLifecyclePreflight? = None,
   direct_return_root_preflight? : DirectReturnRecursionPreflight? = None,
   direct_return_root_stmts? : Array[@ast.Stmt]? = None,
-  direct_return_registry? : TrustedDirectReturnRecursionRegistry? = None,
+  direct_return_program? : SealedDirectReturnProgram? = None,
   numeric_root_preflight? : NumericRecursionPreflight? = None,
   numeric_registry? : TrustedNumericRecursionRegistry? = None,
   getter_root_preflight? : GetterRecursionPreflight? = None,
@@ -354,7 +353,6 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   expression_root_preflight? : NumericMapExpressionPreflight? = None,
   expression_root_stmts? : Array[@ast.Stmt]? = None,
   expression_plan? : DispatchExpressionPlan? = None,
-  direct_return_result_pipeline? : DispatchResultPipeline? = None,
   composition_root_preflight? : NumericMapCompositionPreflight? = None,
   composition_root_stmts? : Array[@ast.Stmt]? = None,
   managed_user_func_catalog? : DispatchManagedUserFuncCatalog? = None,
@@ -372,7 +370,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     control_finalizer_env: None,
     direct_return_root_preflight,
     direct_return_root_stmts: direct_return_root_stmts.map(stmts => stmts.copy()),
-    direct_return_registry,
+    direct_return_program,
     numeric_root_preflight,
     numeric_registry,
     getter_root_preflight,
@@ -398,7 +396,6 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
     expression_root_preflight,
     expression_root_stmts: expression_root_stmts.map(stmts => stmts.copy()),
     expression_plan,
-    direct_return_result_pipeline,
     expression_root_call_locs: [],
     composition_root_preflight,
     composition_root_stmts: composition_root_stmts.map(stmts => stmts.copy()),
@@ -1120,8 +1117,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
     DispatchProgramRealmCleanup(previous_realm_protos) =>
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     DispatchDirectReturnRootRealmCleanup(previous_realm_protos) => {
-      self.direct_return_registry = None
-      self.direct_return_result_pipeline = None
+      self.direct_return_program = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
     DispatchControlRootRealmCleanup(previous_realm_protos) => {
@@ -1360,14 +1356,14 @@ fn PrimitiveProgramDispatchShell::require_control_registry(
 }
 
 ///|
-fn PrimitiveProgramDispatchShell::require_direct_return_registry(
+fn PrimitiveProgramDispatchShell::require_direct_return_program(
   self : PrimitiveProgramDispatchShell,
-) -> TrustedDirectReturnRecursionRegistry raise InvalidActivationDispatchShell {
-  match self.direct_return_registry {
-    Some(registry) => registry
+) -> SealedDirectReturnProgram raise InvalidActivationDispatchShell {
+  match self.direct_return_program {
+    Some(program) => program
     None =>
       invalid_activation_dispatch_shell(
-        "direct-return activation requires a sealed trust registry",
+        "direct-return activation requires a sealed program",
       )
   }
 }
@@ -1591,22 +1587,6 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 }
 
 ///|
-fn validate_direct_return_result_pipeline(
-  completion : DirectReturnRecursiveCompletion,
-  pipeline : DispatchResultPipeline?,
-) -> DispatchResultPipeline? raise InvalidActivationDispatchShell {
-  match completion {
-    DirectReturnRecursiveSelfCall => pipeline
-    DirectReturnRecursiveResultFedCallChain(_) =>
-      match pipeline {
-        Some(pipeline) => Some(pipeline)
-        None =>
-          invalid_activation_dispatch_shell(
-            "direct-return result-fed pipeline was not sealed",
-          )
-      }
-  }
-}
 
 ///|
 fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
@@ -1617,16 +1597,8 @@ fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
   preflight : DirectReturnRecursionPreflight,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   self.push_direct_return_root_cleanup(id, previous_realm_protos)
-  let registry = self.interp.seal_direct_return_recursion_registry(
-    preflight,
-    cursor.stmts,
-  )
-  let pipeline = validate_direct_return_result_pipeline(
-    registry.entry.syntax.recursive_completion,
-    direct_return_result_pipeline(registry),
-  )
-  self.direct_return_registry = Some(registry)
-  self.direct_return_result_pipeline = pipeline
+  let program = self.interp.seal_direct_return_program(preflight, cursor.stmts)
+  self.direct_return_program = Some(program)
   DispatchProgramAccepted(DispatchActivationCleanup(id))
 }
 
@@ -1855,8 +1827,8 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let registry = self.require_direct_return_registry()
-  registry.require_call(
+  let program = self.require_direct_return_program()
+  program.require_call(
     self.interp,
     request.callee,
     request.this_value,
@@ -1892,7 +1864,7 @@ fn PrimitiveProgramDispatchShell::enter_direct_return_call(
       request.args,
       data,
       throw_type_error_source=UsePreResolvedThrowTypeError(
-        registry.throw_type_error,
+        program.throw_type_error,
       ),
     ),
   ) catch {
@@ -1968,17 +1940,17 @@ fn PrimitiveProgramDispatchShell::direct_return_call_arguments(
 ///|
 fn direct_return_leaf_parameter_value(
   step : DispatchStatementStep,
-  registry : TrustedDirectReturnRecursionRegistry,
+  program : SealedDirectReturnProgram,
   syntax : DirectReturnLeafSyntax,
   parameter : DirectReturnBoundParameter,
   actual_arguments : Array[Value],
 ) -> Value raise InvalidActivationDispatchShell {
   let leaf_call = match
-    direct_return_helper_call_plan(registry.entry.syntax, syntax.name) {
+    direct_return_helper_call_plan(program.entry.syntax, syntax.name) {
     Some(plan) => plan
     None =>
       invalid_activation_dispatch_shell(
-        "direct-return leaf registry lost its leaf completion plan",
+        "direct-return leaf program lost its leaf completion plan",
       )
   }
   guard syntax.parameters.length() == actual_arguments.length() &&
@@ -2027,10 +1999,10 @@ fn direct_return_leaf_parameter_value(
 fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
-  registry : TrustedDirectReturnRecursionRegistry,
+  program : SealedDirectReturnProgram,
   leaf : TrustedDirectReturnLeafFunction,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let syntax = registry.require_helper(self.interp, leaf.callee, leaf)
+  let syntax = program.require_helper(self.interp, leaf.callee, leaf)
   guard step.ctx.current_generator is None &&
     !step.ctx.strict &&
     step.env.parent is Some(parent) &&
@@ -2062,7 +2034,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
         DispatchReturn(
           direct_return_leaf_parameter_value(
             step,
-            registry,
+            program,
             syntax,
             parameter,
             self.direct_return_call_arguments(),
@@ -2075,7 +2047,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
           JsException(
             direct_return_leaf_parameter_value(
               step,
-              registry,
+              program,
               syntax,
               parameter,
               self.direct_return_call_arguments(),
@@ -2090,10 +2062,10 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_leaf_statement(
 fn PrimitiveProgramDispatchShell::execute_direct_return_wrapper_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
-  registry : TrustedDirectReturnRecursionRegistry,
+  program : SealedDirectReturnProgram,
   wrapper : TrustedDirectReturnWrapperFunction,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let trusted = registry.require_wrapper(self.interp, wrapper.callee)
+  let trusted = program.require_wrapper(self.interp, wrapper.callee)
   guard step.ctx.current_generator is None &&
     !step.ctx.strict &&
     step.env.parent is Some(parent) &&
@@ -2112,12 +2084,12 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_wrapper_statement(
     None => ()
   }
   let request = DispatchCallRequest(
-    callee=registry.entry.callee,
+    callee=program.entry.callee,
     this_value=Undefined,
     args=[Number(trusted.plan.initial_argument)],
     loc=trusted.plan.syntax.inner_call_loc,
   )
-  let _ = registry.require_call(
+  let _ = program.require_call(
     self.interp,
     request.callee,
     request.this_value,
@@ -2132,24 +2104,24 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let registry = self.require_direct_return_registry()
-  for helper in registry.helpers {
+  let program = self.require_direct_return_program()
+  for helper in program.helpers {
     if step.index == 0 &&
       helper.body.length() == 1 &&
       physical_equal(step.stmt, helper.body[0]) {
-      return self.execute_direct_return_leaf_statement(step, registry, helper)
+      return self.execute_direct_return_leaf_statement(step, program, helper)
     }
   }
-  match registry.root {
+  match program.root {
     TrustedDirectReturnWrapperRoot(wrapper) if step.index == 0 &&
       wrapper.body.length() == 1 &&
       physical_equal(step.stmt, wrapper.body[0]) =>
       return self.execute_direct_return_wrapper_statement(
-        step, registry, wrapper,
+        step, program, wrapper,
       )
     _ => ()
   }
-  let syntax = registry.require_callee(self.interp, registry.entry.callee)
+  let syntax = program.require_callee(self.interp, program.entry.callee)
   guard step.ctx.current_generator is None &&
     !step.ctx.strict &&
     step.env.parent is Some(parent) &&
@@ -2157,8 +2129,8 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
     step.env.with_object is None &&
     step.env.is_var_scope &&
     step.index >= 0 &&
-    step.index < registry.entry.body.length() &&
-    physical_equal(step.stmt, registry.entry.body[step.index]) else {
+    step.index < program.entry.body.length() &&
+    physical_equal(step.stmt, program.entry.body[step.index]) else {
     invalid_activation_dispatch_shell(
       "direct-return statement lost its sealed body provenance",
     )
@@ -2205,17 +2177,9 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
               ),
             )
           DirectReturnBaseLeafCall(leaf_call) => {
-            let helper = match
-              direct_return_result_pipeline_helper(
-                registry,
-                leaf_call.callee_name,
-              ) {
-              Some(helper) => helper
-              None =>
-                invalid_activation_dispatch_shell(
-                  "direct-return base call lost its sealed helper",
-                )
-            }
+            let helper = program.require_result_pipeline_helper(
+              leaf_call.callee_name,
+            )
             let request = DispatchCallRequest(
               callee=helper.callee,
               this_value=Undefined,
@@ -2231,7 +2195,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
               }),
               loc=leaf_call.call_loc,
             )
-            let _ = registry.require_call(
+            let _ = program.require_call(
               self.interp,
               request.callee,
               request.this_value,
@@ -2264,25 +2228,13 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_statement(
         )
       }
       let request = DispatchCallRequest(
-        callee=registry.entry.callee,
+        callee=program.entry.callee,
         this_value=Undefined,
         args=[Number(n - DIRECT_RETURN_RECURSION_STEP)],
         loc=syntax.recursive_call_loc,
       )
-      let continuation = match syntax.recursive_completion {
-        DirectReturnRecursiveSelfCall => DispatchCompleteReturn
-        DirectReturnRecursiveResultFedCallChain(_) => {
-          let pipeline = match self.direct_return_result_pipeline {
-            Some(pipeline) => pipeline
-            None =>
-              invalid_activation_dispatch_shell(
-                "direct-return result-fed pipeline was not sealed",
-              )
-          }
-          DispatchContinueResultPipeline(pipeline.start())
-        }
-      }
-      let _ = registry.require_call(
+      let continuation = program.recursive_continuation()
+      let _ = program.require_call(
         self.interp,
         request.callee,
         request.this_value,
@@ -2303,7 +2255,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  let registry = self.require_direct_return_registry()
+  let program = self.require_direct_return_program()
   let root_stmts = match self.direct_return_root_stmts {
     Some(stmts) => stmts
     None =>
@@ -2311,9 +2263,9 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
         "direct-return root statements are unavailable",
       )
   }
-  let root_index = match registry.plan.root_invocation {
-    DirectReturnEntryInvocation(_) => registry.helpers.length() + 1
-    DirectReturnWrappedInvocation(_) => registry.helpers.length() + 2
+  let root_index = match program.plan.root_invocation {
+    DirectReturnEntryInvocation(_) => program.helpers.length() + 1
+    DirectReturnWrappedInvocation(_) => program.helpers.length() + 2
   }
   guard root_stmts.length() == root_index + 1 else {
     invalid_activation_dispatch_shell(
@@ -2349,9 +2301,9 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
       Some(completion) => return DispatchWorkCompleted(completion)
       None => ()
     }
-    let request = match registry.root {
+    let request = match program.root {
       TrustedDirectReturnEntryRoot => {
-        let root = match registry.plan.root_invocation {
+        let root = match program.plan.root_invocation {
           DirectReturnEntryInvocation(root) => root
           DirectReturnWrappedInvocation(_) =>
             invalid_activation_dispatch_shell(
@@ -2359,7 +2311,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
             )
         }
         DispatchCallRequest(
-          callee=registry.entry.callee,
+          callee=program.entry.callee,
           this_value=Undefined,
           args=[Number(root.initial_argument)],
           loc=root.call_loc,
@@ -2373,7 +2325,7 @@ fn PrimitiveProgramDispatchShell::execute_direct_return_root_statement(
           loc=wrapper.plan.outer_call_loc,
         )
     }
-    let _ = registry.require_call(
+    let _ = program.require_call(
       self.interp,
       request.callee,
       request.this_value,
@@ -2887,7 +2839,7 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  match self.direct_return_registry {
+  match self.direct_return_program {
     Some(_) => return self.enter_direct_return_call(request)
     None => ()
   }
@@ -5044,10 +4996,9 @@ fn Interpreter::run_activation_dispatch_direct_return_program(
     activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
-  guard shell.direct_return_registry is None &&
-    shell.direct_return_result_pipeline is None else {
+  guard shell.direct_return_program is None else {
     invalid_activation_dispatch_shell(
-      "direct-return registry outlived its root activation",
+      "direct-return program outlived its root activation",
     )
   }
   completion

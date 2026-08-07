@@ -53,7 +53,13 @@ priv enum TrustedDirectReturnRoot {
 }
 
 ///|
-priv struct TrustedDirectReturnRecursionRegistry {
+priv enum SealedDirectReturnRecursiveExecution {
+  SealedDirectReturnSelfCall
+  SealedDirectReturnResultFed(DispatchResultPipeline)
+}
+
+///|
+priv struct SealedDirectReturnProgram {
   plan : DirectReturnRecursionPlan
   root : TrustedDirectReturnRoot
   entry : TrustedDirectReturnRecursionFunction
@@ -61,6 +67,7 @@ priv struct TrustedDirectReturnRecursionRegistry {
   throw_type_error : Value?
   throw_type_error_snapshot : CallbackFreeBindingSnapshot
   expected_global_object : ObjectData
+  recursive_execution : SealedDirectReturnRecursiveExecution
 }
 
 ///|
@@ -150,7 +157,7 @@ fn TrustedDirectReturnWrapperFunction::TrustedDirectReturnWrapperFunction(
 }
 
 ///|
-fn TrustedDirectReturnRecursionRegistry::TrustedDirectReturnRecursionRegistry(
+fn SealedDirectReturnProgram::SealedDirectReturnProgram(
   plan~ : DirectReturnRecursionPlan,
   root~ : TrustedDirectReturnRoot,
   entry~ : TrustedDirectReturnRecursionFunction,
@@ -158,7 +165,8 @@ fn TrustedDirectReturnRecursionRegistry::TrustedDirectReturnRecursionRegistry(
   throw_type_error~ : Value?,
   throw_type_error_snapshot~ : CallbackFreeBindingSnapshot,
   expected_global_object~ : ObjectData,
-) -> TrustedDirectReturnRecursionRegistry {
+  recursive_execution~ : SealedDirectReturnRecursiveExecution,
+) -> SealedDirectReturnProgram {
   {
     plan,
     root,
@@ -167,19 +175,111 @@ fn TrustedDirectReturnRecursionRegistry::TrustedDirectReturnRecursionRegistry(
     throw_type_error,
     throw_type_error_snapshot,
     expected_global_object,
+    recursive_execution,
   }
 }
 
 ///|
 #warnings("-unused_value")
-fn TrustedDirectReturnRecursionRegistry::first_helper(
-  self : TrustedDirectReturnRecursionRegistry,
+fn SealedDirectReturnProgram::first_helper(
+  self : SealedDirectReturnProgram,
 ) -> TrustedDirectReturnLeafFunction? {
   if self.helpers.is_empty() {
     None
   } else {
     Some(self.helpers[0])
   }
+}
+
+///|
+fn SealedDirectReturnProgram::recursive_continuation(
+  self : SealedDirectReturnProgram,
+) -> DispatchContinuation {
+  match self.recursive_execution {
+    SealedDirectReturnSelfCall => DispatchCompleteReturn
+    SealedDirectReturnResultFed(pipeline) =>
+      DispatchContinueResultPipeline(pipeline.start())
+  }
+}
+
+///|
+fn direct_return_result_pipeline_helper(
+  helpers : Array[TrustedDirectReturnLeafFunction],
+  name : String,
+) -> TrustedDirectReturnLeafFunction? {
+  for helper in helpers {
+    if helper.syntax.name == name {
+      return Some(helper)
+    }
+  }
+  None
+}
+
+///|
+fn SealedDirectReturnProgram::require_result_pipeline_helper(
+  self : SealedDirectReturnProgram,
+  name : String,
+) -> TrustedDirectReturnLeafFunction raise InvalidActivationDispatchShell {
+  match direct_return_result_pipeline_helper(self.helpers, name) {
+    Some(helper) => helper
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct-return base call lost its sealed helper",
+      )
+  }
+}
+
+///|
+fn direct_return_result_pipeline(
+  entry : TrustedDirectReturnRecursionFunction,
+  helpers : Array[TrustedDirectReturnLeafFunction],
+) -> DispatchResultPipeline? {
+  let call_plans = match direct_return_recursive_call_plans(entry.syntax) {
+    Some(call_plans) => call_plans
+    None => return None
+  }
+  let stages : Array[DispatchResultPipelineStage] = []
+  for call in call_plans {
+    let helper = match
+      direct_return_result_pipeline_helper(helpers, call.callee_name) {
+      Some(helper) => helper
+      None => return None
+    }
+    let args : Array[Value] = []
+    let mut result_argument_index : Int? = None
+    for index, source in call.argument_sources {
+      match source {
+        DirectReturnLeafClosedArgument(argument) =>
+          args.push(direct_return_closed_literal_value(argument.literal))
+        DirectReturnLeafCarriedResult(_) => {
+          guard result_argument_index is None else { return None }
+          result_argument_index = Some(index)
+          args.push(Undefined)
+        }
+      }
+    }
+    let result_argument_index = match result_argument_index {
+      Some(index) => index
+      None => return None
+    }
+    let stage = match
+      validate_dispatch_result_pipeline_stage(
+        request=DispatchCallRequest(
+          callee=helper.callee,
+          this_value=Undefined,
+          args~,
+          loc=call.call_loc,
+        ),
+        callee_token=DispatchResultPipelineCalleeToken(helper.callee),
+        result_argument_index~,
+      ) {
+      Some(stage) => stage
+      None => return None
+    }
+    stages.push(stage)
+  }
+  guard !stages.is_empty() else { return None }
+  validate_dispatch_result_pipeline(stages~)
 }
 
 ///|
@@ -954,11 +1054,11 @@ fn direct_return_wrapper_trusted_declaration(
 }
 
 ///|
-fn Interpreter::seal_direct_return_recursion_registry(
+fn Interpreter::seal_direct_return_program(
   self : Interpreter,
   preflight : DirectReturnRecursionPreflight,
   stmts : Array[@ast.Stmt],
-) -> TrustedDirectReturnRecursionRegistry raise InvalidActivationDispatchShell {
+) -> SealedDirectReturnProgram raise InvalidActivationDispatchShell {
   guard self.numeric_recursion_canonical_global_object() is Some(global_object) &&
     physical_equal(global_object, preflight.expected_global_object) else {
     invalid_activation_dispatch_shell(
@@ -1034,7 +1134,20 @@ fn Interpreter::seal_direct_return_recursion_registry(
       )
     }
   }
-  TrustedDirectReturnRecursionRegistry(
+  let recursive_execution = match entry.syntax.recursive_completion {
+    DirectReturnRecursiveSelfCall => SealedDirectReturnSelfCall
+    DirectReturnRecursiveResultFedCallChain(_) => {
+      let pipeline = match direct_return_result_pipeline(entry, helpers) {
+        Some(pipeline) => pipeline
+        None =>
+          invalid_activation_dispatch_shell(
+            "direct-return result-fed pipeline was not sealed",
+          )
+      }
+      SealedDirectReturnResultFed(pipeline)
+    }
+  }
+  SealedDirectReturnProgram(
     plan=preflight.plan,
     root~,
     entry~,
@@ -1044,18 +1157,19 @@ fn Interpreter::seal_direct_return_recursion_registry(
     ),
     throw_type_error_snapshot~,
     expected_global_object=preflight.expected_global_object,
+    recursive_execution~,
   )
 }
 
 ///|
-fn TrustedDirectReturnRecursionRegistry::require_callee(
-  self : TrustedDirectReturnRecursionRegistry,
+fn SealedDirectReturnProgram::require_callee(
+  self : SealedDirectReturnProgram,
   interp : Interpreter,
   callee : Value,
 ) -> DirectReturnFunctionSyntax raise InvalidActivationDispatchShell {
   guard self.plan.entry.syntax.name == self.entry.syntax.name else {
     invalid_activation_dispatch_shell(
-      "direct-return registry lost its entry syntax identity",
+      "direct-return program lost its entry syntax identity",
     )
   }
   guard interp.numeric_recursion_canonical_global_object()
@@ -1083,7 +1197,7 @@ fn TrustedDirectReturnRecursionRegistry::require_callee(
     _ => false
   }) else {
     invalid_activation_dispatch_shell(
-      "direct-return registry lost its function object",
+      "direct-return program lost its function object",
     )
   }
   guard interp.global.bindings.get(self.entry.syntax.name) is Some(binding) &&
@@ -1138,8 +1252,8 @@ fn TrustedDirectReturnRecursionRegistry::require_callee(
 }
 
 ///|
-fn TrustedDirectReturnRecursionRegistry::require_helper(
-  self : TrustedDirectReturnRecursionRegistry,
+fn SealedDirectReturnProgram::require_helper(
+  self : SealedDirectReturnProgram,
   interp : Interpreter,
   callee : Value,
   helper : TrustedDirectReturnLeafFunction,
@@ -1152,7 +1266,7 @@ fn TrustedDirectReturnRecursionRegistry::require_helper(
   }
   guard matched_plan is Some(_) else {
     invalid_activation_dispatch_shell(
-      "direct-return registry lost its helper syntax identity",
+      "direct-return program lost its helper syntax identity",
     )
   }
   guard interp.numeric_recursion_canonical_global_object()
@@ -1180,7 +1294,7 @@ fn TrustedDirectReturnRecursionRegistry::require_helper(
     _ => false
   }) else {
     invalid_activation_dispatch_shell(
-      "direct-return registry lost its helper function object",
+      "direct-return program lost its helper function object",
     )
   }
   guard interp.global.bindings.get(helper.syntax.name) is Some(binding) &&
@@ -1235,8 +1349,8 @@ fn TrustedDirectReturnRecursionRegistry::require_helper(
 
 ///|
 #warnings("-unused_value")
-fn TrustedDirectReturnRecursionRegistry::require_leaf(
-  self : TrustedDirectReturnRecursionRegistry,
+fn SealedDirectReturnProgram::require_leaf(
+  self : SealedDirectReturnProgram,
   interp : Interpreter,
   callee : Value,
 ) -> DirectReturnLeafSyntax raise InvalidActivationDispatchShell {
@@ -1249,8 +1363,8 @@ fn TrustedDirectReturnRecursionRegistry::require_leaf(
 }
 
 ///|
-fn TrustedDirectReturnRecursionRegistry::require_wrapper(
-  self : TrustedDirectReturnRecursionRegistry,
+fn SealedDirectReturnProgram::require_wrapper(
+  self : SealedDirectReturnProgram,
   interp : Interpreter,
   callee : Value,
 ) -> TrustedDirectReturnWrapperFunction raise InvalidActivationDispatchShell {
@@ -1264,7 +1378,7 @@ fn TrustedDirectReturnRecursionRegistry::require_wrapper(
   guard self.plan.root_invocation is DirectReturnWrappedInvocation(root_plan) &&
     direct_return_wrapper_plans_match(root_plan, wrapper.plan) else {
     invalid_activation_dispatch_shell(
-      "direct-return registry lost its wrapper root-plan ownership",
+      "direct-return program lost its wrapper root-plan ownership",
     )
   }
   let leaf_name_is_distinct = self.plan.helpers.length() == 1 &&
@@ -1300,7 +1414,7 @@ fn TrustedDirectReturnRecursionRegistry::require_wrapper(
   }
   guard wrapper.callee is Object(expected) && physical_equal(actual, expected) else {
     invalid_activation_dispatch_shell(
-      "direct-return registry lost its wrapper function object",
+      "direct-return program lost its wrapper function object",
     )
   }
   guard interp.global.bindings.get(wrapper.plan.syntax.name) is Some(binding) &&
@@ -1347,8 +1461,8 @@ fn TrustedDirectReturnRecursionRegistry::require_wrapper(
 }
 
 ///|
-fn TrustedDirectReturnRecursionRegistry::require_call(
-  self : TrustedDirectReturnRecursionRegistry,
+fn SealedDirectReturnProgram::require_call(
+  self : SealedDirectReturnProgram,
   interp : Interpreter,
   callee : Value,
   this_value : Value,
@@ -1386,7 +1500,7 @@ fn TrustedDirectReturnRecursionRegistry::require_call(
         Some(plan) => plan
         None =>
           invalid_activation_dispatch_shell(
-            "direct-return helper registry lost its completion plan",
+            "direct-return program helpers lost their completion plan",
           )
       }
       guard helper_call.callee_name == helper.syntax.name &&
