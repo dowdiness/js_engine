@@ -104,6 +104,12 @@
       "reason": "external-consumer acceptance fixture imports only the stable root facade"
     },
     {
+      "from": "integration/diago_readiness",
+      "to": ".",
+      "scope": "test",
+      "reason": "Diago readiness fixture exercises pinned workloads through the stable root facade"
+    },
+    {
       "from": "ast",
       "to": "token",
       "scope": "prod",

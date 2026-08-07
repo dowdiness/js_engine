@@ -1,0 +1,7 @@
+name = "dowdiness/js_engine_diago_readiness"
+
+version = "0.1.0"
+
+import {
+  "dowdiness/js_engine@0.7.0",
+}

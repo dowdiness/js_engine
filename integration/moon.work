@@ -1,4 +1,5 @@
 members = [
   "..",
+  "./diago_readiness",
   "./external_consumer",
 ]

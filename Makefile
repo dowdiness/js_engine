@@ -1,4 +1,4 @@
-.PHONY: build test external-consumer-test stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test external-consumer-test diago-readiness stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
@@ -22,6 +22,28 @@ external-consumer-test:
 	cd integration/external_consumer && \
 		moon check --target $(TARGET) . && \
 		moon test --target $(TARGET) .
+
+# Run the pinned former-Diago readiness fixture for one explicit target/profile.
+# This reproducible check is intentionally not part of the permanent PR gate.
+diago-readiness:
+	@if [ "$(origin TARGET)" != "command line" ]; then \
+		echo "TARGET must be supplied on the diago-readiness command line" >&2; \
+		exit 2; \
+	fi; \
+	if [ "$(origin PROFILE)" != "command line" ]; then \
+		echo "PROFILE must be supplied on the diago-readiness command line" >&2; \
+		exit 2; \
+	fi; \
+	case "$(TARGET)" in \
+		native|js|wasm|wasm-gc) ;; \
+		*) echo "TARGET must be native, js, wasm, or wasm-gc (got $(TARGET))" >&2; exit 2;; \
+	esac; \
+	case "$(PROFILE)" in \
+		debug) release=;; \
+		release) release=--release;; \
+		*) echo "PROFILE must be debug or release (got $(PROFILE))" >&2; exit 2;; \
+	esac; \
+	timeout 900s sh -c 'cd integration/diago_readiness && moon check --target "$$1" --deny-warn . && moon test --target "$$1" $$2 .' sh "$(TARGET)" "$$release"
 
 # Run only the permanent stack-safety gate for one target and profile.
 # TARGET and PROFILE must be supplied explicitly; CI invokes both profiles for
