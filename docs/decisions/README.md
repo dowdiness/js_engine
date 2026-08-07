@@ -13,3 +13,4 @@ Architecture-decision-record-style documents and project contracts.
 - [stack-safety-public-workload-contract.md](stack-safety-public-workload-contract.md) — reconciled #619 required workloads, #608 deferred graduation evidence, and one-owner evidence classification.
 - [tooling-migration-contracts.md](tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit.
 - [bytecode-execution-representation-contract.md](bytecode-execution-representation-contract.md) — proposed bytecode execution representation contract for #601: deepen existing stack bytecode as the sole long-term compiled executable representation; reject separate ExecutionIR and register/basic-block alternatives.
+- [receiver-call-ownership.md](receiver-call-ownership.md) — private closed ownership boundary for fixed, changing, and mutual receiver-call families; broader all-family ownership remains deferred.
