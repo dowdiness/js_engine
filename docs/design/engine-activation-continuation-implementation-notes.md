@@ -1,9 +1,10 @@
 # Activation continuation implementation notes
 
-Date: 2026-07-29. Revised 2026-08-06 after reconciling the notes with #608's
-mixed ordered-source direct-return slice and #823's exact two-helper linear
-result pipeline, following the result-fed plan in #817 and the ordered-argument
-plan in #815 under #800.
+Date: 2026-07-29. Revised 2026-08-07 after reconciling the notes with #608's
+mixed ordered-source direct-return slice, #823's exact two-helper linear result
+pipeline, and #828's finite non-empty linear helper-chain generalization,
+following the result-fed plan in #817 and the ordered-argument plan in #815
+under #800.
 
 This note maps the accepted
 [activation and continuation contract](../decisions/engine-activation-continuation-contract.md)
@@ -72,14 +73,16 @@ The production claim is limited to these admitted recipes:
   either source order and the closed literal location; the required public
   workload fixes `leaf("ignored", f(n - 1))`. Direct-shell/lifecycle observation
   of that depth-256 path records 257 `f` activations plus 256 leaf activations;
-- the exact #823 extension whose recursive return crosses two separately sealed
-  ordinary helper calls in source order. The first step carries `f(n - 1)` into
-  `inner`; the second carries the `inner` result into `outer` alongside one
-  closed argument. The plan is an ordered, defensive two-step template with
-  one result slot per step, direct helper identity/name adapters, and no
-  recursive or dynamic fallback. Direct-shell/lifecycle observation records
-  769 ordinary activations (257 `f`, 256 `inner`, 256 `outer`) and maximum
-  active guest depth 257;
+- the exact #828 extension whose recursive return crosses a finite non-empty
+  linear chain of separately sealed ordinary helper calls in source order. An
+  effect-free host-iterative collector scans the nested call from outer to
+  inner, records one carried-result slot and closed argument values per stage,
+  reverses once into the canonical inner-to-outer chain, and requires helper
+  declaration order and arity to agree with that chain. It adds no recursive or
+  dynamic fallback. The required three-helper direct-shell/lifecycle evidence
+  records 1,025 ordinary activations (257 `f`, 256 each `inner`, `middle`, and
+  `outer`) and maximum active guest depth 257; classifier evidence also covers
+  N=1, N=2, N=3, and N=8.
 - the exact #819 extension whose program root is either the existing direct
   entry call or a sealed zero-parameter ordinary `entry()` wrapper around
   `f(256)`. The wrapper owns its declaration index, call locations, UserFunc
@@ -127,7 +130,7 @@ event because no activation was acquired.
 
 The observation port is policy-free and covers guest activations admitted by
 the exact production recipes, including #809, #811, #813, #815, #817, #823,
-and #608's mixed ordered-source extension. It does not make legacy call paths
+#828, and #608's mixed ordered-source extension. It does not make legacy call paths
 observable or stack-safe. #617 owns the logical-depth policy,
 configuration validation, and engine-created error that will consume this
 seam.
@@ -138,9 +141,10 @@ The following paths remain outside #630 even when the reducer has a state that
 could eventually represent their continuation:
 
 - general interpreted functions outside the exact #809/#811/#813/#815/#817
-  direct-return recipes, #608 mixed ordered-source slice, and #823's exact
-  two-helper chain, including shapes other than exactly one closed literal plus
-  one recursive result per admitted stage or chains longer than two helpers;
+  direct-return recipes, #608 mixed ordered-source slice, and #828's finite
+  non-empty linear helper-chain family, including dynamic/property/spread
+  callees, transformed values, duplicate or reordered declarations, multiple
+  carried results, and helper bodies that call guest code;
   arrow and extended callable forms, bound calls, and call/apply forwarding;
 - general statements, expressions, loops, labels, catch/finally shapes, and
   parameter-default or destructuring evaluation;
@@ -176,8 +180,10 @@ replacement remain separate downstream work.
 
 The exact #616 programs, the retained-argument slice landed in #790, the exact
 #809/#811/#813/#815/#817 ordinary direct-return programs, #608's mixed
-ordered-source slice, and #823's two-helper chain supply end-to-end red-to-green
-evidence.
+ordered-source slice, and #828's three-helper public chain supply end-to-end
+red-to-green evidence. The classifier's N=1, N=2, N=3, and N=8 tests provide
+structural admission evidence; shell tests provide 1,025-activation cleanup,
+abrupt short-circuit, and same-interpreter reuse evidence.
 Reducer tests separately cover deterministic transition, pathological
 continuation depth, handler/finalizer precedence, and one-time ownership. Shell
 tests cover effect order, runtime provenance, cleanup restoration, and adapter

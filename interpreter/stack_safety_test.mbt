@@ -243,6 +243,19 @@ test "execution stack safety: direct-return two-helper linear result pipeline" {
 }
 
 ///|
+test "execution stack safety: direct-return three-helper linear result pipeline" {
+  let source = "function inner(value) { return value; } function middle(value) { return value; } function outer(ignored, value) { return value; } function f(n) { if (n === 0) return \"done\"; return outer(\"ignored\", middle(inner(f(n - 1)))); } f(256);"
+  match run(source) {
+    Value::String_("done") => ()
+    other =>
+      fail(
+        "expected three-helper result-fed direct return done, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
 test "execution stack safety: direct-return recursive result preserves ordered closed arguments" {
   let source =
     #|function leaf(ignored, value) { return value; }

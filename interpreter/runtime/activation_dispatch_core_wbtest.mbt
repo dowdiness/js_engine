@@ -1593,6 +1593,60 @@ fn direct_return_two_stage_result_pipeline() -> DispatchResultPipelineCursor rai
 }
 
 ///|
+fn direct_return_three_stage_result_pipeline() -> DispatchResultPipelineCursor raise Error {
+  let inner_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("inner"),
+        this_value=Undefined,
+        args=[Undefined],
+        loc=@token.Loc::default(),
+      ),
+      callee_token=DispatchResultPipelineCalleeToken(String_("inner")),
+      result_argument_index=0,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid inner three-stage pipeline stage")
+  }
+  let middle_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("middle"),
+        this_value=Undefined,
+        args=[String_("closed-middle"), Undefined],
+        loc=@token.Loc::default(),
+      ),
+      callee_token=DispatchResultPipelineCalleeToken(String_("middle")),
+      result_argument_index=1,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid middle three-stage pipeline stage")
+  }
+  let outer_stage = match
+    validate_dispatch_result_pipeline_stage(
+      request=DispatchCallRequest(
+        callee=String_("outer"),
+        this_value=Undefined,
+        args=[String_("closed-outer"), Undefined],
+        loc=@token.Loc::default(),
+      ),
+      callee_token=DispatchResultPipelineCalleeToken(String_("outer")),
+      result_argument_index=1,
+    ) {
+    Some(stage) => stage
+    None => fail("expected the valid outer three-stage pipeline stage")
+  }
+  let pipeline = match
+    validate_dispatch_result_pipeline(stages=[
+      inner_stage, middle_stage, outer_stage,
+    ]) {
+    Some(pipeline) => pipeline
+    None => fail("expected the valid three-stage result pipeline")
+  }
+  pipeline.start()
+}
+
+///|
 fn direct_return_two_stage_failure_error(
   failure_after_inner : Bool,
   runtime_abrupt : Bool,
@@ -1809,6 +1863,186 @@ fn expect_direct_return_two_stage_failure(
 }
 
 ///|
+fn direct_return_three_stage_runtime_error(stage : String) -> Error {
+  @errors.InternalError(message="three-stage runtime " + stage)
+}
+
+///|
+fn expect_direct_return_three_stage_runtime_abrupt(
+  failure_stage : String,
+) -> Unit raise {
+  let id = match failure_stage {
+    "inner" => 1200
+    "middle" => 1210
+    "outer" => 1220
+    _ => fail("unexpected three-stage runtime failure position")
+  }
+  let expected_error = direct_return_three_stage_runtime_error(failure_stage)
+  let expected_completion = DispatchRuntimeAbrupt(expected_error)
+  let pipeline_cursor = direct_return_three_stage_result_pipeline()
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let (waiting_for_expression, root_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchContinueResultPipeline(pipeline_cursor),
+          DispatchExecuteStatement(dispatch_test_statement_step(id + 1)),
+        ),
+      ),
+    ),
+  )
+  let expression_ticket = match root_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("three-stage plan did not schedule its recursive result")
+  }
+  let (waiting_inner, inner_decision) = reduce_activation_dispatch(
+    waiting_for_expression,
+    DispatchEffectCompleted(
+      expression_ticket,
+      DispatchWorkCompleted(DispatchNormal(Number(41.0))),
+    ),
+  )
+  let inner_entry_ticket = match inner_decision {
+    DispatchPerform(
+      ticket,
+      DispatchEnterActivation(DispatchCallActivation(request))
+    ) => {
+      guard request.callee is String_("inner") else {
+        fail("three-stage plan did not enter inner first")
+      }
+      ticket
+    }
+    _ => fail("three-stage plan did not schedule inner activation")
+  }
+  let (running_inner, inner_decision) = reduce_activation_dispatch(
+    waiting_inner,
+    DispatchEffectCompleted(
+      inner_entry_ticket,
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id + 2),
+        DispatchCallBody(dispatch_test_statement_work(id + 3)),
+      ),
+    ),
+  )
+  let inner_body_ticket = match inner_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("three-stage plan did not run inner body")
+  }
+  if failure_stage == "inner" {
+    return finish_direct_return_two_stage_failure(
+      running_inner, inner_body_ticket, expected_completion, "inner",
+    )
+  }
+  let (releasing_inner, inner_release_decision) = reduce_activation_dispatch(
+    running_inner,
+    DispatchEffectCompleted(
+      inner_body_ticket,
+      DispatchWorkCompleted(DispatchReturn(Number(42.0))),
+    ),
+  )
+  let inner_release_ticket = match inner_release_decision {
+    DispatchPerform(
+      ticket,
+      DispatchReleaseActivation(_, DispatchNormal(Number(value)))
+    ) => {
+      inspect(value, content="42")
+      ticket
+    }
+    _ => fail("inner normal result must release inner activation")
+  }
+  let (waiting_middle, middle_decision) = reduce_activation_dispatch(
+    releasing_inner,
+    DispatchEffectCompleted(inner_release_ticket, DispatchCleanupCompleted),
+  )
+  let middle_entry_ticket = match middle_decision {
+    DispatchPerform(
+      ticket,
+      DispatchEnterActivation(DispatchCallActivation(request))
+    ) => {
+      guard request.callee is String_("middle") else {
+        fail("three-stage plan did not enter middle second")
+      }
+      ticket
+    }
+    _ => fail("inner success did not schedule middle activation")
+  }
+  let (running_middle, middle_decision) = reduce_activation_dispatch(
+    waiting_middle,
+    DispatchEffectCompleted(
+      middle_entry_ticket,
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id + 5),
+        DispatchCallBody(dispatch_test_statement_work(id + 6)),
+      ),
+    ),
+  )
+  let middle_body_ticket = match middle_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("three-stage plan did not run middle body")
+  }
+  if failure_stage == "middle" {
+    return finish_direct_return_two_stage_failure(
+      running_middle, middle_body_ticket, expected_completion, "middle",
+    )
+  }
+  let (releasing_middle, middle_release_decision) = reduce_activation_dispatch(
+    running_middle,
+    DispatchEffectCompleted(
+      middle_body_ticket,
+      DispatchWorkCompleted(DispatchReturn(Number(43.0))),
+    ),
+  )
+  let middle_release_ticket = match middle_release_decision {
+    DispatchPerform(
+      ticket,
+      DispatchReleaseActivation(_, DispatchNormal(Number(value)))
+    ) => {
+      inspect(value, content="43")
+      ticket
+    }
+    _ => fail("middle normal result must release middle activation")
+  }
+  let (waiting_outer, outer_decision) = reduce_activation_dispatch(
+    releasing_middle,
+    DispatchEffectCompleted(middle_release_ticket, DispatchCleanupCompleted),
+  )
+  let outer_entry_ticket = match outer_decision {
+    DispatchPerform(
+      ticket,
+      DispatchEnterActivation(DispatchCallActivation(request))
+    ) => {
+      guard request.callee is String_("outer") else {
+        fail("three-stage plan did not enter outer third")
+      }
+      ticket
+    }
+    _ => fail("middle success did not schedule outer activation")
+  }
+  let (running_outer, outer_decision) = reduce_activation_dispatch(
+    waiting_outer,
+    DispatchEffectCompleted(
+      outer_entry_ticket,
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id + 8),
+        DispatchCallBody(dispatch_test_statement_work(id + 9)),
+      ),
+    ),
+  )
+  let outer_body_ticket = match outer_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteStatement(_))) => ticket
+    _ => fail("three-stage plan did not run outer body")
+  }
+  if failure_stage == "outer" {
+    return finish_direct_return_two_stage_failure(
+      running_outer, outer_body_ticket, expected_completion, "outer",
+    )
+  }
+  fail("three-stage runtime failure did not reach a helper stage")
+}
+
+///|
 test "result pipeline preserves inner guest Error identity" {
   expect_direct_return_two_stage_failure(true, false)
 }
@@ -1826,6 +2060,21 @@ test "result pipeline preserves inner runtime-abrupt Error identity" {
 ///|
 test "result pipeline preserves outer runtime-abrupt Error identity" {
   expect_direct_return_two_stage_failure(false, true)
+}
+
+///|
+test "result pipeline preserves inner three-stage runtime-abrupt identity" {
+  expect_direct_return_three_stage_runtime_abrupt("inner")
+}
+
+///|
+test "result pipeline preserves middle three-stage runtime-abrupt identity" {
+  expect_direct_return_three_stage_runtime_abrupt("middle")
+}
+
+///|
+test "result pipeline preserves outer three-stage runtime-abrupt identity" {
+  expect_direct_return_three_stage_runtime_abrupt("outer")
 }
 
 ///|

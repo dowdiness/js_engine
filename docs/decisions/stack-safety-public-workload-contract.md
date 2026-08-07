@@ -1,9 +1,10 @@
 # Stack-safe public acceptance workload contract
 
-Date: 2026-08-06. Reconciled after #608 deepened result-fed direct-return
+Date: 2026-08-07. Reconciled after #608 deepened result-fed direct-return
 admission to own two-argument mixed ordered-source plans with one closed
-argument and one recursive result, and #823 admitted the exact two-helper
-linear result pipeline.
+argument and one recursive result, #823 admitted the exact two-helper linear
+result pipeline, and #828 generalized the admitted finite non-empty linear
+helper chain.
 
 ## Purpose
 
@@ -38,6 +39,7 @@ focused and core evidence that #619 also requires.
 | Exact ordinary direct-return self recursion crossing one two-parameter leaf call that returns its second ordered `"done"` argument | Production-admitted exact slice | #815 | Required |
 | Exact ordinary direct-return self recursion at depth 256 crossing `leaf("ignored", f(n - 1))`, returning `"done"` | Production-admitted exact slice | #608 | Required |
 | Exact ordinary direct-return self recursion at depth 256 crossing `outer("ignored", inner(f(n - 1)))` through two ordered helpers, returning `"done"` | Production-admitted exact slice | #823 | Required |
+| Exact ordinary direct-return self recursion at depth 256 crossing a finite non-empty linear helper chain, with the required three-helper source `outer("ignored", middle(inner(f(n - 1))))`, returning `"done"` | Production-admitted exact slice | #828 | Required |
 | Exact ordinary getter re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact Proxy `get` re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact protected normal/abrupt completion, control, and lifecycle cases | Production-admitted exact slice | #630 | Required |
@@ -68,6 +70,15 @@ workload records 769 attempts/acquisitions/accepted entries/releases (257
 `f`, 256 `inner`, and 256 `outer`) with maximum active guest depth 257. Its
 inner-throw and outer-throw twins must preserve the thrown guest value and
 leave the same interpreter reusable.
+
+The #828 shell evidence is exact and independently bounded: the required
+three-helper workload records 1,025 attempts/acquisitions/accepted
+entries/releases (257 `f` plus 256 each for `inner`, `middle`, and `outer`),
+with zero rejected, denied, active-at-completion, or LIFO-violation
+observations and maximum active guest depth 257. Inner-, middle-, and
+outer-throw fixtures preserve their guest values and stop later helper stages
+after 258, 259, and 260 accepted/released activations respectively; the same
+interpreter then completes the three-helper success workload.
 
 The post-parse 512-level traversal, the success-valued 512-comma runtime case,
 and the retained-argument mixed runtime case are deliberately different
