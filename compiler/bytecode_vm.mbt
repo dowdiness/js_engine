@@ -385,6 +385,9 @@ fn make_bytecode_func(
     BytecodeExecutorCode(func_def~),
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
+    activation_source_contract=Some(
+      @runtime.executor_activation_source_contract(func_def.source_body),
+    ),
   )
 }
 
@@ -438,6 +441,9 @@ fn make_bytecode_method_func(
     constructable=false,
     call_self_name=func_def.call_self_name,
     define_arguments_object=func_def.needs_arguments_object,
+    activation_source_contract=Some(
+      @runtime.executor_activation_source_contract(func_def.source_body),
+    ),
   )
 }
 
@@ -485,6 +491,9 @@ fn make_bytecode_arrow_func(
     strict,
     BytecodeExecutorCode(func_def~),
     rest_param=func_def.rest_param,
+    activation_source_contract=Some(
+      @runtime.executor_activation_source_contract(func_def.source_body),
+    ),
   )
 }
 

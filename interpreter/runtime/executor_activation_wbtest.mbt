@@ -1355,6 +1355,9 @@ test "tree executor child abrupt completion preserves identity and cleanup" {
     false,
     ExecutorActivationThrowCode(error=sentinel),
     constructable=false,
+    activation_source_contract=Some(
+      executor_activation_source_contract(@parser.parse("return 0;").stmts),
+    ),
   )
   interp.global.def_builtin("tree_child_thrower", child)
   let _ = interp.run(
@@ -1428,6 +1431,140 @@ test "unsupported tree body stays legacy before observable execution" {
     _ => fail("unsupported body must complete through the legacy evaluator")
   }
   inspect(interp.global.get("legacyCalls").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects unsupported callees before earlier call effects" {
+  let interp = Interpreter::new()
+  let side_effects : Ref[Int] = { val: 0 }
+  let side_effect = make_native_func(name="sideEffect", fn(args) {
+    side_effects.val += 1
+    args[0]
+  })
+  let native_leaf = make_native_func(name="nativeLeaf", fn(args) { args[0] })
+  interp.global.def_builtin("sideEffect", side_effect)
+  interp.global.def_builtin("nativeLeaf", native_leaf)
+  let _ = interp.run(
+    @parser.parse(
+      "function unsafeParent(n) { sideEffect(n); return nativeLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("unsafeParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ =>
+      fail("unsupported callees must keep the whole root on legacy execution")
+  }
+  inspect(side_effects.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects object coercion before valueOf effects" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var coercions = 0; " +
+      "var box = { valueOf: function() { coercions = coercions + 1; return 7; } }; " +
+      "function coercionParent(x) { return x + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("coercionParent"),
+      this_value=Undefined,
+      args=[interp.global.get("box")],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="8")
+    _ => fail("object coercion must keep the whole root on legacy execution")
+  }
+  inspect(interp.global.get("coercions").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects executor object results before parent effects" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let coercions : Ref[Int] = { val: 0 }
+  let value_of = make_native_func(name="valueOf", fn(_args) {
+    coercions.val += 1
+    Number(7.0)
+  })
+  let object_result = make_object(
+    { "valueOf": value_of },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let child = make_executor_function(
+    Some("objectLeaf"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=object_result),
+    constructable=false,
+    activation_source_contract=Some(
+      executor_activation_source_contract(@parser.parse("return {};").stmts),
+    ),
+  )
+  interp.global.def_builtin("objectLeaf", child)
+  let _ = interp.run(
+    @parser.parse(
+      "function objectResultParent(n) { return objectLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("objectResultParent"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="8")
+    _ =>
+      fail(
+        "object-returning executors must keep the parent on legacy execution",
+      )
+  }
+  inspect(starts.val, content="1")
+  inspect(coercions.val, content="1")
   inspect(control.active_depth(), content="0")
 }
 
