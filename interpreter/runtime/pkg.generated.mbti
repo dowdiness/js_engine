@@ -95,8 +95,6 @@ pub fn executor_activation_property_get(Value, String, @token.Loc) -> ExecutorAc
 
 pub fn executor_activation_return(Value) -> ExecutorActivationStep
 
-pub fn executor_activation_source_contract(Array[@ast.Stmt]) -> ExecutorActivationSourceContract
-
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
@@ -263,9 +261,13 @@ pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : S
 
 pub fn make_canonical_proxy_constructor(RealmState) -> Value
 
-pub fn[T : ExecutorCode] make_executor_arrow_function(Array[String], Environment, Bool, T, rest_param? : String?, activation_source_contract? : ExecutorActivationSourceContract?) -> Value
+pub fn[T : ExecutorCode] make_classified_executor_arrow_function(Array[String], Environment, Bool, T, Array[@ast.Stmt], rest_param? : String?) -> Value
 
-pub fn[T : ExecutorCode] make_executor_function(String?, Array[String], Environment, Bool, T, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool, activation_source_contract? : ExecutorActivationSourceContract?) -> Value
+pub fn[T : ExecutorCode] make_classified_executor_function(String?, Array[String], Environment, Bool, T, Array[@ast.Stmt], rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
+
+pub fn[T : ExecutorCode] make_executor_arrow_function(Array[String], Environment, Bool, T, rest_param? : String?) -> Value
+
+pub fn[T : ExecutorCode] make_executor_function(String?, Array[String], Environment, Bool, T, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
 
 pub fn make_func(FuncData) -> Value
 
@@ -593,10 +595,6 @@ pub fn ExecutionPolicyError::parameter_code(Self) -> String
 pub enum ExecutorActivationCompletion {
   ExecutorActivationCompletionNormal(Value)
   ExecutorActivationCompletionAbrupt(Error)
-}
-
-pub struct ExecutorActivationSourceContract {
-  // private fields
 }
 
 pub enum ExecutorActivationStep {

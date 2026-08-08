@@ -84,21 +84,6 @@ fn TreeExecutorFrame::pop_value(
 }
 
 ///|
-fn tree_executor_call_target_name(expr : @ast.Expr) -> String? {
-  match expr {
-    Ident(name, _) if name != "eval" => Some(name)
-    Grouping(inner, _) => tree_executor_call_target_name(inner)
-    _ => None
-  }
-}
-
-///|
-priv enum TreeExecutorValueProof {
-  TreeExecutorNumber
-  TreeExecutorBoolean
-}
-
-///|
 fn tree_executor_has_object_identity(
   objects : Array[ObjectData],
   candidate : ObjectData,
@@ -120,193 +105,120 @@ fn tree_executor_resolve_callee(closure : Environment, name : String) -> Value? 
 }
 
 ///|
-fn tree_executor_expression_plan(
-  expr : @ast.Expr,
-  params : Array[String],
-  closure : Environment,
-  visiting : Array[ObjectData],
-  call_count : Ref[Int],
-  call_targets : Map[String, Value]?,
-) -> TreeExecutorValueProof? {
-  // Collection state is private to one admission attempt. A rejected path may
-  // mutate it, but both callers discard the entire attempt unless this proof
-  // and the enclosing statement/body proof succeed.
-  match expr {
-    NumberLit(_, _, _) => Some(TreeExecutorNumber)
-    Ident(name, _) if params.contains(name) => Some(TreeExecutorNumber)
-    Grouping(inner, _) =>
-      tree_executor_expression_plan(
-        inner, params, closure, visiting, call_count, call_targets,
-      )
-    Binary(op, left, right, _) => {
-      let left_proof = tree_executor_expression_plan(
-        left, params, closure, visiting, call_count, call_targets,
-      )
-      let right_proof = tree_executor_expression_plan(
-        right, params, closure, visiting, call_count, call_targets,
-      )
-      match (op, left_proof, right_proof) {
-        (Add | Sub, Some(TreeExecutorNumber), Some(TreeExecutorNumber)) =>
-          Some(TreeExecutorNumber)
-        (EqEqEq, Some(TreeExecutorNumber), Some(TreeExecutorNumber)) =>
-          Some(TreeExecutorBoolean)
+priv struct TreeExecutorCallableProof {
+  object_data : ObjectData
+  summary : ExecutorActivationCapabilitySummary
+  parameter_count : Int
+  closure : Environment
+}
+
+///|
+fn TreeExecutorCallableProof::TreeExecutorCallableProof(
+  object_data~ : ObjectData,
+  summary~ : ExecutorActivationCapabilitySummary,
+  parameter_count~ : Int,
+  closure~ : Environment,
+) -> TreeExecutorCallableProof {
+  { object_data, summary, parameter_count, closure }
+}
+
+///|
+priv struct TreeExecutorResolvedDirectCall {
+  callee : String
+  target : Value
+}
+
+///|
+priv struct TreeExecutorGraphAdmission {
+  direct_call : TreeExecutorResolvedDirectCall?
+}
+
+///|
+fn TreeExecutorGraphAdmission::TreeExecutorGraphAdmission(
+  direct_call~ : TreeExecutorResolvedDirectCall?,
+) -> TreeExecutorGraphAdmission {
+  { direct_call, }
+}
+
+///|
+fn tree_executor_callable_proof(callable : Value) -> TreeExecutorCallableProof? {
+  guard callable is Object(object_data) else { return None }
+  match object_data.callable {
+    Some(UserFunc(data)) =>
+      match executor_activation_capability_summary(data.params, data.body) {
+        Some(summary) if summary.parameter_count == data.params.length() =>
+          Some(
+            TreeExecutorCallableProof(
+              object_data~,
+              summary~,
+              parameter_count=data.params.length(),
+              closure=data.closure,
+            ),
+          )
         _ => None
       }
-    }
-    Call(callee, args, _) => {
-      guard tree_executor_call_target_name(callee) is Some(name) else {
-        return None
-      }
-      guard !params.contains(name) else { return None }
-      call_count.val += 1
-      guard call_count.val <= 1 else { return None }
-      for arg in args {
-        guard tree_executor_expression_plan(
-            arg, params, closure, visiting, call_count, call_targets,
+    Some(ExecutorCallable(data)) =>
+      match data.activation_capability_summary {
+        Some(summary) if summary.parameter_count == data.params.length() =>
+          Some(
+            TreeExecutorCallableProof(
+              object_data~,
+              summary~,
+              parameter_count=data.params.length(),
+              closure=data.closure,
+            ),
           )
-          is Some(TreeExecutorNumber) else {
-          return None
-        }
+        _ => None
       }
-      guard tree_executor_resolve_callee(closure, name) is Some(target) else {
-        return None
-      }
-      guard tree_executor_callable_graph_safe(target, args.length(), visiting) else {
-        return None
-      }
-      match call_targets {
-        Some(targets) => targets[name] = target
-        None => ()
-      }
-      Some(TreeExecutorNumber)
-    }
     _ => None
   }
 }
 
 ///|
-fn tree_executor_statement_plan(
-  stmt : @ast.Stmt,
-  params : Array[String],
-  closure : Environment,
-  visiting : Array[ObjectData],
-  call_count : Ref[Int],
-  call_targets : Map[String, Value]?,
-) -> Bool {
-  match stmt {
-    Block(stmts, _) | StmtList(stmts, _) =>
-      tree_executor_statements_plan(
-        stmts, params, closure, visiting, call_count, call_targets,
-      )
-    ExprStmt(expr, _) =>
-      tree_executor_expression_plan(
-        expr, params, closure, visiting, call_count, call_targets,
-      )
-      is Some(_)
-    IfStmt(condition, then_branch, else_branch, _) => {
-      let supported_else = match else_branch {
-        Some(branch) =>
-          tree_executor_statement_plan(
-            branch, params, closure, visiting, call_count, call_targets,
-          )
-        None => true
-      }
-      tree_executor_expression_plan(
-        condition, params, closure, visiting, call_count, call_targets,
-      )
-      is Some(_) &&
-      tree_executor_statement_plan(
-        then_branch, params, closure, visiting, call_count, call_targets,
-      ) &&
-      supported_else
-    }
-    ReturnStmt(value, _) =>
-      match value {
-        Some(expr) =>
-          tree_executor_expression_plan(
-            expr, params, closure, visiting, call_count, call_targets,
-          )
-          is Some(TreeExecutorNumber)
-        None => false
-      }
-    _ => false
-  }
-}
-
-///|
-fn tree_executor_statements_plan(
-  stmts : Array[@ast.Stmt],
-  params : Array[String],
-  closure : Environment,
-  visiting : Array[ObjectData],
-  call_count : Ref[Int],
-  call_targets : Map[String, Value]?,
-) -> Bool {
-  for stmt in stmts {
-    guard tree_executor_statement_plan(
-      stmt, params, closure, visiting, call_count, call_targets,
-    ) else {
-      return false
-    }
-  }
-  true
-}
-
-///|
-fn tree_executor_statement_returns(stmt : @ast.Stmt) -> Bool {
-  match stmt {
-    ReturnStmt(_, _) => true
-    Block(stmts, _) | StmtList(stmts, _) =>
-      tree_executor_statements_return(stmts)
-    IfStmt(_, then_branch, Some(else_branch), _) =>
-      tree_executor_statement_returns(then_branch) &&
-      tree_executor_statement_returns(else_branch)
-    _ => false
-  }
-}
-
-///|
-fn tree_executor_statements_return(stmts : Array[@ast.Stmt]) -> Bool {
-  for stmt in stmts {
-    if tree_executor_statement_returns(stmt) {
-      return true
-    }
-  }
-  false
-}
-
-///|
-fn tree_executor_callable_graph_safe(
-  callable : Value,
+// Validate one optional direct edge without looking at source AST for an
+// ExecutorCallable child. UserFunc children derive their summary once here;
+// executor children contribute only the stored proof facts.
+fn tree_executor_callable_graph_admission(
+  proof : TreeExecutorCallableProof,
   arg_count : Int,
   visiting : Array[ObjectData],
-) -> Bool {
-  guard callable is Object(object_data) else { return false }
-  let (params, body, closure) = match object_data.callable {
-    Some(UserFunc(data)) => (data.params, data.body, data.closure)
-    Some(ExecutorCallable(data)) =>
-      match data.activation_source_contract {
-        Some(contract) => (data.params, contract.body, data.closure)
-        None => return false
-      }
-    _ => return false
+) -> TreeExecutorGraphAdmission? {
+  guard proof.summary.parameter_count == proof.parameter_count &&
+    arg_count == proof.summary.parameter_count else {
+    return None
   }
-  guard arg_count == params.length() else { return false }
-  guard !tree_executor_has_object_identity(visiting, object_data) else {
-    return true
+  guard !tree_executor_has_object_identity(visiting, proof.object_data) else {
+    return Some(TreeExecutorGraphAdmission(direct_call=None))
   }
   let next_visiting = visiting.copy()
-  next_visiting.push(object_data)
-  let call_count : Ref[Int] = { val: 0 }
-  tree_executor_statements_plan(
-    body,
-    params,
-    closure,
-    next_visiting,
-    call_count,
-    None,
-  ) &&
-  tree_executor_statements_return(body)
+  next_visiting.push(proof.object_data)
+  match proof.summary.direct_call {
+    None => Some(TreeExecutorGraphAdmission(direct_call=None))
+    Some(edge) => {
+      let target = match
+        tree_executor_resolve_callee(proof.closure, edge.callee) {
+        Some(target) => target
+        None => return None
+      }
+      let target_proof = match tree_executor_callable_proof(target) {
+        Some(proof) => proof
+        None => return None
+      }
+      guard tree_executor_callable_graph_admission(
+          target_proof,
+          edge.argument_count,
+          next_visiting,
+        )
+        is Some(_) else {
+        return None
+      }
+      Some(
+        TreeExecutorGraphAdmission(
+          direct_call=Some({ callee: edge.callee, target }),
+        ),
+      )
+    }
+  }
 }
 
 ///|
@@ -319,22 +231,20 @@ fn tree_executor_callable(
   for arg in args {
     guard arg is Number(_) else { return None }
   }
-  let visiting : Array[ObjectData] = match callable {
-    Object(object_data) => [object_data]
-    _ => return None
+  let proof = match tree_executor_callable_proof(callable) {
+    Some(proof) => proof
+    None => return None
   }
-  let call_count : Ref[Int] = { val: 0 }
+  let visiting : Array[ObjectData] = []
+  let admission = match
+    tree_executor_callable_graph_admission(proof, args.length(), visiting) {
+    Some(admission) => admission
+    None => return None
+  }
   let call_targets : Map[String, Value] = Map([])
-  guard tree_executor_statements_plan(
-      data.body,
-      data.params,
-      data.closure,
-      visiting,
-      call_count,
-      Some(call_targets),
-    ) &&
-    tree_executor_statements_return(data.body) else {
-    return None
+  match admission.direct_call {
+    Some(edge) => call_targets[edge.callee] = edge.target
+    None => ()
   }
   let code = TreeExecutorCode(TreeActivationPlan(data.body, call_targets))
   Some({
@@ -352,7 +262,7 @@ fn tree_executor_callable(
     },
     define_arguments_object: false,
     kind: OrdinaryExecutorCallable,
-    activation_source_contract: None,
+    activation_capability_summary: None,
   })
 }
 
@@ -425,7 +335,8 @@ impl ExecutorActivationFrame for TreeExecutorFrame with fn step(self, interp) {
             self.work.push(TreeEvaluateExpression(left))
           }
           Call(callee, args, loc) => {
-            guard tree_executor_call_target_name(callee) is Some(name) &&
+            guard executor_activation_direct_call_target_name(callee)
+              is Some(name) &&
               self.call_targets.get(name) is Some(target) else {
               raise @errors.InternalError(
                 message="tree executor call target was absent from its activation plan",

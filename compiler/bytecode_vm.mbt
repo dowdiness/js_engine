@@ -377,17 +377,15 @@ fn make_bytecode_func(
       )
   }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  @runtime.make_executor_function(
+  @runtime.make_classified_executor_function(
     func_def.name,
     func_def.params,
     closure,
     strict,
     BytecodeExecutorCode(func_def~),
+    func_def.source_body,
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
-    activation_source_contract=Some(
-      @runtime.executor_activation_source_contract(func_def.source_body),
-    ),
   )
 }
 
@@ -431,19 +429,17 @@ fn make_bytecode_method_func(
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   let method_env = Environment::new(parent=Some(closure))
   method_env.def_builtin("[[HomeObject]]", home_object)
-  @runtime.make_executor_function(
+  @runtime.make_classified_executor_function(
     func_def.name,
     func_def.params,
     method_env,
     strict,
     BytecodeExecutorCode(func_def~),
+    func_def.source_body,
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
     define_arguments_object=func_def.needs_arguments_object,
-    activation_source_contract=Some(
-      @runtime.executor_activation_source_contract(func_def.source_body),
-    ),
   )
 }
 
@@ -485,15 +481,13 @@ fn make_bytecode_arrow_func(
       )
   }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  @runtime.make_executor_arrow_function(
+  @runtime.make_classified_executor_arrow_function(
     func_def.params,
     closure,
     strict,
     BytecodeExecutorCode(func_def~),
+    func_def.source_body,
     rest_param=func_def.rest_param,
-    activation_source_contract=Some(
-      @runtime.executor_activation_source_contract(func_def.source_body),
-    ),
   )
 }
 
