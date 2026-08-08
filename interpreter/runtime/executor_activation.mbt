@@ -615,6 +615,17 @@ fn direct_executor_property_getter(
 }
 
 ///|
+fn Interpreter::executor_activation_fallback_call(
+  self : Interpreter,
+  callee : Value,
+  this_value : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> ExecutorActivationRequestOutcome raise Error {
+  ExecutorActivationRequestValue(self.call_value(callee, this_value, args, loc))
+}
+
+///|
 fn Interpreter::handle_executor_activation_step(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
@@ -683,23 +694,19 @@ fn Interpreter::handle_executor_activation_step(
                   ExecutorActivationRequestChild
                 }
                 None =>
-                  ExecutorActivationRequestValue(
-                    self.call_value(
-                      forwarded_callee,
-                      forwarded_this_value,
-                      forwarded_args,
-                      request.loc,
-                    ),
+                  self.executor_activation_fallback_call(
+                    forwarded_callee,
+                    forwarded_this_value,
+                    forwarded_args,
+                    request.loc,
                   )
               }
             _ =>
-              ExecutorActivationRequestValue(
-                self.call_value(
-                  forwarded_callee,
-                  forwarded_this_value,
-                  forwarded_args,
-                  request.loc,
-                ),
+              self.executor_activation_fallback_call(
+                forwarded_callee,
+                forwarded_this_value,
+                forwarded_args,
+                request.loc,
               )
           }
         },

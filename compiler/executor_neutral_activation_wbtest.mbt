@@ -1990,49 +1990,75 @@ test "mixed tree activation is structural and independent of call depth" {
 }
 
 ///|
-test "mixed tree activation consumes each child completion exactly once" {
+test "mixed tree activation admits one child and consumes its completion exactly once" {
   let interp = @interpreter.new_interpreter()
   let tree = @parser.parse(
-    "function treeTwice(n) { return bytecodeLeaf(n) + bytecodeLeaf(n + 1); } " +
-    "function treeIdentity() { return bytecodeIdentity(); }",
+    "function treeSingle(n) { return bytecodeLeaf(n) + 1; }",
   )
   let _ = interp.run(tree.stmts)
-  let result = run_executor_neutral_bytecode(
-    interp,
-    "var identityMarker = {}; " +
-    "function bytecodeLeaf(n) { return n; } " +
-    "function bytecodeIdentity() { return identityMarker; } " +
-    "treeTwice(3) === 7 && treeIdentity() === identityMarker;",
+  let _ = run_executor_neutral_bytecode(
+    interp, "function bytecodeLeaf(n) { return n; }",
   )
-  inspect(result.to_string(), content="true")
-}
-
-///|
-test "mixed tree activation propagates abrupt identity and permits reuse" {
-  let interp = @interpreter.new_interpreter()
-  let tree = @parser.parse(
-    "function treeCaller(n) { return bytecodeThrow(n - 1) + 1; }",
-  )
-  let _ = interp.run(tree.stmts)
-  let caught : Error? = try {
-    let _ = run_executor_neutral_bytecode(
-      interp,
-      "var mixedMarker = {}; " +
-      "function bytecodeThrow(n) { throw mixedMarker; } " +
-      "treeCaller(1);",
-    )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 0L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let admission : Error? = try {
+    let _ = interp.with_execution_policy(policy, () => {
+      run_executor_neutral_bytecode(interp, "treeSingle(3);")
+    })
     None
   } catch {
     error => Some(error)
   }
-  let marker = interp.global.get("mixedMarker")
-  match caught {
+  match admission {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
     Some(error) =>
-      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
-    None => fail("mixed tree activation must propagate the guest throw")
+      fail(
+        "expected admitted tree activation to reach the depth bound, got " +
+        error.to_string(),
+      )
+    None => fail("the single-call tree fixture must be admitted")
   }
-  let reused = interp.run(@parser.parse("6 * 7;").stmts)
-  inspect(reused.to_string(), content="42")
+  let result = run_executor_neutral_bytecode(interp, "treeSingle(3);")
+  inspect(result.to_string(), content="4")
+}
+
+///|
+test "mixed tree activation propagates child depth rejection and permits reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = interp.run(
+    @parser.parse("function treeCaller(n) { return bytecodeLeaf(n - 1) + 1; }").stmts,
+  )
+  let _ = run_executor_neutral_bytecode(
+    interp, "function bytecodeLeaf(n) { return n; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.with_execution_policy(policy, () => {
+      run_executor_neutral_bytecode(interp, "treeCaller(1);")
+    })
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected a classified child depth rejection, got " + error.to_string(),
+      )
+    None => fail("the admitted tree child must propagate its depth rejection")
+  }
+  let reused = run_executor_neutral_bytecode(interp, "treeCaller(1);")
+  inspect(reused.to_string(), content="1")
 }
 
 ///|

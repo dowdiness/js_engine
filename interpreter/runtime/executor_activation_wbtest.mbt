@@ -1435,7 +1435,40 @@ test "unsupported tree body stays legacy before observable execution" {
 }
 
 ///|
-test "tree admission rejects unsupported callees before earlier call effects" {
+test "tree admission rejects an unsupported native callee on an otherwise supported body" {
+  let interp = Interpreter::new()
+  let native_leaf = make_native_func(name="nativeLeaf", args => args[0])
+  interp.global.def_builtin("nativeLeaf", native_leaf)
+  let _ = interp.run(
+    @parser.parse("function nativeParent(n) { return nativeLeaf(n) + 1; }").stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("nativeParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ =>
+      fail(
+        "an unsupported native callee must keep the root on legacy execution",
+      )
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects unsupported earlier calls before effects" {
   let interp = Interpreter::new()
   let side_effects : Ref[Int] = { val: 0 }
   let side_effect = make_native_func(name="sideEffect", fn(args) {
@@ -1471,6 +1504,37 @@ test "tree admission rejects unsupported callees before earlier call effects" {
       fail("unsupported callees must keep the whole root on legacy execution")
   }
   inspect(side_effects.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission accepts supported numeric expression statements" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse("function numericStatement(n) { n + 1; return n + 2; }").stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("numericStatement"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      "legacy"
+    } catch {
+      ExecutionControlError(StackDepthLimit) => "admitted"
+      _ => "other-error"
+    }
+  })
+  inspect(outcome, content="admitted")
   inspect(control.active_depth(), content="0")
 }
 

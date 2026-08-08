@@ -61,8 +61,8 @@ fn TreeExecutorFrame::TreeExecutorFrame(
   {
     env,
     ctx,
-    call_targets: call_targets.copy(),
-    work: [TreeExecuteStatements(body.copy(), 0)],
+    call_targets,
+    work: [TreeExecuteStatements(body, 0)],
     values: [],
     awaiting_child: false,
     completed: false,
@@ -104,7 +104,9 @@ fn tree_executor_has_object_identity(
   candidate : ObjectData,
 ) -> Bool {
   for object in objects {
-    guard !physical_equal(object, candidate) else { return true }
+    if physical_equal(object, candidate) {
+      return true
+    }
   }
   false
 }
@@ -126,6 +128,9 @@ fn tree_executor_expression_plan(
   call_count : Ref[Int],
   call_targets : Map[String, Value]?,
 ) -> TreeExecutorValueProof? {
+  // Collection state is private to one admission attempt. A rejected path may
+  // mutate it, but both callers discard the entire attempt unless this proof
+  // and the enclosing statement/body proof succeed.
   match expr {
     NumberLit(_, _, _) => Some(TreeExecutorNumber)
     Ident(name, _) if params.contains(name) => Some(TreeExecutorNumber)
@@ -193,6 +198,11 @@ fn tree_executor_statement_plan(
       tree_executor_statements_plan(
         stmts, params, closure, visiting, call_count, call_targets,
       )
+    ExprStmt(expr, _) =>
+      tree_executor_expression_plan(
+        expr, params, closure, visiting, call_count, call_targets,
+      )
+      is Some(_)
     IfStmt(condition, then_branch, else_branch, _) => {
       let supported_else = match else_branch {
         Some(branch) =>
@@ -258,7 +268,9 @@ fn tree_executor_statement_returns(stmt : @ast.Stmt) -> Bool {
 ///|
 fn tree_executor_statements_return(stmts : Array[@ast.Stmt]) -> Bool {
   for stmt in stmts {
-    guard !tree_executor_statement_returns(stmt) else { return true }
+    if tree_executor_statement_returns(stmt) {
+      return true
+    }
   }
   false
 }
@@ -338,7 +350,7 @@ fn tree_executor_callable(
     } else {
       None
     },
-    define_arguments_object: true,
+    define_arguments_object: false,
     kind: OrdinaryExecutorCallable,
     activation_source_contract: None,
   })
@@ -388,17 +400,10 @@ impl ExecutorActivationFrame for TreeExecutorFrame with fn step(self, interp) {
             self.work.push(TreeSelectBranch(then_branch, else_branch))
             self.work.push(TreeEvaluateExpression(condition))
           }
-          ReturnStmt(value, _) =>
-            match value {
-              Some(expr) => {
-                self.work.push(TreeReturnValue)
-                self.work.push(TreeEvaluateExpression(expr))
-              }
-              None => {
-                self.completed = true
-                return executor_activation_return(Undefined)
-              }
-            }
+          ReturnStmt(Some(expr), _) => {
+            self.work.push(TreeReturnValue)
+            self.work.push(TreeEvaluateExpression(expr))
+          }
           _ =>
             raise @errors.InternalError(
               message="unsupported statement entered tree executor frame",
