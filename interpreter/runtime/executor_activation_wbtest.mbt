@@ -1506,6 +1506,107 @@ test "tree admission rejects unsupported earlier calls before effects" {
 }
 
 ///|
+fn executor_activation_deep_acyclic_tree_call_graph(
+  interp : Interpreter,
+  depth : Int,
+) -> Value raise Error {
+  let parameter = "n"
+  let leaf_name = "iterativeAdmission" + depth.to_string()
+  let leaf_data : FuncData = {
+    name: Some(leaf_name),
+    params: [parameter],
+    body: @parser.parse("return n;").stmts,
+    closure: interp.global,
+    strict: false,
+    has_name_binding: false,
+    is_method: false,
+    source_text: None,
+  }
+  interp.global.def_builtin(leaf_name, make_func(leaf_data))
+  for index = depth - 1; index >= 0; index = index - 1 {
+    let name = "iterativeAdmission" + index.to_string()
+    let next_name = "iterativeAdmission" + (index + 1).to_string()
+    let data : FuncData = {
+      name: Some(name),
+      params: [parameter],
+      body: @parser.parse("return " + next_name + "(n) + 1;").stmts,
+      closure: interp.global,
+      strict: false,
+      has_name_binding: false,
+      is_method: false,
+      source_text: None,
+    }
+    interp.global.def_builtin(name, make_func(data))
+  }
+  interp.global.get("iterativeAdmission0")
+}
+
+///|
+test "tree admission handles a deep acyclic callable graph without host recursion" {
+  let interp = Interpreter::new()
+  let root_callable = executor_activation_deep_acyclic_tree_call_graph(
+    interp, 8192,
+  )
+  let control = ExecutionControl(
+    remaining_steps=10,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=root_callable,
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    let _ = interp.run_executor_activation_coordinator(root)
+    "completed"
+  }) catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other-error"
+  }
+  inspect(outcome, content="stack-depth-limit")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "iterative tree admission terminates on a mutual callable cycle" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function iterativeCycleLeft(n) { " +
+      "if (n === 0) return 0; " +
+      "return iterativeCycleRight(n - 1) + 1; } " +
+      "function iterativeCycleRight(n) { " +
+      "if (n === 0) return 0; " +
+      "return iterativeCycleLeft(n - 1) + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=10,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("iterativeCycleLeft"),
+      this_value=Undefined,
+      args=[Number(2.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    let _ = interp.run_executor_activation_coordinator(root)
+    "completed"
+  }) catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other-error"
+  }
+  inspect(outcome, content="stack-depth-limit")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "generic executor code cannot gain tree admission" {
   let interp = Interpreter::new()
   let starts : Ref[Int] = { val: 0 }
