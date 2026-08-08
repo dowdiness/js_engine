@@ -129,6 +129,14 @@ priv struct TreeExecutorResolvedDirectCall {
 }
 
 ///|
+fn TreeExecutorResolvedDirectCall::TreeExecutorResolvedDirectCall(
+  callee~ : String,
+  target~ : Value,
+) -> TreeExecutorResolvedDirectCall {
+  { callee, target }
+}
+
+///|
 priv struct TreeExecutorGraphAdmission {
   direct_call : TreeExecutorResolvedDirectCall?
 }
@@ -175,50 +183,97 @@ fn tree_executor_callable_proof(callable : Value) -> TreeExecutorCallableProof? 
 }
 
 ///|
-// Validate one optional direct edge without looking at source AST for an
-// ExecutorCallable child. UserFunc children derive their summary once here;
-// executor children contribute only the stored proof facts.
+priv enum TreeExecutorGraphAdmissionNodeDecision {
+  TreeExecutorGraphAdmissionRejected
+  TreeExecutorGraphAdmissionAlreadyVisited
+  TreeExecutorGraphAdmissionLeaf
+  TreeExecutorGraphAdmissionFollow(ExecutorActivationDirectCallRequirement)
+}
+
+///|
+fn tree_executor_graph_admission_node_decision(
+  proof : TreeExecutorCallableProof,
+  arg_count : Int,
+  visited : Array[ObjectData],
+) -> TreeExecutorGraphAdmissionNodeDecision {
+  guard proof.summary.parameter_count == proof.parameter_count &&
+    arg_count == proof.summary.parameter_count else {
+    return TreeExecutorGraphAdmissionRejected
+  }
+  guard !tree_executor_has_object_identity(visited, proof.object_data) else {
+    return TreeExecutorGraphAdmissionAlreadyVisited
+  }
+  match proof.summary.direct_call {
+    None => TreeExecutorGraphAdmissionLeaf
+    Some(edge) => TreeExecutorGraphAdmissionFollow(edge)
+  }
+}
+
+///|
+priv struct TreeExecutorGraphAdmissionWork {
+  proof : TreeExecutorCallableProof
+  arg_count : Int
+  is_root : Bool
+}
+
+///|
+fn TreeExecutorGraphAdmissionWork::TreeExecutorGraphAdmissionWork(
+  proof~ : TreeExecutorCallableProof,
+  arg_count~ : Int,
+  is_root~ : Bool,
+) -> TreeExecutorGraphAdmissionWork {
+  { proof, arg_count, is_root }
+}
+
+///|
+// Validate the closed callable graph without host recursion or source-AST
+// inspection for an ExecutorCallable child. UserFunc children derive their
+// summary once here; executor children contribute only stored proof facts.
 fn tree_executor_callable_graph_admission(
   proof : TreeExecutorCallableProof,
   arg_count : Int,
-  visiting : Array[ObjectData],
 ) -> TreeExecutorGraphAdmission? {
-  guard proof.summary.parameter_count == proof.parameter_count &&
-    arg_count == proof.summary.parameter_count else {
-    return None
-  }
-  guard !tree_executor_has_object_identity(visiting, proof.object_data) else {
-    return Some(TreeExecutorGraphAdmission(direct_call=None))
-  }
-  let next_visiting = visiting.copy()
-  next_visiting.push(proof.object_data)
-  match proof.summary.direct_call {
-    None => Some(TreeExecutorGraphAdmission(direct_call=None))
-    Some(edge) => {
-      let target = match
-        tree_executor_resolve_callee(proof.closure, edge.callee) {
-        Some(target) => target
-        None => return None
-      }
-      let target_proof = match tree_executor_callable_proof(target) {
-        Some(proof) => proof
-        None => return None
-      }
-      guard tree_executor_callable_graph_admission(
-          target_proof,
-          edge.argument_count,
-          next_visiting,
+  let visited : Array[ObjectData] = []
+  let work = [TreeExecutorGraphAdmissionWork(proof~, arg_count~, is_root=true)]
+  let mut root_direct_call : TreeExecutorResolvedDirectCall? = None
+  while !work.is_empty() {
+    let current = work.pop().unwrap()
+    match
+      tree_executor_graph_admission_node_decision(
+        current.proof,
+        current.arg_count,
+        visited,
+      ) {
+      TreeExecutorGraphAdmissionRejected => return None
+      TreeExecutorGraphAdmissionAlreadyVisited => ()
+      TreeExecutorGraphAdmissionLeaf => visited.push(current.proof.object_data)
+      TreeExecutorGraphAdmissionFollow(edge) => {
+        visited.push(current.proof.object_data)
+        let target = match
+          tree_executor_resolve_callee(current.proof.closure, edge.callee) {
+          Some(target) => target
+          None => return None
+        }
+        let target_proof = match tree_executor_callable_proof(target) {
+          Some(proof) => proof
+          None => return None
+        }
+        if current.is_root {
+          root_direct_call = Some(
+            TreeExecutorResolvedDirectCall(callee=edge.callee, target~),
+          )
+        }
+        work.push(
+          TreeExecutorGraphAdmissionWork(
+            proof=target_proof,
+            arg_count=edge.argument_count,
+            is_root=false,
+          ),
         )
-        is Some(_) else {
-        return None
       }
-      Some(
-        TreeExecutorGraphAdmission(
-          direct_call=Some({ callee: edge.callee, target }),
-        ),
-      )
     }
   }
+  Some(TreeExecutorGraphAdmission(direct_call=root_direct_call))
 }
 
 ///|
@@ -235,9 +290,8 @@ fn tree_executor_callable(
     Some(proof) => proof
     None => return None
   }
-  let visiting : Array[ObjectData] = []
   let admission = match
-    tree_executor_callable_graph_admission(proof, args.length(), visiting) {
+    tree_executor_callable_graph_admission(proof, args.length()) {
     Some(admission) => admission
     None => return None
   }
