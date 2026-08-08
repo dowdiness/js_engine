@@ -129,6 +129,14 @@ priv struct TreeExecutorResolvedDirectCall {
 }
 
 ///|
+fn TreeExecutorResolvedDirectCall::TreeExecutorResolvedDirectCall(
+  callee~ : String,
+  target~ : Value,
+) -> TreeExecutorResolvedDirectCall {
+  { callee, target }
+}
+
+///|
 priv struct TreeExecutorGraphAdmission {
   direct_call : TreeExecutorResolvedDirectCall?
 }
@@ -251,7 +259,9 @@ fn tree_executor_callable_graph_admission(
           None => return None
         }
         if current.is_root {
-          root_direct_call = Some({ callee: edge.callee, target })
+          root_direct_call = Some(
+            TreeExecutorResolvedDirectCall(callee=edge.callee, target~),
+          )
         }
         work.push(
           TreeExecutorGraphAdmissionWork(
