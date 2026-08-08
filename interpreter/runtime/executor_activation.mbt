@@ -274,6 +274,7 @@ priv struct ExecutorActivationStackEntry {
   frame : &ExecutorActivationFrame
   completion : ExecutorChildCompletion?
   cleanup : ExecutorActivationCleanup?
+  graph_cursor : TreeExecutorGraphCursor?
 }
 
 ///|
@@ -364,6 +365,7 @@ fn Interpreter::start_executor_activation(
   executable : ExecutorCallableData,
   start : ExecutorActivationStart,
   property_scope : ClearedActiveCalleeRealmScope?,
+  graph_cursor? : TreeExecutorGraphCursor? = None,
 ) -> ExecutorActivationStackEntry raise Error {
   let callee = match start {
     ExecutorStartCall(request) => request.callee
@@ -466,6 +468,7 @@ fn Interpreter::start_executor_activation(
           saved_in_default,
           saved_param_default_conflicts,
         }),
+        graph_cursor,
       }
     }
   }
@@ -642,8 +645,28 @@ fn Interpreter::handle_executor_activation_step(
             request.this_value,
             request.args,
           )
-          match forwarded_callee {
-            Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
+          match stack[index].graph_cursor {
+            Some(graph_cursor) => {
+              let edge = match
+                tree_executor_graph_select_edge(
+                  graph_cursor,
+                  forwarded_callee,
+                  forwarded_args.length(),
+                ) {
+                Some(edge) => edge
+                None =>
+                  raise @errors.InternalError(
+                    message="executor activation graph proof was violated by an unmatched call",
+                  )
+              }
+              let admission = match
+                tree_executor_graph_target(graph_cursor, edge) {
+                Some(admission) => admission
+                None =>
+                  raise @errors.InternalError(
+                    message="executor activation graph target was invalid",
+                  )
+              }
               let forwarded_request = ExecutorCallRequest(
                 callee=forwarded_callee,
                 this_value=forwarded_this_value,
@@ -652,17 +675,17 @@ fn Interpreter::handle_executor_activation_step(
               )
               stack.push(
                 self.start_executor_activation(
-                  executable,
+                  admission.executable,
                   ExecutorStartCall(forwarded_request),
                   None,
+                  graph_cursor=Some(admission.cursor),
                 ),
               )
               ExecutorActivationRequestChild
             }
-            Object({ callable: Some(UserFunc(data)), .. }) =>
-              match
-                tree_executor_callable(forwarded_callee, data, forwarded_args) {
-                Some(executable) => {
+            None =>
+              match forwarded_callee {
+                Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
                   let forwarded_request = ExecutorCallRequest(
                     callee=forwarded_callee,
                     this_value=forwarded_this_value,
@@ -678,7 +701,37 @@ fn Interpreter::handle_executor_activation_step(
                   )
                   ExecutorActivationRequestChild
                 }
-                None =>
+                Object({ callable: Some(UserFunc(data)), .. }) =>
+                  match
+                    tree_executor_callable_admission(
+                      forwarded_callee, data, forwarded_args,
+                    ) {
+                    Some(admission) => {
+                      let forwarded_request = ExecutorCallRequest(
+                        callee=forwarded_callee,
+                        this_value=forwarded_this_value,
+                        args=forwarded_args,
+                        loc=request.loc,
+                      )
+                      stack.push(
+                        self.start_executor_activation(
+                          admission.executable,
+                          ExecutorStartCall(forwarded_request),
+                          None,
+                          graph_cursor=Some(admission.cursor),
+                        ),
+                      )
+                      ExecutorActivationRequestChild
+                    }
+                    None =>
+                      self.executor_activation_fallback_call(
+                        forwarded_callee,
+                        forwarded_this_value,
+                        forwarded_args,
+                        request.loc,
+                      )
+                  }
+                _ =>
                   self.executor_activation_fallback_call(
                     forwarded_callee,
                     forwarded_this_value,
@@ -686,13 +739,6 @@ fn Interpreter::handle_executor_activation_step(
                     request.loc,
                   )
               }
-            _ =>
-              self.executor_activation_fallback_call(
-                forwarded_callee,
-                forwarded_this_value,
-                forwarded_args,
-                request.loc,
-              )
           }
         },
       ) catch {
@@ -775,7 +821,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
   root : &ExecutorActivationFrame,
 ) -> ExecutorActivationStep raise Error {
   let stack : Array[ExecutorActivationStackEntry] = [
-    { frame: root, completion: None, cleanup: None },
+    { frame: root, completion: None, cleanup: None, graph_cursor: None },
   ]
   try {
     while true {

@@ -105,7 +105,61 @@ fn tree_executor_resolve_callee(closure : Environment, name : String) -> Value? 
 }
 
 ///|
+priv enum TreeExecutorGraphCallable {
+  TreeExecutorGraphUserFunc(FuncData)
+  TreeExecutorGraphExecutorCallable(ExecutorCallableData)
+}
+
+///|
+fn tree_executor_graph_copy_func_data(data : FuncData) -> FuncData {
+  {
+    name: data.name,
+    params: data.params.copy(),
+    body: data.body.copy(),
+    closure: data.closure,
+    strict: data.strict,
+    has_name_binding: data.has_name_binding,
+    is_method: data.is_method,
+    source_text: data.source_text,
+  }
+}
+
+///|
+fn tree_executor_graph_copy_capability_summary(
+  summary : ExecutorActivationCapabilitySummary,
+) -> ExecutorActivationCapabilitySummary {
+  ExecutorActivationCapabilitySummary(
+    parameter_count=summary.parameter_count,
+    direct_calls=summary.direct_calls,
+  )
+}
+
+///|
+fn tree_executor_graph_copy_executor_data(
+  data : ExecutorCallableData,
+) -> ExecutorCallableData {
+  let activation_capability_summary = match data.activation_capability_summary {
+    Some(summary) => Some(tree_executor_graph_copy_capability_summary(summary))
+    None => None
+  }
+  {
+    name: data.name,
+    params: data.params.copy(),
+    closure: data.closure,
+    strict: data.strict,
+    code: data.code,
+    rest_param: data.rest_param,
+    constructable: data.constructable,
+    self_name: data.self_name,
+    define_arguments_object: data.define_arguments_object,
+    kind: data.kind,
+    activation_capability_summary,
+  }
+}
+
+///|
 priv struct TreeExecutorCallableProof {
+  callable : TreeExecutorGraphCallable
   object_data : ObjectData
   summary : ExecutorActivationCapabilitySummary
   parameter_count : Int
@@ -114,38 +168,119 @@ priv struct TreeExecutorCallableProof {
 
 ///|
 fn TreeExecutorCallableProof::TreeExecutorCallableProof(
+  callable~ : TreeExecutorGraphCallable,
   object_data~ : ObjectData,
   summary~ : ExecutorActivationCapabilitySummary,
   parameter_count~ : Int,
   closure~ : Environment,
 ) -> TreeExecutorCallableProof {
-  { object_data, summary, parameter_count, closure }
+  { callable, object_data, summary, parameter_count, closure }
 }
 
 ///|
-priv struct TreeExecutorResolvedDirectCall {
+priv struct TreeExecutorGraphEdge {
   callee : String
   target : Value
+  target_object_data : ObjectData
+  argument_count : Int
+  target_node_index : Int
 }
 
 ///|
-fn TreeExecutorResolvedDirectCall::TreeExecutorResolvedDirectCall(
+fn TreeExecutorGraphEdge::TreeExecutorGraphEdge(
   callee~ : String,
   target~ : Value,
-) -> TreeExecutorResolvedDirectCall {
-  { callee, target }
+  target_object_data~ : ObjectData,
+  argument_count~ : Int,
+  target_node_index~ : Int,
+) -> TreeExecutorGraphEdge {
+  { callee, target, target_object_data, argument_count, target_node_index }
+}
+
+///|
+priv struct TreeExecutorGraphBuildNode {
+  callable : TreeExecutorGraphCallable
+  object_data : ObjectData
+  parameter_count : Int
+  mut edges : Array[TreeExecutorGraphEdge]
+}
+
+///|
+fn TreeExecutorGraphBuildNode::TreeExecutorGraphBuildNode(
+  callable~ : TreeExecutorGraphCallable,
+  object_data~ : ObjectData,
+  parameter_count~ : Int,
+) -> TreeExecutorGraphBuildNode {
+  { callable, object_data, parameter_count, edges: [] }
+}
+
+///|
+priv struct TreeExecutorGraphNode {
+  callable : TreeExecutorGraphCallable
+  object_data : ObjectData
+  parameter_count : Int
+  edges : Array[TreeExecutorGraphEdge]
+}
+
+///|
+fn TreeExecutorGraphNode::TreeExecutorGraphNode(
+  callable~ : TreeExecutorGraphCallable,
+  object_data~ : ObjectData,
+  parameter_count~ : Int,
+  edges~ : Array[TreeExecutorGraphEdge],
+) -> TreeExecutorGraphNode {
+  { callable, object_data, parameter_count, edges: edges.copy() }
+}
+
+///|
+priv struct TreeExecutorGraphArena {
+  nodes : Array[TreeExecutorGraphNode]
+}
+
+///|
+fn TreeExecutorGraphArena::TreeExecutorGraphArena(
+  build_nodes : Array[TreeExecutorGraphBuildNode],
+) -> TreeExecutorGraphArena {
+  let nodes : Array[TreeExecutorGraphNode] = []
+  for node in build_nodes {
+    nodes.push(
+      TreeExecutorGraphNode(
+        callable=node.callable,
+        object_data=node.object_data,
+        parameter_count=node.parameter_count,
+        edges=node.edges,
+      ),
+    )
+  }
+  { nodes, }
+}
+
+///|
+priv struct TreeExecutorGraphCursor {
+  arena : TreeExecutorGraphArena
+  node_index : Int
+}
+
+///|
+fn TreeExecutorGraphCursor::TreeExecutorGraphCursor(
+  arena~ : TreeExecutorGraphArena,
+  node_index~ : Int,
+) -> TreeExecutorGraphCursor {
+  { arena, node_index }
 }
 
 ///|
 priv struct TreeExecutorGraphAdmission {
-  direct_call : TreeExecutorResolvedDirectCall?
+  arena : TreeExecutorGraphArena
+  root_node_index : Int
 }
 
 ///|
 fn TreeExecutorGraphAdmission::TreeExecutorGraphAdmission(
-  direct_call~ : TreeExecutorResolvedDirectCall?,
+  arena~ : TreeExecutorGraphArena,
+  root_node_index~ : Int,
 ) -> TreeExecutorGraphAdmission {
-  { direct_call, }
+  { arena, root_node_index }
 }
 
 ///|
@@ -157,6 +292,9 @@ fn tree_executor_callable_proof(callable : Value) -> TreeExecutorCallableProof? 
         Some(summary) if summary.parameter_count == data.params.length() =>
           Some(
             TreeExecutorCallableProof(
+              callable=TreeExecutorGraphUserFunc(
+                tree_executor_graph_copy_func_data(data),
+              ),
               object_data~,
               summary~,
               parameter_count=data.params.length(),
@@ -170,6 +308,9 @@ fn tree_executor_callable_proof(callable : Value) -> TreeExecutorCallableProof? 
         Some(summary) if summary.parameter_count == data.params.length() =>
           Some(
             TreeExecutorCallableProof(
+              callable=TreeExecutorGraphExecutorCallable(
+                tree_executor_graph_copy_executor_data(data),
+              ),
               object_data~,
               summary~,
               parameter_count=data.params.length(),
@@ -187,7 +328,9 @@ priv enum TreeExecutorGraphAdmissionNodeDecision {
   TreeExecutorGraphAdmissionRejected
   TreeExecutorGraphAdmissionAlreadyVisited
   TreeExecutorGraphAdmissionLeaf
-  TreeExecutorGraphAdmissionFollow(ExecutorActivationDirectCallRequirement)
+  TreeExecutorGraphAdmissionFollow(
+    Array[ExecutorActivationDirectCallRequirement]
+  )
 }
 
 ///|
@@ -203,9 +346,10 @@ fn tree_executor_graph_admission_node_decision(
   guard !tree_executor_has_object_identity(visited, proof.object_data) else {
     return TreeExecutorGraphAdmissionAlreadyVisited
   }
-  match proof.summary.direct_call {
-    None => TreeExecutorGraphAdmissionLeaf
-    Some(edge) => TreeExecutorGraphAdmissionFollow(edge)
+  if proof.summary.direct_calls.is_empty() {
+    TreeExecutorGraphAdmissionLeaf
+  } else {
+    TreeExecutorGraphAdmissionFollow(proof.summary.direct_calls.copy())
   }
 }
 
@@ -213,29 +357,71 @@ fn tree_executor_graph_admission_node_decision(
 priv struct TreeExecutorGraphAdmissionWork {
   proof : TreeExecutorCallableProof
   arg_count : Int
-  is_root : Bool
+  node_index : Int
 }
 
 ///|
 fn TreeExecutorGraphAdmissionWork::TreeExecutorGraphAdmissionWork(
   proof~ : TreeExecutorCallableProof,
   arg_count~ : Int,
-  is_root~ : Bool,
+  node_index~ : Int,
 ) -> TreeExecutorGraphAdmissionWork {
-  { proof, arg_count, is_root }
+  { proof, arg_count, node_index }
 }
 
 ///|
-// Validate the closed callable graph without host recursion or source-AST
-// inspection for an ExecutorCallable child. UserFunc children derive their
-// summary once here; executor children contribute only stored proof facts.
+fn tree_executor_graph_find_node(
+  nodes : Array[TreeExecutorGraphBuildNode],
+  object_data : ObjectData,
+) -> Int? {
+  for index = 0; index < nodes.length(); index = index + 1 {
+    if physical_equal(nodes[index].object_data, object_data) {
+      return Some(index)
+    }
+  }
+  None
+}
+
+///|
+fn tree_executor_graph_append_node(
+  nodes : Array[TreeExecutorGraphBuildNode],
+  scheduled : Array[Bool],
+  proof : TreeExecutorCallableProof,
+) -> Int {
+  let node_index = nodes.length()
+  nodes.push(
+    TreeExecutorGraphBuildNode(
+      callable=proof.callable,
+      object_data=proof.object_data,
+      parameter_count=proof.parameter_count,
+    ),
+  )
+  scheduled.push(false)
+  node_index
+}
+
+///|
+// Validate and freeze the complete callable graph without host recursion or
+// source-AST inspection for an ExecutorCallable child. UserFunc children
+// derive their summary once here; executor children contribute only stored
+// proof facts. The local build arrays are published only after every edge has
+// resolved, validated, and received a stable node index.
 fn tree_executor_callable_graph_admission(
   proof : TreeExecutorCallableProof,
   arg_count : Int,
 ) -> TreeExecutorGraphAdmission? {
   let visited : Array[ObjectData] = []
-  let work = [TreeExecutorGraphAdmissionWork(proof~, arg_count~, is_root=true)]
-  let mut root_direct_call : TreeExecutorResolvedDirectCall? = None
+  let nodes : Array[TreeExecutorGraphBuildNode] = []
+  let scheduled : Array[Bool] = []
+  let root_node_index = tree_executor_graph_append_node(nodes, scheduled, proof)
+  scheduled[root_node_index] = true
+  let work = [
+    TreeExecutorGraphAdmissionWork(
+      proof~,
+      arg_count~,
+      node_index=root_node_index,
+    ),
+  ]
   while !work.is_empty() {
     let current = work.pop().unwrap()
     match
@@ -246,42 +432,151 @@ fn tree_executor_callable_graph_admission(
       ) {
       TreeExecutorGraphAdmissionRejected => return None
       TreeExecutorGraphAdmissionAlreadyVisited => ()
-      TreeExecutorGraphAdmissionLeaf => visited.push(current.proof.object_data)
-      TreeExecutorGraphAdmissionFollow(edge) => {
+      TreeExecutorGraphAdmissionLeaf => {
         visited.push(current.proof.object_data)
-        let target = match
-          tree_executor_resolve_callee(current.proof.closure, edge.callee) {
-          Some(target) => target
-          None => return None
-        }
-        let target_proof = match tree_executor_callable_proof(target) {
-          Some(proof) => proof
-          None => return None
-        }
-        if current.is_root {
-          root_direct_call = Some(
-            TreeExecutorResolvedDirectCall(callee=edge.callee, target~),
+        nodes[current.node_index].edges = []
+      }
+      TreeExecutorGraphAdmissionFollow(edges) => {
+        visited.push(current.proof.object_data)
+        let next_work : Array[TreeExecutorGraphAdmissionWork] = []
+        let resolved_edges : Array[TreeExecutorGraphEdge] = []
+        for edge in edges {
+          let target = match
+            tree_executor_resolve_callee(current.proof.closure, edge.callee) {
+            Some(target) => target
+            None => return None
+          }
+          let target_proof = match tree_executor_callable_proof(target) {
+            Some(proof) => proof
+            None => return None
+          }
+          guard edge.argument_count == target_proof.parameter_count else {
+            return None
+          }
+          let target_node_index = match
+            tree_executor_graph_find_node(nodes, target_proof.object_data) {
+            Some(index) => {
+              guard nodes[index].parameter_count == target_proof.parameter_count else {
+                return None
+              }
+              index
+            }
+            None =>
+              tree_executor_graph_append_node(nodes, scheduled, target_proof)
+          }
+          resolved_edges.push(
+            TreeExecutorGraphEdge(
+              callee=edge.callee,
+              target~,
+              target_object_data=target_proof.object_data,
+              argument_count=edge.argument_count,
+              target_node_index~,
+            ),
           )
+          if !tree_executor_has_object_identity(
+              visited,
+              target_proof.object_data,
+            ) &&
+            !scheduled[target_node_index] {
+            scheduled[target_node_index] = true
+            next_work.push(
+              TreeExecutorGraphAdmissionWork(
+                proof=target_proof,
+                arg_count=edge.argument_count,
+                node_index=target_node_index,
+              ),
+            )
+          }
         }
-        work.push(
-          TreeExecutorGraphAdmissionWork(
-            proof=target_proof,
-            arg_count=edge.argument_count,
-            is_root=false,
-          ),
-        )
+        nodes[current.node_index].edges = resolved_edges
+        for next in next_work.rev_iter() {
+          work.push(next)
+        }
       }
     }
   }
-  Some(TreeExecutorGraphAdmission(direct_call=root_direct_call))
+  Some(
+    TreeExecutorGraphAdmission(
+      arena=TreeExecutorGraphArena(nodes),
+      root_node_index~,
+    ),
+  )
 }
 
 ///|
-fn tree_executor_callable(
+fn tree_executor_graph_select_edge(
+  cursor : TreeExecutorGraphCursor,
+  callee : Value,
+  argument_count : Int,
+) -> TreeExecutorGraphEdge? {
+  guard callee is Object(object_data) else { return None }
+  guard cursor.node_index >= 0 &&
+    cursor.node_index < cursor.arena.nodes.length() else {
+    return None
+  }
+  let node = cursor.arena.nodes[cursor.node_index]
+  for edge in node.edges {
+    if edge.argument_count == argument_count &&
+      physical_equal(edge.target_object_data, object_data) {
+      return Some(edge)
+    }
+  }
+  None
+}
+
+///|
+fn tree_executor_graph_node_executable(
+  node : TreeExecutorGraphNode,
+) -> ExecutorCallableData? {
+  match node.callable {
+    TreeExecutorGraphUserFunc(data) => {
+      let call_targets : Map[String, Value] = Map([])
+      for edge in node.edges {
+        call_targets[edge.callee] = edge.target
+      }
+      let code = TreeExecutorCode(TreeActivationPlan(data.body, call_targets))
+      Some({
+        name: data.name.unwrap_or(""),
+        params: data.params.copy(),
+        closure: data.closure,
+        strict: data.strict,
+        code: code as &ExecutorCode,
+        rest_param: None,
+        constructable: !data.is_method,
+        self_name: if data.has_name_binding {
+          data.name
+        } else {
+          None
+        },
+        define_arguments_object: false,
+        kind: OrdinaryExecutorCallable,
+        activation_capability_summary: None,
+      })
+    }
+    TreeExecutorGraphExecutorCallable(executable) => Some(executable)
+  }
+}
+
+///|
+priv struct TreeExecutorAdmission {
+  executable : ExecutorCallableData
+  cursor : TreeExecutorGraphCursor
+}
+
+///|
+fn TreeExecutorAdmission::TreeExecutorAdmission(
+  executable~ : ExecutorCallableData,
+  cursor~ : TreeExecutorGraphCursor,
+) -> TreeExecutorAdmission {
+  { executable, cursor }
+}
+
+///|
+fn tree_executor_callable_admission(
   callable : Value,
   data : FuncData,
   args : Array[Value],
-) -> ExecutorCallableData? {
+) -> TreeExecutorAdmission? {
   guard args.length() == data.params.length() else { return None }
   for arg in args {
     guard arg is Number(_) else { return None }
@@ -295,29 +590,41 @@ fn tree_executor_callable(
     Some(admission) => admission
     None => return None
   }
-  let call_targets : Map[String, Value] = Map([])
-  match admission.direct_call {
-    Some(edge) => call_targets[edge.callee] = edge.target
-    None => ()
+  let cursor = TreeExecutorGraphCursor(
+    arena=admission.arena,
+    node_index=admission.root_node_index,
+  )
+  let root_node = admission.arena.nodes[admission.root_node_index]
+  let executable = match tree_executor_graph_node_executable(root_node) {
+    Some(executable) => executable
+    None => return None
   }
-  let code = TreeExecutorCode(TreeActivationPlan(data.body, call_targets))
-  Some({
-    name: data.name.unwrap_or(""),
-    params: data.params.copy(),
-    closure: data.closure,
-    strict: data.strict,
-    code: code as &ExecutorCode,
-    rest_param: None,
-    constructable: !data.is_method,
-    self_name: if data.has_name_binding {
-      data.name
-    } else {
-      None
-    },
-    define_arguments_object: false,
-    kind: OrdinaryExecutorCallable,
-    activation_capability_summary: None,
-  })
+  Some(TreeExecutorAdmission(executable~, cursor~))
+}
+
+///|
+fn tree_executor_graph_target(
+  cursor : TreeExecutorGraphCursor,
+  edge : TreeExecutorGraphEdge,
+) -> TreeExecutorAdmission? {
+  guard edge.target_node_index >= 0 &&
+    edge.target_node_index < cursor.arena.nodes.length() else {
+    return None
+  }
+  let target_cursor = TreeExecutorGraphCursor(
+    arena=cursor.arena,
+    node_index=edge.target_node_index,
+  )
+  let target_node = cursor.arena.nodes[edge.target_node_index]
+  guard physical_equal(target_node.object_data, edge.target_object_data) &&
+    target_node.parameter_count == edge.argument_count else {
+    return None
+  }
+  let executable = match tree_executor_graph_node_executable(target_node) {
+    Some(executable) => executable
+    None => return None
+  }
+  Some(TreeExecutorAdmission(executable~, cursor=target_cursor))
 }
 
 ///|

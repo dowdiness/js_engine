@@ -11,15 +11,15 @@ priv struct ExecutorActivationDirectCallRequirement {
 ///|
 priv struct ExecutorActivationCapabilitySummary {
   parameter_count : Int
-  direct_call : ExecutorActivationDirectCallRequirement?
+  direct_calls : Array[ExecutorActivationDirectCallRequirement]
 }
 
 ///|
 fn ExecutorActivationCapabilitySummary::ExecutorActivationCapabilitySummary(
   parameter_count~ : Int,
-  direct_call~ : ExecutorActivationDirectCallRequirement?,
+  direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
 ) -> ExecutorActivationCapabilitySummary {
-  { parameter_count, direct_call }
+  { parameter_count, direct_calls: direct_calls.copy() }
 }
 
 ///|
@@ -31,29 +31,29 @@ priv enum ExecutorActivationCapabilityValueProof {
 ///|
 priv struct ExecutorActivationCapabilityExpressionProof {
   value : ExecutorActivationCapabilityValueProof
-  direct_call : ExecutorActivationDirectCallRequirement?
+  direct_calls : Array[ExecutorActivationDirectCallRequirement]
 }
 
 ///|
 fn ExecutorActivationCapabilityExpressionProof::ExecutorActivationCapabilityExpressionProof(
   value~ : ExecutorActivationCapabilityValueProof,
-  direct_call~ : ExecutorActivationDirectCallRequirement?,
+  direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
 ) -> ExecutorActivationCapabilityExpressionProof {
-  { value, direct_call }
+  { value, direct_calls: direct_calls.copy() }
 }
 
 ///|
 priv struct ExecutorActivationCapabilityStatementProof {
-  direct_call : ExecutorActivationDirectCallRequirement?
+  direct_calls : Array[ExecutorActivationDirectCallRequirement]
   guaranteed_return : Bool
 }
 
 ///|
 fn ExecutorActivationCapabilityStatementProof::ExecutorActivationCapabilityStatementProof(
-  direct_call~ : ExecutorActivationDirectCallRequirement?,
+  direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
   guaranteed_return~ : Bool,
 ) -> ExecutorActivationCapabilityStatementProof {
-  { direct_call, guaranteed_return }
+  { direct_calls: direct_calls.copy(), guaranteed_return }
 }
 
 ///|
@@ -67,15 +67,12 @@ fn executor_activation_direct_call_target_name(expr : @ast.Expr) -> String? {
 
 ///|
 fn executor_activation_merge_direct_calls(
-  left : ExecutorActivationDirectCallRequirement?,
-  right : ExecutorActivationDirectCallRequirement?,
-) -> ExecutorActivationDirectCallRequirement?? {
-  match (left, right) {
-    (Some(_), Some(_)) => None
-    (Some(edge), None) => Some(Some(edge))
-    (None, Some(edge)) => Some(Some(edge))
-    (None, None) => Some(None)
-  }
+  left : Array[ExecutorActivationDirectCallRequirement],
+  right : Array[ExecutorActivationDirectCallRequirement],
+) -> Array[ExecutorActivationDirectCallRequirement] {
+  let merged = left.copy()
+  merged.append(right)
+  merged
 }
 
 ///|
@@ -88,14 +85,14 @@ fn executor_activation_capability_expression(
       Some(
         ExecutorActivationCapabilityExpressionProof(
           value=ExecutorActivationCapabilityNumber,
-          direct_call=None,
+          direct_calls=[],
         ),
       )
     Ident(name, _) if params.contains(name) =>
       Some(
         ExecutorActivationCapabilityExpressionProof(
           value=ExecutorActivationCapabilityNumber,
-          direct_call=None,
+          direct_calls=[],
         ),
       )
     Grouping(inner, _) =>
@@ -111,14 +108,10 @@ fn executor_activation_capability_expression(
         Some(proof) => proof
         None => return None
       }
-      let direct_call = match
-        executor_activation_merge_direct_calls(
-          left_proof.direct_call,
-          right_proof.direct_call,
-        ) {
-        Some(edge) => edge
-        None => return None
-      }
+      let direct_calls = executor_activation_merge_direct_calls(
+        left_proof.direct_calls,
+        right_proof.direct_calls,
+      )
       let value = match (op, left_proof.value, right_proof.value) {
         (
           Add
@@ -133,7 +126,7 @@ fn executor_activation_capability_expression(
         ) => ExecutorActivationCapabilityBoolean
         _ => return None
       }
-      Some(ExecutorActivationCapabilityExpressionProof(value~, direct_call~))
+      Some(ExecutorActivationCapabilityExpressionProof(value~, direct_calls~))
     }
     Call(callee, args, _) => {
       guard executor_activation_direct_call_target_name(callee) is Some(name) else {
@@ -143,7 +136,7 @@ fn executor_activation_capability_expression(
       for arg in args {
         guard executor_activation_capability_expression(arg, params)
           is Some(
-            { value: ExecutorActivationCapabilityNumber, direct_call: None }
+            { value: ExecutorActivationCapabilityNumber, direct_calls: [] }
           ) else {
           return None
         }
@@ -151,7 +144,7 @@ fn executor_activation_capability_expression(
       Some(
         ExecutorActivationCapabilityExpressionProof(
           value=ExecutorActivationCapabilityNumber,
-          direct_call=Some({ callee: name, argument_count: args.length() }),
+          direct_calls=[{ callee: name, argument_count: args.length() }],
         ),
       )
     }
@@ -175,7 +168,7 @@ fn executor_activation_capability_statement(
       }
       Some(
         ExecutorActivationCapabilityStatementProof(
-          direct_call=proof.direct_call,
+          direct_calls=proof.direct_calls,
           guaranteed_return=false,
         ),
       )
@@ -200,31 +193,23 @@ fn executor_activation_capability_statement(
         None =>
           (
             ExecutorActivationCapabilityStatementProof(
-              direct_call=None,
+              direct_calls=[],
               guaranteed_return=false,
             ),
             false,
           )
       }
-      let branch_call = match
-        executor_activation_merge_direct_calls(
-          then_proof.direct_call,
-          else_proof.direct_call,
-        ) {
-        Some(edge) => edge
-        None => return None
-      }
-      let direct_call = match
-        executor_activation_merge_direct_calls(
-          condition_proof.direct_call,
-          branch_call,
-        ) {
-        Some(edge) => edge
-        None => return None
-      }
+      let branch_calls = executor_activation_merge_direct_calls(
+        then_proof.direct_calls,
+        else_proof.direct_calls,
+      )
+      let direct_calls = executor_activation_merge_direct_calls(
+        condition_proof.direct_calls,
+        branch_calls,
+      )
       Some(
         ExecutorActivationCapabilityStatementProof(
-          direct_call~,
+          direct_calls~,
           guaranteed_return=has_else &&
             then_proof.guaranteed_return &&
             else_proof.guaranteed_return,
@@ -233,12 +218,12 @@ fn executor_activation_capability_statement(
     }
     ReturnStmt(Some(expr), _) => {
       guard executor_activation_capability_expression(expr, params)
-        is Some({ value: ExecutorActivationCapabilityNumber, direct_call }) else {
+        is Some({ value: ExecutorActivationCapabilityNumber, direct_calls }) else {
         return None
       }
       Some(
         ExecutorActivationCapabilityStatementProof(
-          direct_call~,
+          direct_calls~,
           guaranteed_return=true,
         ),
       )
@@ -252,26 +237,22 @@ fn executor_activation_capability_statements(
   stmts : Array[@ast.Stmt],
   params : Array[String],
 ) -> ExecutorActivationCapabilityStatementProof? {
-  let no_call : ExecutorActivationDirectCallRequirement? = None
-  for stmt in stmts; direct_call = no_call, guaranteed_return = false {
+  for stmt in stmts; direct_calls = [], guaranteed_return = false {
     let statement_proof = match
       executor_activation_capability_statement(stmt, params) {
       Some(proof) => proof
       None => return None
     }
-    let merged_call = match
-      executor_activation_merge_direct_calls(
-        direct_call,
-        statement_proof.direct_call,
-      ) {
-      Some(edge) => edge
-      None => return None
-    }
-    continue merged_call, guaranteed_return || statement_proof.guaranteed_return
+    let merged_calls = executor_activation_merge_direct_calls(
+      direct_calls,
+      statement_proof.direct_calls,
+    )
+    continue merged_calls,
+      guaranteed_return || statement_proof.guaranteed_return
   } nobreak {
     Some(
       ExecutorActivationCapabilityStatementProof(
-        direct_call~,
+        direct_calls~,
         guaranteed_return~,
       ),
     )
@@ -286,13 +267,13 @@ fn executor_activation_capability_summary(
   body : Array[@ast.Stmt],
 ) -> ExecutorActivationCapabilitySummary? {
   guard executor_activation_capability_statements(body, params)
-    is Some({ direct_call, guaranteed_return: true }) else {
+    is Some({ direct_calls, guaranteed_return: true }) else {
     return None
   }
   Some(
     ExecutorActivationCapabilitySummary(
       parameter_count=params.length(),
-      direct_call~,
+      direct_calls~,
     ),
   )
 }
