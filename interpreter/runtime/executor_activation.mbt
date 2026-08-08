@@ -647,6 +647,34 @@ fn Interpreter::handle_executor_activation_step(
               )
               ExecutorActivationRequestChild
             }
+            Object({ callable: Some(UserFunc(data)), .. }) =>
+              match tree_executor_callable(data) {
+                Some(executable) => {
+                  let forwarded_request = ExecutorCallRequest(
+                    callee=forwarded_callee,
+                    this_value=forwarded_this_value,
+                    args=forwarded_args,
+                    loc=request.loc,
+                  )
+                  stack.push(
+                    self.start_executor_activation(
+                      executable,
+                      ExecutorStartCall(forwarded_request),
+                      None,
+                    ),
+                  )
+                  ExecutorActivationRequestChild
+                }
+                None =>
+                  ExecutorActivationRequestValue(
+                    self.call_value(
+                      forwarded_callee,
+                      forwarded_this_value,
+                      forwarded_args,
+                      request.loc,
+                    ),
+                  )
+              }
             _ =>
               ExecutorActivationRequestValue(
                 self.call_value(

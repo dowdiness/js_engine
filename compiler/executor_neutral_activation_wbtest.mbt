@@ -1968,6 +1968,74 @@ test "mixed bytecode and tree calls complete at deep finite depth" {
 }
 
 ///|
+test "mixed tree activation is structural and independent of call depth" {
+  for depth in [1, 2, 3, 17] {
+    let interp = @interpreter.new_interpreter()
+    let tree = @parser.parse(
+      "function renamedTree(value) {\n" +
+      "  if ((value === 0)) { return 0; }\n" +
+      "  return renamedBytecode((value - 1)) + 1;\n" +
+      "}",
+    )
+    let _ = interp.run(tree.stmts)
+    let result = run_executor_neutral_bytecode(
+      interp,
+      "function renamedBytecode(value) { " +
+      "if (value === 0) return 0; " +
+      "return renamedTree(value - 1) + 1; } " +
+      "renamedBytecode(\{depth});",
+    )
+    inspect(result.to_string(), content=depth.to_string())
+  }
+}
+
+///|
+test "mixed tree activation consumes each child completion exactly once" {
+  let interp = @interpreter.new_interpreter()
+  let tree = @parser.parse(
+    "function treeTwice(n) { return bytecodeLeaf(n) + bytecodeLeaf(n + 1); } " +
+    "function treeIdentity() { return bytecodeIdentity(); }",
+  )
+  let _ = interp.run(tree.stmts)
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "var identityMarker = {}; " +
+    "function bytecodeLeaf(n) { return n; } " +
+    "function bytecodeIdentity() { return identityMarker; } " +
+    "treeTwice(3) === 7 && treeIdentity() === identityMarker;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "mixed tree activation propagates abrupt identity and permits reuse" {
+  let interp = @interpreter.new_interpreter()
+  let tree = @parser.parse(
+    "function treeCaller(n) { return bytecodeThrow(n - 1) + 1; }",
+  )
+  let _ = interp.run(tree.stmts)
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var mixedMarker = {}; " +
+      "function bytecodeThrow(n) { throw mixedMarker; } " +
+      "treeCaller(1);",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("mixedMarker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("mixed tree activation must propagate the guest throw")
+  }
+  let reused = interp.run(@parser.parse("6 * 7;").stmts)
+  inspect(reused.to_string(), content="42")
+}
+
+///|
 test "executor-neutral foreign realm receiver call preserves this" {
   let callee_interp = @interpreter.new_interpreter()
   let caller_interp = @interpreter.new_interpreter()

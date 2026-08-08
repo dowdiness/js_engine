@@ -1345,6 +1345,93 @@ test "nested abrupt delivery rethrows after managed cleanup and permits reuse" {
 }
 
 ///|
+test "tree executor child abrupt completion preserves identity and cleanup" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="tree child sentinel")
+  let child = make_executor_function(
+    Some("tree_child_thrower"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  interp.global.def_builtin("tree_child_thrower", child)
+  let _ = interp.run(
+    @parser.parse(
+      "function treeParent(n) { return tree_child_thrower(n - 1) + 1; }",
+    ).stmts,
+  )
+  let tree_parent = interp.global.get("treeParent")
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=2,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let root = ExecutorActivationCallFrame(
+      callee=tree_parent,
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("tree parent must re-raise its child abrupt completion")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after tree unwind")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "unsupported tree body stays legacy before observable execution" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var legacyCalls = 0; " +
+      "function legacyNearMiss(n) { legacyCalls = legacyCalls + 1; return -n; }",
+    ).stmts,
+  )
+  let legacy = interp.global.get("legacyNearMiss")
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=legacy,
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="-3")
+    _ => fail("unsupported body must complete through the legacy evaluator")
+  }
+  inspect(interp.global.get("legacyCalls").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "activation coordinator unwinds child errors and restores dynamic state" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="coordinator sentinel")
