@@ -198,21 +198,6 @@ pub(open) trait ExecutorCode {
 }
 
 ///|
-// Source-backed evidence used only by runtime admission. Executor packages may
-// provide it when their lowered code is verified against the same source body;
-// absence keeps cross-executor calls on the compatibility path.
-pub struct ExecutorActivationSourceContract {
-  priv body : Array[@ast.Stmt]
-}
-
-///|
-pub fn executor_activation_source_contract(
-  body : Array[@ast.Stmt],
-) -> ExecutorActivationSourceContract {
-  { body: body.copy() }
-}
-
-///|
 priv enum ExecutorCallableKind {
   OrdinaryExecutorCallable
   ArrowExecutorCallable
@@ -233,7 +218,7 @@ pub struct ExecutorCallableData {
   priv self_name : String?
   priv define_arguments_object : Bool
   priv kind : ExecutorCallableKind
-  priv activation_source_contract : ExecutorActivationSourceContract?
+  priv activation_capability_summary : ExecutorActivationCapabilitySummary?
 }
 
 ///|
@@ -1066,36 +1051,35 @@ fn Interpreter::run_executor_function(
 }
 
 ///|
-pub fn[T : ExecutorCode] make_executor_function(
-  name : String?,
+fn make_executor_callable_with_capability(
+  function_name : String,
   params : Array[String],
   closure : Environment,
   strict : Bool,
-  code : T,
-  rest_param? : String? = None,
-  constructable? : Bool = true,
-  call_self_name? : Bool = false,
-  define_arguments_object? : Bool = true,
-  activation_source_contract? : ExecutorActivationSourceContract? = None,
+  code : &ExecutorCode,
+  rest_param : String?,
+  constructable : Bool,
+  self_name : String?,
+  define_arguments_object : Bool,
+  kind : ExecutorCallableKind,
+  activation_capability_summary : ExecutorActivationCapabilitySummary?,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
     None => closure.realm_state
   }
-  let function_name = name.unwrap_or("")
-  let self_name = if call_self_name { name } else { None }
   let executable : ExecutorCallableData = {
     name: function_name,
     params: params.copy(),
     closure,
     strict,
-    code: code as &ExecutorCode,
+    code,
     rest_param,
     constructable,
     self_name,
     define_arguments_object,
-    kind: OrdinaryExecutorCallable,
-    activation_source_contract,
+    kind,
+    activation_capability_summary,
   }
   let function = build_func_object(
     function_name,
@@ -1141,35 +1125,111 @@ pub fn[T : ExecutorCode] make_executor_function(
 }
 
 ///|
+pub fn[T : ExecutorCode] make_executor_function(
+  name : String?,
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  code : T,
+  rest_param? : String? = None,
+  constructable? : Bool = true,
+  call_self_name? : Bool = false,
+  define_arguments_object? : Bool = true,
+) -> Value {
+  let function_name = name.unwrap_or("")
+  let self_name = if call_self_name { name } else { None }
+  make_executor_callable_with_capability(
+    function_name,
+    params,
+    closure,
+    strict,
+    code as &ExecutorCode,
+    rest_param,
+    constructable,
+    self_name,
+    define_arguments_object,
+    OrdinaryExecutorCallable,
+    None,
+  )
+}
+
+///|
+/// ExecutorCode providers are trusted to supply code corresponding to
+/// `source_body`; runtime admission cannot prove otherwise.
+pub fn[T : ExecutorCode] make_classified_executor_function(
+  name : String?,
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  code : T,
+  source_body : Array[@ast.Stmt],
+  rest_param? : String? = None,
+  constructable? : Bool = true,
+  call_self_name? : Bool = false,
+  define_arguments_object? : Bool = true,
+) -> Value {
+  let function_name = name.unwrap_or("")
+  let self_name = if call_self_name { name } else { None }
+  make_executor_callable_with_capability(
+    function_name,
+    params,
+    closure,
+    strict,
+    code as &ExecutorCode,
+    rest_param,
+    constructable,
+    self_name,
+    define_arguments_object,
+    OrdinaryExecutorCallable,
+    executor_activation_capability_summary(params, source_body),
+  )
+}
+
+///|
 pub fn[T : ExecutorCode] make_executor_arrow_function(
   params : Array[String],
   closure : Environment,
   strict : Bool,
   code : T,
   rest_param? : String? = None,
-  activation_source_contract? : ExecutorActivationSourceContract? = None,
 ) -> Value {
-  let realm_state = match closure.interpreter_context {
-    Some(interp) => Some(interp.realm_state)
-    None => closure.realm_state
-  }
-  let executable : ExecutorCallableData = {
-    name: "",
-    params: params.copy(),
+  make_executor_callable_with_capability(
+    "",
+    params,
     closure,
     strict,
-    code: code as &ExecutorCode,
+    code as &ExecutorCode,
     rest_param,
-    constructable: false,
-    self_name: None,
-    define_arguments_object: false,
-    kind: ArrowExecutorCallable,
-    activation_source_contract,
-  }
-  build_func_object(
+    false,
+    None,
+    false,
+    ArrowExecutorCallable,
+    None,
+  )
+}
+
+///|
+/// ExecutorCode providers are trusted to supply code corresponding to
+/// `source_body`; runtime admission cannot prove otherwise.
+pub fn[T : ExecutorCode] make_classified_executor_arrow_function(
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  code : T,
+  source_body : Array[@ast.Stmt],
+  rest_param? : String? = None,
+) -> Value {
+  make_executor_callable_with_capability(
     "",
-    params.length(),
-    ExecutorCallable(executable),
-    realm_state~,
+    params,
+    closure,
+    strict,
+    code as &ExecutorCode,
+    rest_param,
+    false,
+    None,
+    false,
+    ArrowExecutorCallable,
+    executor_activation_capability_summary(params, source_body),
   )
 }

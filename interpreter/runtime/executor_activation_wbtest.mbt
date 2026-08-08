@@ -1348,16 +1348,14 @@ test "nested abrupt delivery rethrows after managed cleanup and permits reuse" {
 test "tree executor child abrupt completion preserves identity and cleanup" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="tree child sentinel")
-  let child = make_executor_function(
+  let child = make_classified_executor_function(
     Some("tree_child_thrower"),
     ["n"],
     interp.global,
     false,
     ExecutorActivationThrowCode(error=sentinel),
+    @parser.parse("return 0;").stmts,
     constructable=false,
-    activation_source_contract=Some(
-      executor_activation_source_contract(@parser.parse("return 0;").stmts),
-    ),
   )
   interp.global.def_builtin("tree_child_thrower", child)
   let _ = interp.run(
@@ -1508,6 +1506,91 @@ test "tree admission rejects unsupported earlier calls before effects" {
 }
 
 ///|
+test "generic executor code cannot gain tree admission" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let child = make_executor_function(
+    Some("missingSummaryLeaf"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(7.0)),
+    constructable=false,
+  )
+  interp.global.def_builtin("missingSummaryLeaf", child)
+  let _ = interp.run(
+    @parser.parse(
+      "function missingSummaryParent(n) { return missingSummaryLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("missingSummaryParent"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="8")
+    _ => fail("missing child summaries must keep the root on legacy execution")
+  }
+  inspect(starts.val, content="1")
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects native target resolution without preflight effects" {
+  let interp = Interpreter::new()
+  let native_calls : Ref[Int] = { val: 0 }
+  let native_leaf = make_native_func(name="nativeResolutionLeaf", fn(args) {
+    native_calls.val += 1
+    args[0]
+  })
+  interp.global.def_builtin("nativeResolutionLeaf", native_leaf)
+  let _ = interp.run(
+    @parser.parse(
+      "function nativeResolutionParent(n) { " +
+      "return nativeResolutionLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("nativeResolutionParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ => fail("native target resolution must keep the root on legacy execution")
+  }
+  inspect(native_calls.val, content="1")
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "tree admission accepts supported numeric expression statements" {
   let interp = Interpreter::new()
   let _ = interp.run(
@@ -1588,16 +1671,14 @@ test "tree admission rejects executor object results before parent effects" {
     Map([]),
     true,
   )
-  let child = make_executor_function(
+  let child = make_classified_executor_function(
     Some("objectLeaf"),
     ["n"],
     interp.global,
     false,
     ExecutorActivationValueCode(starts~, value=object_result),
+    @parser.parse("return {};").stmts,
     constructable=false,
-    activation_source_contract=Some(
-      executor_activation_source_contract(@parser.parse("return {};").stmts),
-    ),
   )
   interp.global.def_builtin("objectLeaf", child)
   let _ = interp.run(
@@ -1610,6 +1691,8 @@ test "tree admission rejects executor object results before parent effects" {
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
   let root = ExecutorActivationCallFrame(
       callee=interp.global.get("objectResultParent"),
       this_value=Undefined,
@@ -1629,6 +1712,7 @@ test "tree admission rejects executor object results before parent effects" {
   }
   inspect(starts.val, content="1")
   inspect(coercions.val, content="1")
+  json_inspect(events, content=[])
   inspect(control.active_depth(), content="0")
 }
 
