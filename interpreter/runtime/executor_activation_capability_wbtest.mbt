@@ -53,8 +53,8 @@ test "executor activation capability summary classifies only the closed subset" 
   }
 
   let rejected = [
-    "return n * 2;", "return -n;", "var x = n; return n;", "return;", "return first(second(n));",
-    "return eval(n);", "return missing;",
+    "return n * 2;", "return -n;", "var x = n; return n;", "return;", "return eval(n);",
+    "return missing;",
   ]
   for source in rejected {
     assert_true(classify_executor_capability_for_test(["n"], source) is None)
@@ -104,6 +104,56 @@ test "executor activation capability preserves ordered sibling call requirements
 
   assert_true(
     classify_executor_capability_for_test(["n"], "return first(second(n));")
-    is None,
+    is Some(_),
+  )
+}
+
+///|
+test "executor activation capability preserves ordered nested call requirements" {
+  match
+    classify_executor_capability_for_test(
+      ["n"],
+      "return outer(middle(inner(n)));",
+    ) {
+    Some(summary) => {
+      inspect(summary.direct_calls.length(), content="3")
+      inspect(summary.direct_calls[0].callee, content="inner")
+      inspect(summary.direct_calls[1].callee, content="middle")
+      inspect(summary.direct_calls[2].callee, content="outer")
+    }
+    None => fail("deep nested direct calls must be admitted")
+  }
+
+  match
+    classify_executor_capability_for_test(
+      ["n"],
+      "return outer(first(n), second(n));",
+    ) {
+    Some(summary) => {
+      inspect(summary.direct_calls.length(), content="3")
+      inspect(summary.direct_calls[0].callee, content="first")
+      inspect(summary.direct_calls[1].callee, content="second")
+      inspect(summary.direct_calls[2].callee, content="outer")
+      inspect(summary.direct_calls[2].argument_count, content="2")
+    }
+    None => fail("multiple direct call arguments must be admitted")
+  }
+
+  match
+    classify_executor_capability_for_test(
+      ["n"],
+      "return outer(inner(n), inner(n));",
+    ) {
+    Some(summary) => {
+      inspect(summary.direct_calls.length(), content="3")
+      inspect(summary.direct_calls[0].callee, content="inner")
+      inspect(summary.direct_calls[1].callee, content="inner")
+      inspect(summary.direct_calls[2].callee, content="outer")
+    }
+    None => fail("duplicate nested call sites must be retained")
+  }
+
+  assert_true(
+    classify_executor_capability_for_test(["n"], "return outer(-n);") is None,
   )
 }

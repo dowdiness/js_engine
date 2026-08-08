@@ -133,18 +133,23 @@ fn executor_activation_capability_expression(
         return None
       }
       guard !params.contains(name) else { return None }
+      let direct_calls : Array[ExecutorActivationDirectCallRequirement] = []
       for arg in args {
-        guard executor_activation_capability_expression(arg, params)
-          is Some(
-            { value: ExecutorActivationCapabilityNumber, direct_calls: [] }
-          ) else {
+        let argument_proof = match
+          executor_activation_capability_expression(arg, params) {
+          Some(proof) => proof
+          None => return None
+        }
+        guard argument_proof.value is ExecutorActivationCapabilityNumber else {
           return None
         }
+        direct_calls.append(argument_proof.direct_calls)
       }
+      direct_calls.push({ callee: name, argument_count: args.length() })
       Some(
         ExecutorActivationCapabilityExpressionProof(
           value=ExecutorActivationCapabilityNumber,
-          direct_calls=[{ callee: name, argument_count: args.length() }],
+          direct_calls~,
         ),
       )
     }
