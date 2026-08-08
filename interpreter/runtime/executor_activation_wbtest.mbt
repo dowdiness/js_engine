@@ -46,6 +46,40 @@ priv struct ExecutorActivationValueCode {
 }
 
 ///|
+priv struct ExecutorActivationOrderedValueCode {
+  events : Array[String]
+  label : String
+  value : Value
+}
+
+///|
+priv struct ExecutorActivationMutateBindingCode {
+  closure : Environment
+  binding_name : String
+  replacement : Value
+  value : Value
+}
+
+///|
+fn ExecutorActivationOrderedValueCode::ExecutorActivationOrderedValueCode(
+  events~ : Array[String],
+  label~ : String,
+  value~ : Value,
+) -> ExecutorActivationOrderedValueCode {
+  { events, label, value }
+}
+
+///|
+fn ExecutorActivationMutateBindingCode::ExecutorActivationMutateBindingCode(
+  closure~ : Environment,
+  binding_name~ : String,
+  replacement~ : Value,
+  value~ : Value,
+) -> ExecutorActivationMutateBindingCode {
+  { closure, binding_name, replacement, value }
+}
+
+///|
 priv struct ExecutorActivationValueFrame {
   value : Value
 }
@@ -601,6 +635,26 @@ impl ExecutorCode for ExecutorActivationValueCode with fn start(
   _prepared,
 ) {
   self.starts.val += 1
+  ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorCode for ExecutorActivationOrderedValueCode with fn start(
+  self,
+  _interp,
+  _prepared,
+) {
+  self.events.push(self.label)
+  ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorCode for ExecutorActivationMutateBindingCode with fn start(
+  self,
+  _interp,
+  _prepared,
+) {
+  self.closure.bindings[self.binding_name].value = self.replacement
   ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
 }
 
@@ -1719,6 +1773,395 @@ test "tree admission accepts supported numeric expression statements" {
     }
   })
   inspect(outcome, content="admitted")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission accepts two direct numeric callees" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function multiCallFirst(n) { return n + 1; } " +
+      "function multiCallSecond(n) { return n + 2; } " +
+      "function multiCallParent(n) { " +
+      "return multiCallFirst(n) + multiCallSecond(n); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("multiCallParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      "legacy"
+    } catch {
+      ExecutionControlError(StackDepthLimit) => "admitted"
+      _ => "other-error"
+    }
+  })
+  inspect(outcome, content="admitted")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree execution preserves two direct call result and order" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let first = make_classified_executor_function(
+    Some("orderedFirst"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="first",
+      value=Number(4.0),
+    ),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  let second = make_classified_executor_function(
+    Some("orderedSecond"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="second",
+      value=Number(4.0),
+    ),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("orderedFirst", first)
+  interp.global.def_builtin("orderedSecond", second)
+  let _ = interp.run(
+    @parser.parse(
+      "function orderedParent(n) { " +
+      "return orderedFirst(n) + orderedSecond(n); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=10,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("orderedParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="8")
+    _ => fail("two admitted direct calls must return their numeric result")
+  }
+  json_inspect(events, content=["first", "second"])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "closed tree plan keeps nested targets after sibling mutation" {
+  let interp = Interpreter::new()
+  let legacy_calls : Ref[Int] = { val: 0 }
+  let native_replacement = make_native_func(name="closedLegacy", fn(_args) {
+    legacy_calls.val += 1
+    Number(100.0)
+  })
+  let mutator = make_classified_executor_function(
+    Some("closedMutator"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationMutateBindingCode(
+      closure=interp.global,
+      binding_name="closedNested",
+      replacement=native_replacement,
+      value=Number(0.0),
+    ),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("closedMutator", mutator)
+  let _ = interp.run(
+    @parser.parse(
+      "function closedNested(n) { return n + 1; } " +
+      "function closedSibling(n) { return closedNested(n); } " +
+      "function closedRoot(n) { " +
+      "return closedMutator(n) + closedSibling(n); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=20,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("closedRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ => fail("closed graph must retain the prevalidated nested target")
+  }
+  inspect(legacy_calls.val, content="0")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree execution preserves duplicate direct call sites" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let duplicate = make_classified_executor_function(
+    Some("duplicateLeaf"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="duplicate",
+      value=Number(5.0),
+    ),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("duplicateLeaf", duplicate)
+  let _ = interp.run(
+    @parser.parse(
+      "function duplicateRoot(n) { " +
+      "return duplicateLeaf(n) + duplicateLeaf(n); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=20,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("duplicateRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="10")
+    _ => fail("duplicate direct calls must execute in source order")
+  }
+  json_inspect(events, content=["duplicate", "duplicate"])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects an unsupported unselected branch without preflight effects" {
+  let interp = Interpreter::new()
+  let native_calls : Ref[Int] = { val: 0 }
+  let native_branch = make_native_func(name="branchNative", fn(args) {
+    native_calls.val += 1
+    args[0]
+  })
+  interp.global.def_builtin("branchNative", native_branch)
+  let _ = interp.run(
+    @parser.parse(
+      "function branchSafe(n) { return n + 1; } " +
+      "function branchRoot(n) { " +
+      "if (n === 0) return branchSafe(n); " +
+      "else return branchNative(n); }",
+    ).stmts,
+  )
+  let probe_events : Array[String] = []
+  install_executor_activation_probe(interp, probe_events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("branchRoot"),
+      this_value=Undefined,
+      args=[Number(0.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    try {
+      match interp.run_executor_activation_coordinator(root) {
+        ExecutorActivationReturn(Number(value)) => "legacy:" + value.to_string()
+        _ => "other"
+      }
+    } catch {
+      ExecutionControlError(StackDepthLimit) => "admitted"
+      _ => "error"
+    }
+  })
+  inspect(outcome, content="legacy:1")
+  inspect(native_calls.val, content="0")
+  json_inspect(probe_events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+fn executor_activation_deep_branching_tree_source(depth : Int) -> String {
+  let definitions : Array[String] = []
+  let mut leaf_count = 1
+  for _ in 0..<depth {
+    leaf_count *= 2
+  }
+  for index in 0..<leaf_count {
+    let name = "deepBranch" + depth.to_string() + "_" + index.to_string()
+    definitions.push("function " + name + "(n) { return n; } ")
+  }
+  for level = depth - 1; level >= 0; level = level - 1 {
+    let mut node_count = 1
+    for _ in 0..<level {
+      node_count *= 2
+    }
+    for index in 0..<node_count {
+      let name = "deepBranch" + level.to_string() + "_" + index.to_string()
+      let left = "deepBranch" +
+        (level + 1).to_string() +
+        "_" +
+        (index * 2).to_string()
+      let right = "deepBranch" +
+        (level + 1).to_string() +
+        "_" +
+        (index * 2 + 1).to_string()
+      definitions.push(
+        "function " +
+        name +
+        "(n) { " +
+        "if (n === 0) return " +
+        left +
+        "(n); " +
+        "else return " +
+        right +
+        "(n); } ",
+      )
+    }
+  }
+  definitions.join("")
+}
+
+///|
+test "iterative tree admission handles a deep branching graph" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(executor_activation_deep_branching_tree_source(10)).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=5000,
+    maximum_active_depth=100,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("deepBranch0_0"),
+      this_value=Undefined,
+      args=[Number(0.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="0")
+    _ => fail("deep branching admission must complete without host recursion")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects a supported and native callee together" {
+  let interp = Interpreter::new()
+  let native_calls : Ref[Int] = { val: 0 }
+  let native_leaf = make_native_func(name="multiNative", fn(args) {
+    native_calls.val += 1
+    args[0]
+  })
+  interp.global.def_builtin("multiNative", native_leaf)
+  let _ = interp.run(
+    @parser.parse(
+      "function multiSupported(n) { return n + 1; } " +
+      "function multiRejected(n) { " +
+      "return multiSupported(n) + multiNative(n); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("multiRejected"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="7")
+    _ => fail("an unsupported sibling callee must keep the whole root legacy")
+  }
+  inspect(native_calls.val, content="1")
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects a direct callee with mismatched arity" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function arityLeaf(n, extra) { return n; } " +
+      "function arityParent(n) { return arityLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("arityParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ => fail("arity mismatch must keep the root on legacy execution")
+  }
   inspect(control.active_depth(), content="0")
 }
 
