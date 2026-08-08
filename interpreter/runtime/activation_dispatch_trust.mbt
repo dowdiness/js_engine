@@ -120,27 +120,10 @@ fn numeric_recursion_existing_binding_snapshot(
 }
 
 ///|
-priv enum CallbackFreeBindingSnapshot {
-  CallbackFreeBindingMissing
-  CallbackFreeBindingPresent(Value)
-  CallbackFreeBindingUnsafe
-}
-
-///|
 fn numeric_recursion_callback_free_throw_type_error(
   env : Environment,
 ) -> CallbackFreeBindingSnapshot {
-  match env.bindings.get("[[ThrowTypeError]]") {
-    None => CallbackFreeBindingMissing
-    Some(binding) if binding.initialized =>
-      match binding.value {
-        Object(data) if data.class_name == "ModuleNamespaceCache" ||
-          data.class_name == "ModuleTDZ" ||
-          data.class_name == "ModuleExportCell" => CallbackFreeBindingUnsafe
-        value => CallbackFreeBindingPresent(value)
-      }
-    Some(_) => CallbackFreeBindingUnsafe
-  }
+  callback_free_binding_snapshot(env, "[[ThrowTypeError]]")
 }
 
 ///|

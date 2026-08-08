@@ -111,27 +111,10 @@ fn tree_executor_has_object_identity(
 
 ///|
 fn tree_executor_resolve_callee(closure : Environment, name : String) -> Value? {
-  let mut current : Environment? = Some(closure)
-  while true {
-    match current {
-      None => break
-      Some(env) => {
-        guard env.with_object is None else { return None }
-        match env.bindings.get(name) {
-          Some(binding) if binding.initialized =>
-            match binding.value {
-              Object(data) if data.class_name == "ModuleNamespaceCache" ||
-                data.class_name == "ModuleTDZ" ||
-                data.class_name == "ModuleExportCell" => return None
-              value => return Some(value)
-            }
-          Some(_) => return None
-          None => current = env.parent
-        }
-      }
-    }
+  match callback_free_binding_in_plain_chain(closure, name) {
+    CallbackFreeBindingPresent(value) => Some(value)
+    CallbackFreeBindingMissing | CallbackFreeBindingUnsafe => None
   }
-  None
 }
 
 ///|
