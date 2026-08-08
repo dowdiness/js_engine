@@ -1345,6 +1345,418 @@ test "nested abrupt delivery rethrows after managed cleanup and permits reuse" {
 }
 
 ///|
+test "tree executor child abrupt completion preserves identity and cleanup" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="tree child sentinel")
+  let child = make_executor_function(
+    Some("tree_child_thrower"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+    activation_source_contract=Some(
+      executor_activation_source_contract(@parser.parse("return 0;").stmts),
+    ),
+  )
+  interp.global.def_builtin("tree_child_thrower", child)
+  let _ = interp.run(
+    @parser.parse(
+      "function treeParent(n) { return tree_child_thrower(n - 1) + 1; }",
+    ).stmts,
+  )
+  let tree_parent = interp.global.get("treeParent")
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=2,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let root = ExecutorActivationCallFrame(
+      callee=tree_parent,
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("tree parent must re-raise its child abrupt completion")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after tree unwind")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "unsupported tree body stays legacy before observable execution" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var legacyCalls = 0; " +
+      "function legacyNearMiss(n) { legacyCalls = legacyCalls + 1; return -n; }",
+    ).stmts,
+  )
+  let legacy = interp.global.get("legacyNearMiss")
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=legacy,
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="-3")
+    _ => fail("unsupported body must complete through the legacy evaluator")
+  }
+  inspect(interp.global.get("legacyCalls").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects an unsupported native callee on an otherwise supported body" {
+  let interp = Interpreter::new()
+  let native_leaf = make_native_func(name="nativeLeaf", args => args[0])
+  interp.global.def_builtin("nativeLeaf", native_leaf)
+  let _ = interp.run(
+    @parser.parse("function nativeParent(n) { return nativeLeaf(n) + 1; }").stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("nativeParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ =>
+      fail(
+        "an unsupported native callee must keep the root on legacy execution",
+      )
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects unsupported earlier calls before effects" {
+  let interp = Interpreter::new()
+  let side_effects : Ref[Int] = { val: 0 }
+  let side_effect = make_native_func(name="sideEffect", fn(args) {
+    side_effects.val += 1
+    args[0]
+  })
+  let native_leaf = make_native_func(name="nativeLeaf", fn(args) { args[0] })
+  interp.global.def_builtin("sideEffect", side_effect)
+  interp.global.def_builtin("nativeLeaf", native_leaf)
+  let _ = interp.run(
+    @parser.parse(
+      "function unsafeParent(n) { sideEffect(n); return nativeLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("unsafeParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ =>
+      fail("unsupported callees must keep the whole root on legacy execution")
+  }
+  inspect(side_effects.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission accepts supported numeric expression statements" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse("function numericStatement(n) { n + 1; return n + 2; }").stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("numericStatement"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      "legacy"
+    } catch {
+      ExecutionControlError(StackDepthLimit) => "admitted"
+      _ => "other-error"
+    }
+  })
+  inspect(outcome, content="admitted")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects object coercion before valueOf effects" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var coercions = 0; " +
+      "var box = { valueOf: function() { coercions = coercions + 1; return 7; } }; " +
+      "function coercionParent(x) { return x + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("coercionParent"),
+      this_value=Undefined,
+      args=[interp.global.get("box")],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="8")
+    _ => fail("object coercion must keep the whole root on legacy execution")
+  }
+  inspect(interp.global.get("coercions").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects executor object results before parent effects" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let coercions : Ref[Int] = { val: 0 }
+  let value_of = make_native_func(name="valueOf", fn(_args) {
+    coercions.val += 1
+    Number(7.0)
+  })
+  let object_result = make_object(
+    { "valueOf": value_of },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let child = make_executor_function(
+    Some("objectLeaf"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=object_result),
+    constructable=false,
+    activation_source_contract=Some(
+      executor_activation_source_contract(@parser.parse("return {};").stmts),
+    ),
+  )
+  interp.global.def_builtin("objectLeaf", child)
+  let _ = interp.run(
+    @parser.parse(
+      "function objectResultParent(n) { return objectLeaf(n) + 1; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("objectResultParent"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="8")
+    _ =>
+      fail(
+        "object-returning executors must keep the parent on legacy execution",
+      )
+  }
+  inspect(starts.val, content="1")
+  inspect(coercions.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects with getter closures without preflight effects" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var withReads = 0; var savedWithCall; " +
+      "function withPeer(n) { return n; } " +
+      "var withScope = { get withPeer() { withReads = withReads + 1; return withPeer; } }; " +
+      "with (withScope) { " +
+      "savedWithCall = function(n) { " +
+      "if (n === 0) return 0; return withPeer(n - 1) + 1; }; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("savedWithCall"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="1")
+    _ => fail("with closures must stay on legacy execution before admission")
+  }
+  inspect(interp.global.get("withReads").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects with proxy closures without preflight traps" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function proxyPeer(n) { return n; } " +
+      "function proxyTemplate(n) { " +
+      "if (n === 0) return 0; return proxyPeer(n - 1) + 1; }",
+    ).stmts,
+  )
+  let peer = interp.global.get("proxyPeer")
+  let template = match interp.global.get("proxyTemplate") {
+    Object({ callable: Some(UserFunc(data)), .. }) => data
+    _ => fail("expected proxy closure template")
+  }
+  let has_calls : Ref[Int] = { val: 0 }
+  let get_calls : Ref[Int] = { val: 0 }
+  let has_trap = make_native_func(name="has", fn(args) {
+    match args[1] {
+      String_("proxyPeer") => {
+        has_calls.val += 1
+        Bool(true)
+      }
+      _ => Bool(false)
+    }
+  })
+  let get_trap = make_native_func(name="get", fn(args) {
+    match args[1] {
+      String_("proxyPeer") => {
+        get_calls.val += 1
+        peer
+      }
+      _ => Undefined
+    }
+  })
+  let proxy_target = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let proxy_handler = make_object(
+    { "has": has_trap, "get": get_trap },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let proxy_closure = Environment::new(parent=Some(interp.global))
+  proxy_closure.with_object = Some(
+    Proxy({
+      target: Some(proxy_target),
+      handler: Some(proxy_handler),
+      is_callable: false,
+      is_constructor: false,
+    }),
+  )
+  let saved = make_func({
+    name: Some("savedProxyCall"),
+    params: template.params,
+    body: template.body,
+    closure: proxy_closure,
+    strict: template.strict,
+    has_name_binding: false,
+    is_method: false,
+    source_text: template.source_text,
+  })
+  interp.global.def_builtin("savedProxyCall", saved)
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("savedProxyCall"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="1")
+    _ => fail("with proxy closures must stay on legacy execution")
+  }
+  inspect(has_calls.val, content="1")
+  inspect(get_calls.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "activation coordinator unwinds child errors and restores dynamic state" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="coordinator sentinel")

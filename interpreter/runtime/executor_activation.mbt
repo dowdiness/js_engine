@@ -198,6 +198,21 @@ pub(open) trait ExecutorCode {
 }
 
 ///|
+// Source-backed evidence used only by runtime admission. Executor packages may
+// provide it when their lowered code is verified against the same source body;
+// absence keeps cross-executor calls on the compatibility path.
+pub struct ExecutorActivationSourceContract {
+  priv body : Array[@ast.Stmt]
+}
+
+///|
+pub fn executor_activation_source_contract(
+  body : Array[@ast.Stmt],
+) -> ExecutorActivationSourceContract {
+  { body: body.copy() }
+}
+
+///|
 priv enum ExecutorCallableKind {
   OrdinaryExecutorCallable
   ArrowExecutorCallable
@@ -218,6 +233,7 @@ pub struct ExecutorCallableData {
   priv self_name : String?
   priv define_arguments_object : Bool
   priv kind : ExecutorCallableKind
+  priv activation_source_contract : ExecutorActivationSourceContract?
 }
 
 ///|
@@ -599,6 +615,17 @@ fn direct_executor_property_getter(
 }
 
 ///|
+fn Interpreter::executor_activation_fallback_call(
+  self : Interpreter,
+  callee : Value,
+  this_value : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> ExecutorActivationRequestOutcome raise Error {
+  ExecutorActivationRequestValue(self.call_value(callee, this_value, args, loc))
+}
+
+///|
 fn Interpreter::handle_executor_activation_step(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
@@ -647,14 +674,39 @@ fn Interpreter::handle_executor_activation_step(
               )
               ExecutorActivationRequestChild
             }
+            Object({ callable: Some(UserFunc(data)), .. }) =>
+              match
+                tree_executor_callable(forwarded_callee, data, forwarded_args) {
+                Some(executable) => {
+                  let forwarded_request = ExecutorCallRequest(
+                    callee=forwarded_callee,
+                    this_value=forwarded_this_value,
+                    args=forwarded_args,
+                    loc=request.loc,
+                  )
+                  stack.push(
+                    self.start_executor_activation(
+                      executable,
+                      ExecutorStartCall(forwarded_request),
+                      None,
+                    ),
+                  )
+                  ExecutorActivationRequestChild
+                }
+                None =>
+                  self.executor_activation_fallback_call(
+                    forwarded_callee,
+                    forwarded_this_value,
+                    forwarded_args,
+                    request.loc,
+                  )
+              }
             _ =>
-              ExecutorActivationRequestValue(
-                self.call_value(
-                  forwarded_callee,
-                  forwarded_this_value,
-                  forwarded_args,
-                  request.loc,
-                ),
+              self.executor_activation_fallback_call(
+                forwarded_callee,
+                forwarded_this_value,
+                forwarded_args,
+                request.loc,
               )
           }
         },
@@ -1024,6 +1076,7 @@ pub fn[T : ExecutorCode] make_executor_function(
   constructable? : Bool = true,
   call_self_name? : Bool = false,
   define_arguments_object? : Bool = true,
+  activation_source_contract? : ExecutorActivationSourceContract? = None,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1042,6 +1095,7 @@ pub fn[T : ExecutorCode] make_executor_function(
     self_name,
     define_arguments_object,
     kind: OrdinaryExecutorCallable,
+    activation_source_contract,
   }
   let function = build_func_object(
     function_name,
@@ -1093,6 +1147,7 @@ pub fn[T : ExecutorCode] make_executor_arrow_function(
   strict : Bool,
   code : T,
   rest_param? : String? = None,
+  activation_source_contract? : ExecutorActivationSourceContract? = None,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1109,6 +1164,7 @@ pub fn[T : ExecutorCode] make_executor_arrow_function(
     self_name: None,
     define_arguments_object: false,
     kind: ArrowExecutorCallable,
+    activation_source_contract,
   }
   build_func_object(
     "",

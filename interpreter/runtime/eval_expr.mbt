@@ -1180,6 +1180,34 @@ fn Interpreter::eval_named_expr(
 }
 
 ///|
+fn Interpreter::eval_identifier_reference(
+  self : Interpreter,
+  ctx : ExecContext,
+  name : String,
+  env : Environment,
+) -> Value raise Error {
+  @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
+  env.get_with_strict(name, ctx.strict) catch {
+    @errors.ReferenceError(message~) =>
+      if message == "\{name} is not defined" {
+        // Fallback: check global object (globalThis) for properties set via this.x = y
+        match self.global_this {
+          Object(data) =>
+            match data.bag.properties.get(name) {
+              Some(v) => v
+              None =>
+                raise @errors.ReferenceError(message="\{name} is not defined")
+            }
+          _ => raise @errors.ReferenceError(message="\{name} is not defined")
+        }
+      } else {
+        raise @errors.ReferenceError(message~)
+      }
+    other => raise other
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -1194,30 +1222,7 @@ fn Interpreter::eval_expr(
     NullLit(_) => Null
     UndefinedLit(_) => Undefined
     ArrayHole(_) => Undefined
-    Ident(name, _) => {
-      @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
-      env.get_with_strict(name, ctx.strict) catch {
-        @errors.ReferenceError(message~) =>
-          if message == "\{name} is not defined" {
-            // Fallback: check global object (globalThis) for properties set via this.x = y
-            match self.global_this {
-              Object(data) =>
-                match data.bag.properties.get(name) {
-                  Some(v) => v
-                  None =>
-                    raise @errors.ReferenceError(
-                      message="\{name} is not defined",
-                    )
-                }
-              _ =>
-                raise @errors.ReferenceError(message="\{name} is not defined")
-            }
-          } else {
-            raise @errors.ReferenceError(message~)
-          }
-        other => raise other
-      }
-    }
+    Ident(name, _) => self.eval_identifier_reference(ctx, name, env)
     Grouping(e, _) => self.eval_expr(ctx, e, env)
     Binary(op, left, right, loc) =>
       self.eval_binary(ctx, op, left, right, env, loc)
