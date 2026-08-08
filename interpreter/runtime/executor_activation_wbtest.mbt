@@ -1569,6 +1569,130 @@ test "tree admission rejects executor object results before parent effects" {
 }
 
 ///|
+test "tree admission rejects with getter closures without preflight effects" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var withReads = 0; var savedWithCall; " +
+      "function withPeer(n) { return n; } " +
+      "var withScope = { get withPeer() { withReads = withReads + 1; return withPeer; } }; " +
+      "with (withScope) { " +
+      "savedWithCall = function(n) { " +
+      "if (n === 0) return 0; return withPeer(n - 1) + 1; }; }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("savedWithCall"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="1")
+    _ => fail("with closures must stay on legacy execution before admission")
+  }
+  inspect(interp.global.get("withReads").to_string(), content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission rejects with proxy closures without preflight traps" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function proxyPeer(n) { return n; } " +
+      "function proxyTemplate(n) { " +
+      "if (n === 0) return 0; return proxyPeer(n - 1) + 1; }",
+    ).stmts,
+  )
+  let peer = interp.global.get("proxyPeer")
+  let template = match interp.global.get("proxyTemplate") {
+    Object({ callable: Some(UserFunc(data)), .. }) => data
+    _ => fail("expected proxy closure template")
+  }
+  let has_calls : Ref[Int] = { val: 0 }
+  let get_calls : Ref[Int] = { val: 0 }
+  let has_trap = make_native_func(name="has", fn(args) {
+    match args[1] {
+      String_("proxyPeer") => {
+        has_calls.val += 1
+        Bool(true)
+      }
+      _ => Bool(false)
+    }
+  })
+  let get_trap = make_native_func(name="get", fn(args) {
+    match args[1] {
+      String_("proxyPeer") => {
+        get_calls.val += 1
+        peer
+      }
+      _ => Undefined
+    }
+  })
+  let proxy_target = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let proxy_handler = make_object(
+    { "has": has_trap, "get": get_trap },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let proxy_closure = Environment::new(parent=Some(interp.global))
+  proxy_closure.with_object = Some(
+    Proxy({
+      target: Some(proxy_target),
+      handler: Some(proxy_handler),
+      is_callable: false,
+      is_constructor: false,
+    }),
+  )
+  let saved = make_func({
+    name: Some("savedProxyCall"),
+    params: template.params,
+    body: template.body,
+    closure: proxy_closure,
+    strict: template.strict,
+    has_name_binding: false,
+    is_method: false,
+    source_text: template.source_text,
+  })
+  interp.global.def_builtin("savedProxyCall", saved)
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("savedProxyCall"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="1")
+    _ => fail("with proxy closures must stay on legacy execution")
+  }
+  inspect(has_calls.val, content="1")
+  inspect(get_calls.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "activation coordinator unwinds child errors and restores dynamic state" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="coordinator sentinel")
