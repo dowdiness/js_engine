@@ -68,6 +68,20 @@ priv struct ExecutorActivationMutateBindingCode {
 }
 
 ///|
+priv struct ExecutorActivationThisValueCode {
+  expected : Value
+  value : Value
+}
+
+///|
+fn ExecutorActivationThisValueCode::ExecutorActivationThisValueCode(
+  expected~ : Value,
+  value~ : Value,
+) -> ExecutorActivationThisValueCode {
+  { expected, value }
+}
+
+///|
 fn ExecutorActivationOrderedValueCode::ExecutorActivationOrderedValueCode(
   events~ : Array[String],
   label~ : String,
@@ -685,6 +699,16 @@ impl ExecutorCode for ExecutorActivationMutateBindingCode with fn start(
   _prepared,
 ) {
   self.closure.bindings[self.binding_name].value = self.replacement
+  ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorCode for ExecutorActivationThisValueCode with fn start(
+  self,
+  _interp,
+  prepared,
+) {
+  assert_true(physical_equal(prepared.environment().get("this"), self.expected))
   ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
 }
 
@@ -1875,6 +1899,153 @@ test "tree admission accepts a result-fed direct call" {
   })
   inspect(outcome, content="admitted")
   inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission seals the receiver of a static own-data member call" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var holder = {}; var replacementHolder = {}; " +
+      "function memberParent(n) { return holder.outer(inner(n)); }",
+    ).stmts,
+  )
+  let holder = interp.global.get("holder")
+  let replacement_holder = interp.global.get("replacementHolder")
+  let inner = make_classified_executor_function(
+    Some("inner"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationMutateBindingCode(
+      closure=interp.global,
+      binding_name="holder",
+      replacement=replacement_holder,
+      value=Number(1.0),
+    ),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("inner", inner)
+  let outer = make_executor_callable_with_capability(
+    "outer",
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationThisValueCode(expected=holder, value=Number(9.0))
+    as &ExecutorCode,
+    None,
+    false,
+    None,
+    false,
+    OrdinaryExecutorCallable,
+    Some(
+      ExecutorActivationCapabilitySummary(parameter_count=1, direct_calls=[]),
+    ),
+  )
+  match holder {
+    Object(data) => data.bag.properties["outer"] = outer
+    _ => fail("holder fixture must be an object")
+  }
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("memberParent"),
+      this_value=Undefined,
+      args=[Number(1.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="9")
+    _ => fail("the admitted member call must preserve its sealed receiver")
+  }
+  assert_true(physical_equal(interp.global.get("holder"), replacement_holder))
+}
+
+///|
+test "tree admission keeps a parameter-shadowed member receiver on legacy execution" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var shadowedHolder = {}; " +
+      "function shadowedParent(shadowedHolder) { " +
+      "return shadowedHolder.outer(1); }",
+    ).stmts,
+  )
+  let starts : Ref[Int] = { val: 0 }
+  let outer = make_classified_executor_function(
+    Some("shadowedOuter"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(9.0)),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  match interp.global.get("shadowedHolder") {
+    Object(data) => data.bag.properties["outer"] = outer
+    _ => fail("shadowed holder fixture must be an object")
+  }
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("shadowedParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected legacy TypeError, got " + error.to_string())
+    None => fail("a parameter receiver must shadow its closure binding")
+  }
+  inspect(starts.val, content="0")
+}
+
+///|
+test "tree admission rejects a static accessor member without preflight effects" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function memberLeaf(n) { return n + 1; } " +
+      "var accessorHolder = {}; " +
+      "function accessorParent(n) { return accessorHolder.outer(n); }",
+    ).stmts,
+  )
+  let getter_reads : Ref[Int] = { val: 0 }
+  let getter = make_native_func(name="memberGetter", _args => {
+    getter_reads.val += 1
+    interp.global.get("memberLeaf")
+  })
+  match interp.global.get("accessorHolder") {
+    Object(data) =>
+      data.bag.descriptors["outer"] = {
+        writable: false,
+        enumerable: true,
+        configurable: true,
+        getter: Some(getter),
+        setter: None,
+        is_accessor: true,
+      }
+    _ => fail("accessor holder fixture must be an object")
+  }
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("accessorParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.run_executor_activation_coordinator(root)
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ => fail("an accessor member must remain on legacy execution")
+  }
+  inspect(getter_reads.val, content="1")
 }
 
 ///|

@@ -3,17 +3,31 @@
 // owner of nested calls and activation lifecycle.
 
 ///|
+priv struct TreeExecutorPlannedCall {
+  callee : Value
+  this_value : Value
+}
+
+///|
+fn TreeExecutorPlannedCall::TreeExecutorPlannedCall(
+  callee~ : Value,
+  this_value~ : Value,
+) -> TreeExecutorPlannedCall {
+  { callee, this_value }
+}
+
+///|
 priv struct TreeActivationPlan {
   body : Array[@ast.Stmt]
-  call_targets : Map[String, Value]
+  calls : Map[String, TreeExecutorPlannedCall]
 }
 
 ///|
 fn TreeActivationPlan::TreeActivationPlan(
   body : Array[@ast.Stmt],
-  call_targets : Map[String, Value],
+  calls : Map[String, TreeExecutorPlannedCall],
 ) -> TreeActivationPlan {
-  { body: body.copy(), call_targets: call_targets.copy() }
+  { body: body.copy(), calls: calls.copy() }
 }
 
 ///|
@@ -44,7 +58,7 @@ priv enum TreeExecutorWork {
 priv struct TreeExecutorFrame {
   env : Environment
   ctx : ExecContext
-  call_targets : Map[String, Value]
+  calls : Map[String, TreeExecutorPlannedCall]
   work : Array[TreeExecutorWork]
   values : Array[Value]
   mut awaiting_child : Bool
@@ -56,12 +70,12 @@ fn TreeExecutorFrame::TreeExecutorFrame(
   body : Array[@ast.Stmt],
   env : Environment,
   ctx : ExecContext,
-  call_targets : Map[String, Value],
+  calls : Map[String, TreeExecutorPlannedCall],
 ) -> TreeExecutorFrame {
   {
     env,
     ctx,
-    call_targets,
+    calls,
     work: [TreeExecuteStatements(body, 0)],
     values: [],
     awaiting_child: false,
@@ -101,6 +115,59 @@ fn tree_executor_resolve_callee(closure : Environment, name : String) -> Value? 
   match callback_free_binding_in_plain_chain(closure, name) {
     CallbackFreeBindingPresent(value) => Some(value)
     CallbackFreeBindingMissing | CallbackFreeBindingUnsafe => None
+  }
+}
+
+///|
+fn tree_executor_call_key(
+  requirement : ExecutorActivationDirectCallRequirement,
+) -> String? {
+  match requirement.target {
+    ExecutorActivationDirectBinding(_) =>
+      Some(executor_activation_call_name(requirement))
+    ExecutorActivationStaticOwnDataMember(receiver, _) =>
+      Some(receiver + "." + executor_activation_call_name(requirement))
+  }
+}
+
+///|
+fn tree_executor_resolve_call(
+  closure : Environment,
+  requirement : ExecutorActivationDirectCallRequirement,
+) -> (String, Value, Value)? {
+  let key = match tree_executor_call_key(requirement) {
+    Some(key) => key
+    None => return None
+  }
+  match requirement.target {
+    ExecutorActivationDirectBinding(name) =>
+      match tree_executor_resolve_callee(closure, name) {
+        Some(target) => Some((key, target, Undefined))
+        None => None
+      }
+    ExecutorActivationStaticOwnDataMember(receiver_name, property_name) => {
+      let receiver = match
+        tree_executor_resolve_callee(closure, receiver_name) {
+        Some(receiver) => receiver
+        None => return None
+      }
+      guard receiver is Object(data) &&
+        data.class_name == "Object" &&
+        data.callable is None &&
+        data.arraybuffer_state is None &&
+        data.bag.internal_slots.is_empty() &&
+        data.bag.host_slots.is_empty() else {
+        return None
+      }
+      match data.bag.descriptors.get(property_name) {
+        Some(descriptor) if descriptor.is_accessor => return None
+        _ => ()
+      }
+      match data.bag.properties.get(property_name) {
+        Some(target) => Some((key, target, receiver))
+        None => None
+      }
+    }
   }
 }
 
@@ -179,8 +246,9 @@ fn TreeExecutorCallableProof::TreeExecutorCallableProof(
 
 ///|
 priv struct TreeExecutorGraphEdge {
-  callee : String
+  call_key : String
   target : Value
+  this_value : Value
   target_object_data : ObjectData
   argument_count : Int
   target_node_index : Int
@@ -188,13 +256,21 @@ priv struct TreeExecutorGraphEdge {
 
 ///|
 fn TreeExecutorGraphEdge::TreeExecutorGraphEdge(
-  callee~ : String,
+  call_key~ : String,
   target~ : Value,
+  this_value~ : Value,
   target_object_data~ : ObjectData,
   argument_count~ : Int,
   target_node_index~ : Int,
 ) -> TreeExecutorGraphEdge {
-  { callee, target, target_object_data, argument_count, target_node_index }
+  {
+    call_key,
+    target,
+    this_value,
+    target_object_data,
+    argument_count,
+    target_node_index,
+  }
 }
 
 ///|
@@ -441,9 +517,9 @@ fn tree_executor_callable_graph_admission(
         let next_work : Array[TreeExecutorGraphAdmissionWork] = []
         let resolved_edges : Array[TreeExecutorGraphEdge] = []
         for edge in edges {
-          let target = match
-            tree_executor_resolve_callee(current.proof.closure, edge.callee) {
-            Some(target) => target
+          let (call_key, target, this_value) = match
+            tree_executor_resolve_call(current.proof.closure, edge) {
+            Some(resolved) => resolved
             None => return None
           }
           let target_proof = match tree_executor_callable_proof(target) {
@@ -466,8 +542,9 @@ fn tree_executor_callable_graph_admission(
           }
           resolved_edges.push(
             TreeExecutorGraphEdge(
-              callee=edge.callee,
+              call_key~,
               target~,
+              this_value~,
               target_object_data=target_proof.object_data,
               argument_count=edge.argument_count,
               target_node_index~,
@@ -530,11 +607,14 @@ fn tree_executor_graph_node_executable(
 ) -> ExecutorCallableData? {
   match node.callable {
     TreeExecutorGraphUserFunc(data) => {
-      let call_targets : Map[String, Value] = Map([])
+      let calls : Map[String, TreeExecutorPlannedCall] = Map([])
       for edge in node.edges {
-        call_targets[edge.callee] = edge.target
+        calls[edge.call_key] = TreeExecutorPlannedCall(
+          callee=edge.target,
+          this_value=edge.this_value,
+        )
       }
-      let code = TreeExecutorCode(TreeActivationPlan(data.body, call_targets))
+      let code = TreeExecutorCode(TreeActivationPlan(data.body, calls))
       Some({
         name: data.name.unwrap_or(""),
         params: data.params.copy(),
@@ -633,7 +713,7 @@ impl ExecutorCode for TreeExecutorCode with fn start(self, _interp, prepared) {
     self.plan.body,
     prepared.environment(),
     prepared.context(),
-    self.plan.call_targets,
+    self.plan.calls,
   )
   as &ExecutorActivationFrame
 }
@@ -696,9 +776,10 @@ impl ExecutorActivationFrame for TreeExecutorFrame with fn step(self, interp) {
             self.work.push(TreeEvaluateExpression(left))
           }
           Call(callee, args, loc) => {
-            guard executor_activation_direct_call_target_name(callee)
-              is Some(name) &&
-              self.call_targets.get(name) is Some(target) else {
+            guard executor_activation_call_requirement(callee, args.length())
+              is Some(requirement) &&
+              tree_executor_call_key(requirement) is Some(key) &&
+              self.calls.get(key) is Some(call) else {
               raise @errors.InternalError(
                 message="tree executor call target was absent from its activation plan",
               )
@@ -707,7 +788,8 @@ impl ExecutorActivationFrame for TreeExecutorFrame with fn step(self, interp) {
             for arg in args.rev_iter() {
               self.work.push(TreeEvaluateExpression(arg))
             }
-            self.values.push(target)
+            self.values.push(call.callee)
+            self.values.push(call.this_value)
           }
           _ =>
             raise @errors.InternalError(
@@ -749,17 +831,18 @@ impl ExecutorActivationFrame for TreeExecutorFrame with fn step(self, interp) {
         return executor_activation_return(value)
       }
       TreeFinishCall(arg_count, loc) => {
-        guard self.values.length() >= arg_count + 1 else {
+        guard self.values.length() >= arg_count + 2 else {
           raise @errors.InternalError(
             message="tree executor value stack underflow while preparing a call",
           )
         }
-        let base = self.values.length() - arg_count - 1
+        let base = self.values.length() - arg_count - 2
         let callee = self.values[base]
-        let args = Array::makei(arg_count, i => self.values[base + i + 1])
+        let this_value = self.values[base + 1]
+        let args = Array::makei(arg_count, i => self.values[base + i + 2])
         self.values.truncate(base)
         self.awaiting_child = true
-        return executor_activation_call(callee, Undefined, args, loc)
+        return executor_activation_call(callee, this_value, args, loc)
       }
     }
   }

@@ -3,9 +3,25 @@
 // supplied parameter names and source statements.
 
 ///|
+priv enum ExecutorActivationCallTarget {
+  ExecutorActivationDirectBinding(String)
+  ExecutorActivationStaticOwnDataMember(String, String)
+}
+
+///|
 priv struct ExecutorActivationDirectCallRequirement {
-  callee : String
+  target : ExecutorActivationCallTarget
   argument_count : Int
+}
+
+///|
+fn executor_activation_call_name(
+  requirement : ExecutorActivationDirectCallRequirement,
+) -> String {
+  match requirement.target {
+    ExecutorActivationDirectBinding(name) => name
+    ExecutorActivationStaticOwnDataMember(_, property) => property
+  }
 }
 
 ///|
@@ -61,6 +77,31 @@ fn executor_activation_direct_call_target_name(expr : @ast.Expr) -> String? {
   match expr {
     Ident(name, _) if name != "eval" => Some(name)
     Grouping(inner, _) => executor_activation_direct_call_target_name(inner)
+    _ => None
+  }
+}
+
+///|
+fn executor_activation_call_requirement(
+  expr : @ast.Expr,
+  argument_count : Int,
+) -> ExecutorActivationDirectCallRequirement? {
+  match executor_activation_direct_call_target_name(expr) {
+    Some(name) =>
+      return Some({
+        target: ExecutorActivationDirectBinding(name),
+        argument_count,
+      })
+    None => ()
+  }
+  match expr {
+    Member(Ident(receiver, _), property, _) =>
+      Some({
+        target: ExecutorActivationStaticOwnDataMember(receiver, property),
+        argument_count,
+      })
+    Grouping(inner, _) =>
+      executor_activation_call_requirement(inner, argument_count)
     _ => None
   }
 }
@@ -129,10 +170,20 @@ fn executor_activation_capability_expression(
       Some(ExecutorActivationCapabilityExpressionProof(value~, direct_calls~))
     }
     Call(callee, args, _) => {
-      guard executor_activation_direct_call_target_name(callee) is Some(name) else {
+      guard executor_activation_call_requirement(callee, args.length())
+        is Some(requirement) else {
         return None
       }
-      guard !params.contains(name) else { return None }
+      match requirement.target {
+        ExecutorActivationDirectBinding(name) =>
+          if params.contains(name) {
+            return None
+          }
+        ExecutorActivationStaticOwnDataMember(receiver, _) =>
+          if params.contains(receiver) {
+            return None
+          }
+      }
       let direct_calls : Array[ExecutorActivationDirectCallRequirement] = []
       for arg in args {
         let argument_proof = match
@@ -145,7 +196,7 @@ fn executor_activation_capability_expression(
         }
         direct_calls.append(argument_proof.direct_calls)
       }
-      direct_calls.push({ callee: name, argument_count: args.length() })
+      direct_calls.push(requirement)
       Some(
         ExecutorActivationCapabilityExpressionProof(
           value=ExecutorActivationCapabilityNumber,
