@@ -2049,6 +2049,51 @@ test "tree admission rejects a static accessor member without preflight effects"
 }
 
 ///|
+test "tree admission rejects dynamic member keys without preflight effects" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function dynamicMemberLeaf(n) { return n + 1; } " +
+      "var dynamicHolder = {}; " +
+      "function dynamicMemberParent(n) { " +
+      "return dynamicHolder[dynamicMemberKey()](n); }",
+    ).stmts,
+  )
+  let key_reads : Ref[Int] = { val: 0 }
+  let dynamic_key = make_native_func(name="dynamicMemberKey", _args => {
+    key_reads.val += 1
+    String_("outer")
+  })
+  interp.global.def_builtin("dynamicMemberKey", dynamic_key)
+  match interp.global.get("dynamicHolder") {
+    Object(data) =>
+      data.bag.properties["outer"] = interp.global.get("dynamicMemberLeaf")
+    _ => fail("dynamic holder fixture must be an object")
+  }
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("dynamicMemberParent"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="4")
+    _ => fail("a dynamic member key must keep the root on legacy execution")
+  }
+  inspect(key_reads.val, content="1")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "tree execution preserves result-fed call result and order" {
   let interp = Interpreter::new()
   let events : Array[String] = []

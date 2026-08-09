@@ -2064,6 +2064,47 @@ test "mixed tree activation admits a static own-data member call" {
 }
 
 ///|
+test "mixed tree activation admits an exact literal-computed own-data member call" {
+  let interp = @interpreter.new_interpreter()
+  let tree = @parser.parse(
+    "function inner(n) { return n + 1; } " +
+    "function outer(n) { return n + 1; } " +
+    "var holder = { outer: outer }; " +
+    "function treeComputedMember(n) { " +
+    "return holder[\"outer\"](inner(n)); }",
+  )
+  let _ = interp.run(tree.stmts)
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 0L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let admission : Error? = try {
+    let _ = interp.with_execution_policy(policy, () => {
+      run_executor_neutral_bytecode(interp, "treeComputedMember(3);")
+    })
+    None
+  } catch {
+    error => Some(error)
+  }
+  match admission {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected admitted literal-computed member call to reach the depth bound, got " +
+        error.to_string(),
+      )
+    None =>
+      fail(
+        "the exact literal-computed own-data member fixture must be admitted",
+      )
+  }
+  let result = run_executor_neutral_bytecode(interp, "treeComputedMember(3);")
+  inspect(result.to_string(), content="5")
+}
+
+///|
 test "mixed tree activation propagates child depth rejection and permits reuse" {
   let interp = @interpreter.new_interpreter()
   let _ = interp.run(

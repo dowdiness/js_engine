@@ -100,6 +100,11 @@ fn executor_activation_call_requirement(
         target: ExecutorActivationStaticOwnDataMember(receiver, property),
         argument_count,
       })
+    ComputedMember(Ident(receiver, _), StringLit(property, _, _, _), _) =>
+      Some({
+        target: ExecutorActivationStaticOwnDataMember(receiver, property),
+        argument_count,
+      })
     Grouping(inner, _) =>
       executor_activation_call_requirement(inner, argument_count)
     _ => None
