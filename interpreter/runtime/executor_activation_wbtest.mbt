@@ -1508,6 +1508,113 @@ test "tree executor child abrupt completion preserves identity and cleanup" {
 }
 
 ///|
+test "legacy call enters an admitted child without replaying abrupt effects" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=2,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let guest_value = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let sentinel : Error = JsException(guest_value)
+  let child = make_classified_executor_function(
+    Some("bridgeThrow"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("bridgeThrow", child)
+  let _ = interp.run(
+    @parser.parse(
+      "var before = 0; var after = 0; " +
+      "function bridgeTree(n) { return bridgeThrow(n) + 1; } " +
+      "function legacyBridge(n) { " +
+      "before = before + 1; bridgeTree(n); " +
+      "after = after + 1; return n; } " +
+      "function bridgeReuse(n) { return n + 1; }",
+    ).stmts,
+  )
+  let caught : Error? = try {
+    let _ = interp.call_value(
+      interp.global.get("legacyBridge"),
+      Undefined,
+      [Number(1.0)],
+      @token.Loc::default(),
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(JsException(value)) => assert_true(physical_equal(value, guest_value))
+    Some(error) =>
+      fail("expected the original guest value, got " + error.to_string())
+    None => fail("the admitted child must propagate its abrupt completion")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  inspect(interp.global.get("before").to_string(), content="1")
+  inspect(interp.global.get("after").to_string(), content="0")
+  match
+    interp.call_value(
+      interp.global.get("bridgeReuse"),
+      Undefined,
+      [Number(1.0)],
+      @token.Loc::default(),
+    ) {
+    Number(value) => inspect(value, content="2")
+    _ => fail("the interpreter must remain reusable after abrupt completion")
+  }
+}
+
+///|
+test "legacy call releases one admitted leaf activation on normal completion" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "var entries = 0; " +
+      "function bridgeLeaf(n) { return n + 1; } " +
+      "function legacyLeaf(n) { " +
+      "entries = entries + 1; return bridgeLeaf(n); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let result = interp.call_value(
+    interp.global.get("legacyLeaf"),
+    Undefined,
+    [Number(1.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Number(value) => inspect(value, content="2")
+    _ => fail("the admitted leaf must return through its legacy consumer")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+  inspect(control.active_depth(), content="0")
+  inspect(interp.global.get("entries").to_string(), content="1")
+}
+
+///|
 test "unsupported tree body stays legacy before observable execution" {
   let interp = Interpreter::new()
   let _ = interp.run(
@@ -2072,7 +2179,7 @@ test "tree admission rejects dynamic member keys without preflight effects" {
   }
   let control = ExecutionControl(
     remaining_steps=100,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -2323,7 +2430,7 @@ test "result-fed outer abrupt completion preserves identity and cleanup" {
 }
 
 ///|
-test "result-fed inner native target rejects the whole root before admission" {
+test "result-fed inner native target keeps the root legacy" {
   let interp = Interpreter::new()
   let native_calls : Ref[Int] = { val: 0 }
   let native_inner = make_native_func(name="resultFedNativeInner", args => {
@@ -2345,7 +2452,7 @@ test "result-fed inner native target rejects the whole root before admission" {
   install_executor_activation_probe(interp, events, None)
   let control = ExecutionControl(
     remaining_steps=200,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -2368,7 +2475,7 @@ test "result-fed inner native target rejects the whole root before admission" {
 }
 
 ///|
-test "result-fed outer native target rejects the whole root before admission" {
+test "result-fed outer native target keeps the root legacy" {
   let interp = Interpreter::new()
   let native_calls : Ref[Int] = { val: 0 }
   let native_outer = make_native_func(name="resultFedNativeOuter", args => {
@@ -2390,7 +2497,7 @@ test "result-fed outer native target rejects the whole root before admission" {
   install_executor_activation_probe(interp, events, None)
   let control = ExecutionControl(
     remaining_steps=200,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -2497,7 +2604,7 @@ test "result-fed outer unresolved target rejects the whole root before admission
 }
 
 ///|
-test "result-fed inner arity mismatch rejects the whole root before admission" {
+test "result-fed inner arity mismatch keeps the root legacy" {
   let interp = Interpreter::new()
   let _ = interp.run(
     @parser.parse(
@@ -2511,7 +2618,7 @@ test "result-fed inner arity mismatch rejects the whole root before admission" {
   install_executor_activation_probe(interp, events, None)
   let control = ExecutionControl(
     remaining_steps=200,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -2533,7 +2640,7 @@ test "result-fed inner arity mismatch rejects the whole root before admission" {
 }
 
 ///|
-test "result-fed outer arity mismatch rejects the whole root before admission" {
+test "result-fed outer arity mismatch keeps the root legacy" {
   let interp = Interpreter::new()
   let _ = interp.run(
     @parser.parse(
@@ -2547,7 +2654,7 @@ test "result-fed outer arity mismatch rejects the whole root before admission" {
   install_executor_activation_probe(interp, events, None)
   let control = ExecutionControl(
     remaining_steps=200,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -2751,7 +2858,7 @@ test "tree admission rejects an unsupported unselected branch without preflight 
   install_executor_activation_probe(interp, probe_events, None)
   let control = ExecutionControl(
     remaining_steps=200,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -2868,7 +2975,7 @@ test "tree admission rejects a supported and native callee together" {
   install_executor_activation_probe(interp, events, None)
   let control = ExecutionControl(
     remaining_steps=100,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -3031,7 +3138,7 @@ test "tree admission rejects with getter closures without preflight effects" {
   )
   let control = ExecutionControl(
     remaining_steps=100,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(
@@ -3118,7 +3225,7 @@ test "tree admission rejects with proxy closures without preflight traps" {
   interp.global.def_builtin("savedProxyCall", saved)
   let control = ExecutionControl(
     remaining_steps=100,
-    maximum_active_depth=0,
+    maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
   let root = ExecutorActivationCallFrame(

@@ -433,6 +433,11 @@ const LEGACY_WRAPPER_RECURSIVE_ISLAND_SOURCE =
   #|  entries = entries + 1;
   #|  return recurse(n);
   #|}
+  #|function leaf(n) { return n + 1; }
+  #|function legacyLeaf(n) {
+  #|  entries = entries + 1;
+  #|  return leaf(n);
+  #|}
   #|function readEntries() { return entries; }
 
 ///|
@@ -462,6 +467,38 @@ test "legacy wrapper preserves one pre-call effect at child depth guardrail" {
     @js_engine.PendingJobs::None,
   )
   assert_true(diagnostic.source_identity() == Some("legacy-island.js"))
+  json_inspect(engine.call_json("readEntries", []), content=1)
+}
+
+///|
+test "legacy wrapper observes an admitted leaf activation at depth zero" {
+  let engine = legacy_wrapper_recursive_island_engine()
+  let diagnostic = expect_call_guardrail(
+    engine.call_json_bounded(
+      "legacyLeaf",
+      [Json::number(1.0)],
+      bounded_call_policy(100000L, 0L, @js_engine.InterruptionHandle()),
+    ),
+    "stack-depth-limit",
+    "execute",
+    @js_engine.PendingJobs::None,
+  )
+  assert_true(diagnostic.source_identity() == Some("legacy-island.js"))
+  json_inspect(engine.call_json("readEntries", []), content=1)
+}
+
+///|
+test "legacy wrapper calls admitted recursion at depth 4096 without host recursion" {
+  let engine = legacy_wrapper_recursive_island_engine()
+  match
+    engine.call_json_bounded(
+      "legacyEntry",
+      [Json::number(4096.0)],
+      bounded_call_policy(1000000L, 5000L, @js_engine.InterruptionHandle()),
+    ) {
+    Ok(value) => json_inspect(value, content=4096)
+    Err(diagnostic) => fail(diagnostic.message())
+  }
   json_inspect(engine.call_json("readEntries", []), content=1)
 }
 

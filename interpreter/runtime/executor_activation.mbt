@@ -813,16 +813,13 @@ fn Interpreter::handle_executor_activation_step(
 }
 
 ///|
-// Drive one root executor frame and every exact executor-backed ordinary call
-// or static property getter it requests. The root is top-level script state
-// and therefore has no activation observation or cleanup record of its own.
-pub fn Interpreter::run_executor_activation_coordinator(
+// Drive one root entry and every exact executor-backed ordinary call or static
+// property getter it requests. Root ownership is carried by the entry: public
+// top-level frames have none, while admitted ordinary-call roots own cleanup.
+fn Interpreter::drive_executor_activation_stack(
   self : Interpreter,
-  root : &ExecutorActivationFrame,
+  stack : Array[ExecutorActivationStackEntry],
 ) -> ExecutorActivationStep raise Error {
-  let stack : Array[ExecutorActivationStackEntry] = [
-    { frame: root, completion: None, cleanup: None, graph_cursor: None },
-  ]
   try {
     while true {
       guard !stack.is_empty() else {
@@ -838,14 +835,21 @@ pub fn Interpreter::run_executor_activation_coordinator(
           self.deliver_executor_activation_error(stack, index, error)
         Ok(step) =>
           match self.handle_executor_activation_step(stack, index, step) {
-            Some(result) => return result
+            Some(result) => {
+              let root = stack.pop().unwrap()
+              match root.cleanup {
+                Some(cleanup) => self.finish_executor_activation(cleanup, None)
+                None => ()
+              }
+              return result
+            }
             None => ()
           }
       }
     }
   } catch {
     error => {
-      while stack.length() > 1 {
+      while !stack.is_empty() {
         let entry = stack.pop().unwrap()
         match entry.cleanup {
           Some(cleanup) => self.finish_executor_activation(cleanup, Some(error))
@@ -856,6 +860,37 @@ pub fn Interpreter::run_executor_activation_coordinator(
     }
   }
   ExecutorActivationNormal(Undefined)
+}
+
+///|
+// Drive a top-level executor frame that does not represent an acquired guest
+// activation. Managed ordinary-call roots use the owned entry point below.
+pub fn Interpreter::run_executor_activation_coordinator(
+  self : Interpreter,
+  root : &ExecutorActivationFrame,
+) -> ExecutorActivationStep raise Error {
+  self.drive_executor_activation_stack([
+    { frame: root, completion: None, cleanup: None, graph_cursor: None },
+  ])
+}
+
+///|
+// Enter one already-admitted ordinary call as an owned coordinator root. The
+// same entry owns depth observation, realm state, the sealed graph cursor, and
+// exactly-once cleanup on both normal and abrupt completion.
+fn Interpreter::run_admitted_executor_call_root(
+  self : Interpreter,
+  executable : ExecutorCallableData,
+  request : ExecutorCallRequest,
+  graph_cursor : TreeExecutorGraphCursor,
+) -> ExecutorActivationStep raise Error {
+  let root = self.start_executor_activation(
+    executable,
+    ExecutorStartCall(request),
+    None,
+    graph_cursor=Some(graph_cursor),
+  )
+  self.drive_executor_activation_stack([root])
 }
 
 ///|
