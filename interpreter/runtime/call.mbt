@@ -1042,6 +1042,36 @@ fn Interpreter::resolve_call_forwarding(
 }
 
 ///|
+// Enter an already-proven ordinary UserFunc as a tree executor root when the
+// legacy evaluator reaches it. The surrounding legacy caller stays outside
+// the tree frame; only the admitted child and its callback-free graph run in
+// the executor-neutral coordinator.
+fn Interpreter::try_tree_executor_admitted_call(
+  self : Interpreter,
+  callee : Value,
+  this_value : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> Value? raise Error {
+  guard callee is Object(object_data) else { return None }
+  guard object_data.callable is Some(UserFunc(data)) else { return None }
+  let admission = match tree_executor_callable_admission(callee, data, args) {
+    Some(admission) => admission
+    None => return None
+  }
+  Some(
+    executor_call_completion(
+      admission.executable.kind,
+      self.run_admitted_executor_call_root(
+        admission.executable,
+        ExecutorCallRequest(callee~, this_value~, args~, loc~),
+        admission.cursor,
+      ),
+    ),
+  )
+}
+
+///|
 pub fn Interpreter::call_value(
   self : Interpreter,
   callee : Value,
@@ -1407,6 +1437,10 @@ fn Interpreter::call_value_impl(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
+  match self.try_tree_executor_admitted_call(callee, this_val, args, loc) {
+    Some(value) => return value
+    None => ()
+  }
   match callee {
     Proxy(proxy_data) => {
       // Verify target chain is callable (recursively unwrap nested proxies)
