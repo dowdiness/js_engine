@@ -53,6 +53,13 @@ priv struct ExecutorActivationOrderedValueCode {
 }
 
 ///|
+priv struct ExecutorActivationOrderedIncrementCode {
+  events : Array[String]
+  label : String
+  increment : Double
+}
+
+///|
 priv struct ExecutorActivationMutateBindingCode {
   closure : Environment
   binding_name : String
@@ -67,6 +74,15 @@ fn ExecutorActivationOrderedValueCode::ExecutorActivationOrderedValueCode(
   value~ : Value,
 ) -> ExecutorActivationOrderedValueCode {
   { events, label, value }
+}
+
+///|
+fn ExecutorActivationOrderedIncrementCode::ExecutorActivationOrderedIncrementCode(
+  events~ : Array[String],
+  label~ : String,
+  increment~ : Double,
+) -> ExecutorActivationOrderedIncrementCode {
+  { events, label, increment }
 }
 
 ///|
@@ -646,6 +662,20 @@ impl ExecutorCode for ExecutorActivationOrderedValueCode with fn start(
 ) {
   self.events.push(self.label)
   ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorCode for ExecutorActivationOrderedIncrementCode with fn start(
+  self,
+  _interp,
+  prepared,
+) {
+  let value = match prepared.environment().get("n") {
+    Number(number) => Number(number + self.increment)
+    _ => fail("ordered increment code requires a numeric n binding")
+  }
+  self.events.push(self.label)
+  ExecutorActivationValueFrame(value~) as &ExecutorActivationFrame
 }
 
 ///|
@@ -1809,6 +1839,516 @@ test "tree admission accepts two direct numeric callees" {
     }
   })
   inspect(outcome, content="admitted")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree admission accepts a result-fed direct call" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedInner(n) { return n + 1; } " +
+      "function resultFedOuter(n) { return n + 2; } " +
+      "function resultFedRoot(n) { return resultFedOuter(resultFedInner(n)); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let outcome = interp.with_execution_control(control, () => {
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      "legacy"
+    } catch {
+      ExecutionControlError(StackDepthLimit) => "admitted"
+      _ => "other-error"
+    }
+  })
+  inspect(outcome, content="admitted")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "tree execution preserves result-fed call result and order" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let inner = make_classified_executor_function(
+    Some("resultFedInner"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationOrderedIncrementCode(
+      events~,
+      label="inner",
+      increment=1.0,
+    ),
+    @parser.parse("return n + 1;").stmts,
+    constructable=false,
+  )
+  let outer = make_classified_executor_function(
+    Some("resultFedOuter"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationOrderedIncrementCode(
+      events~,
+      label="outer",
+      increment=2.0,
+    ),
+    @parser.parse("return n + 2;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("resultFedInner", inner)
+  interp.global.def_builtin("resultFedOuter", outer)
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedOrderedRoot(n) { " +
+      "return resultFedOuter(resultFedInner(n)); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=20,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedOrderedRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="6")
+    _ => fail("result-fed direct calls must return the outer numeric result")
+  }
+  json_inspect(events, content=["inner", "outer"])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "closed result-fed tree plan keeps outer target after inner mutation" {
+  let interp = Interpreter::new()
+  let legacy_calls : Ref[Int] = { val: 0 }
+  let native_replacement = make_native_func(name="resultFedLegacy", fn(_args) {
+    legacy_calls.val += 1
+    Number(100.0)
+  })
+  let inner = make_classified_executor_function(
+    Some("resultFedMutationInner"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationMutateBindingCode(
+      closure=interp.global,
+      binding_name="resultFedMutationOuter",
+      replacement=native_replacement,
+      value=Number(4.0),
+    ),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("resultFedMutationInner", inner)
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedMutationOuter(n) { return n + 2; } " +
+      "function resultFedMutationRoot(n) { " +
+      "return resultFedMutationOuter(resultFedMutationInner(n)); }",
+    ).stmts,
+  )
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=20,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedMutationRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="6")
+    _ => fail("closed result-fed graph must retain the prevalidated outer")
+  }
+  inspect(legacy_calls.val, content="0")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed inner abrupt completion preserves identity and cleanup" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="result-fed inner sentinel")
+  let inner = make_classified_executor_function(
+    Some("resultFedInnerThrow"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("resultFedInnerThrow", inner)
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedInnerOuter(n) { return n + 2; } " +
+      "function resultFedInnerRoot(n) { " +
+      "return resultFedInnerOuter(resultFedInnerThrow(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=20,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedInnerRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("result-fed inner throw must preserve its error")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  assert_true(interp.realm_state.active_overrides.val is None)
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after inner abrupt unwind")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed outer abrupt completion preserves identity and cleanup" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(message="result-fed outer sentinel")
+  let outer = make_classified_executor_function(
+    Some("resultFedOuterThrow"),
+    ["n"],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    @parser.parse("return n;").stmts,
+    constructable=false,
+  )
+  interp.global.def_builtin("resultFedOuterThrow", outer)
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedOuterInner(n) { return n + 1; } " +
+      "function resultFedOuterRoot(n) { " +
+      "return resultFedOuterThrow(resultFedOuterInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=20,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedOuterRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("result-fed outer throw must preserve its error")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "release:outer", "attempt:outer", "release:outer",
+    "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  assert_true(interp.realm_state.active_overrides.val is None)
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after outer abrupt unwind")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed inner native target rejects the whole root before admission" {
+  let interp = Interpreter::new()
+  let native_calls : Ref[Int] = { val: 0 }
+  let native_inner = make_native_func(name="resultFedNativeInner", args => {
+    native_calls.val += 1
+    match args {
+      [Number(value)] => Number(value + 1.0)
+      _ => fail("result-fed native inner must receive one number")
+    }
+  })
+  interp.global.def_builtin("resultFedNativeInner", native_inner)
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedNativeInnerOuter(n) { return n + 2; } " +
+      "function resultFedNativeInnerRoot(n) { " +
+      "return resultFedNativeInnerOuter(resultFedNativeInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedNativeInnerRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="6")
+    _ => fail("native inner rejection must complete through the legacy path")
+  }
+  inspect(native_calls.val, content="1")
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed outer native target rejects the whole root before admission" {
+  let interp = Interpreter::new()
+  let native_calls : Ref[Int] = { val: 0 }
+  let native_outer = make_native_func(name="resultFedNativeOuter", args => {
+    native_calls.val += 1
+    match args {
+      [Number(value)] => Number(value + 2.0)
+      _ => fail("result-fed native outer must receive one number")
+    }
+  })
+  interp.global.def_builtin("resultFedNativeOuter", native_outer)
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedNativeOuterInner(n) { return n + 1; } " +
+      "function resultFedNativeOuterRoot(n) { " +
+      "return resultFedNativeOuter(resultFedNativeOuterInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedNativeOuterRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="6")
+    _ => fail("native outer rejection must complete through the legacy path")
+  }
+  inspect(native_calls.val, content="1")
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed inner unresolved target rejects the whole root before admission" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedUnresolvedInnerOuter(n) { return n + 2; } " +
+      "function resultFedUnresolvedInnerRoot(n) { " +
+      "return resultFedUnresolvedInnerOuter(resultFedMissingInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedUnresolvedInnerRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.with_execution_control(control, () => {
+      interp.run_executor_activation_coordinator(root)
+    })
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(ExecutionControlError(StackDepthLimit)) =>
+      fail("unresolved inner must reject before managed execution")
+    Some(_) => ()
+    None => fail("unresolved inner must fail through the legacy path")
+  }
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed outer unresolved target rejects the whole root before admission" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedUnresolvedOuterInner(n) { return n + 1; } " +
+      "function resultFedUnresolvedOuterRoot(n) { " +
+      "return resultFedMissingOuter(resultFedUnresolvedOuterInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedUnresolvedOuterRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let caught : Error? = try {
+    let _ = interp.with_execution_control(control, () => {
+      interp.run_executor_activation_coordinator(root)
+    })
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(ExecutionControlError(StackDepthLimit)) =>
+      fail("unresolved outer must reject before managed execution")
+    Some(_) => ()
+    None => fail("unresolved outer must fail through the legacy path")
+  }
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed inner arity mismatch rejects the whole root before admission" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedArityInner(n, extra) { return n; } " +
+      "function resultFedArityInnerOuter(n) { return n + 2; } " +
+      "function resultFedArityInnerRoot(n) { " +
+      "return resultFedArityInnerOuter(resultFedArityInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedArityInnerRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="5")
+    _ => fail("inner arity rejection must complete through the legacy path")
+  }
+  json_inspect(events, content=[])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "result-fed outer arity mismatch rejects the whole root before admission" {
+  let interp = Interpreter::new()
+  let _ = interp.run(
+    @parser.parse(
+      "function resultFedArityOuterInner(n) { return n + 1; } " +
+      "function resultFedArityOuter(n, extra) { return n + 2; } " +
+      "function resultFedArityOuterRoot(n) { " +
+      "return resultFedArityOuter(resultFedArityOuterInner(n)); }",
+    ).stmts,
+  )
+  let events : Array[String] = []
+  install_executor_activation_probe(interp, events, None)
+  let control = ExecutionControl(
+    remaining_steps=200,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let root = ExecutorActivationCallFrame(
+      callee=interp.global.get("resultFedArityOuterRoot"),
+      this_value=Undefined,
+      args=[Number(3.0)],
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  let result = interp.with_execution_control(control, () => {
+    interp.run_executor_activation_coordinator(root)
+  })
+  match result {
+    ExecutorActivationReturn(Number(value)) => inspect(value, content="6")
+    _ => fail("outer arity rejection must complete through the legacy path")
+  }
+  json_inspect(events, content=[])
   inspect(control.active_depth(), content="0")
 }
 
