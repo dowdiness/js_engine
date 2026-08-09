@@ -186,27 +186,32 @@ test "executor activation capability preserves ordered nested call requirements"
 }
 
 ///|
-test "executor activation capability preserves static member receiver requirements" {
-  match
-    classify_executor_capability_for_test(
-      ["n"],
-      "return holder.outer(inner(n));",
-    ) {
-    Some(summary) => {
-      inspect(summary.direct_calls.length(), content="2")
-      let inner = summary.direct_calls[0]
-      inspect(executor_activation_call_name(inner), content="inner")
-      assert_true(inner.target is ExecutorActivationDirectBinding("inner"))
-      let outer = summary.direct_calls[1]
-      inspect(executor_activation_call_name(outer), content="outer")
-      assert_true(
-        outer.target is ExecutorActivationStaticOwnDataMember("holder", "outer"),
-      )
+test "executor activation capability normalizes static member receiver requirements" {
+  let sources = [
+    "return holder.outer(inner(n));", "return holder['outer'](inner(n));", "return holder['out\\u0065r'](inner(n));",
+  ]
+  for source in sources {
+    match classify_executor_capability_for_test(["n"], source) {
+      Some(summary) => {
+        inspect(summary.direct_calls.length(), content="2")
+        let inner = summary.direct_calls[0]
+        inspect(executor_activation_call_name(inner), content="inner")
+        assert_true(inner.target is ExecutorActivationDirectBinding("inner"))
+        let outer = summary.direct_calls[1]
+        inspect(executor_activation_call_name(outer), content="outer")
+        assert_true(
+          outer.target
+          is ExecutorActivationStaticOwnDataMember("holder", "outer"),
+        )
+      }
+      None => fail("a static member call must retain its receiver requirement")
     }
-    None => fail("a static member call must retain its receiver requirement")
   }
   assert_true(
-    classify_executor_capability_for_test(["n"], "return holder['outer'](n);")
+    classify_executor_capability_for_test(["n"], "return holder[key](n);")
     is None,
+  )
+  assert_true(
+    classify_executor_capability_for_test(["n"], "return holder[0](n);") is None,
   )
 }
