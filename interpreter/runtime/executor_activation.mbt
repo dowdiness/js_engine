@@ -849,14 +849,30 @@ fn Interpreter::drive_executor_activation_stack(
     }
   } catch {
     error => {
+      let mut first_cleanup_error : Error? = None
       while !stack.is_empty() {
         let entry = stack.pop().unwrap()
         match entry.cleanup {
-          Some(cleanup) => self.finish_executor_activation(cleanup, Some(error))
+          Some(cleanup) => {
+            let cleanup_error : Error? = try {
+              self.finish_executor_activation(cleanup, Some(error))
+              None
+            } catch {
+              cleanup_error => Some(cleanup_error)
+            }
+            match (first_cleanup_error, cleanup_error) {
+              (None, Some(cleanup_error)) =>
+                first_cleanup_error = Some(cleanup_error)
+              _ => ()
+            }
+          }
           None => ()
         }
       }
-      raise error
+      match first_cleanup_error {
+        Some(cleanup_error) => raise cleanup_error
+        None => raise error
+      }
     }
   }
   ExecutorActivationNormal(Undefined)

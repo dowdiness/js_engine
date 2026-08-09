@@ -1453,6 +1453,126 @@ test "nested abrupt delivery rethrows after managed cleanup and permits reuse" {
 }
 
 ///|
+test "cleanup failure still releases every remaining owned activation" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=3,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let sentinel : Error = @errors.RangeError(message="cleanup source sentinel")
+  let leaf = make_executor_function(
+    Some("cleanupLeaf"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error=sentinel),
+    constructable=false,
+  )
+  let parent = make_executor_function(
+    Some("cleanupParent"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationCallCode(
+      callee=leaf,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    ),
+    constructable=false,
+  )
+  let root = make_executor_function(
+    Some("cleanupRoot"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationCallCode(
+      callee=parent,
+      this_value=Undefined,
+      args=[],
+      loc=@token.Loc::default(),
+    ),
+    constructable=false,
+  )
+  let leaf_executable = match leaf {
+    Object({ callable: Some(ExecutorCallable(executable)), .. }) => executable
+    _ => fail("cleanup leaf must retain executor data")
+  }
+  let parent_executable = match parent {
+    Object({ callable: Some(ExecutorCallable(executable)), .. }) => executable
+    _ => fail("cleanup parent must retain executor data")
+  }
+  let root_executable = match root {
+    Object({ callable: Some(ExecutorCallable(executable)), .. }) => executable
+    _ => fail("cleanup root must retain executor data")
+  }
+  let root_entry = interp.start_executor_activation(
+    root_executable,
+    ExecutorStartCall(
+      ExecutorCallRequest(
+        callee=root,
+        this_value=Undefined,
+        args=[],
+        loc=@token.Loc::default(),
+      ),
+    ),
+    None,
+  )
+  let parent_entry = interp.start_executor_activation(
+    parent_executable,
+    ExecutorStartCall(
+      ExecutorCallRequest(
+        callee=parent,
+        this_value=Undefined,
+        args=[],
+        loc=@token.Loc::default(),
+      ),
+    ),
+    None,
+  )
+  let leaf_entry = interp.start_executor_activation(
+    leaf_executable,
+    ExecutorStartCall(
+      ExecutorCallRequest(
+        callee=leaf,
+        this_value=Undefined,
+        args=[],
+        loc=@token.Loc::default(),
+      ),
+    ),
+    None,
+  )
+  let parent_cleanup = match parent_entry.cleanup {
+    Some(cleanup) => cleanup
+    None => fail("managed parent must own cleanup")
+  }
+  parent_cleanup.observation.release()
+  let caught : Error? = try {
+    let _ = interp.drive_executor_activation_stack([
+      root_entry, parent_entry, leaf_entry,
+    ])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.InternalError(message~)) =>
+      assert_true(message.contains("executor activation release is invalid"))
+    Some(error) => fail("expected cleanup failure, got " + error.to_string())
+    None => fail("the stale parent release must fail cleanup")
+  }
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:outer", "attempt:outer", "release:outer", "release:outer",
+    "release:cleared",
+  ])
+  assert_eq(control.active_depth(), 0L)
+  assert_true(interp.realm_state.active_overrides.val is None)
+}
+
+///|
 test "tree executor child abrupt completion preserves identity and cleanup" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.RangeError(message="tree child sentinel")
@@ -1566,9 +1686,9 @@ test "legacy call enters an admitted child without replaying abrupt effects" {
   json_inspect(events, content=[
     "attempt:cleared", "attempt:outer", "release:outer", "release:cleared",
   ])
-  inspect(control.active_depth(), content="0")
-  inspect(interp.global.get("before").to_string(), content="1")
-  inspect(interp.global.get("after").to_string(), content="0")
+  assert_eq(control.active_depth(), 0L)
+  assert_true(interp.global.get("before") is Number(1.0))
+  assert_true(interp.global.get("after") is Number(0.0))
   match
     interp.call_value(
       interp.global.get("bridgeReuse"),
@@ -1576,7 +1696,7 @@ test "legacy call enters an admitted child without replaying abrupt effects" {
       [Number(1.0)],
       @token.Loc::default(),
     ) {
-    Number(value) => inspect(value, content="2")
+    Number(value) => assert_true(value == 2.0)
     _ => fail("the interpreter must remain reusable after abrupt completion")
   }
 }
@@ -1606,12 +1726,12 @@ test "legacy call releases one admitted leaf activation on normal completion" {
     @token.Loc::default(),
   )
   match result {
-    Number(value) => inspect(value, content="2")
+    Number(value) => assert_true(value == 2.0)
     _ => fail("the admitted leaf must return through its legacy consumer")
   }
   json_inspect(events, content=["attempt:cleared", "release:cleared"])
-  inspect(control.active_depth(), content="0")
-  inspect(interp.global.get("entries").to_string(), content="1")
+  assert_eq(control.active_depth(), 0L)
+  assert_true(interp.global.get("entries") is Number(1.0))
 }
 
 ///|
