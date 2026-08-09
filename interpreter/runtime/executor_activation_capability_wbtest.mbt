@@ -46,7 +46,7 @@ test "executor activation capability summary classifies only the closed subset" 
     Some(summary) => {
       inspect(summary.direct_calls.length(), content="1")
       let edge = summary.direct_calls[0]
-      inspect(edge.callee, content="leaf")
+      inspect(executor_activation_call_name(edge), content="leaf")
       inspect(edge.argument_count, content="1")
     }
     None => fail("the direct numeric call form must be admitted")
@@ -69,8 +69,8 @@ test "executor activation capability preserves ordered sibling call requirements
       inspect(summary.direct_calls.length(), content="2")
       let first_edge = summary.direct_calls[0]
       let second_edge = summary.direct_calls[1]
-      inspect(first_edge.callee, content="first")
-      inspect(second_edge.callee, content="second")
+      inspect(executor_activation_call_name(first_edge), content="first")
+      inspect(executor_activation_call_name(second_edge), content="second")
     }
     None => fail("sibling direct calls must be admitted")
   }
@@ -81,8 +81,8 @@ test "executor activation capability preserves ordered sibling call requirements
       inspect(summary.direct_calls.length(), content="2")
       let first_edge = summary.direct_calls[0]
       let second_edge = summary.direct_calls[1]
-      inspect(first_edge.callee, content="first")
-      inspect(second_edge.callee, content="first")
+      inspect(executor_activation_call_name(first_edge), content="first")
+      inspect(executor_activation_call_name(second_edge), content="first")
     }
     None => fail("duplicate direct call sites must be retained")
   }
@@ -96,8 +96,8 @@ test "executor activation capability preserves ordered sibling call requirements
       inspect(summary.direct_calls.length(), content="2")
       let first_edge = summary.direct_calls[0]
       let second_edge = summary.direct_calls[1]
-      inspect(first_edge.callee, content="first")
-      inspect(second_edge.callee, content="second")
+      inspect(executor_activation_call_name(first_edge), content="first")
+      inspect(executor_activation_call_name(second_edge), content="second")
     }
     None => fail("branch-separated direct calls must be admitted")
   }
@@ -117,9 +117,18 @@ test "executor activation capability preserves ordered nested call requirements"
     ) {
     Some(summary) => {
       inspect(summary.direct_calls.length(), content="3")
-      inspect(summary.direct_calls[0].callee, content="inner")
-      inspect(summary.direct_calls[1].callee, content="middle")
-      inspect(summary.direct_calls[2].callee, content="outer")
+      inspect(
+        executor_activation_call_name(summary.direct_calls[0]),
+        content="inner",
+      )
+      inspect(
+        executor_activation_call_name(summary.direct_calls[1]),
+        content="middle",
+      )
+      inspect(
+        executor_activation_call_name(summary.direct_calls[2]),
+        content="outer",
+      )
     }
     None => fail("deep nested direct calls must be admitted")
   }
@@ -131,9 +140,18 @@ test "executor activation capability preserves ordered nested call requirements"
     ) {
     Some(summary) => {
       inspect(summary.direct_calls.length(), content="3")
-      inspect(summary.direct_calls[0].callee, content="first")
-      inspect(summary.direct_calls[1].callee, content="second")
-      inspect(summary.direct_calls[2].callee, content="outer")
+      inspect(
+        executor_activation_call_name(summary.direct_calls[0]),
+        content="first",
+      )
+      inspect(
+        executor_activation_call_name(summary.direct_calls[1]),
+        content="second",
+      )
+      inspect(
+        executor_activation_call_name(summary.direct_calls[2]),
+        content="outer",
+      )
       inspect(summary.direct_calls[2].argument_count, content="2")
     }
     None => fail("multiple direct call arguments must be admitted")
@@ -146,14 +164,49 @@ test "executor activation capability preserves ordered nested call requirements"
     ) {
     Some(summary) => {
       inspect(summary.direct_calls.length(), content="3")
-      inspect(summary.direct_calls[0].callee, content="inner")
-      inspect(summary.direct_calls[1].callee, content="inner")
-      inspect(summary.direct_calls[2].callee, content="outer")
+      inspect(
+        executor_activation_call_name(summary.direct_calls[0]),
+        content="inner",
+      )
+      inspect(
+        executor_activation_call_name(summary.direct_calls[1]),
+        content="inner",
+      )
+      inspect(
+        executor_activation_call_name(summary.direct_calls[2]),
+        content="outer",
+      )
     }
     None => fail("duplicate nested call sites must be retained")
   }
 
   assert_true(
     classify_executor_capability_for_test(["n"], "return outer(-n);") is None,
+  )
+}
+
+///|
+test "executor activation capability preserves static member receiver requirements" {
+  match
+    classify_executor_capability_for_test(
+      ["n"],
+      "return holder.outer(inner(n));",
+    ) {
+    Some(summary) => {
+      inspect(summary.direct_calls.length(), content="2")
+      let inner = summary.direct_calls[0]
+      inspect(executor_activation_call_name(inner), content="inner")
+      assert_true(inner.target is ExecutorActivationDirectBinding("inner"))
+      let outer = summary.direct_calls[1]
+      inspect(executor_activation_call_name(outer), content="outer")
+      assert_true(
+        outer.target is ExecutorActivationStaticOwnDataMember("holder", "outer"),
+      )
+    }
+    None => fail("a static member call must retain its receiver requirement")
+  }
+  assert_true(
+    classify_executor_capability_for_test(["n"], "return holder['outer'](n);")
+    is None,
   )
 }
