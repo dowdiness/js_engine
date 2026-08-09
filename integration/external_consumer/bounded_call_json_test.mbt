@@ -423,6 +423,49 @@ test "bounded JSON call reports stack-depth guardrail parity" {
 }
 
 ///|
+const LEGACY_WRAPPER_RECURSIVE_ISLAND_SOURCE =
+  #|let entries = 0;
+  #|function recurse(n) {
+  #|  if (n === 0) return 0;
+  #|  return 1 + recurse(n - 1);
+  #|}
+  #|function legacyEntry(n) {
+  #|  entries = entries + 1;
+  #|  return recurse(n);
+  #|}
+  #|function readEntries() { return entries; }
+
+///|
+fn legacy_wrapper_recursive_island_engine() -> @js_engine.Engine raise Error {
+  let engine = @js_engine.Engine()
+  assert_true(
+    engine.eval_diagnostic(
+      LEGACY_WRAPPER_RECURSIVE_ISLAND_SOURCE,
+      source_id="legacy-island.js",
+    )
+    is Ok(_),
+  )
+  engine
+}
+
+///|
+test "legacy wrapper preserves one pre-call effect at child depth guardrail" {
+  let engine = legacy_wrapper_recursive_island_engine()
+  let diagnostic = expect_call_guardrail(
+    engine.call_json_bounded(
+      "legacyEntry",
+      [Json::number(256.0)],
+      bounded_call_policy(100000L, 1L, @js_engine.InterruptionHandle()),
+    ),
+    "stack-depth-limit",
+    "execute",
+    @js_engine.PendingJobs::None,
+  )
+  assert_true(diagnostic.source_identity() == Some("legacy-island.js"))
+  json_inspect(engine.call_json("readEntries", []), content=1)
+}
+
+///|
 test "direct JSON conversion remains outside the bounded execution budget" {
   let engine = @js_engine.Engine()
   engine.eval("function identity(value) { return value; }")
