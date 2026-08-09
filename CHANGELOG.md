@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [0.8.0] — 2026-08-09
+
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+
+- **Passed / Executed**: 91.3% strict (31,747 / 34,781),
+  90.7% non-strict (33,568 / 37,016).
+- **Passed / Discovered**: 70.6% strict (31,747 / 44,986),
+  70.4% non-strict (33,568 / 47,692).
+- **Skipped**: 10,201 strict, 10,672 non-strict.
+
+Measured on CI run
+[31309850133](https://github.com/dowdiness/js_engine/actions/runs/31309850133)
+(tip `dd288a94`, 2026-08-09).
+Regression baseline: +112 non-strict / +112 strict vs
+`test262-baseline.json` (min 33,456 / 31,635).
+
+Unit tests: **3,518 / 3,518 passed** (`moon test`).
+
+Compared with v0.7.0's recorded per-mode results from CI run
+`30346236658`, the absolute passing count increased by **+10 strict**
+and **+14 non-strict**. The methodology remains per-mode; both
+denominators are retained because Passed/Executed and Passed/Discovered
+answer different questions.
+
+### Added
+
+- **Bounded embedding operations** — `Engine::eval_bounded`,
+  `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`,
+  and `Engine::run_timer_checkpoint_bounded` apply an explicit,
+  operation-scoped execution policy and return structured diagnostics for
+  execution limits, interruption, and failures.
+- **Parser source ranges** — structured parse diagnostics retain source spans
+  for more precise failure locations.
+
+### Changed
+
+- **Managed recursive execution** — a defined, admission-validated subset of
+  ordinary recursive call graphs executes through resumable activations
+  without host-recursive guest entry. The admitted subset includes result-fed
+  calls, ordered linear helper chains, static own-data member calls,
+  literal-computed member calls, and entry from a legacy caller into a sealed
+  managed graph.
+- **Iterative post-parse traversal** — deep supported expression and statement
+  traversals no longer depend on recursive host-language traversal.
+
+### Fixed
+
+- **Activation cleanup** — normal and abrupt completion release every owned
+  activation exactly once, preserve the first failure, and leave reusable
+  interpreter state restored.
+- **Forwarded calls and callbacks** — `Function.prototype.call`,
+  `Array.prototype.apply`, and `Array.prototype.map` preserve iterative
+  execution and callback resumption for their admitted paths.
+- **Regular expressions** — matching remains in the input code-unit domain,
+  correcting affected Unicode inputs.
+
+### Performance
+
+- Runtime activation preparation transfers internal argument snapshots and
+  exposes prepared arguments as views, reducing avoidable copying.
+- RegExp instances retain their parsed matcher instead of reparsing it for
+  each match.
+
+### Breaking changes
+
+The root `@js_engine` facade changes are additive.
+
+Direct `compiler` package consumers must account for the removal of the 56
+public `UNSUPPORTED_*` bytecode-lowering diagnostic string constants. These
+constants represented compiler implementation details and no longer form part
+of the public interface.
+
+### Known limitations
+
+- Stack safety is guaranteed only for the documented, admission-validated
+  recursive execution subset. Arbitrary dynamic calls, construction,
+  iteration, property access, callbacks, native re-entry, and other paths that
+  remain on the legacy evaluator are not covered by this guarantee.
+- Bounded execution is operation-scoped. Existing unbounded operations remain
+  available for compatibility and do not implicitly acquire an execution
+  policy.
+
 ## [0.7.0] — 2026-07-27
 
 ### Conformance

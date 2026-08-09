@@ -80,12 +80,16 @@ Production-work exhaustiveness from #691 closes the effect surface within that
 tree dispatcher. Those production variants remain private; the neutral
 activation contract does not export or mirror them.
 
-#631 owns the next boundary: saving a bytecode caller's pending instruction and
-value consumer, entering bytecode/tree/native targets without host-recursive
-re-entry, and routing return, throw, getter, Proxy, conversion, and rejection
-outcomes exactly once. Until those slices land, mixed calls may preserve
-semantics through the synchronous compatibility boundary but are not claimed
-stack-safe.
+The managed dispatcher now covers a sealed ordinary-function tree slice. A
+legacy caller may enter an already-admitted callback-free call graph without
+host-recursive guest entry, and every proven edge in that graph remains under
+managed activation ownership.
+
+#631 owns the broader boundary: saving a bytecode caller's pending instruction
+and value consumer, entering bytecode/tree/native targets, and routing return,
+throw, getter, Proxy, conversion, callback, and rejection outcomes exactly once.
+Paths outside the sealed tree slice may still preserve semantics through the
+synchronous compatibility boundary and are not claimed stack-safe.
 
 ## Alternatives considered
 

@@ -9,6 +9,7 @@ DEVELOPMENT_DOC="$ROOT_DIR/docs/development.md"
 CONSUMER_PACKAGE="$ROOT_DIR/integration/external_consumer/moon.pkg"
 CONSUMER_SUITE="$ROOT_DIR/integration/external_consumer/stack_safety_test.mbt"
 BOUNDED_SUITE="$ROOT_DIR/integration/external_consumer/bounded_eval_test.mbt"
+BOUNDED_CALL_SUITE="$ROOT_DIR/integration/external_consumer/bounded_call_json_test.mbt"
 ACTIVATION_SUITE="$ROOT_DIR/interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt"
 RESULT_PIPELINE_SOURCE="$ROOT_DIR/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
 COMPOSITION_SOURCE="$ROOT_DIR/interpreter/runtime/activation_dispatch_composition.mbt"
@@ -32,6 +33,7 @@ fail() {
 [[ -f "$CONSUMER_PACKAGE" ]] || fail 'external-consumer package manifest is missing'
 [[ -f "$CONSUMER_SUITE" ]] || fail 'external-consumer stack-safety suite is missing'
 [[ -f "$BOUNDED_SUITE" ]] || fail 'bounded external-consumer suite is missing'
+[[ -f "$BOUNDED_CALL_SUITE" ]] || fail 'bounded-call external-consumer suite is missing'
 [[ -f "$ACTIVATION_SUITE" ]] || fail 'numeric activation cleanup suite is missing'
 [[ -f "$RESULT_PIPELINE_SOURCE" ]] || fail 'result pipeline source is missing'
 [[ -f "$COMPOSITION_SOURCE" ]] || fail 'dispatch composition source is missing'
@@ -124,6 +126,7 @@ selected_suites=(
   "$ROOT_DIR/interpreter/runtime/execution_control_dispatch_wbtest.mbt"
   "$CONSUMER_SUITE"
   "$BOUNDED_SUITE"
+  "$BOUNDED_CALL_SUITE"
 )
 for suite in "${selected_suites[@]}"; do
   [[ -f "$suite" ]] || fail "selected stack-safety suite is missing: ${suite#"$ROOT_DIR/"}"
@@ -274,8 +277,8 @@ for suite in \
 done
 grep -Fq '(cd integration/external_consumer' "$MAKEFILE" ||
   fail 'focused Make target omits the external-consumer suite'
-grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt' "$MAKEFILE" ||
-  fail 'focused Make target does not select both external-consumer suites'
+grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt bounded_call_json_test.mbt' "$MAKEFILE" ||
+  fail 'focused Make target does not select every external-consumer suite'
 
 grep -Fq 'import {' "$CONSUMER_PACKAGE" ||
   fail 'external-consumer package manifest is missing its facade import'
@@ -351,6 +354,7 @@ copy_fixture() {
   cp "$CONSUMER_PACKAGE" "$fixture/integration/external_consumer/moon.pkg"
   cp "$CONSUMER_SUITE" "$fixture/integration/external_consumer/stack_safety_test.mbt"
   cp "$BOUNDED_SUITE" "$fixture/integration/external_consumer/bounded_eval_test.mbt"
+  cp "$BOUNDED_CALL_SUITE" "$fixture/integration/external_consumer/bounded_call_json_test.mbt"
   cp "$ROOT_DIR/interpreter/stack_safety_test.mbt" "$fixture/interpreter/stack_safety_test.mbt"
   cp "$RESULT_PIPELINE_SOURCE" "$fixture/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
   cp "$COMPOSITION_SOURCE" "$fixture/interpreter/runtime/activation_dispatch_composition.mbt"
@@ -523,8 +527,13 @@ expect_fixture_failure "$fixture" 'weak-aggregator'
 
 fixture="$GATE_TMP_ROOT/missing-bounded-suite"
 copy_fixture "$fixture"
-sed -i 's/ stack_safety_test.mbt bounded_eval_test.mbt/ stack_safety_test.mbt/' "$fixture/Makefile"
+sed -i 's/ stack_safety_test.mbt bounded_eval_test.mbt bounded_call_json_test.mbt/ stack_safety_test.mbt bounded_call_json_test.mbt/' "$fixture/Makefile"
 expect_fixture_failure "$fixture" 'missing-bounded-suite'
+
+fixture="$GATE_TMP_ROOT/missing-bounded-call-suite"
+copy_fixture "$fixture"
+sed -i 's/ stack_safety_test.mbt bounded_eval_test.mbt bounded_call_json_test.mbt/ stack_safety_test.mbt bounded_eval_test.mbt/' "$fixture/Makefile"
+expect_fixture_failure "$fixture" 'missing-bounded-call-suite'
 
 fixture="$GATE_TMP_ROOT/missing-activation-suite"
 copy_fixture "$fixture"

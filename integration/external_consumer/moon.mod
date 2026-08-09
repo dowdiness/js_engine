@@ -3,5 +3,5 @@ name = "dowdiness/js_engine_external_consumer"
 version = "0.1.0"
 
 import {
-  "dowdiness/js_engine@0.7.0",
+  "dowdiness/js_engine@0.8.0",
 }

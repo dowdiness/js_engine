@@ -73,7 +73,7 @@ stack-safety-test:
 		interpreter/runtime/execution_control_dispatch_wbtest.mbt && \
 	(cd integration/external_consumer && \
 		moon check --target "$(TARGET)" . && \
-		moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt)
+		moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt bounded_call_json_test.mbt)
 
 # Check the permanent gate's source, Make, and workflow contract.
 stack-safety-validate:
