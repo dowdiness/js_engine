@@ -355,6 +355,136 @@ test "computed string literal accessor member-call keeps the shallow control" {
 }
 
 ///|
+test "runtime-string computed accessor member-call keeps the shallow control" {
+  let source = "let remaining = 8; let key = 'step';" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver[key]();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver[key]();"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "RED: runtime-string computed accessor member-call reaches depth 256" {
+  let source = "let remaining = 256; let key = 'step';" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver[key]();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver[key]();"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="256")
+}
+
+///|
+test "runtime-string computed calls preserve legacy rejected families" {
+  let object_key = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var receiver = { get step() { trace = trace + 'g';" +
+    "return function() { trace = trace + 'c'; return 1; }; } };" +
+    "var key = { toString: function() { trace = trace + 'k'; return 'step'; } };" +
+    "receiver[key](); trace;",
+  )
+  inspect(object_key.to_string(), content="kgc")
+  let symbol_key = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var key = Symbol('step'); var receiver = {};" +
+    "receiver[key] = function() { trace = trace + 'c'; return 1; };" +
+    "receiver[key](); trace;",
+  )
+  inspect(symbol_key.to_string(), content="c")
+  let inherited = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var key = 'step';" +
+    "var proto = { get step() { trace = trace + 'g';" +
+    "return function() { trace = trace + 'c'; return 1; }; } };" +
+    "var receiver = Object.create(proto); receiver[key](); trace;",
+  )
+  inspect(inherited.to_string(), content="gc")
+  let proxy = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var key = 'step';" +
+    "var receiver = new Proxy({}, { get: function() { trace = trace + 'p';" +
+    "return function() { trace = trace + 'c'; return 1; }; } });" +
+    "receiver[key](); trace;",
+  )
+  inspect(proxy.to_string(), content="pc")
+  let array = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var key = 'step'; var receiver = [];" +
+    "receiver.step = function() { trace = trace + 'c'; return 1; };" +
+    "receiver[key](); trace;",
+  )
+  inspect(array.to_string(), content="c")
+}
+
+///|
+test "runtime-string computed accessor calls preserve order before TypeError" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var trace = ''; var key = 'step';" +
+      "var receiver = { get step() { trace = trace + 'g'; return 1; } };" +
+      "function argument() { trace = trace + 'a'; return 7; }" +
+      "receiver[key](argument());",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) =>
+      match @runtime.js_error_to_value_with_env(error, Some(interp.global)) {
+        Object(data) => inspect(data.class_name, content="TypeError")
+        _ => fail("expected a JavaScript TypeError object")
+      }
+    None => fail("non-callable computed getter result must throw")
+  }
+  inspect(interp.global.get("trace").to_string(), content="ga")
+}
+
+///|
+test "runtime-string computed accessor calls preserve guest throw identity" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "var marker = {}; var trace = ''; var entries = 0; var key = 'step';" +
+      "var receiver = { get step() { trace = trace + 'g'; entries++;" +
+      "if (entries === 1) throw marker;" +
+      "return function() { trace = trace + 'c'; }; } };" +
+      "receiver[key]();",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("computed getter throw must reach the caller")
+  }
+  inspect(interp.global.get("trace").to_string(), content="g")
+  let result = run_executor_neutral_bytecode(interp, "entries;")
+  inspect(result.to_string(), content="1")
+}
+
+///|
 test "RED: computed string literal accessor member-call reaches depth 256" {
   let source = "let remaining = 256;" +
     "let receiver = { get step() {" +
