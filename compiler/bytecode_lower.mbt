@@ -3341,6 +3341,14 @@ fn BytecodeBuilder::compile_computed_compound_assign(
 }
 
 ///|
+fn bytecode_literal_computed_read_key(expr : @ast.Expr) -> String? {
+  match expr {
+    StringLit(s, _, _, _) => Some(s)
+    _ => None
+  }
+}
+
+///|
 fn bytecode_static_object_key(expr : @ast.Expr) -> String? {
   match expr {
     StringLit(s, _, _, _) => Some(s)
@@ -4403,11 +4411,21 @@ fn BytecodeBuilder::compile_expr_body(
     }
     ComputedMember(obj, key, loc) => {
       self.compile_expr(obj)
-      self.compile_expr(key)
-      let _ = self.emit_with_source_locations(GetComputed(loc), [
-        (MemberAccess, loc),
-        (PropertyKey, loc),
-      ])
+      match bytecode_literal_computed_read_key(key) {
+        Some(prop) => {
+          self.emit_expression_observation(bytecode_expr_loc(key))
+          let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
+            (MemberAccess, loc),
+          ])
+        }
+        None => {
+          self.compile_expr(key)
+          let _ = self.emit_with_source_locations(GetComputed(loc), [
+            (MemberAccess, loc),
+            (PropertyKey, loc),
+          ])
+        }
+      }
     }
     OptionalMember(obj, prop, loc) =>
       self.compile_optional_member(obj, prop, loc)
