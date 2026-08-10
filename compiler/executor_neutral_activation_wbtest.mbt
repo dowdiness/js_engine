@@ -338,6 +338,40 @@ test "computed string literal getter recursion keeps the shallow control" {
 }
 
 ///|
+test "computed string literal accessor member-call keeps the shallow control" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver['step']();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver['step']();"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "RED: computed string literal accessor member-call reaches depth 256" {
+  let source = "let remaining = 256;" +
+    "let receiver = { get step() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver['step']();" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver['step']();"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="256")
+}
+
+///|
 test "RED: computed string literal getter recursion reaches depth 256" {
   let source = "let remaining = 256;" +
     "let receiver = { get x() {" +

@@ -1169,6 +1169,51 @@ test "bytecode lowers template literals to append instructions" {
 }
 
 ///|
+test "bytecode lowers literal computed member calls through plain preparation" {
+  let bytecode = parse_bytecode_for_wb(
+    "var receiver = { get step() { return receiver['step'](); } };" +
+    "receiver['step'](); var key = 'step'; receiver[key]();",
+  )
+  let mut root_plain = 0
+  let mut root_computed = 0
+  let mut root_literal_observation = false
+  for instr in bytecode.main.code {
+    match instr {
+      ObserveExpression(_) => root_literal_observation = true
+      PreparePlainPropertyCall("step", _) => {
+        assert_true(root_literal_observation)
+        root_literal_observation = false
+        root_plain += 1
+      }
+      PrepareComputedCall(_) => root_computed += 1
+      _ => root_literal_observation = false
+    }
+  }
+  assert_eq(root_plain, 1)
+  assert_eq(root_computed, 1)
+  guard bytecode.main.children.length() == 1 else {
+    fail("expected one recursive getter child")
+  }
+  let getter = bytecode.main.children[0]
+  let mut getter_plain = 0
+  let mut getter_literal_observation = false
+  for instr in getter.code {
+    match instr {
+      ObserveExpression(_) => getter_literal_observation = true
+      PreparePlainPropertyCall("step", _) => {
+        assert_true(getter_literal_observation)
+        getter_literal_observation = false
+        getter_plain += 1
+      }
+      PrepareComputedCall(_) =>
+        fail("recursive literal computed call must not use PrepareComputedCall")
+      _ => getter_literal_observation = false
+    }
+  }
+  assert_eq(getter_plain, 1)
+}
+
+///|
 test "bytecode lowers tagged templates to template-object calls" {
   let bytecode = parse_bytecode_for_wb("tag`a${x}b`;")
   let mut saw_template_object = false

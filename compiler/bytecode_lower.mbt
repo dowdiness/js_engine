@@ -4586,8 +4586,16 @@ fn BytecodeBuilder::compile_expr_body(
     }
     Call(ComputedMember(obj, key, member_loc), args, loc) => {
       self.compile_expr(obj)
-      self.compile_expr(key)
-      self.emit_computed_call_prepare(member_loc)
+      match bytecode_literal_computed_read_key(key) {
+        Some(prop) => {
+          self.emit_expression_observation(bytecode_expr_loc(key))
+          self.emit_property_call_prepare(prop, member_loc, suspended=true)
+        }
+        None => {
+          self.compile_expr(key)
+          self.emit_computed_call_prepare(member_loc)
+        }
+      }
       self.emit_call_with_receiver(args, loc)
     }
     Call(callee, args, loc) =>
