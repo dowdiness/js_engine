@@ -452,6 +452,125 @@ test "static property getter admission rejects mutable exotic state" {
 }
 
 ///|
+test "computed property admission seals only primitive string own accessors" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let getter = make_executor_function(
+    Some("getter"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(1.0)),
+    constructable=false,
+  )
+  let target = make_direct_property_getter_target(getter, None)
+  match
+    executor_activation_computed_property_get_if_admitted(
+      target,
+      String_("x"),
+      @token.Loc::default(),
+    ) {
+    Some(ExecutorActivationPropertyGet(request)) =>
+      match request.admission {
+        Some({ getter: admitted_getter, .. }) =>
+          assert_true(physical_equal(admitted_getter, getter))
+        None => fail("computed property admission must retain sealed proof")
+      }
+    _ => fail("primitive string own accessor should be admitted")
+  }
+  let symbol_key = Symbol({ id: 101, description: None })
+  let object_key = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let proxy_receiver = Proxy({
+    target: Some(target),
+    handler: Some(object_key),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let inherited_receiver = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: target,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let data_bag = PropertyBag::PropertyBag()
+  data_bag.properties["x"] = Number(2.0)
+  let data_receiver = Object({
+    bag: data_bag,
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let array_receiver = make_array([])
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      target,
+      Number(1.0),
+      @token.Loc::default(),
+    )
+    is None,
+  )
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      target,
+      symbol_key,
+      @token.Loc::default(),
+    )
+    is None,
+  )
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      target,
+      object_key,
+      @token.Loc::default(),
+    )
+    is None,
+  )
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      inherited_receiver,
+      String_("x"),
+      @token.Loc::default(),
+    )
+    is None,
+  )
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      data_receiver,
+      String_("x"),
+      @token.Loc::default(),
+    )
+    is None,
+  )
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      proxy_receiver,
+      String_("x"),
+      @token.Loc::default(),
+    )
+    is None,
+  )
+  assert_true(
+    executor_activation_computed_property_get_if_admitted(
+      array_receiver,
+      String_("x"),
+      @token.Loc::default(),
+    )
+    is None,
+  )
+}
+
+///|
 test "static property getter exotic fallback runs once and preserves identity" {
   let interp = Interpreter::new()
   let sentinel = Object({

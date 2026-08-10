@@ -1214,6 +1214,40 @@ test "bytecode lowers literal computed member calls through plain preparation" {
 }
 
 ///|
+test "bytecode keeps dynamic string member calls on computed preparation" {
+  let bytecode = parse_bytecode_for_wb(
+    "var key = 'step';" +
+    "var receiver = { get step() { return receiver[key](); } };" +
+    "receiver[key]();",
+  )
+  let mut root_computed = 0
+  let mut root_plain = 0
+  for instr in bytecode.main.code {
+    match instr {
+      PrepareComputedCall(_) => root_computed += 1
+      PreparePlainPropertyCall(_, _) => root_plain += 1
+      _ => ()
+    }
+  }
+  assert_eq(root_computed, 1)
+  assert_eq(root_plain, 0)
+  guard bytecode.main.children.length() == 1 else {
+    fail("expected one recursive getter child")
+  }
+  let mut recursive_computed = 0
+  let mut recursive_plain = 0
+  for instr in bytecode.main.children[0].code {
+    match instr {
+      PrepareComputedCall(_) => recursive_computed += 1
+      PreparePlainPropertyCall(_, _) => recursive_plain += 1
+      _ => ()
+    }
+  }
+  assert_eq(recursive_computed, 1)
+  assert_eq(recursive_plain, 0)
+}
+
+///|
 test "bytecode lowers tagged templates to template-object calls" {
   let bytecode = parse_bytecode_for_wb("tag`a${x}b`;")
   let mut saw_template_object = false
