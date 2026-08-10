@@ -128,7 +128,9 @@ pub fn executor_activation_computed_property_get_if_admitted(
                 target~,
                 property_name~,
                 loc~,
-                admission=Some({ getter, executable }),
+                admission=Some(
+                  ExecutorPropertyGetAdmission(getter~, executable~),
+                ),
               ),
             ),
           )
@@ -142,6 +144,14 @@ pub fn executor_activation_computed_property_get_if_admitted(
 priv struct ExecutorPropertyGetAdmission {
   getter : Value
   executable : ExecutorCallableData
+}
+
+///|
+fn ExecutorPropertyGetAdmission::ExecutorPropertyGetAdmission(
+  getter~ : Value,
+  executable~ : ExecutorCallableData,
+) -> ExecutorPropertyGetAdmission {
+  { getter, executable }
 }
 
 ///|
