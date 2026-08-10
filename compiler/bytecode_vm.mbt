@@ -963,7 +963,16 @@ fn BytecodeFrame::step_bytecode(
       GetComputed(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        stack.push(interp.get_computed_property(obj, key, loc))
+        match
+          @runtime.executor_activation_computed_property_get_if_admitted(
+            obj, key, loc,
+          ) {
+          Some(step) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(step)
+          }
+          None => stack.push(interp.get_computed_property(obj, key, loc))
+        }
       }
       ReadPropertyForAssign(prop, loc) => {
         let obj = frame.peek()

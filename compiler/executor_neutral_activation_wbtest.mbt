@@ -338,6 +338,153 @@ test "computed string literal getter recursion keeps the shallow control" {
 }
 
 ///|
+test "runtime-string computed getter recursion keeps the shallow control" {
+  let source = "let remaining = 8; let key = 'x';" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver[key];" +
+    "} };" +
+    "receiver[key];"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "runtime-string computed getter recursion reaches depth 256" {
+  let source = "let remaining = 256; let key = 'x';" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver[key];" +
+    "} };" +
+    "receiver[key];"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="256")
+}
+
+///|
+test "runtime-string computed getter recursion lowers through GetComputed" {
+  let source = "let remaining = 8; let key = 'x';" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver[key];" +
+    "} };" +
+    "receiver[key];"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut root_get = false
+  for instr in lowered.main.code {
+    match instr {
+      GetComputed(_) => root_get = true
+      _ => ()
+    }
+  }
+  let mut getter_get = false
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        GetComputed(_) => getter_get = true
+        _ => ()
+      }
+    }
+  }
+  assert_true(root_get)
+  assert_true(getter_get)
+}
+
+///|
+test "runtime-string computed getter reads deliver once and permit reuse" {
+  let interp = @interpreter.new_interpreter()
+  let first = run_executor_neutral_bytecode(
+    interp,
+    "var reads = 0; var marker = {}; var key = 'x';" +
+    "var receiver = { get x() { reads = reads + 1; return marker; } };" +
+    "receiver[key] === marker && reads === 1;",
+  )
+  inspect(first.to_string(), content="true")
+  let second = run_executor_neutral_bytecode(
+    interp, "receiver[key] === marker && reads === 2;",
+  )
+  inspect(second.to_string(), content="true")
+}
+
+///|
+test "runtime-string computed getter reads preserve guest throw identity and reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var reads = 0; var key = 'x';" +
+    "var receiver = { get x() { reads = reads + 1;" +
+    "if (reads === 1) throw marker; return 7; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver[key];")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("computed getter throw must reach the caller")
+  }
+  let result = run_executor_neutral_bytecode(
+    interp, "receiver[key] === 7 && reads === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "runtime-string computed reads preserve legacy rejected families" {
+  let object_key = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var key = { toString: function() { trace = trace + 'k'; return 'x'; } };" +
+    "var receiver = { get x() { trace = trace + 'g'; return 1; } };" +
+    "receiver[key]; trace;",
+  )
+  inspect(object_key.to_string(), content="kg")
+  let symbol_key = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var key = Symbol('x'); var receiver = {}; receiver[key] = 7;" +
+    "receiver[key];",
+  )
+  inspect(symbol_key.to_string(), content="7")
+  let inherited = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var key = 'x';" +
+    "var proto = { get x() { trace = trace + 'g'; return 2; } };" +
+    "var receiver = Object.create(proto); receiver[key]; trace;",
+  )
+  inspect(inherited.to_string(), content="g")
+  let data = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var key = 'x'; var receiver = { x: 3 }; receiver[key];",
+  )
+  inspect(data.to_string(), content="3")
+  let proxy = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var key = 'x';" +
+    "var receiver = new Proxy({}, { get: function() { trace = trace + 'p';" +
+    "return 4; } }); receiver[key]; trace;",
+  )
+  inspect(proxy.to_string(), content="p")
+  let array = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var key = 'length'; var receiver = []; receiver[key];",
+  )
+  inspect(array.to_string(), content="0")
+}
+
+///|
 test "computed string literal accessor member-call keeps the shallow control" {
   let source = "let remaining = 8;" +
     "let receiver = { get step() {" +
