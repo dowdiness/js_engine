@@ -2118,6 +2118,54 @@ test "bytecode lowers optional member access with a nullish guard" {
 }
 
 ///|
+test "RED: bytecode keeps dynamic computed reads while normalizing literal keys" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { x: 1 }; var key = 'x'; o['x']; o['\\u0078']; o[key];",
+  )
+  let mut literal_gets = 0
+  let mut computed_gets = 0
+  for instr in bytecode.main.code {
+    match instr {
+      GetProperty("x", _) => literal_gets += 1
+      GetComputed(_) => computed_gets += 1
+      _ => ()
+    }
+  }
+  assert_eq(literal_gets, 2)
+  assert_eq(computed_gets, 1)
+}
+
+///|
+test "computed literal reads observe the key without replaying its value" {
+  let bytecode = parse_bytecode_for_wb("o['x'];")
+  let mut expression_observations = 0
+  let mut key_loads = 0
+  let mut saw_get = false
+  let ordered_events : Array[String] = []
+  for instr in bytecode.main.code {
+    match instr {
+      ObserveExpression(_) => {
+        expression_observations += 1
+        ordered_events.push("observe")
+      }
+      LoadName("o") => ordered_events.push("object-value")
+      LoadConst(@runtime.Value::String_("x")) => key_loads += 1
+      GetProperty("x", _) => {
+        saw_get = true
+        ordered_events.push("get-property")
+      }
+      _ => ()
+    }
+  }
+  assert_eq(expression_observations, 3)
+  assert_eq(key_loads, 0)
+  assert_true(saw_get)
+  json_inspect(ordered_events, content=[
+    "observe", "observe", "object-value", "observe", "get-property",
+  ])
+}
+
+///|
 test "bytecode treats names inside nested optional chains as captured" {
   let src =
     #|function outer() {

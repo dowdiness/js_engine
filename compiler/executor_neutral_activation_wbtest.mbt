@@ -322,6 +322,38 @@ test "plain accessor-prepared getter throw skips arguments and final call" {
 }
 
 ///|
+test "computed string literal getter recursion keeps the shallow control" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver['x'];" +
+    "} };" +
+    "receiver['x'];"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "RED: computed string literal getter recursion reaches depth 256" {
+  let source = "let remaining = 256;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver['x'];" +
+    "} };" +
+    "receiver['x'];"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="256")
+}
+
+///|
 test "RED: static own accessor reads lower through GetProperty" {
   let source = "let remaining = 320;" +
     "let receiver = { get x() {" +
