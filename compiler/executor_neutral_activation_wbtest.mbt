@@ -724,6 +724,130 @@ test "RED: bytecode static own accessor recursion reaches the synchronous bounda
 }
 
 ///|
+test "RED: static compound-read getter recursion reaches depth 320" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver.x &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver.x &&= 1;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="1")
+}
+
+///|
+test "static compound-read getter recursion keeps shallow control" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver.x &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver.x &&= 1;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="1")
+}
+
+///|
+test "static compound-read lowering keeps reference reads at root and recursion" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver.x &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver.x &&= 1;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut root_assign_read = false
+  for instr in lowered.main.code {
+    match instr {
+      ReadPropertyForAssign("x", _) => root_assign_read = true
+      _ => ()
+    }
+  }
+  let mut recursive_assign_read = false
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        ReadPropertyForAssign("x", _) => recursive_assign_read = true
+        _ => ()
+      }
+    }
+  }
+  assert_true(root_assign_read)
+  assert_true(recursive_assign_read)
+}
+
+///|
+test "static compound assignment preserves receiver setter order and result" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var receiver = { value: 2, get x() {" +
+    "trace = trace + (this === receiver ? 'g' : 'x');" +
+    "return this.value;" +
+    "}, set x(value) {" +
+    "trace = trace + (this === receiver ? 's' : 'x');" +
+    "this.value = value;" +
+    "} };" +
+    "var result = receiver.x += 3;" +
+    "result === 5 && receiver.value === 5 && trace === 'gs';",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "static logical assignment short-circuits RHS and setter" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var reads = 0; var rhs = 0; var setter_calls = 0;" +
+    "var receiver = { get x() { reads = reads + 1; return 0; }," +
+    "set x(value) { setter_calls = setter_calls + 1; } };" +
+    "var result = receiver.x &&= (rhs = 1);" +
+    "result === 0 && rhs === 0 && reads === 1 && setter_calls === 0;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "static compound getter throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var reads = 0; var result = 0;" +
+    "var receiver = { get x() { reads = reads + 1;" +
+    "if (reads === 1) throw marker; return 2; }," +
+    "set x(value) { result = value; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver.x += 1;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("static compound getter throw must reach the caller")
+  }
+  let result = run_executor_neutral_bytecode(
+    interp, "receiver.x += 1; result === 3 && reads === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "static property lowering keeps non-read property families residual" {
   let lowered = parse_bytecode_for_wb(
     "function C() {}; var base = { x: 1 }; var key = 'x'; " +
