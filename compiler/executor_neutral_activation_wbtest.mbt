@@ -372,7 +372,7 @@ test "runtime-string computed accessor member-call keeps the shallow control" {
 }
 
 ///|
-test "RED: runtime-string computed accessor member-call reaches depth 256" {
+test "runtime-string computed accessor member-call completes at depth 256" {
   let source = "let remaining = 256; let key = 'step';" +
     "let receiver = { get step() {" +
     "if (remaining === 0) return function() { return 0; };" +

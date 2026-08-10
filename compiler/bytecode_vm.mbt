@@ -1046,7 +1046,9 @@ fn BytecodeFrame::step_bytecode(
         let key = frame.pop()
         let obj = frame.pop()
         match
-          @runtime.executor_activation_computed_property_get(obj, key, loc) {
+          @runtime.executor_activation_computed_property_get_if_admitted(
+            obj, key, loc,
+          ) {
           Some(step) => {
             frame.pending_activation_result = Some(PushReceiverAndValue(obj))
             return BytecodeFrameSuspended(step)

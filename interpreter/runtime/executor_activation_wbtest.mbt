@@ -465,7 +465,7 @@ test "computed property admission seals only primitive string own accessors" {
   )
   let target = make_direct_property_getter_target(getter, None)
   match
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       target,
       String_("x"),
       @token.Loc::default(),
@@ -513,7 +513,7 @@ test "computed property admission seals only primitive string own accessors" {
   })
   let array_receiver = make_array([])
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       target,
       Number(1.0),
       @token.Loc::default(),
@@ -521,7 +521,7 @@ test "computed property admission seals only primitive string own accessors" {
     is None,
   )
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       target,
       symbol_key,
       @token.Loc::default(),
@@ -529,7 +529,7 @@ test "computed property admission seals only primitive string own accessors" {
     is None,
   )
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       target,
       object_key,
       @token.Loc::default(),
@@ -537,7 +537,7 @@ test "computed property admission seals only primitive string own accessors" {
     is None,
   )
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       inherited_receiver,
       String_("x"),
       @token.Loc::default(),
@@ -545,7 +545,7 @@ test "computed property admission seals only primitive string own accessors" {
     is None,
   )
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       data_receiver,
       String_("x"),
       @token.Loc::default(),
@@ -553,7 +553,7 @@ test "computed property admission seals only primitive string own accessors" {
     is None,
   )
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       proxy_receiver,
       String_("x"),
       @token.Loc::default(),
@@ -561,7 +561,7 @@ test "computed property admission seals only primitive string own accessors" {
     is None,
   )
   assert_true(
-    executor_activation_computed_property_get(
+    executor_activation_computed_property_get_if_admitted(
       array_receiver,
       String_("x"),
       @token.Loc::default(),

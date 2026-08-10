@@ -113,7 +113,7 @@ pub fn executor_activation_property_get(
 // primitive string and the existing callback-free ordinary-own accessor
 // classifier can seal the getter and executable. The compiler receives only
 // the resulting activation request; object-shape rules stay runtime-owned.
-pub fn executor_activation_computed_property_get(
+pub fn executor_activation_computed_property_get_if_admitted(
   target : Value,
   key : Value,
   loc : @token.Loc,
