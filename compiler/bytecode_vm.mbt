@@ -1042,10 +1042,11 @@ fn BytecodeFrame::step_bytecode(
         stack.push(interp.eval_destructure_assign(ctx, pattern, value, env))
       }
       PreparePropertyCall(prop, loc) => {
-        let obj = frame.pop()
-        let callee = interp.get_property(obj, prop, loc)
-        stack.push(obj)
-        stack.push(callee)
+        let receiver = frame.pop()
+        frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_property_get(receiver, prop, loc),
+        )
       }
       PreparePlainPropertyCall(prop, loc) => {
         let receiver = frame.pop()

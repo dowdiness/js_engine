@@ -230,6 +230,133 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
 }
 
 ///|
+test "RED: tagged static accessor member-call reaches depth 320" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get tag() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.tag`x`;" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.tag`x`;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "tagged static accessor member-call keeps shallow control" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get tag() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.tag`x`;" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.tag`x`;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="8")
+}
+
+///|
+test "static tagged accessor calls preserve receiver and evaluation order" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var receiver = { get tag() {" +
+    "trace = trace + 'g';" +
+    "return function(strings, value) {" +
+    "trace = trace + (this === receiver ? 'r' : 'x');" +
+    "return trace + ':' + strings[0] + strings[1] + ':' + value;" +
+    "};" +
+    "} };" +
+    "receiver.tag`a${(trace = trace + 's', 'v')}b`;",
+  )
+  inspect(result.to_string(), content="gsr:ab:v")
+}
+
+///|
+test "static tagged member calls retain property preparation at root and recursion" {
+  let source = "let remaining = 2;" +
+    "let receiver = { get tag() {" +
+    "if (remaining === 0) return function() { return 0; };" +
+    "remaining--;" +
+    "let next = receiver.tag`x`;" +
+    "return function() { return next + 1; };" +
+    "} };" +
+    "receiver.tag`x`;"
+  let lowered = parse_bytecode_for_wb(source)
+  assert_eq(legacy_property_prepare_count(lowered.main.code), 1)
+  let mut recursive_prepare_count = 0
+  for child in lowered.main.children {
+    recursive_prepare_count += legacy_property_prepare_count(child.code)
+  }
+  assert_true(recursive_prepare_count >= 1)
+}
+
+///|
+test "optional static accessor calls preserve receiver order and nullish skip" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = '';" +
+    "var receiver = { get step() {" +
+    "trace = trace + 'g';" +
+    "return function(value) {" +
+    "trace = trace + (this === receiver ? 'c' : 'x');" +
+    "return trace + ':' + value;" +
+    "};" +
+    "} };" +
+    "receiver?.step(trace = trace + 'a');",
+  )
+  inspect(result.to_string(), content="gac:ga")
+  let nullish_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var receiver = null;" +
+    "receiver?.step(trace = trace + 'a'); trace;",
+  )
+  inspect(nullish_result.to_string(), content="")
+  let nullish_callee_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var receiver = { get step() {" +
+    "trace = trace + 'g'; return null; } };" +
+    "receiver?.step?.(trace = trace + 'a'); trace;",
+  )
+  inspect(nullish_callee_result.to_string(), content="g")
+}
+
+///|
+test "static tagged accessor throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var reads = 0;" +
+    "var receiver = { get tag() { reads = reads + 1;" +
+    "if (reads === 1) throw marker; return function() { return 7; }; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver.tag`x`;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("tagged getter throw must reach the caller")
+  }
+  let result = run_executor_neutral_bytecode(
+    interp, "receiver.tag`x` === 7 && reads === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "bytecode static accessor-prepared receiver calls suspend property preparation" {
   let source = "let remaining = 320;" +
     "let receiver = { get step() {" +
