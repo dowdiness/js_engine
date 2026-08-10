@@ -85,6 +85,8 @@ pub fn executor_activation_completion_abrupt(Error) -> ExecutorActivationComplet
 
 pub fn executor_activation_completion_normal(Value) -> ExecutorActivationCompletion
 
+pub fn executor_activation_computed_property_get(Value, Value, @token.Loc) -> ExecutorActivationStep?
+
 pub fn executor_activation_construct(Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_continue() -> ExecutorActivationStep

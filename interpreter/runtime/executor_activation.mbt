@@ -84,6 +84,7 @@ pub struct ExecutorPropertyGetRequest {
   priv target : Value
   priv property_name : String
   priv loc : @token.Loc
+  priv admission : ExecutorPropertyGetAdmission?
 }
 
 ///|
@@ -91,8 +92,9 @@ fn ExecutorPropertyGetRequest::ExecutorPropertyGetRequest(
   target~ : Value,
   property_name~ : String,
   loc~ : @token.Loc,
+  admission? : ExecutorPropertyGetAdmission? = None,
 ) -> ExecutorPropertyGetRequest {
-  { target, property_name, loc }
+  { target, property_name, loc, admission }
 }
 
 ///|
@@ -104,6 +106,42 @@ pub fn executor_activation_property_get(
   ExecutorActivationPropertyGet(
     ExecutorPropertyGetRequest(target~, property_name~, loc~),
   )
+}
+
+///|
+// Admit an already-evaluated computed property only when its key is an exact
+// primitive string and the existing callback-free ordinary-own accessor
+// classifier can seal the getter and executable. The compiler receives only
+// the resulting activation request; object-shape rules stay runtime-owned.
+pub fn executor_activation_computed_property_get(
+  target : Value,
+  key : Value,
+  loc : @token.Loc,
+) -> ExecutorActivationStep? {
+  match key {
+    String_(property_name) =>
+      match direct_executor_property_getter(target, property_name) {
+        Some((getter, executable)) =>
+          Some(
+            ExecutorActivationPropertyGet(
+              ExecutorPropertyGetRequest(
+                target~,
+                property_name~,
+                loc~,
+                admission=Some({ getter, executable }),
+              ),
+            ),
+          )
+        None => None
+      }
+    _ => None
+  }
+}
+
+///|
+priv struct ExecutorPropertyGetAdmission {
+  getter : Value
+  executable : ExecutorCallableData
 }
 
 ///|
@@ -773,35 +811,44 @@ fn Interpreter::handle_executor_activation_step(
     }
     ExecutorActivationPropertyGet(request) => {
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
-        match
-          direct_executor_property_getter(request.target, request.property_name) {
-          Some((getter, executable)) => {
-            let property_scope = begin_cleared_active_callee_realm(
-              self.realm_state,
-            )
-            let call_request = ExecutorCallRequest(
-              callee=getter,
-              this_value=request.target,
-              args=[],
-              loc=request.loc,
-            )
-            stack.push(
-              self.start_executor_activation(
-                executable,
-                ExecutorStartCall(call_request),
-                Some(property_scope),
-              ),
-            )
-            ExecutorActivationRequestChild
-          }
-          None =>
-            ExecutorActivationRequestValue(
-              self.get_property(
+        {
+          let admitted = match request.admission {
+            Some(admission) => Some((admission.getter, admission.executable))
+            None =>
+              direct_executor_property_getter(
                 request.target,
                 request.property_name,
-                request.loc,
-              ),
-            )
+              )
+          }
+          match admitted {
+            Some((getter, executable)) => {
+              let property_scope = begin_cleared_active_callee_realm(
+                self.realm_state,
+              )
+              let call_request = ExecutorCallRequest(
+                callee=getter,
+                this_value=request.target,
+                args=[],
+                loc=request.loc,
+              )
+              stack.push(
+                self.start_executor_activation(
+                  executable,
+                  ExecutorStartCall(call_request),
+                  Some(property_scope),
+                ),
+              )
+              ExecutorActivationRequestChild
+            }
+            None =>
+              ExecutorActivationRequestValue(
+                self.get_property(
+                  request.target,
+                  request.property_name,
+                  request.loc,
+                ),
+              )
+          }
         },
       ) catch {
         error => Err(error)
