@@ -85,7 +85,9 @@ pub fn executor_activation_call(
 pub struct ExecutorPropertyGetRequest {
   priv target : Value
   priv key : ExecutorPropertyGetKey
+  priv receiver : Value
   priv loc : @token.Loc
+  priv manage_proxy : Bool
   priv admission : ExecutorPropertyGetAdmission?
 }
 
@@ -99,10 +101,12 @@ priv enum ExecutorPropertyGetKey {
 fn ExecutorPropertyGetRequest::ExecutorPropertyGetRequest(
   target~ : Value,
   key~ : ExecutorPropertyGetKey,
+  receiver~ : Value,
   loc~ : @token.Loc,
+  manage_proxy~ : Bool,
   admission? : ExecutorPropertyGetAdmission? = None,
 ) -> ExecutorPropertyGetRequest {
-  { target, key, loc, admission }
+  { target, key, receiver, loc, manage_proxy, admission }
 }
 
 ///|
@@ -115,7 +119,9 @@ pub fn executor_activation_property_get(
     ExecutorPropertyGetRequest(
       target~,
       key=ExecutorStringPropertyGetKey(property_name),
+      receiver=target,
       loc~,
+      manage_proxy=false,
     ),
   )
 }
@@ -130,9 +136,49 @@ fn executor_activation_symbol_property_get(
     ExecutorPropertyGetRequest(
       target~,
       key=ExecutorSymbolPropertyGetKey(symbol),
+      receiver=target,
       loc~,
+      manage_proxy=true,
     ),
   )
+}
+
+///|
+fn executor_activation_property_get_with_receiver(
+  target : Value,
+  key : ExecutorPropertyGetKey,
+  receiver : Value,
+  loc : @token.Loc,
+  manage_proxy : Bool,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertyGet(
+    ExecutorPropertyGetRequest(target~, key~, receiver~, loc~, manage_proxy~),
+  )
+}
+
+///|
+fn executor_activation_managed_property_get(
+  target : Value,
+  property_name : String,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertyGet(
+    ExecutorPropertyGetRequest(
+      target~,
+      key=ExecutorStringPropertyGetKey(property_name),
+      receiver=target,
+      loc~,
+      manage_proxy=true,
+    ),
+  )
+}
+
+///|
+fn executor_property_get_key_value(key : ExecutorPropertyGetKey) -> Value {
+  match key {
+    ExecutorStringPropertyGetKey(property_name) => String_(property_name)
+    ExecutorSymbolPropertyGetKey(symbol) => Symbol(symbol)
+  }
 }
 
 ///|
@@ -286,7 +332,9 @@ pub fn executor_activation_computed_property_get_if_admitted(
               ExecutorPropertyGetRequest(
                 target~,
                 key=ExecutorStringPropertyGetKey(property_name),
+                receiver=target,
                 loc~,
+                manage_proxy=false,
                 admission=Some(
                   ExecutorPropertyGetAdmission(getter~, executable~),
                 ),
@@ -468,8 +516,147 @@ priv struct ExecutorActivationCleanup {
 priv enum ExecutorChildCompletion {
   ExecutorChildCall(ExecutorCallableKind)
   ExecutorChildConstruct(Value)
+  ExecutorChildPropertyGet
   ExecutorChildPropertySet(Value)
   ExecutorChildPropertyUpdate
+}
+
+///|
+priv enum ExecutorProxyPropertyGetPhase {
+  ExecutorProxyPropertyGetNeedTrap
+  ExecutorProxyPropertyGetAwaitTrapLookup
+  ExecutorProxyPropertyGetHaveTrap(Value)
+  ExecutorProxyPropertyGetAwaitTrapCall
+  ExecutorProxyPropertyGetHaveTrapResult(Value)
+  ExecutorProxyPropertyGetAwaitForward
+  ExecutorProxyPropertyGetComplete(Value)
+}
+
+///|
+priv struct ExecutorProxyPropertyGetFrame {
+  target : Value
+  handler : Value
+  key : ExecutorPropertyGetKey
+  receiver : Value
+  loc : @token.Loc
+  mut phase : ExecutorProxyPropertyGetPhase
+}
+
+///|
+fn ExecutorProxyPropertyGetFrame::ExecutorProxyPropertyGetFrame(
+  target~ : Value,
+  handler~ : Value,
+  key~ : ExecutorPropertyGetKey,
+  receiver~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorProxyPropertyGetFrame {
+  {
+    target,
+    handler,
+    key,
+    receiver,
+    loc,
+    phase: ExecutorProxyPropertyGetNeedTrap,
+  }
+}
+
+///|
+fn reduce_executor_proxy_property_get_completion(
+  phase : ExecutorProxyPropertyGetPhase,
+  completion : ExecutorActivationCompletion,
+) -> ExecutorProxyPropertyGetPhase raise Error {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionNormal(value) =>
+      match phase {
+        ExecutorProxyPropertyGetAwaitTrapLookup =>
+          ExecutorProxyPropertyGetHaveTrap(value)
+        ExecutorProxyPropertyGetAwaitTrapCall =>
+          ExecutorProxyPropertyGetHaveTrapResult(value)
+        ExecutorProxyPropertyGetAwaitForward =>
+          ExecutorProxyPropertyGetComplete(value)
+        ExecutorProxyPropertyGetNeedTrap
+        | ExecutorProxyPropertyGetHaveTrap(_)
+        | ExecutorProxyPropertyGetHaveTrapResult(_)
+        | ExecutorProxyPropertyGetComplete(_) =>
+          raise @errors.InternalError(
+            message="Proxy property get received an unexpected child completion",
+          )
+      }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorProxyPropertyGetFrame with fn step(
+  self,
+  interp,
+) {
+  match self.phase {
+    ExecutorProxyPropertyGetNeedTrap => {
+      self.phase = ExecutorProxyPropertyGetAwaitTrapLookup
+      executor_activation_managed_property_get(self.handler, "get", self.loc)
+    }
+    ExecutorProxyPropertyGetHaveTrap(trap) =>
+      match trap {
+        Undefined | Null => {
+          self.phase = ExecutorProxyPropertyGetAwaitForward
+          executor_activation_property_get_with_receiver(
+            self.target,
+            self.key,
+            self.receiver,
+            self.loc,
+            true,
+          )
+        }
+        _ if is_callable(trap) => {
+          self.phase = ExecutorProxyPropertyGetAwaitTrapCall
+          ExecutorActivationCall(
+            ExecutorCallRequest(
+              callee=trap,
+              this_value=self.handler,
+              args=[
+                self.target,
+                executor_property_get_key_value(self.key),
+                self.receiver,
+              ],
+              loc=self.loc,
+            ),
+          )
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="'get' on proxy: trap is not a function",
+          )
+      }
+    ExecutorProxyPropertyGetHaveTrapResult(result) => {
+      validate_proxy_get_trap_result(
+        interp,
+        self.target,
+        executor_property_get_key_value(self.key),
+        result,
+      )
+      self.phase = ExecutorProxyPropertyGetComplete(result)
+      ExecutorActivationNormal(result)
+    }
+    ExecutorProxyPropertyGetComplete(result) => ExecutorActivationNormal(result)
+    ExecutorProxyPropertyGetAwaitTrapLookup
+    | ExecutorProxyPropertyGetAwaitTrapCall
+    | ExecutorProxyPropertyGetAwaitForward =>
+      raise @errors.InternalError(
+        message="Proxy property get stepped while awaiting a child completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorProxyPropertyGetFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  self.phase = reduce_executor_proxy_property_get_completion(
+    self.phase,
+    completion,
+  )
 }
 
 ///|
@@ -575,7 +762,11 @@ fn ExecutorPropertyUpdateFrame::begin_to_string_lookup(
   current : Value,
 ) -> ExecutorActivationStep {
   self.phase = ExecutorPropertyUpdateAwaitToStringLookup(current)
-  executor_activation_property_get(current, "toString", self.request.loc)
+  executor_activation_managed_property_get(
+    current,
+    "toString",
+    self.request.loc,
+  )
 }
 
 ///|
@@ -607,7 +798,7 @@ impl ExecutorActivationFrame for ExecutorPropertyUpdateFrame with fn step(
     }
     ExecutorPropertyUpdateHaveCurrent(current) =>
       match current {
-        Object(_) => {
+        Object(_) | Proxy(_) => {
           let to_primitive = interp.realm_state.well_known_symbols.to_primitive
           self.phase = ExecutorPropertyUpdateAwaitToPrimitiveLookup(current)
           executor_activation_symbol_property_get(
@@ -622,7 +813,11 @@ impl ExecutorActivationFrame for ExecutorPropertyUpdateFrame with fn step(
       match to_primitive {
         Undefined | Null => {
           self.phase = ExecutorPropertyUpdateAwaitValueOfLookup(current)
-          executor_activation_property_get(current, "valueOf", self.request.loc)
+          executor_activation_managed_property_get(
+            current,
+            "valueOf",
+            self.request.loc,
+          )
         }
         _ if is_callable(to_primitive) => {
           self.phase = ExecutorPropertyUpdateAwaitToPrimitive
@@ -975,6 +1170,7 @@ fn Interpreter::complete_executor_step(
       ExecutorActivationCompletionNormal(
         executor_construct_completion(step, instance),
       )
+    Some(ExecutorChildPropertyGet) => executor_property_get_completion(step)
     Some(ExecutorChildPropertySet(value)) =>
       executor_property_set_completion(value)
     Some(ExecutorChildPropertyUpdate) =>
@@ -1363,6 +1559,39 @@ fn Interpreter::handle_executor_activation_step(
     ExecutorActivationPropertyGet(request) => {
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         {
+          match (request.target, request.manage_proxy) {
+            (Proxy(proxy_data), true) => {
+              let handler = match proxy_data.handler {
+                Some(handler) => handler
+                None =>
+                  raise @errors.TypeError(
+                    message="Cannot perform 'get' on a proxy that has been revoked",
+                  )
+              }
+              let target = match proxy_data.target {
+                Some(target) => target
+                None =>
+                  raise @errors.TypeError(
+                    message="Cannot perform 'get' on a proxy that has been revoked",
+                  )
+              }
+              let proxy_frame = ExecutorProxyPropertyGetFrame(
+                target~,
+                handler~,
+                key=request.key,
+                receiver=request.receiver,
+                loc=request.loc,
+              )
+              stack.push({
+                frame: proxy_frame as &ExecutorActivationFrame,
+                completion: Some(ExecutorChildPropertyGet),
+                cleanup: None,
+                graph_cursor: None,
+              })
+              return None
+            }
+            _ => ()
+          }
           let admitted = match request.admission {
             Some(admission) => Some((admission.getter, admission.executable))
             None =>
@@ -1386,7 +1615,7 @@ fn Interpreter::handle_executor_activation_step(
               )
               let call_request = ExecutorCallRequest(
                 callee=getter,
-                this_value=request.target,
+                this_value=request.receiver,
                 args=[],
                 loc=request.loc,
               )
@@ -1403,17 +1632,35 @@ fn Interpreter::handle_executor_activation_step(
               ExecutorActivationRequestValue(
                 match request.key {
                   ExecutorStringPropertyGetKey(property_name) =>
-                    self.get_property(
-                      request.target,
-                      property_name,
-                      request.loc,
-                    )
+                    if request.manage_proxy {
+                      self.get_property_key_with_receiver(
+                        request.target,
+                        String_(property_name),
+                        request.receiver,
+                        request.loc,
+                      )
+                    } else {
+                      self.get_property(
+                        request.target,
+                        property_name,
+                        request.loc,
+                      )
+                    }
                   ExecutorSymbolPropertyGetKey(symbol) =>
-                    self.get_computed_property(
-                      request.target,
-                      Symbol(symbol),
-                      request.loc,
-                    )
+                    if request.manage_proxy {
+                      self.get_property_key_with_receiver(
+                        request.target,
+                        Symbol(symbol),
+                        request.receiver,
+                        request.loc,
+                      )
+                    } else {
+                      self.get_computed_property(
+                        request.target,
+                        Symbol(symbol),
+                        request.loc,
+                      )
+                    }
                 },
               )
           }
@@ -1769,6 +2016,27 @@ fn executor_property_set_completion(
   rhs : Value,
 ) -> ExecutorActivationCompletion {
   ExecutorActivationCompletionNormal(rhs)
+}
+
+///|
+fn executor_property_get_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    ExecutorActivationContinue
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationPropertySet(_)
+    | ExecutorActivationPropertyUpdate(_) =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="property get completed with a pending activation step",
+        ),
+      )
+  }
 }
 
 ///|
