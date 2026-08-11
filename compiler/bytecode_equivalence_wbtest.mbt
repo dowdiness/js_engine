@@ -1689,6 +1689,18 @@ test "bytecode computed update canonicalizes key once" {
 }
 
 ///|
+test "bytecode Symbol-keyed computed mutations retain legacy property semantics" {
+  let src =
+    #|var key = Symbol("x");
+    #|var receiver = {};
+    #|receiver[key] = 2;
+    #|var post = receiver[key]++;
+    #|receiver[key] += 3;
+    #|post + ":" + receiver[key];
+  inspect(bytecode_compare(src), content="value:2:6")
+}
+
+///|
 test "bytecode member update null receiver throws like interpreter" {
   let src =
     #|var target = null;
@@ -1805,6 +1817,35 @@ test "bytecode computed compound assignment canonicalizes key once" {
     #|o[key] += rhs();
     #|o.x + ":" + log;
   inspect(bytecode_compare(src), content="value:3:kr")
+}
+
+///|
+test "bytecode runtime-string computed mutations retain rejected-family parity" {
+  let proxy_src =
+    #|var trace = "";
+    #|var key = "x";
+    #|var target = { x: 1 };
+    #|var receiver = new Proxy(target, {
+    #|  get: function(t, p) { trace = trace + "g"; return t[p]; },
+    #|  set: function(t, p, v) { trace = trace + "s" + v; t[p] = v; return true; }
+    #|});
+    #|receiver[key] = 2;
+    #|var post = receiver[key]++;
+    #|receiver[key] += 3;
+    #|trace + ":" + post + ":" + target.x;
+  inspect(bytecode_compare(proxy_src), content="value:s2gs3gs6:2:6")
+  inspect(
+    bytecode_compare("var key = 'x'; var receiver = null; receiver[key] = 1;"),
+    content="throw:TypeError: Cannot set properties of null (setting 'x')",
+  )
+  inspect(
+    bytecode_compare("var key = 'x'; var receiver = null; receiver[key]++;"),
+    content="throw:TypeError: Cannot read properties of null (reading 'x')",
+  )
+  inspect(
+    bytecode_compare("var key = 'x'; var receiver = null; receiver[key] += 1;"),
+    content="throw:TypeError: Cannot read properties of null",
+  )
 }
 
 ///|
