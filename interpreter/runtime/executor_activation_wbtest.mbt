@@ -4069,6 +4069,70 @@ test "property activation setter returns original RHS and releases scope" {
 }
 
 ///|
+test "property update core plans results and reduces completions deterministically" {
+  let loc = @token.Loc::default()
+  let increment = ExecutorPropertyUpdateRequest(
+    target=String_("target"),
+    property_name="x",
+    operator=ExecutorPropertyIncrement,
+    prefix=false,
+    member_loc=loc,
+    loc~,
+    strict=false,
+  )
+  let (increment_phase, increment_step) = plan_executor_property_update_set(
+    increment, 4.0,
+  )
+  match increment_phase {
+    ExecutorPropertyUpdateAwaitSet(Number(result)) =>
+      inspect(result, content="4")
+    _ => fail("postfix increment must retain the old numeric result")
+  }
+  match increment_step {
+    ExecutorActivationPropertySet(request) =>
+      match request.value {
+        Number(value) => inspect(value, content="5")
+        _ => fail("increment must set the next numeric value")
+      }
+    _ => fail("increment planning must request a property set")
+  }
+  let decrement = ExecutorPropertyUpdateRequest(
+    target=String_("target"),
+    property_name="x",
+    operator=ExecutorPropertyDecrement,
+    prefix=true,
+    member_loc=loc,
+    loc~,
+    strict=false,
+  )
+  let (decrement_phase, decrement_step) = plan_executor_property_update_set(
+    decrement, 4.0,
+  )
+  match decrement_phase {
+    ExecutorPropertyUpdateAwaitSet(Number(result)) =>
+      inspect(result, content="3")
+    _ => fail("prefix decrement must retain the next numeric result")
+  }
+  match decrement_step {
+    ExecutorActivationPropertySet(request) =>
+      match request.value {
+        Number(value) => inspect(value, content="3")
+        _ => fail("decrement must set the next numeric value")
+      }
+    _ => fail("decrement planning must request a property set")
+  }
+  let delivered = reduce_executor_property_update_completion(
+    ExecutorPropertyUpdateAwaitGet,
+    ExecutorActivationCompletionNormal(Number(7.0)),
+  )
+  match delivered {
+    ExecutorPropertyUpdateHaveCurrent(Number(value)) =>
+      inspect(value, content="7")
+    _ => fail("get completion must become the current update value")
+  }
+}
+
+///|
 test "property activation setter setup error preserves identity and cleanup" {
   let interp = Interpreter::new()
   let sentinel : Error = @errors.TypeError(

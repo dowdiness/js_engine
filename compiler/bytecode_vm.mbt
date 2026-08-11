@@ -526,6 +526,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property set",
       )
+    @runtime.ExecutorActivationPropertyUpdate(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending property update",
+      )
   }
 }
 
@@ -716,10 +720,28 @@ fn BytecodeFrame::step_bytecode(
       }
       UpdateProperty(prop, op, prefix, member_loc, loc) => {
         let obj = frame.pop()
-        stack.push(
-          interp.eval_update_property(
-            ctx, obj, prop, op, prefix, member_loc, loc,
-          ),
+        frame.pending_activation_result = Some(PushValue)
+        return BytecodeFrameSuspended(
+          match op {
+            Increment =>
+              @runtime.executor_activation_property_increment(
+                obj,
+                prop,
+                prefix,
+                member_loc,
+                loc,
+                ctx.strict,
+              )
+            Decrement =>
+              @runtime.executor_activation_property_decrement(
+                obj,
+                prop,
+                prefix,
+                member_loc,
+                loc,
+                ctx.strict,
+              )
+          },
         )
       }
       UpdateComputed(op, prefix, member_loc, loc) => {
