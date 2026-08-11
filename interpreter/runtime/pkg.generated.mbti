@@ -95,6 +95,8 @@ pub fn executor_activation_normal(Value) -> ExecutorActivationStep
 
 pub fn executor_activation_property_get(Value, String, @token.Loc) -> ExecutorActivationStep
 
+pub fn executor_activation_property_set(Value, String, Value, @token.Loc, Bool) -> ExecutorActivationStep
+
 pub fn executor_activation_return(Value) -> ExecutorActivationStep
 
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
@@ -606,6 +608,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
+  ExecutorActivationPropertySet(ExecutorPropertySetRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -625,6 +628,10 @@ pub struct ExecutorConstructRequest {
 }
 
 pub struct ExecutorPropertyGetRequest {
+  // private fields
+}
+
+pub struct ExecutorPropertySetRequest {
   // private fields
 }
 
