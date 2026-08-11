@@ -154,6 +154,42 @@ fn bytecode_function_contains_set_property_for_wb(
 }
 
 ///|
+fn bytecode_function_contains_set_computed_for_wb(
+  function : BytecodeFunction,
+) -> Bool {
+  for instr in function.code {
+    match instr {
+      SetComputed(_) => return true
+      _ => ()
+    }
+  }
+  for child in function.children {
+    if bytecode_function_contains_set_computed_for_wb(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_function_contains_update_computed_for_wb(
+  function : BytecodeFunction,
+) -> Bool {
+  for instr in function.code {
+    match instr {
+      UpdateComputed(_, _, _, _) => return true
+      _ => ()
+    }
+  }
+  for child in function.children {
+    if bytecode_function_contains_update_computed_for_wb(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn assert_grouped_optional_member_source_for_wb(
   source : String,
 ) -> Unit raise Error {
@@ -886,6 +922,23 @@ test "RED: static compound-read getter recursion reaches depth 320" {
 }
 
 ///|
+test "RED: exact-string computed compound-read getter recursion reaches depth 320" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver['x'] &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver['x'] &&= 1;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="1")
+}
+
+///|
 test "static compound-read getter recursion keeps shallow control" {
   let source = "let remaining = 8;" +
     "let receiver = { get x() {" +
@@ -934,6 +987,37 @@ test "static compound-read lowering keeps reference reads at root and recursion"
 }
 
 ///|
+test "exact-string computed compound-read lowering keeps reference reads at root and recursion" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver['x'] &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver['x'] &&= 1;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut root_assign_read = false
+  for instr in lowered.main.code {
+    match instr {
+      ReadComputedForAssign(_) => root_assign_read = true
+      _ => ()
+    }
+  }
+  let mut recursive_assign_read = false
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        ReadComputedForAssign(_) => recursive_assign_read = true
+        _ => ()
+      }
+    }
+  }
+  assert_true(root_assign_read)
+  assert_true(recursive_assign_read)
+}
+
+///|
 test "static compound assignment preserves receiver setter order and result" {
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
@@ -965,6 +1049,22 @@ test "static logical assignment short-circuits RHS and setter" {
 }
 
 ///|
+test "exact-string computed logical assignment preserves receiver key and RHS order" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var rhs_calls = 0; var setter_calls = 0;" +
+    "var receiver = { get x() { trace = trace + 'g'; return 0; }," +
+    "set x(value) { setter_calls = setter_calls + 1; } };" +
+    "function target() { trace = trace + 'o'; return receiver; }" +
+    "function key() { trace = trace + 'k'; return 'x'; }" +
+    "function rhs() { rhs_calls = rhs_calls + 1; trace = trace + 'r'; return 1; }" +
+    "var result = target()[key()] &&= rhs();" +
+    "result === 0 && trace === 'okg' && rhs_calls === 0 && setter_calls === 0;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "static compound getter throw preserves identity and interpreter reuse" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
@@ -988,6 +1088,35 @@ test "static compound getter throw preserves identity and interpreter reuse" {
   }
   let result = run_executor_neutral_bytecode(
     interp, "receiver.x += 1; result === 3 && reads === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "exact-string computed compound getter throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var reads = 0; var result = 0;" +
+    "var receiver = { get x() { reads = reads + 1;" +
+    "if (reads === 1) throw marker; return 2; }," +
+    "set x(value) { result = value; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver['x'] += 1;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None =>
+      fail("exact-string computed compound getter throw must reach the caller")
+  }
+  let result = run_executor_neutral_bytecode(
+    interp, "receiver['x'] += 1; result === 3 && reads === 2;",
   )
   inspect(result.to_string(), content="true")
 }
@@ -1088,6 +1217,49 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
     source,
   )
   inspect(result.to_string(), content="320")
+}
+
+///|
+test "RED: runtime-string computed setter preserves identity and suspends deeply" {
+  let shallow_source = "var seenThis = false; var seenArgs = false; var seenRhs = false;" +
+    "var key = 'x'; var rhs = {}; var receiver = { set x(value) {" +
+    "seenThis = this === receiver;" +
+    "seenArgs = arguments.length === 1;" +
+    "seenRhs = arguments[0] === rhs;" +
+    "return 99;" +
+    "} }; var result = receiver[key] = rhs;" +
+    "result === rhs && seenThis && seenArgs && seenRhs;"
+  let shallow_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    shallow_source,
+  )
+  inspect(shallow_result.to_string(), content="true")
+  let deep_source = "let key = 'x'; let left = { set x(value) {" +
+    "if (value > 0) right[key] = value - 1;" +
+    "} }; let right = { set x(value) {" +
+    "if (value > 0) left[key] = value - 1;" +
+    "} }; let result = (left[key] = 320); result;"
+  let lowered = parse_bytecode_for_wb(deep_source)
+  let mut saw_root_set = false
+  for instr in lowered.main.code {
+    match instr {
+      SetComputed(_) => saw_root_set = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_set)
+  let mut saw_recursive_set = false
+  for child in lowered.main.children {
+    if bytecode_function_contains_set_computed_for_wb(child) {
+      saw_recursive_set = true
+    }
+  }
+  assert_true(saw_recursive_set)
+  let deep_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    deep_source,
+  )
+  inspect(deep_result.to_string(), content="320")
 }
 
 ///|
@@ -1203,6 +1375,102 @@ test "bytecode static update getter reentry completes deeply" {
     static_update_getter_reentry_source_for_wb(320),
   )
   inspect(result.to_string(), content="true")
+}
+
+///|
+fn runtime_string_computed_update_getter_reentry_source_for_wb(
+  depth : Int,
+) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var getterCalls = 0; var key = 'x'; var receiver = {};" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { getterCalls = getterCalls + 1;" +
+  "if (remaining === 0) return 0; remaining--; return receiver[key]++; }," +
+  "set: Math.abs });" +
+  "var result = receiver[key]++;" +
+  "result === 0 && remaining === 0 && getterCalls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "RED: runtime-string computed update getter reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    runtime_string_computed_update_getter_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "runtime-string computed update lowering remains UpdateComputed at root and recursion" {
+  let lowered = parse_bytecode_for_wb(
+    runtime_string_computed_update_getter_reentry_source_for_wb(8),
+  )
+  let mut saw_root_update = false
+  for instr in lowered.main.code {
+    match instr {
+      UpdateComputed(_, _, _, _) => saw_root_update = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_update)
+  let mut saw_recursive_update = false
+  for child in lowered.main.children {
+    if bytecode_function_contains_update_computed_for_wb(child) {
+      saw_recursive_update = true
+    }
+  }
+  assert_true(saw_recursive_update)
+}
+
+///|
+test "runtime-string computed update preserves prefix postfix and setter successor" {
+  let source = "var trace = ''; var key = 'x'; var seenValue = 0;" +
+    "var receiver = {};" +
+    "var numeric = { valueOf: function() { trace = trace + 'v'; return 4; } };" +
+    "Object.defineProperty(receiver, 'x', {" +
+    "get: function() { trace = trace + 'g'; return numeric; }," +
+    "set: function(value) { trace = trace + 's'; seenValue = value; }" +
+    "});" +
+    "var postfix = receiver[key]--; var prefix = ++receiver[key];" +
+    "trace === 'gvsgvs' && postfix === 4 && prefix === 5 && seenValue === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "runtime-string computed update getter throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var key = 'x'; var marker = {}; var shouldThrow = true;" +
+    "var receiver = { get x() {" +
+    "if (shouldThrow) { shouldThrow = false; throw marker; } return 4; }," +
+    "set x(value) {} };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver[key]++;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) =>
+      assert_true(
+        physical_equal(
+          @runtime.js_error_to_value(error),
+          interp.global.get("marker"),
+        ),
+      )
+    None => fail("computed update getter must propagate its guest throw")
+  }
+  let result = run_executor_neutral_bytecode(interp, "receiver[key]++;")
+  inspect(result.to_string(), content="4")
 }
 
 ///|

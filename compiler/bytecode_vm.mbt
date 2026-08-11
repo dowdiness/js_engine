@@ -747,11 +747,39 @@ fn BytecodeFrame::step_bytecode(
       UpdateComputed(op, prefix, member_loc, loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        stack.push(
-          interp.eval_update_computed_property(
-            ctx, obj, key, op, prefix, member_loc, loc,
-          ),
-        )
+        match key {
+          String_(property_name) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              match op {
+                Increment =>
+                  @runtime.executor_activation_property_increment(
+                    obj,
+                    property_name,
+                    prefix,
+                    member_loc,
+                    loc,
+                    ctx.strict,
+                  )
+                Decrement =>
+                  @runtime.executor_activation_property_decrement(
+                    obj,
+                    property_name,
+                    prefix,
+                    member_loc,
+                    loc,
+                    ctx.strict,
+                  )
+              },
+            )
+          }
+          _ =>
+            stack.push(
+              interp.eval_update_computed_property(
+                ctx, obj, key, op, prefix, member_loc, loc,
+              ),
+            )
+        }
       }
       Jump(target) => frame.ip = target
       JumpIfFalse(target) => {
@@ -1010,17 +1038,32 @@ fn BytecodeFrame::step_bytecode(
       ReadComputedForAssign(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        if obj is Null {
-          raise @errors.TypeError(message="Cannot read properties of null")
+        match
+          @runtime.executor_activation_computed_property_get_if_admitted(
+            obj, key, loc,
+          ) {
+          Some(step) => {
+            stack.push(obj)
+            stack.push(key)
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(step)
+          }
+          None => {
+            if obj is Null {
+              raise @errors.TypeError(message="Cannot read properties of null")
+            }
+            if obj is Undefined {
+              raise @errors.TypeError(
+                message="Cannot read properties of undefined",
+              )
+            }
+            let prop_key = @runtime.to_property_key(key, interp=Some(interp))
+            let current = interp.get_computed_property(obj, prop_key, loc)
+            stack.push(obj)
+            stack.push(prop_key)
+            stack.push(current)
+          }
         }
-        if obj is Undefined {
-          raise @errors.TypeError(message="Cannot read properties of undefined")
-        }
-        let prop_key = @runtime.to_property_key(key, interp=Some(interp))
-        let current = interp.get_computed_property(obj, prop_key, loc)
-        stack.push(obj)
-        stack.push(prop_key)
-        stack.push(current)
       }
       DropPropertyAssignReference => {
         let current = frame.pop()
@@ -1051,9 +1094,30 @@ fn BytecodeFrame::step_bytecode(
         let value = frame.pop()
         let key = frame.pop()
         let obj = frame.pop()
-        stack.push(
-          interp.set_computed_property(obj, key, value, loc, strict=ctx.strict),
-        )
+        match key {
+          String_(property_name) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_property_set(
+                obj,
+                property_name,
+                value,
+                loc,
+                ctx.strict,
+              ),
+            )
+          }
+          _ =>
+            stack.push(
+              interp.set_computed_property(
+                obj,
+                key,
+                value,
+                loc,
+                strict=ctx.strict,
+              ),
+            )
+        }
       }
       SetForInProperty(prop, loc) => {
         let obj = frame.pop()
