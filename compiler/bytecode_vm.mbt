@@ -747,11 +747,39 @@ fn BytecodeFrame::step_bytecode(
       UpdateComputed(op, prefix, member_loc, loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        stack.push(
-          interp.eval_update_computed_property(
-            ctx, obj, key, op, prefix, member_loc, loc,
-          ),
-        )
+        match key {
+          String_(property_name) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              match op {
+                Increment =>
+                  @runtime.executor_activation_property_increment(
+                    obj,
+                    property_name,
+                    prefix,
+                    member_loc,
+                    loc,
+                    ctx.strict,
+                  )
+                Decrement =>
+                  @runtime.executor_activation_property_decrement(
+                    obj,
+                    property_name,
+                    prefix,
+                    member_loc,
+                    loc,
+                    ctx.strict,
+                  )
+              },
+            )
+          }
+          _ =>
+            stack.push(
+              interp.eval_update_computed_property(
+                ctx, obj, key, op, prefix, member_loc, loc,
+              ),
+            )
+        }
       }
       Jump(target) => frame.ip = target
       JumpIfFalse(target) => {
