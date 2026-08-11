@@ -1422,6 +1422,36 @@ test "bytecode static update toPrimitive reentry completes deeply" {
 }
 
 ///|
+fn static_update_to_primitive_accessor_reentry_source_for_wb(
+  depth : Int,
+) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var lookups = 0; var calls = 0; var receiver = {}; var numeric = {};" +
+  "Object.defineProperty(numeric, Symbol.toPrimitive, { get: function() {" +
+  "lookups = lookups + 1; return function(hint) { calls = calls + 1;" +
+  "if (remaining === 0) return 0;" +
+  "remaining--; return receiver.x++; }; } });" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { return numeric; }, set: Math.abs });" +
+  "var result = receiver.x++;" +
+  "result === 0 && remaining === 0 && lookups === " +
+  (depth + 1).to_string() +
+  " && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update toPrimitive accessor reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_to_primitive_accessor_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 fn static_update_inherited_setter_reentry_source_for_wb(depth : Int) -> String {
   "var remaining = " +
   depth.to_string() +

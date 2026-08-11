@@ -79,24 +79,30 @@ pub fn executor_activation_call(
 }
 
 ///|
-// A closed static property-get request. Runtime owns property lookup and
-// accessor admission; executors only provide the already-evaluated target and
-// the static property name.
+// A closed property-get request. Runtime owns property lookup and accessor
+// admission; executors only provide an already-evaluated target and a sealed
+// string or symbol key.
 pub struct ExecutorPropertyGetRequest {
   priv target : Value
-  priv property_name : String
+  priv key : ExecutorPropertyGetKey
   priv loc : @token.Loc
   priv admission : ExecutorPropertyGetAdmission?
 }
 
 ///|
+priv enum ExecutorPropertyGetKey {
+  ExecutorStringPropertyGetKey(String)
+  ExecutorSymbolPropertyGetKey(SymbolData)
+}
+
+///|
 fn ExecutorPropertyGetRequest::ExecutorPropertyGetRequest(
   target~ : Value,
-  property_name~ : String,
+  key~ : ExecutorPropertyGetKey,
   loc~ : @token.Loc,
   admission? : ExecutorPropertyGetAdmission? = None,
 ) -> ExecutorPropertyGetRequest {
-  { target, property_name, loc, admission }
+  { target, key, loc, admission }
 }
 
 ///|
@@ -106,7 +112,26 @@ pub fn executor_activation_property_get(
   loc : @token.Loc,
 ) -> ExecutorActivationStep {
   ExecutorActivationPropertyGet(
-    ExecutorPropertyGetRequest(target~, property_name~, loc~),
+    ExecutorPropertyGetRequest(
+      target~,
+      key=ExecutorStringPropertyGetKey(property_name),
+      loc~,
+    ),
+  )
+}
+
+///|
+fn executor_activation_symbol_property_get(
+  target : Value,
+  symbol : SymbolData,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertyGet(
+    ExecutorPropertyGetRequest(
+      target~,
+      key=ExecutorSymbolPropertyGetKey(symbol),
+      loc~,
+    ),
   )
 }
 
@@ -260,7 +285,7 @@ pub fn executor_activation_computed_property_get_if_admitted(
             ExecutorActivationPropertyGet(
               ExecutorPropertyGetRequest(
                 target~,
-                property_name~,
+                key=ExecutorStringPropertyGetKey(property_name),
                 loc~,
                 admission=Some(
                   ExecutorPropertyGetAdmission(getter~, executable~),
@@ -452,6 +477,8 @@ priv enum ExecutorPropertyUpdatePhase {
   ExecutorPropertyUpdateNeedGet
   ExecutorPropertyUpdateAwaitGet
   ExecutorPropertyUpdateHaveCurrent(Value)
+  ExecutorPropertyUpdateAwaitToPrimitiveLookup(Value)
+  ExecutorPropertyUpdateHaveToPrimitiveMethod(Value, Value)
   ExecutorPropertyUpdateAwaitToPrimitive
   ExecutorPropertyUpdateHaveToPrimitiveResult(Value)
   ExecutorPropertyUpdateAwaitValueOfLookup(Value)
@@ -512,6 +539,8 @@ fn reduce_executor_property_update_completion(
       match phase {
         ExecutorPropertyUpdateAwaitGet =>
           ExecutorPropertyUpdateHaveCurrent(value)
+        ExecutorPropertyUpdateAwaitToPrimitiveLookup(current) =>
+          ExecutorPropertyUpdateHaveToPrimitiveMethod(current, value)
         ExecutorPropertyUpdateAwaitToPrimitive =>
           ExecutorPropertyUpdateHaveToPrimitiveResult(value)
         ExecutorPropertyUpdateAwaitValueOfLookup(current) =>
@@ -526,6 +555,7 @@ fn reduce_executor_property_update_completion(
           ExecutorPropertyUpdateComplete(result)
         ExecutorPropertyUpdateNeedGet
         | ExecutorPropertyUpdateHaveCurrent(_)
+        | ExecutorPropertyUpdateHaveToPrimitiveMethod(_, _)
         | ExecutorPropertyUpdateHaveToPrimitiveResult(_)
         | ExecutorPropertyUpdateHaveValueOfMethod(_, _)
         | ExecutorPropertyUpdateHaveValueOfResult(_, _)
@@ -575,13 +605,26 @@ impl ExecutorActivationFrame for ExecutorPropertyUpdateFrame with fn step(
         self.request.member_loc,
       )
     }
-    ExecutorPropertyUpdateHaveCurrent(current) => {
-      let to_primitive_symbol_id = interp.realm_state.well_known_symbols.to_primitive.id
-      match
-        direct_executor_plain_symbol_data_method(
-          current, to_primitive_symbol_id,
-        ) {
-        Some(to_primitive) => {
+    ExecutorPropertyUpdateHaveCurrent(current) =>
+      match current {
+        Object(_) => {
+          let to_primitive = interp.realm_state.well_known_symbols.to_primitive
+          self.phase = ExecutorPropertyUpdateAwaitToPrimitiveLookup(current)
+          executor_activation_symbol_property_get(
+            current,
+            to_primitive,
+            self.request.loc,
+          )
+        }
+        _ => self.begin_set(to_number(current, interp=Some(interp)))
+      }
+    ExecutorPropertyUpdateHaveToPrimitiveMethod(current, to_primitive) =>
+      match to_primitive {
+        Undefined | Null => {
+          self.phase = ExecutorPropertyUpdateAwaitValueOfLookup(current)
+          executor_activation_property_get(current, "valueOf", self.request.loc)
+        }
+        _ if is_callable(to_primitive) => {
           self.phase = ExecutorPropertyUpdateAwaitToPrimitive
           ExecutorActivationCall(
             ExecutorCallRequest(
@@ -592,21 +635,11 @@ impl ExecutorActivationFrame for ExecutorPropertyUpdateFrame with fn step(
             ),
           )
         }
-        None =>
-          if plain_object_chain_has_no_symbol_property(
-              current, to_primitive_symbol_id,
-            ) {
-            self.phase = ExecutorPropertyUpdateAwaitValueOfLookup(current)
-            executor_activation_property_get(
-              current,
-              "valueOf",
-              self.request.loc,
-            )
-          } else {
-            self.begin_set(to_number(current, interp=Some(interp)))
-          }
+        _ =>
+          raise @errors.TypeError(
+            message="Symbol.toPrimitive is not a function",
+          )
       }
-    }
     ExecutorPropertyUpdateHaveToPrimitiveResult(result) => {
       if is_js_object(result) {
         raise @errors.TypeError(
@@ -661,6 +694,7 @@ impl ExecutorActivationFrame for ExecutorPropertyUpdateFrame with fn step(
     }
     ExecutorPropertyUpdateComplete(result) => ExecutorActivationNormal(result)
     ExecutorPropertyUpdateAwaitGet
+    | ExecutorPropertyUpdateAwaitToPrimitiveLookup(_)
     | ExecutorPropertyUpdateAwaitToPrimitive
     | ExecutorPropertyUpdateAwaitValueOfLookup(_)
     | ExecutorPropertyUpdateAwaitValueOf(_)
@@ -1120,58 +1154,38 @@ fn direct_executor_property_setter(
 }
 
 ///|
-// Prove callback-free that OrdinaryToPrimitive(number) will not observe an
-// own or inherited @@toPrimitive before consulting an own valueOf method.
-fn plain_object_chain_has_no_symbol_property(
+// Callback-free lookup for an executor-backed symbol accessor on a plain
+// ordinary prototype chain. The original target remains the receiver.
+fn direct_executor_symbol_property_getter_in_plain_chain(
   target : Value,
   symbol_id : Int,
-) -> Bool {
+) -> (Value, ExecutorCallableData)? {
   for current = target {
     match current {
       Object(data) if data.class_name == "Object" &&
         data.callable is None &&
         data.arraybuffer_state is None &&
         data.bag.internal_slots.is_empty() &&
-        data.bag.host_slots.is_empty() => {
-        if data.bag.symbol_properties.contains(symbol_id) ||
-          data.bag.symbol_descriptors.contains(symbol_id) {
-          return false
-        }
-        continue data.prototype
-      }
-      Null => break true
-      _ => break false
-    }
-  }
-}
-
-///|
-// Callback-free ordinary symbol Get for an executor-backed data method.
-fn direct_executor_plain_symbol_data_method(
-  target : Value,
-  symbol_id : Int,
-) -> Value? {
-  for current = target {
-    match current {
-      Object(data) if data.class_name == "Object" &&
-        data.callable is None &&
-        data.arraybuffer_state is None &&
-        data.bag.internal_slots.is_empty() &&
-        data.bag.host_slots.is_empty() => {
+        data.bag.host_slots.is_empty() =>
         match data.bag.symbol_descriptors.get(symbol_id) {
-          Some(descriptor) if descriptor.is_accessor => break None
-          _ => ()
-        }
-        match data.bag.symbol_properties.get(symbol_id) {
-          Some(method_value) =>
-            match method_value {
-              Object({ callable: Some(ExecutorCallable(_)), .. }) =>
-                break Some(method_value)
-              _ => break None
+          Some(descriptor) if descriptor.is_accessor =>
+            match descriptor.getter {
+              Some(getter) =>
+                match getter {
+                  Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+                    break Some((getter, executable))
+                  _ => break None
+                }
+              None => break None
             }
-          None => continue data.prototype
+          Some(_) => break None
+          None =>
+            if data.bag.symbol_properties.contains(symbol_id) {
+              break None
+            } else {
+              continue data.prototype
+            }
         }
-      }
       _ => break None
     }
   }
@@ -1352,10 +1366,18 @@ fn Interpreter::handle_executor_activation_step(
           let admitted = match request.admission {
             Some(admission) => Some((admission.getter, admission.executable))
             None =>
-              direct_executor_property_getter_in_plain_chain(
-                request.target,
-                request.property_name,
-              )
+              match request.key {
+                ExecutorStringPropertyGetKey(property_name) =>
+                  direct_executor_property_getter_in_plain_chain(
+                    request.target,
+                    property_name,
+                  )
+                ExecutorSymbolPropertyGetKey(symbol) =>
+                  direct_executor_symbol_property_getter_in_plain_chain(
+                    request.target,
+                    symbol.id,
+                  )
+              }
           }
           match admitted {
             Some((getter, executable)) => {
@@ -1379,11 +1401,20 @@ fn Interpreter::handle_executor_activation_step(
             }
             None =>
               ExecutorActivationRequestValue(
-                self.get_property(
-                  request.target,
-                  request.property_name,
-                  request.loc,
-                ),
+                match request.key {
+                  ExecutorStringPropertyGetKey(property_name) =>
+                    self.get_property(
+                      request.target,
+                      property_name,
+                      request.loc,
+                    )
+                  ExecutorSymbolPropertyGetKey(symbol) =>
+                    self.get_computed_property(
+                      request.target,
+                      Symbol(symbol),
+                      request.loc,
+                    )
+                },
               )
           }
         },
