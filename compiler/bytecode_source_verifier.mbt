@@ -25,6 +25,14 @@ priv enum BytecodeSourceMetadataFact {
 }
 
 ///|
+#warnings("-unused_constructor")
+priv enum BytecodeIndexedOperandFamily {
+  ChildFunction
+  LocalSlot
+  EnvironmentSlot
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeSourceMetadataDefect {
   function_path : Array[Int]
@@ -38,6 +46,17 @@ priv struct BytecodeSourceMetadataDefect {
 priv suberror BytecodeVerifierDefect {
   BytecodeVerifierDefect(BytecodeSourceMetadataDefect)
   BytecodeControlFlowDefect(BytecodeControlFlowTargetDefect)
+  BytecodeIndexedOperandDefect(BytecodeIndexedOperandTargetDefect)
+}
+
+///|
+#warnings("-unused_field")
+priv struct BytecodeIndexedOperandTargetDefect {
+  function_path : Array[Int]
+  instruction_index : Int
+  family : BytecodeIndexedOperandFamily
+  exclusive_upper_bound : Int
+  actual_operand : Int
 }
 
 ///|
@@ -85,7 +104,85 @@ fn finalize_bytecode_program(
 ) -> BytecodeProgram raise Error {
   verify_bytecode_source_metadata(program)
   verify_bytecode_control_flow(program)
+  verify_bytecode_indexed_operands(program)
   { source_stmts: program.source_stmts, main: program.main }
+}
+
+///|
+fn bytecode_indexed_operand(
+  instruction : BytecodeInstr,
+) -> (BytecodeIndexedOperandFamily, Int)? {
+  match instruction {
+    MakeFunction(index)
+    | MakeNamedFunction(index, _)
+    | MakeMethodFunction(index)
+    | MakeComputedMethodFunction(index)
+    | MakeArrowFunction(index)
+    | DeclareFunction(_, index) => Some((ChildFunction, index))
+    LoadLocal(index)
+    | StoreLocal(index)
+    | DefineLocal(index, _)
+    | UpdateLocal(index, _, _) => Some((LocalSlot, index))
+    LoadEnvSlot(index)
+    | StoreEnvSlot(index)
+    | DefineEnvSlot(index, _)
+    | UpdateEnvSlot(index, _, _) => Some((EnvironmentSlot, index))
+    _ => None
+  }
+}
+
+///|
+fn bytecode_indexed_operand_defect(
+  function_path : Array[Int],
+  instruction_index : Int,
+  family : BytecodeIndexedOperandFamily,
+  exclusive_upper_bound : Int,
+  actual_operand : Int,
+) -> BytecodeVerifierDefect {
+  let defect : BytecodeIndexedOperandTargetDefect = {
+    function_path: function_path.copy(),
+    instruction_index,
+    family,
+    exclusive_upper_bound,
+    actual_operand,
+  }
+  BytecodeIndexedOperandDefect(defect)
+}
+
+///|
+fn verify_bytecode_indexed_operands(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  verify_bytecode_function_indexed_operands(program.main, [])
+}
+
+///|
+fn verify_bytecode_function_indexed_operands(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  for instruction_index, instruction in function.code {
+    match bytecode_indexed_operand(instruction) {
+      Some((family, actual_operand)) => {
+        let exclusive_upper_bound = match family {
+          ChildFunction => function.children.length()
+          LocalSlot => function.local_names.length()
+          EnvironmentSlot => function.env_slot_names.length()
+        }
+        guard actual_operand >= 0 && actual_operand < exclusive_upper_bound else {
+          raise bytecode_indexed_operand_defect(
+            function_path, instruction_index, family, exclusive_upper_bound, actual_operand,
+          )
+        }
+      }
+      None => ()
+    }
+  }
+  for child_index, child in function.children {
+    let child_path = function_path.copy()
+    child_path.push(child_index)
+    verify_bytecode_function_indexed_operands(child, child_path)
+  }
 }
 
 ///|
