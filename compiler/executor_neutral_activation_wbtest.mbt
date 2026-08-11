@@ -1152,6 +1152,298 @@ test "bytecode static own setter recursion completes deeply" {
 }
 
 ///|
+fn static_update_getter_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  ";" +
+  "var getterCalls = 0; var receiver = {};" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { getterCalls = getterCalls + 1;" +
+  "if (remaining === 0) return 0; remaining--; return receiver.x++; }," +
+  "set: Math.abs });" +
+  "var result = receiver.x++;" +
+  "result === 0 && remaining === 0 && getterCalls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update getter reentry shallow control" {
+  let source = static_update_getter_reentry_source_for_wb(8)
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_update = false
+  for instr in lowered.main.code {
+    match instr {
+      UpdateProperty("x", _, _, _, _) => saw_root_update = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_update)
+  let mut saw_recursive_update = false
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        UpdateProperty("x", _, _, _, _) => saw_recursive_update = true
+        _ => ()
+      }
+    }
+  }
+  assert_true(saw_recursive_update)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update getter reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_getter_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_coercion_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  ";" +
+  "var coercionCalls = 0; var receiver = {};" +
+  "var numeric = { valueOf: function() {" +
+  "coercionCalls = coercionCalls + 1;" +
+  "if (remaining === 0) return 0; remaining--; return receiver.x++;" +
+  "} }; receiver.x = numeric;" +
+  "var result = receiver.x++;" +
+  "result === 0 && receiver.x === 1 && remaining === 0 && coercionCalls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update coercion reentry shallow control" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_coercion_reentry_source_for_wb(8),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update coercion reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_coercion_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update preserves get coercion set order and result" {
+  let source = "var trace = ''; var seenThis = false; var seenValue = 0;" +
+    "var receiver = {};" +
+    "var numeric = { valueOf: function() { trace = trace + 'v'; return 4; } };" +
+    "Object.defineProperty(receiver, 'x', {" +
+    "get: function() { trace = trace + 'g'; return numeric; }," +
+    "set: function(value) { trace = trace + 's';" +
+    "seenThis = this === receiver; seenValue = value; }" +
+    "});" +
+    "var postfix = receiver.x++; var prefix = ++receiver.x;" +
+    "trace === 'gvsgvs' && postfix === 4 && prefix === 5 &&" +
+    "seenThis && seenValue === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static decrement preserves prefix and postfix results" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var receiver = { x: 4 };" +
+    "var postfix = receiver.x--; var prefix = --receiver.x;" +
+    "postfix === 4 && prefix === 2 && receiver.x === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update observes setter replacement by getter" {
+  let source = "var first = 0; var second = 0; var receiver = {};" +
+    "function replacement(value) { second = second + value; }" +
+    "Object.defineProperty(receiver, 'x', { configurable: true," +
+    "get: function() { Object.defineProperty(receiver, 'x', {" +
+    "configurable: true, set: replacement }); return 4; }," +
+    "set: function(value) { first = first + value; }" +
+    "});" +
+    "var result = receiver.x++;" +
+    "result === 4 && first === 0 && second === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update observes setter replacement by coercion" {
+  let source = "var first = 0; var second = 0; var receiver = {};" +
+    "function replacement(value) { second = second + value; }" +
+    "var numeric = { valueOf: function() {" +
+    "Object.defineProperty(receiver, 'x', { configurable: true," +
+    "set: replacement }); return 4; } };" +
+    "Object.defineProperty(receiver, 'x', { configurable: true," +
+    "get: function() { return numeric; }," +
+    "set: function(value) { first = first + value; }" +
+    "});" +
+    "var result = receiver.x++;" +
+    "result === 4 && first === 0 && second === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update coercion throw preserves identity and reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var shouldThrow = true; var assigned = 0;" +
+    "var numeric = { valueOf: function() {" +
+    "if (shouldThrow) { shouldThrow = false; throw marker; } return 4; } };" +
+    "var receiver = { get x() { return numeric; }," +
+    "set x(value) { assigned = value; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver.x++;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("static update must propagate the coercion guest throw")
+  }
+  let result = run_executor_neutral_bytecode(interp, "receiver.x++;")
+  inspect(result.to_string(), content="4")
+  inspect(interp.global.get("assigned").to_string(), content="5")
+}
+
+///|
+fn static_update_to_string_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var calls = 0; var receiver = {}; var numeric = {};" +
+  "numeric.valueOf = function() { return numeric; };" +
+  "numeric.toString = function() { calls = calls + 1;" +
+  "if (remaining === 0) return '0';" +
+  "remaining--; return receiver.x++; };" +
+  "receiver.x = numeric; var result = receiver.x++;" +
+  "result === 0 && receiver.x === 1 && remaining === 0 && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update toString reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_to_string_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update valueOf accessor reentry completes deeply" {
+  let source = "var remaining = 320; var lookups = 0; var calls = 0;" +
+    "var receiver = {}; var numeric = {};" +
+    "Object.defineProperty(numeric, 'valueOf', { get: function() {" +
+    "lookups = lookups + 1; return function() { calls = calls + 1;" +
+    "if (remaining === 0) return 0;" +
+    "remaining--; return receiver.x++; }; } });" +
+    "receiver.x = numeric; var result = receiver.x++;" +
+    "result === 0 && receiver.x === 1 && remaining === 0 &&" +
+    "lookups === 321 && calls === 321;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update inherited toString accessor reentry completes deeply" {
+  let source = "var remaining = 320; var lookups = 0; var calls = 0;" +
+    "var receiver = {}; var numeric = {}; var proto = {};" +
+    "numeric.valueOf = function() { return numeric; };" +
+    "Object.defineProperty(proto, 'toString', { get: function() {" +
+    "lookups = lookups + 1; return function() { calls = calls + 1;" +
+    "if (remaining === 0) return '0';" +
+    "remaining--; return receiver.x++; }; } });" +
+    "Object.setPrototypeOf(numeric, proto); receiver.x = numeric;" +
+    "var result = receiver.x++;" +
+    "result === 0 && receiver.x === 1 && remaining === 0 &&" +
+    "lookups === 321 && calls === 321;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_to_primitive_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var calls = 0; var receiver = {}; var numeric = {};" +
+  "numeric[Symbol.toPrimitive] = function(hint) { calls = calls + 1;" +
+  "if (remaining === 0) return 0;" +
+  "remaining--; return receiver.x++; };" +
+  "receiver.x = numeric; var result = receiver.x++;" +
+  "result === 0 && receiver.x === 1 && remaining === 0 && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update toPrimitive reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_to_primitive_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_inherited_setter_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var receiver = {};" +
+  "var proto = { set x(value) { if (remaining === 0) return;" +
+  "remaining--; receiver.x++; } };" +
+  "Object.defineProperty(receiver, 'x', { configurable: true," +
+  "get: function() { delete receiver.x;" +
+  "Object.setPrototypeOf(receiver, proto); return 0; } });" +
+  "receiver.x++; remaining === 0;"
+}
+
+///|
+test "bytecode static update follows a replaced inherited setter deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_inherited_setter_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "bytecode plain static accessor receiver calls mutually recurse deeply" {
   let source = "let remaining = 320;" +
     "let left = { get step() {" +
