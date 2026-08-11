@@ -1388,6 +1388,41 @@ fn direct_executor_symbol_property_getter_in_plain_chain(
 }
 
 ///|
+// Find the first Proxy reached by an ordinary [[Get]] prototype walk before
+// the requested key is found. This inspection is callback-free; the caller
+// keeps the original receiver when it resumes lookup at the Proxy boundary.
+fn direct_executor_proxy_boundary_in_plain_chain(
+  target : Value,
+  key : ExecutorPropertyGetKey,
+) -> Value? {
+  for current = target {
+    match current {
+      Proxy(_) => break Some(current)
+      Object(data) if data.class_name == "Object" &&
+        data.callable is None &&
+        data.arraybuffer_state is None &&
+        data.bag.internal_slots.is_empty() &&
+        data.bag.host_slots.is_empty() => {
+        let has_own = match key {
+          ExecutorStringPropertyGetKey(property_name) =>
+            data.bag.descriptors.contains(property_name) ||
+            data.bag.properties.contains(property_name)
+          ExecutorSymbolPropertyGetKey(symbol) =>
+            data.bag.symbol_descriptors.contains(symbol.id) ||
+            data.bag.symbol_properties.contains(symbol.id)
+        }
+        if has_own {
+          break None
+        } else {
+          continue data.prototype
+        }
+      }
+      _ => break None
+    }
+  }
+}
+
+///|
 fn Interpreter::executor_activation_fallback_call(
   self : Interpreter,
   callee : Value,
@@ -1559,8 +1594,16 @@ fn Interpreter::handle_executor_activation_step(
     ExecutorActivationPropertyGet(request) => {
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         {
-          match (request.target, request.manage_proxy) {
-            (Proxy(proxy_data), true) => {
+          let proxy_boundary = if request.manage_proxy {
+            direct_executor_proxy_boundary_in_plain_chain(
+              request.target,
+              request.key,
+            )
+          } else {
+            None
+          }
+          match proxy_boundary {
+            Some(Proxy(proxy_data)) => {
               let handler = match proxy_data.handler {
                 Some(handler) => handler
                 None =>
