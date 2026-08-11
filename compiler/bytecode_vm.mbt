@@ -1051,9 +1051,30 @@ fn BytecodeFrame::step_bytecode(
         let value = frame.pop()
         let key = frame.pop()
         let obj = frame.pop()
-        stack.push(
-          interp.set_computed_property(obj, key, value, loc, strict=ctx.strict),
-        )
+        match key {
+          String_(property_name) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_property_set(
+                obj,
+                property_name,
+                value,
+                loc,
+                ctx.strict,
+              ),
+            )
+          }
+          _ =>
+            stack.push(
+              interp.set_computed_property(
+                obj,
+                key,
+                value,
+                loc,
+                strict=ctx.strict,
+              ),
+            )
+        }
       }
       SetForInProperty(prop, loc) => {
         let obj = frame.pop()

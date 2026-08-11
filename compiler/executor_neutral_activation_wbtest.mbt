@@ -154,6 +154,24 @@ fn bytecode_function_contains_set_property_for_wb(
 }
 
 ///|
+fn bytecode_function_contains_set_computed_for_wb(
+  function : BytecodeFunction,
+) -> Bool {
+  for instr in function.code {
+    match instr {
+      SetComputed(_) => return true
+      _ => ()
+    }
+  }
+  for child in function.children {
+    if bytecode_function_contains_set_computed_for_wb(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn assert_grouped_optional_member_source_for_wb(
   source : String,
 ) -> Unit raise Error {
@@ -1088,6 +1106,49 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
     source,
   )
   inspect(result.to_string(), content="320")
+}
+
+///|
+test "RED: runtime-string computed setter preserves identity and suspends deeply" {
+  let shallow_source = "var seenThis = false; var seenArgs = false; var seenRhs = false;" +
+    "var key = 'x'; var rhs = {}; var receiver = { set x(value) {" +
+    "seenThis = this === receiver;" +
+    "seenArgs = arguments.length === 1;" +
+    "seenRhs = arguments[0] === rhs;" +
+    "return 99;" +
+    "} }; var result = receiver[key] = rhs;" +
+    "result === rhs && seenThis && seenArgs && seenRhs;"
+  let shallow_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    shallow_source,
+  )
+  inspect(shallow_result.to_string(), content="true")
+  let deep_source = "let key = 'x'; let left = { set x(value) {" +
+    "if (value > 0) right[key] = value - 1;" +
+    "} }; let right = { set x(value) {" +
+    "if (value > 0) left[key] = value - 1;" +
+    "} }; let result = (left[key] = 320); result;"
+  let lowered = parse_bytecode_for_wb(deep_source)
+  let mut saw_root_set = false
+  for instr in lowered.main.code {
+    match instr {
+      SetComputed(_) => saw_root_set = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_set)
+  let mut saw_recursive_set = false
+  for child in lowered.main.children {
+    if bytecode_function_contains_set_computed_for_wb(child) {
+      saw_recursive_set = true
+    }
+  }
+  assert_true(saw_recursive_set)
+  let deep_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    deep_source,
+  )
+  inspect(deep_result.to_string(), content="320")
 }
 
 ///|
