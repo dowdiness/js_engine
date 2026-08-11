@@ -14,6 +14,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
+  ExecutorActivationPropertySet(ExecutorPropertySetRequest)
 }
 
 ///|
@@ -105,6 +106,42 @@ pub fn executor_activation_property_get(
 ) -> ExecutorActivationStep {
   ExecutorActivationPropertyGet(
     ExecutorPropertyGetRequest(target~, property_name~, loc~),
+  )
+}
+
+///|
+// A closed static property-set request. Runtime owns property mutation,
+// setter admission, fallback, and assignment-result normalization; executors
+// only provide the already-evaluated target, property name, and RHS.
+pub struct ExecutorPropertySetRequest {
+  priv target : Value
+  priv property_name : String
+  priv value : Value
+  priv loc : @token.Loc
+  priv strict : Bool
+}
+
+///|
+fn ExecutorPropertySetRequest::ExecutorPropertySetRequest(
+  target~ : Value,
+  property_name~ : String,
+  value~ : Value,
+  loc~ : @token.Loc,
+  strict~ : Bool,
+) -> ExecutorPropertySetRequest {
+  { target, property_name, value, loc, strict }
+}
+
+///|
+pub fn executor_activation_property_set(
+  target : Value,
+  property_name : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertySet(
+    ExecutorPropertySetRequest(target~, property_name~, value~, loc~, strict~),
   )
 }
 
@@ -309,12 +346,14 @@ priv struct ExecutorActivationCleanup {
 priv enum ExecutorChildCompletion {
   ExecutorChildCall(ExecutorCallableKind)
   ExecutorChildConstruct(Value)
+  ExecutorChildPropertySet(Value)
 }
 
 ///|
 priv enum ExecutorActivationStart {
   ExecutorStartCall(ExecutorCallRequest)
   ExecutorStartConstruct(ExecutorConstructRequest)
+  ExecutorStartPropertySet(ExecutorCallRequest, Value)
 }
 
 ///|
@@ -418,6 +457,7 @@ fn Interpreter::start_executor_activation(
   let callee = match start {
     ExecutorStartCall(request) => request.callee
     ExecutorStartConstruct(request) => request.ctor
+    ExecutorStartPropertySet(request, _) => request.callee
   }
   let observation = observe_executor_activation_entry(self) catch {
     error => {
@@ -447,6 +487,18 @@ fn Interpreter::start_executor_activation(
         (
           executable.start_frame(self, prepared),
           ExecutorChildCall(executable.kind),
+        )
+      }
+      ExecutorStartPropertySet(request, value) => {
+        let prepared = self.prepare_executor_callable_call(
+          executable,
+          request.callee,
+          request.this_value,
+          request.args,
+        )
+        (
+          executable.start_frame(self, prepared),
+          ExecutorChildPropertySet(value),
         )
       }
       ExecutorStartConstruct(request) => {
@@ -554,6 +606,8 @@ fn Interpreter::complete_executor_step(
       ExecutorActivationCompletionNormal(
         executor_construct_completion(step, instance),
       )
+    Some(ExecutorChildPropertySet(value)) =>
+      executor_property_set_completion(value)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -640,6 +694,37 @@ fn direct_executor_property_getter(
               match getter {
                 Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
                   Some((getter, executable))
+                _ => None
+              }
+            None => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+// Callback-free admission for the one iterative static-property mutation
+// slice. This mirrors the getter classifier but admits only an exact own
+// accessor setter carrying sealed executor data.
+fn direct_executor_property_setter(
+  target : Value,
+  property_name : String,
+) -> (Value, ExecutorCallableData)? {
+  match target {
+    Object(data) if data.class_name == "Object" &&
+      data.callable is None &&
+      data.arraybuffer_state is None &&
+      data.bag.internal_slots.is_empty() &&
+      data.bag.host_slots.is_empty() =>
+      match data.bag.descriptors.get(property_name) {
+        Some(descriptor) if descriptor.is_accessor =>
+          match descriptor.setter {
+            Some(setter) =>
+              match setter {
+                Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+                  Some((setter, executable))
                 _ => None
               }
             None => None
@@ -866,13 +951,54 @@ fn Interpreter::handle_executor_activation_step(
       deliver_executor_activation_request(frame, requested)
       None
     }
+    ExecutorActivationPropertySet(request) => {
+      let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
+        match
+          direct_executor_property_setter(request.target, request.property_name) {
+          Some((setter, executable)) => {
+            let property_scope = begin_cleared_active_callee_realm(
+              self.realm_state,
+            )
+            let call_request = ExecutorCallRequest(
+              callee=setter,
+              this_value=request.target,
+              args=[request.value],
+              loc=request.loc,
+            )
+            stack.push(
+              self.start_executor_activation(
+                executable,
+                ExecutorStartPropertySet(call_request, request.value),
+                Some(property_scope),
+              ),
+            )
+            ExecutorActivationRequestChild
+          }
+          None =>
+            ExecutorActivationRequestValue(
+              self.set_property(
+                request.target,
+                request.property_name,
+                request.value,
+                request.loc,
+                strict=request.strict,
+              ),
+            )
+        },
+      ) catch {
+        error => Err(error)
+      }
+      deliver_executor_activation_request(frame, requested)
+      None
+    }
   }
 }
 
 ///|
 // Drive one root entry and every exact executor-backed ordinary call or static
-// property getter it requests. Root ownership is carried by the entry: public
-// top-level frames have none, while admitted ordinary-call roots own cleanup.
+// property getter/setter it requests. Root ownership is carried by the entry:
+// public top-level frames have none, while admitted ordinary-call roots own
+// cleanup.
 fn Interpreter::drive_executor_activation_stack(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
@@ -1117,7 +1243,8 @@ fn executor_call_completion(
         ExecutorActivationReturn(value) => value
         ExecutorActivationCall(_)
         | ExecutorActivationConstruct(_)
-        | ExecutorActivationPropertyGet(_) => Undefined
+        | ExecutorActivationPropertyGet(_)
+        | ExecutorActivationPropertySet(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
@@ -1126,7 +1253,8 @@ fn executor_call_completion(
           value
         ExecutorActivationCall(_)
         | ExecutorActivationConstruct(_)
-        | ExecutorActivationPropertyGet(_) => Undefined
+        | ExecutorActivationPropertyGet(_)
+        | ExecutorActivationPropertySet(_) => Undefined
       }
   }
 }
@@ -1145,8 +1273,16 @@ fn executor_construct_completion(
     | ExecutorActivationReturn(_)
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_) => instance
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationPropertySet(_) => instance
   }
+}
+
+///|
+fn executor_property_set_completion(
+  rhs : Value,
+) -> ExecutorActivationCompletion {
+  ExecutorActivationCompletionNormal(rhs)
 }
 
 ///|

@@ -136,6 +136,24 @@ fn legacy_property_prepare_count(code : Array[BytecodeInstr]) -> Int {
 }
 
 ///|
+fn bytecode_function_contains_set_property_for_wb(
+  function : BytecodeFunction,
+) -> Bool {
+  for instr in function.code {
+    match instr {
+      SetProperty("x", _) => return true
+      _ => ()
+    }
+  }
+  for child in function.children {
+    if bytecode_function_contains_set_property_for_wb(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn assert_grouped_optional_member_source_for_wb(
   source : String,
 ) -> Unit raise Error {
@@ -1026,6 +1044,79 @@ test "static property lowering keeps non-read property families residual" {
 }
 
 ///|
+test "bytecode static own setter preserves receiver arguments and RHS identity" {
+  let source = "var seenThis = false; var seenArgs = false; var seenRhs = false;" +
+    "var rhs = {}; var receiver = { set x(value) {" +
+    "seenThis = this === receiver;" +
+    "seenArgs = arguments.length === 1;" +
+    "seenRhs = arguments[0] === rhs;" +
+    "return 99;" +
+    "} }; var result = receiver.x = rhs;" +
+    "result === rhs && seenThis && seenArgs && seenRhs;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static setter lowering stays SetProperty at root and recursion" {
+  let source = "let left = { set x(value) {" +
+    "if (value > 0) right.x = value - 1;" +
+    "} }; let right = { set x(value) {" +
+    "if (value > 0) left.x = value - 1;" +
+    "} }; let result = (left.x = 320); result;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_set = false
+  for instr in lowered.main.code {
+    match instr {
+      SetProperty("x", _) => saw_root_set = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_set)
+  let mut saw_recursive_set = false
+  for child in lowered.main.children {
+    if bytecode_function_contains_set_property_for_wb(child) {
+      saw_recursive_set = true
+    }
+  }
+  assert_true(saw_recursive_set)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode static setter throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var shouldThrow = true;" +
+    "var receiver = { set x(value) {" +
+    "if (shouldThrow) { shouldThrow = false; throw marker; }" +
+    "} }; var rhs = {};",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver.x = rhs;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("static setter must propagate its guest throw")
+  }
+  let result = run_executor_neutral_bytecode(interp, "receiver.x = rhs;")
+  assert_true(physical_equal(result, interp.global.get("rhs")))
+}
+
+///|
 test "bytecode static own accessor mutual recursion completes deeply" {
   let source = "let remaining = 320;" +
     "let left = { get x() {" +
@@ -1039,6 +1130,20 @@ test "bytecode static own accessor mutual recursion completes deeply" {
     "return 1 + left.x;" +
     "} };" +
     "left.x;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode static own setter recursion completes deeply" {
+  let source = "let receiver = { set x(value) {" +
+    "if (value > 0) receiver.x = value - 1;" +
+    "} };" +
+    "let result = (receiver.x = 320);" +
+    "result;"
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
     source,

@@ -74,6 +74,13 @@ priv struct ExecutorActivationThisValueCode {
 }
 
 ///|
+priv struct ExecutorActivationRecursivePropertySetCode {
+  target : Ref[Value]
+  remaining : Ref[Int]
+  starts : Ref[Int]
+}
+
+///|
 fn ExecutorActivationThisValueCode::ExecutorActivationThisValueCode(
   expected~ : Value,
   value~ : Value,
@@ -199,6 +206,34 @@ priv struct ExecutorActivationPropertyGetFrame {
 }
 
 ///|
+priv struct ExecutorActivationPropertySetFrame {
+  target : Value
+  property_name : String
+  value : Value
+  loc : @token.Loc
+  strict : Bool
+  mut requested : Bool
+  mut result : Value?
+}
+
+///|
+priv struct ExecutorActivationPropertySetDeliveryErrorFrame {
+  target : Value
+  value : Value
+  expected : Error
+  delivery_count : Ref[Int]
+  mut requested : Bool
+}
+
+///|
+priv struct ExecutorActivationRecursivePropertySetFrame {
+  target : Ref[Value]
+  remaining : Ref[Int]
+  mut requested : Bool
+  mut result : Value?
+}
+
+///|
 fn ExecutorActivationCallCode::ExecutorActivationCallCode(
   callee~ : Value,
   this_value~ : Value,
@@ -279,6 +314,35 @@ fn ExecutorActivationPropertyGetFrame::ExecutorActivationPropertyGetFrame(
 }
 
 ///|
+fn ExecutorActivationPropertySetFrame::ExecutorActivationPropertySetFrame(
+  target~ : Value,
+  property_name~ : String,
+  value~ : Value,
+  loc~ : @token.Loc,
+  strict~ : Bool,
+) -> ExecutorActivationPropertySetFrame {
+  { target, property_name, value, loc, strict, requested: false, result: None }
+}
+
+///|
+fn ExecutorActivationPropertySetDeliveryErrorFrame::ExecutorActivationPropertySetDeliveryErrorFrame(
+  target~ : Value,
+  value~ : Value,
+  expected~ : Error,
+  delivery_count~ : Ref[Int],
+) -> ExecutorActivationPropertySetDeliveryErrorFrame {
+  { target, value, expected, delivery_count, requested: false }
+}
+
+///|
+fn ExecutorActivationRecursivePropertySetFrame::ExecutorActivationRecursivePropertySetFrame(
+  target~ : Ref[Value],
+  remaining~ : Ref[Int],
+) -> ExecutorActivationRecursivePropertySetFrame {
+  { target, remaining, requested: false, result: None }
+}
+
+///|
 fn ExecutorActivationThrowFrame::ExecutorActivationThrowFrame(
   error~ : Error,
 ) -> ExecutorActivationThrowFrame {
@@ -298,6 +362,15 @@ fn ExecutorActivationValueCode::ExecutorActivationValueCode(
   value~ : Value,
 ) -> ExecutorActivationValueCode {
   { starts, value }
+}
+
+///|
+fn ExecutorActivationRecursivePropertySetCode::ExecutorActivationRecursivePropertySetCode(
+  target~ : Ref[Value],
+  remaining~ : Ref[Int],
+  starts~ : Ref[Int],
+) -> ExecutorActivationRecursivePropertySetCode {
+  { target, remaining, starts }
 }
 
 ///|
@@ -346,6 +419,62 @@ fn make_direct_property_getter_target(
     extensible: true,
     arraybuffer_state,
   })
+}
+
+///|
+fn make_direct_property_setter_target(
+  setter : Value,
+  arraybuffer_state : ArrayBufferState?,
+  internal_slot? : (InternalSlotKey, Value),
+  host_slot? : (Int, Value),
+) -> Value {
+  let bag = PropertyBag::PropertyBag()
+  bag.descriptors["x"] = {
+    writable: false,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: Some(setter),
+    is_accessor: true,
+  }
+  match internal_slot {
+    Some((key, value)) => bag.internal_slots[key] = value
+    None => ()
+  }
+  match host_slot {
+    Some((key, value)) => bag.host_slots[key] = value
+    None => ()
+  }
+  Object({
+    bag,
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state,
+  })
+}
+
+///|
+fn run_executor_property_set_root_for_wb(
+  interp : Interpreter,
+  target : Value,
+  property_name : String,
+  value : Value,
+  strict : Bool,
+) -> Value raise Error {
+  let root = ExecutorActivationPropertySetFrame(
+      target~,
+      property_name~,
+      value~,
+      loc=@token.Loc::default(),
+      strict~,
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(result) => result
+    _ => fail("property-set root must return its assignment result")
+  }
 }
 
 ///|
@@ -832,6 +961,20 @@ impl ExecutorCode for ExecutorActivationThisValueCode with fn start(
 }
 
 ///|
+impl ExecutorCode for ExecutorActivationRecursivePropertySetCode with fn start(
+  self,
+  _interp,
+  _prepared,
+) {
+  self.starts.val += 1
+  ExecutorActivationRecursivePropertySetFrame(
+    target=self.target,
+    remaining=self.remaining,
+  )
+  as &ExecutorActivationFrame
+}
+
+///|
 impl ExecutorCode for ExecutorActivationCallCode with fn start(
   self,
   _interp,
@@ -1126,6 +1269,129 @@ impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deli
   guard self.requested && self.result is None else {
     raise @errors.InternalError(
       message="test property frame received a duplicate result",
+    )
+  }
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationPropertySetFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_property_set(
+      self.target,
+      self.property_name,
+      self.value,
+      self.loc,
+      self.strict,
+    )
+  } else {
+    match self.result {
+      Some(value) => executor_activation_return(value)
+      None =>
+        raise @errors.InternalError(
+          message="test property-set frame resumed without a result",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationPropertySetFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  guard self.requested && self.result is None else {
+    raise @errors.InternalError(
+      message="test property-set frame received a duplicate result",
+    )
+  }
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationPropertySetDeliveryErrorFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_property_set(
+      self.target,
+      "x",
+      self.value,
+      @token.Loc::default(),
+      false,
+    )
+  } else {
+    raise @errors.InternalError(
+      message="property-set delivery error frame resumed after delivery failure",
+    )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationPropertySetDeliveryErrorFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  self.delivery_count.val += 1
+  match completion {
+    ExecutorActivationCompletionNormal(_) => raise self.expected
+    ExecutorActivationCompletionAbrupt(_) =>
+      raise @errors.InternalError(
+        message="property-set delivery error frame received an abrupt completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecursivePropertySetFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    if self.remaining.val > 0 {
+      self.remaining.val -= 1
+      self.requested = true
+      executor_activation_property_set(
+        self.target.val,
+        "x",
+        Number(self.remaining.val.to_double()),
+        @token.Loc::default(),
+        false,
+      )
+    } else {
+      executor_activation_return(Undefined)
+    }
+  } else {
+    match self.result {
+      Some(value) => executor_activation_return(value)
+      None =>
+        raise @errors.InternalError(
+          message="recursive property-set frame resumed without a result",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRecursivePropertySetFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  guard self.requested && self.result is None else {
+    raise @errors.InternalError(
+      message="recursive property-set frame received a duplicate result",
     )
   }
   match completion {
@@ -3727,4 +3993,385 @@ test "property activation abrupt getter restores outer realm and depth" {
   inspect(control.active_depth(), content="0")
   dispatch_shell_test_expect_realm_sentinel(interp, 53)
   assert_true(interp.in_nonarrow_param_default_eval)
+}
+
+///|
+test "static property setter admission rejects mutable exotic state" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let setter = make_executor_function(
+    Some("setter"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(1.0)),
+    constructable=false,
+  )
+  let ordinary = make_direct_property_setter_target(setter, None)
+  match direct_executor_property_setter(ordinary, "x") {
+    Some((admitted, _)) => assert_true(physical_equal(admitted, setter))
+    None => fail("ordinary object setter should be admitted")
+  }
+  let with_arraybuffer = make_direct_property_setter_target(
+    setter,
+    Some(ArrayBufferState::ArrayBufferState()),
+  )
+  assert_true(direct_executor_property_setter(with_arraybuffer, "x") is None)
+  let with_internal_slot = make_direct_property_setter_target(
+    setter,
+    None,
+    internal_slot=(StringData, String_("state")),
+  )
+  assert_true(direct_executor_property_setter(with_internal_slot, "x") is None)
+  let with_host_slot = make_direct_property_setter_target(
+    setter,
+    None,
+    host_slot=(1, Number(1.0)),
+  )
+  assert_true(direct_executor_property_setter(with_host_slot, "x") is None)
+}
+
+///|
+test "property activation setter returns original RHS and releases scope" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let setter = make_executor_function(
+    Some("setter"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(99.0)),
+    constructable=false,
+  )
+  let target = make_direct_property_setter_target(setter, None)
+  let rhs = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let result = run_executor_property_set_root_for_wb(
+    interp, target, "x", rhs, false,
+  )
+  assert_true(physical_equal(result, rhs))
+  inspect(starts.val, content="1")
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "property activation setter setup error preserves identity and cleanup" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.TypeError(
+    message="property setter setup sentinel",
+  )
+  let setter = make_executor_function(
+    Some("setter"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationStartErrorCode(error=sentinel),
+    constructable=false,
+  )
+  let target = make_direct_property_setter_target(setter, None)
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let caught : Error? = try {
+    let _ = run_executor_property_set_root_for_wb(
+      interp,
+      target,
+      "x",
+      Number(1.0),
+      false,
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("property setter setup failure must propagate")
+  }
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+  inspect(control.active_depth(), content="0")
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ => fail("execution control must permit reuse after setter setup failure")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "property activation setter delivery error cleans child once" {
+  let interp = Interpreter::new()
+  let sentinel : Error = @errors.RangeError(
+    message="property setter delivery sentinel",
+  )
+  let starts : Ref[Int] = { val: 0 }
+  let setter = make_executor_function(
+    Some("setter"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationValueCode(starts~, value=Number(9.0)),
+    constructable=false,
+  )
+  let target = make_direct_property_setter_target(setter, None)
+  let deliveries : Ref[Int] = { val: 0 }
+  let root = ExecutorActivationPropertySetDeliveryErrorFrame(
+      target~,
+      value=Number(1.0),
+      expected=sentinel,
+      delivery_count=deliveries,
+    )
+    as &ExecutorActivationFrame
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let caught : Error? = try {
+    let _ = interp.run_executor_activation_coordinator(root)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("property setter delivery failure must propagate")
+  }
+  inspect(deliveries.val, content="1")
+  inspect(starts.val, content="1")
+  json_inspect(events, content=["attempt:cleared", "release:cleared"])
+  inspect(control.active_depth(), content="0")
+  match control.with_activation(() => Number(1.0)) {
+    Ok(Number(value)) => inspect(value, content="1")
+    _ =>
+      fail("execution control must permit reuse after setter delivery failure")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "property activation setter rejects depth before over-limit body and reuses" {
+  let interp = Interpreter::new()
+  let target_ref : Ref[Value] = { val: Undefined }
+  let remaining : Ref[Int] = { val: 4 }
+  let starts : Ref[Int] = { val: 0 }
+  let setter = make_executor_function(
+    Some("recursiveSetter"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationRecursivePropertySetCode(
+      target=target_ref,
+      remaining~,
+      starts~,
+    ),
+    constructable=false,
+  )
+  let target = make_direct_property_setter_target(setter, None)
+  target_ref.val = target
+  let events : Array[String] = []
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=2,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  install_executor_activation_probe(interp, events, None, control=Some(control))
+  let outcome = try {
+    let _ = run_executor_property_set_root_for_wb(
+      interp,
+      target,
+      "x",
+      Number(4.0),
+      false,
+    )
+    "completed"
+  } catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other-error"
+  }
+  inspect(outcome, content="stack-depth-limit")
+  inspect(starts.val, content="2")
+  inspect(remaining.val, content="2")
+  json_inspect(events, content=[
+    "attempt:cleared", "attempt:cleared", "attempt:cleared", "release:cleared", "release:cleared",
+  ])
+  inspect(control.active_depth(), content="0")
+  remaining.val = 0
+  let reused = run_executor_property_set_root_for_wb(
+    interp,
+    target,
+    "x",
+    Number(0.0),
+    false,
+  )
+  inspect(reused.to_string(), content="0")
+  inspect(starts.val, content="3")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "property-set fallback covers native inherited proxy data getter primitive array and typed array" {
+  let interp = Interpreter::new()
+  let rhs = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let native_calls : Ref[Int] = { val: 0 }
+  let native_setter = make_native_func(name="nativeSetter", fn(_args) {
+    native_calls.val += 1
+    Undefined
+  })
+  let native_target = make_direct_property_setter_target(native_setter, None)
+  let native_result = run_executor_property_set_root_for_wb(
+    interp, native_target, "x", rhs, false,
+  )
+  assert_true(physical_equal(native_result, rhs))
+  inspect(native_calls.val, content="1")
+
+  let inherited_proto = make_direct_property_setter_target(native_setter, None)
+  let inherited_target = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: inherited_proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let inherited_result = run_executor_property_set_root_for_wb(
+    interp, inherited_target, "x", rhs, false,
+  )
+  assert_true(physical_equal(inherited_result, rhs))
+  inspect(native_calls.val, content="2")
+
+  let proxy_calls : Ref[Int] = { val: 0 }
+  let proxy_setter = make_native_func(name="proxySetter", fn(args) raise {
+    proxy_calls.val += 1
+    match args {
+      [_, String_(property_name), value, _] => {
+        assert_true(property_name == "x")
+        assert_true(physical_equal(value, rhs))
+        Bool(true)
+      }
+      _ => fail("proxy set trap must receive target, key, value, receiver")
+    }
+  })
+  let proxy_target = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let proxy_handler = make_object(
+    { "set": proxy_setter },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let proxy = Proxy({
+    target: Some(proxy_target),
+    handler: Some(proxy_handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let proxy_result = run_executor_property_set_root_for_wb(
+    interp, proxy, "x", rhs, false,
+  )
+  assert_true(physical_equal(proxy_result, rhs))
+  inspect(proxy_calls.val, content="1")
+
+  let data_bag = PropertyBag::PropertyBag()
+  data_bag.properties["x"] = Number(0.0)
+  let data_target = Object({
+    bag: data_bag,
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let data_result = run_executor_property_set_root_for_wb(
+    interp, data_target, "x", rhs, false,
+  )
+  assert_true(physical_equal(data_result, rhs))
+  match data_target {
+    Object(data) =>
+      match data.bag.properties.get("x") {
+        Some(value) => assert_true(physical_equal(value, rhs))
+        None => fail("data-property fallback must update the own value")
+      }
+    _ => fail("data-property target must remain an object")
+  }
+
+  let getter_only = make_direct_property_getter_target(
+    make_native_func(name="getterOnly", _args => Number(1.0)),
+    None,
+  )
+  let getter_result = run_executor_property_set_root_for_wb(
+    interp, getter_only, "x", rhs, false,
+  )
+  assert_true(physical_equal(getter_result, rhs))
+
+  let primitive_result = run_executor_property_set_root_for_wb(
+    interp,
+    Number(3.0),
+    "x",
+    rhs,
+    false,
+  )
+  assert_true(physical_equal(primitive_result, rhs))
+
+  let array_target = make_array([])
+  let array_result = run_executor_property_set_root_for_wb(
+    interp, array_target, "x", rhs, false,
+  )
+  assert_true(physical_equal(array_result, rhs))
+  match array_target {
+    Array(data) =>
+      match data.bag.properties.get("x") {
+        Some(value) => assert_true(physical_equal(value, rhs))
+        None => fail("array fallback must update the named value")
+      }
+    _ => fail("array target must remain an array")
+  }
+
+  let typed_target = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Uint8Array",
+    extensible: true,
+    arraybuffer_state: Some(ArrayBufferState::ArrayBufferState()),
+  })
+  let typed_result = run_executor_property_set_root_for_wb(
+    interp, typed_target, "x", rhs, false,
+  )
+  assert_true(physical_equal(typed_result, rhs))
+  match typed_target {
+    Object(data) =>
+      match data.bag.properties.get("x") {
+        Some(value) => assert_true(physical_equal(value, rhs))
+        None => fail("typed-array fallback must update a named value")
+      }
+    _ => fail("typed-array target must remain an object")
+  }
 }

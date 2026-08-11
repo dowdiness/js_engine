@@ -522,6 +522,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property get",
       )
+    @runtime.ExecutorActivationPropertySet(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending property set",
+      )
   }
 }
 
@@ -1010,8 +1014,15 @@ fn BytecodeFrame::step_bytecode(
       SetProperty(prop, loc) => {
         let value = frame.pop()
         let obj = frame.pop()
-        stack.push(
-          interp.set_property(obj, prop, value, loc, strict=ctx.strict),
+        frame.pending_activation_result = Some(PushValue)
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_property_set(
+            obj,
+            prop,
+            value,
+            loc,
+            ctx.strict,
+          ),
         )
       }
       SetComputed(loc) => {
