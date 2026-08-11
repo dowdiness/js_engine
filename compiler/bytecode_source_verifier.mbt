@@ -112,6 +112,8 @@ fn finalize_bytecode_program(
 fn bytecode_indexed_operand(
   instruction : BytecodeInstr,
 ) -> (BytecodeIndexedOperandFamily, Int)? {
+  // Keep this match exhaustive so every new instruction must declare whether
+  // it owns a verifier-checked table index.
   match instruction {
     MakeFunction(index)
     | MakeNamedFunction(index, _)
@@ -127,7 +129,94 @@ fn bytecode_indexed_operand(
     | StoreEnvSlot(index)
     | DefineEnvSlot(index, _)
     | UpdateEnvSlot(index, _, _) => Some((EnvironmentSlot, index))
-    _ => None
+    ObserveStatement(_)
+    | ObserveExpression(_)
+    | LoadConst(_)
+    | LoadUndefined
+    | LoadThis
+    | LoadNewTarget
+    | LoadSuperProperty(_, _)
+    | LoadSuperComputed(_)
+    | LoadConsoleMember(_)
+    | LoadDirectEvalCallee
+    | LoadName(_)
+    | LoadAssignmentName(_)
+    | StoreName(_)
+    | DefineBinding(_, _, _)
+    | SetCompletion
+    | SetCompletionValue(_)
+    | Pop
+    | Dup
+    | BinaryOp(_, _)
+    | UnaryValueOp(_, _)
+    | TypeofName(_)
+    | DeleteName(_)
+    | DeleteProperty(_)
+    | DeleteComputed
+    | AppendTemplate(_)
+    | MakeTemplateObject(_)
+    | MakeRegExp(_, _)
+    | SetFunctionName(_)
+    | UpdateName(_, _, _, _)
+    | UpdateProperty(_, _, _, _, _)
+    | UpdateComputed(_, _, _, _)
+    | Jump(_)
+    | JumpIfFalse(_)
+    | JumpIfFalseKeep(_)
+    | JumpIfTrueKeep(_)
+    | JumpIfNotNullishKeep(_)
+    | BeginOptionalChain
+    | MarkOptionalChainShortCircuit
+    | JumpIfNotOptionalChainShortCircuitKeep(_)
+    | EndOptionalChain
+    | StartForIn
+    | ForInNext(_)
+    | EndForIn
+    | MakeArray(_)
+    | MakeArrayWithHoles(_, _)
+    | StartArray
+    | ArrayPushValue
+    | ArrayPushSpread(_)
+    | ArrayPushHole
+    | StartArgs
+    | ArgPushValue
+    | ArgPushSpread(_)
+    | MakeObject(_)
+    | StartObject
+    | ObjectSetStatic(_)
+    | ObjectSetStaticGetter(_)
+    | ObjectSetStaticSetter(_)
+    | ObjectSetComputedGetter
+    | ObjectSetComputedSetter
+    | ToObjectLiteralPropertyKey
+    | ObjectSetComputed
+    | ObjectSpread(_)
+    | ObjectSetProto
+    | GetProperty(_, _)
+    | GetComputed(_)
+    | ReadPropertyForAssign(_, _)
+    | ReadComputedForAssign(_)
+    | DropPropertyAssignReference
+    | DropComputedAssignReference
+    | SetProperty(_, _)
+    | SetComputed(_)
+    | SetForInProperty(_, _)
+    | SetForInComputed(_)
+    | AssignPattern(_)
+    | PreparePropertyCall(_, _)
+    | PreparePlainPropertyCall(_, _)
+    | PrepareComputedCall(_)
+    | PrepareSuperPropertyCall(_, _)
+    | PrepareSuperComputedCall(_)
+    | CallDirectEval(_)
+    | Call(_, _)
+    | CallWithReceiver(_, _)
+    | CallSpread(_)
+    | CallSpreadWithReceiver(_)
+    | Construct(_, _)
+    | ConstructSpread(_)
+    | Return
+    | Throw => None
   }
 }
 
