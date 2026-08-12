@@ -592,7 +592,32 @@ fn finalize_bytecode_program(
   verify_bytecode_indexed_operands(program)
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)
+  verify_bytecode_activation_eligibility(program)
   { source_stmts: program.source_stmts, main: program.main }
+}
+
+///|
+// Activation selection consumes only the representation after every existing
+// verifier has accepted it. Unsupported is an admission result, not a
+// lowering or verifier defect, so the current compatibility executor remains
+// unchanged while the typed result is available before frame construction.
+fn verify_bytecode_activation_eligibility(
+  program : BytecodeUnverifiedProgram,
+) -> Unit {
+  verify_bytecode_function_activation_eligibility(program.main, [])
+}
+
+///|
+fn verify_bytecode_function_activation_eligibility(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit {
+  let _ = bytecode_function_activation_disposition(function, function_path)
+  for child_index, child in function.children {
+    let child_path = function_path.copy()
+    child_path.push(child_index)
+    verify_bytecode_function_activation_eligibility(child, child_path)
+  }
 }
 
 ///|
@@ -920,12 +945,6 @@ fn verify_bytecode_function_source_metadata(
   function_path : Array[Int],
   expected_owner_id : Int,
 ) -> Int raise Error {
-  // Recompute activation eligibility from this verified instruction stream.
-  // The result is deliberately not cached: executor admission can reject
-  // UnsupportedBeforeActivation before constructing a frame.
-  let _activation_disposition = bytecode_function_activation_disposition(
-    function, function_path,
-  )
   guard expected_owner_id >= 0 && expected_owner_id < MAX_SOURCE_POINT_OWNER_ID else {
     raise BytecodeSourcePointOwnerAllocationDefect(expected_owner_id)
   }
