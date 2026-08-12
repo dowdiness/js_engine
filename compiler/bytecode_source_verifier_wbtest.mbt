@@ -1215,6 +1215,489 @@ test "indexed operand verifier reports nested function path" {
 }
 
 ///|
+fn expect_shape_operand_defect_for_wb(
+  program : BytecodeUnverifiedProgram,
+  expected_path : Array[Int],
+  expected_instruction : Int,
+) -> BytecodeShapeOperandTargetDefect raise Error {
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed shape operand defect")
+  } catch {
+    BytecodeShapeOperandDefect(defect) => {
+      assert_eq(defect.function_path, expected_path)
+      assert_eq(defect.instruction_index, expected_instruction)
+      defect
+    }
+    _ => fail("expected typed shape operand defect")
+  }
+}
+
+///|
+test "shape operand verifier rejects negative fixed array element counts" {
+  let program = unverified_source_program_for_wb("[1];")
+  let mut instruction_index : Int? = None
+  for index, instruction in program.main.code {
+    match instruction {
+      MakeArray(_) => {
+        program.main.code[index] = MakeArray(-1)
+        instruction_index = Some(index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let instruction_index = match instruction_index {
+    Some(index) => index
+    None => abort("expected MakeArray instruction")
+  }
+  let defect = expect_shape_operand_defect_for_wb(
+    program,
+    [],
+    instruction_index,
+  )
+  match defect.family {
+    ArrayElementCount => ()
+    _ => fail("expected array element count family")
+  }
+  assert_eq(defect.expected_lower_bound, 0)
+  assert_eq(defect.exclusive_upper_bound, Some(program.main.code.length() + 1))
+  assert_eq(defect.actual_operand, -1)
+}
+
+///|
+test "RED: shape operand verifier rejects negative holey array counts" {
+  let program = unverified_source_program_for_wb("[1,,3];")
+  let mut instruction_index : Int? = None
+  for index, instruction in program.main.code {
+    match instruction {
+      MakeArrayWithHoles(_, hole_indices) => {
+        program.main.code[index] = MakeArrayWithHoles(-1, hole_indices)
+        instruction_index = Some(index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let instruction_index = match instruction_index {
+    Some(index) => index
+    None => abort("expected MakeArrayWithHoles instruction")
+  }
+  let defect = expect_shape_operand_defect_for_wb(
+    program,
+    [],
+    instruction_index,
+  )
+  match defect.family {
+    ArrayElementCount => ()
+    _ => fail("expected array element count family")
+  }
+  assert_eq(defect.actual_operand, -1)
+}
+
+///|
+test "RED: shape operand verifier rejects hole indices outside the array" {
+  for invalid_hole in [-1, 3] {
+    let program = unverified_source_program_for_wb("[1,,3];")
+    let mut instruction_index : Int? = None
+    for index, instruction in program.main.code {
+      match instruction {
+        MakeArrayWithHoles(count, _) => {
+          program.main.code[index] = MakeArrayWithHoles(count, [invalid_hole])
+          instruction_index = Some(index)
+          break
+        }
+        _ => ()
+      }
+    }
+    let instruction_index = match instruction_index {
+      Some(index) => index
+      None => abort("expected MakeArrayWithHoles instruction")
+    }
+    let defect = expect_shape_operand_defect_for_wb(
+      program,
+      [],
+      instruction_index,
+    )
+    match defect.family {
+      ArrayHoleIndex => ()
+      _ => fail("expected array hole index family")
+    }
+    assert_eq(defect.expected_lower_bound, 0)
+    assert_eq(defect.exclusive_upper_bound, Some(3))
+    assert_eq(defect.actual_operand, invalid_hole)
+  }
+}
+
+///|
+priv enum FixedCallOpcodeForWb {
+  PlainCall
+  ReceiverCall
+  Construction
+}
+
+///|
+fn mutate_fixed_call_count_for_wb(
+  function : BytecodeFunction,
+  opcode : FixedCallOpcodeForWb,
+  count : Int,
+) -> Int {
+  for instruction_index, instruction in function.code {
+    match (instruction, opcode) {
+      (Call(_, loc), PlainCall) => {
+        function.code[instruction_index] = Call(count, loc)
+        return instruction_index
+      }
+      (CallWithReceiver(_, loc), ReceiverCall) => {
+        function.code[instruction_index] = CallWithReceiver(count, loc)
+        return instruction_index
+      }
+      (Construct(_, loc), Construction) => {
+        function.code[instruction_index] = Construct(count, loc)
+        return instruction_index
+      }
+      _ => ()
+    }
+  }
+  abort("expected fixed-count call opcode")
+}
+
+///|
+test "RED: shape operand verifier rejects negative fixed call counts" {
+  let fixtures : Array[(FixedCallOpcodeForWb, String)] = [
+    (PlainCall, "f(1);"),
+    (ReceiverCall, "object.f(1);"),
+    (Construction, "new F(1);"),
+  ]
+  for fixture in fixtures {
+    let (opcode, source) = fixture
+    let program = unverified_source_program_for_wb(source)
+    let instruction_index = mutate_fixed_call_count_for_wb(
+      program.main,
+      opcode,
+      -1,
+    )
+    let defect = expect_shape_operand_defect_for_wb(
+      program,
+      [],
+      instruction_index,
+    )
+    match defect.family {
+      CallArgumentCount => ()
+      _ => fail("expected call argument count family")
+    }
+    assert_eq(defect.expected_lower_bound, 0)
+    assert_eq(
+      defect.exclusive_upper_bound,
+      Some(program.main.code.length() + 1),
+    )
+    assert_eq(defect.actual_operand, -1)
+  }
+}
+
+///|
+test "shape operand verifier rejects counts too large for the function" {
+  let program = unverified_source_program_for_wb("object.f(1);")
+  let invalid_count = program.main.code.length() + 1
+  let instruction_index = mutate_fixed_call_count_for_wb(
+    program.main,
+    ReceiverCall,
+    invalid_count,
+  )
+  let defect = expect_shape_operand_defect_for_wb(
+    program,
+    [],
+    instruction_index,
+  )
+  match defect.family {
+    CallArgumentCount => ()
+    _ => fail("expected call argument count family")
+  }
+  assert_eq(defect.exclusive_upper_bound, Some(program.main.code.length() + 1))
+  assert_eq(defect.actual_operand, invalid_count)
+}
+
+///|
+test "shape operand verifier reports nested function provenance" {
+  let program = unverified_source_program_for_wb(
+    "function child() { return f(1); } child();",
+  )
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let instruction_index = mutate_fixed_call_count_for_wb(
+    program.main.children[0],
+    PlainCall,
+    -1,
+  )
+  let defect = expect_shape_operand_defect_for_wb(
+    program,
+    [0],
+    instruction_index,
+  )
+  match defect.family {
+    CallArgumentCount => ()
+    _ => fail("expected call argument count family")
+  }
+  assert_eq(defect.actual_operand, -1)
+}
+
+///|
+test "shape operand verifier accepts valid boundary and lowering operands" {
+  let sources = [
+    "[];", "[1,,3];", "f();", "object.f();", "new F();", "function child() { return [,,]; } child();",
+  ]
+  for source in sources {
+    let program = unverified_source_program_for_wb(source)
+    let finalized = finalize_bytecode_program(program)
+    assert_eq(finalized.main.code.length(), program.main.code.length())
+  }
+}
+
+///|
+fn expect_frame_shape_defect_for_wb(
+  program : BytecodeUnverifiedProgram,
+  expected_path : Array[Int],
+  expected_instruction : Int,
+) -> BytecodeFrameShapeDefect raise Error {
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed frame-shape defect")
+  } catch {
+    BytecodeFrameShapeDefect(defect) => {
+      assert_eq(defect.function_path, expected_path)
+      assert_eq(defect.instruction_index, expected_instruction)
+      defect
+    }
+    _ => fail("expected typed frame-shape defect")
+  }
+}
+
+///|
+test "frame-shape verifier rejects reachable operand stack underflow" {
+  let program = unverified_source_program_for_wb("var value = 1;")
+  let mut load_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      LoadConst(_) => {
+        program.main.code[instruction_index] = SetCompletionValue(
+          Value::Undefined,
+        )
+        load_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let instruction_index = match load_index {
+    Some(index) => index + 1
+    None => abort("expected LoadConst instruction")
+  }
+  let defect = expect_frame_shape_defect_for_wb(program, [], instruction_index)
+  match defect.invariant {
+    ResourceUnderflow => ()
+    _ => fail("expected resource-underflow invariant")
+  }
+  assert_eq(defect.predecessor_index, None)
+  assert_eq(defect.expected.operand_stack_height, 1)
+  assert_eq(defect.actual.operand_stack_height, 0)
+}
+
+///|
+test "frame-shape verifier rejects argument-list underflow" {
+  let program = unverified_source_program_for_wb("f(...values);")
+  let mut start_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      StartArgs => {
+        program.main.code[instruction_index] = SetCompletionValue(
+          Value::Undefined,
+        )
+        start_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let start_index = match start_index {
+    Some(index) => index
+    None => abort("expected StartArgs instruction")
+  }
+  let mut push_index : Int? = None
+  for instruction_index = start_index + 1
+      instruction_index < program.main.code.length()
+      instruction_index = instruction_index + 1 {
+    match program.main.code[instruction_index] {
+      ArgPushValue | ArgPushSpread(_) => {
+        push_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let push_index = match push_index {
+    Some(index) => index
+    None => abort("expected argument push instruction")
+  }
+  let defect = expect_frame_shape_defect_for_wb(program, [], push_index)
+  match defect.invariant {
+    ResourceUnderflow => ()
+    _ => fail("expected resource-underflow invariant")
+  }
+  assert_eq(defect.expected.argument_list_depth, 1)
+  assert_eq(defect.actual.argument_list_depth, 0)
+}
+
+///|
+test "frame-shape verifier rejects unequal control-flow joins" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) { value = 1; } else { value = 2; }",
+  )
+  let mut mutated_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      SetCompletion => {
+        program.main.code[instruction_index] = SetCompletionValue(
+          Value::Undefined,
+        )
+        mutated_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  guard mutated_index is Some(_) else {
+    abort("expected SetCompletion instruction")
+  }
+  let mut defect : BytecodeFrameShapeDefect? = None
+  try {
+    let _ = finalize_bytecode_program(program)
+  } catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  assert_eq(defect.function_path, [])
+  match defect.invariant {
+    ControlFlowJoin => ()
+    _ => fail("expected control-flow-join invariant")
+  }
+  assert_true(
+    defect.expected.operand_stack_height != defect.actual.operand_stack_height,
+  )
+}
+
+///|
+test "frame-shape verifier rejects terminal auxiliary-state residue" {
+  let program = unverified_source_program_for_wb("f(...values);")
+  let mut call_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      CallSpread(loc) => {
+        program.main.code[instruction_index] = Call(0, loc)
+        call_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  guard call_index is Some(_) else { abort("expected CallSpread instruction") }
+  let mut defect : BytecodeFrameShapeDefect? = None
+  try {
+    let _ = finalize_bytecode_program(program)
+  } catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  match defect.invariant {
+    TerminalShape => ()
+    _ => fail("expected terminal-shape invariant")
+  }
+  assert_eq(defect.expected.argument_list_depth, 0)
+  assert_eq(defect.actual.argument_list_depth, 1)
+}
+
+///|
+test "frame-shape verifier rejects for-in iterator residue" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { value = key; }",
+  )
+  let mut branch_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      ForInNext(target) => {
+        program.main.code[instruction_index] = Jump(target)
+        branch_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  guard branch_index is Some(_) else { abort("expected ForInNext instruction") }
+  let mut defect : BytecodeFrameShapeDefect? = None
+  try {
+    let _ = finalize_bytecode_program(program)
+  } catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  match defect.invariant {
+    TerminalShape => ()
+    _ => fail("expected terminal-shape invariant")
+  }
+  assert_eq(defect.expected.for_in_iterator_depth, 0)
+  assert_eq(defect.actual.for_in_iterator_depth, 1)
+}
+
+///|
+test "frame-shape verifier reports nested function provenance" {
+  let program = unverified_source_program_for_wb(
+    "function child() { var value = 1; } child();",
+  )
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = program.main.children[0]
+  let mut load_index : Int? = None
+  for instruction_index, instruction in child.code {
+    match instruction {
+      LoadConst(_) => {
+        child.code[instruction_index] = SetCompletionValue(Value::Undefined)
+        load_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let instruction_index = match load_index {
+    Some(index) => index + 1
+    None => abort("expected nested LoadConst instruction")
+  }
+  let defect = expect_frame_shape_defect_for_wb(program, [0], instruction_index)
+  match defect.invariant {
+    ResourceUnderflow => ()
+    _ => fail("expected resource-underflow invariant")
+  }
+}
+
+///|
+test "frame-shape verifier accepts representative resource topologies" {
+  let sources = [
+    "if (condition) { value = 1; } else { value = 2; }", "while (condition) { if (stop) break; continue; }",
+    "var key; for (key in object) { if (stop) break; }", "f(...values); object.f(...values); new F(...values);",
+    "object?.value?.next;", "function child(value) { return value + 1; } child(1);",
+    "({ method() { return 1; }, [key]() { return 2; } });",
+  ]
+  for source in sources {
+    let program = unverified_source_program_for_wb(source)
+    let finalized = finalize_bytecode_program(program)
+    assert_eq(finalized.main.code.length(), program.main.code.length())
+  }
+}
+
+///|
 fn expect_control_flow_defect_for_wb(
   program : BytecodeUnverifiedProgram,
   expected_path : Array[Int],
