@@ -179,6 +179,13 @@
       "paths": ["compiler/bytecode_vm.mbt"],
       "kind": "guest-capable VM runtime edge",
       "reason": "raw runtime capability access in bytecode dispatch requires typed edge classification"
+    },
+    {
+      "id": "bytecode-vm-runtime-import",
+      "pattern": "using @runtime",
+      "paths": ["compiler/bytecode_vm.mbt"],
+      "kind": "guest-capable VM runtime import",
+      "reason": "unqualified runtime capability import in bytecode dispatch requires typed edge classification"
     }
   ],
   "allowlisted_access": [

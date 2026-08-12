@@ -37,6 +37,13 @@ fn base_representation_json(allowlisted : String) -> String {
     #|      "paths": ["compiler/bytecode_vm.mbt"],
     #|      "kind": "guest-capable VM runtime edge",
     #|      "reason": "raw runtime capability access in bytecode dispatch requires typed edge classification"
+    #|    },
+    #|    {
+    #|      "id": "bytecode-vm-runtime-import",
+    #|      "pattern": "using @runtime",
+    #|      "paths": ["compiler/bytecode_vm.mbt"],
+    #|      "kind": "guest-capable VM runtime import",
+    #|      "reason": "unqualified runtime capability import in bytecode dispatch requires typed edge classification"
     #|    }
     #|  ],
     #|  "allowlisted_access": [
@@ -753,4 +760,113 @@ test "new bytecode VM runtime edge fails fingerprint audit" {
     }),
   )
   assert_true(stderr_lines.any(line => line == "stale allowlist entries:"))
+}
+
+///|
+test "bytecode VM runtime import baseline ignores unrelated sources" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-runtime-import-pass-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  write_file(
+    root, "compiler/other.mbt", "using @runtime { type Value }\nfn unrelated(value : Value) -> Unit { ignore(value) }\n",
+  )
+  let source =
+    #|fn dispatch() -> Unit {
+    #|  let text = "using @runtime { type Hidden }"
+    #|  // using @runtime { type CommentOnly }
+    #|  ignore(text)
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(""),
+  )
+
+  let (stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=true,
+  )
+  assert_eq(code, 0)
+  assert_eq(stderr_lines.length(), 0)
+  assert_eq(
+    stdout_lines[stdout_lines.length() - 1],
+    "ok: architecture representation access matches inventory (0 classified accesses)",
+  )
+}
+
+///|
+test "new bytecode VM runtime import fails audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-runtime-import-new-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|using @runtime { type Value }
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  eval_binary_op(interp)
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(""),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:1 [compiler] bytecode-vm-runtime-import: using @runtime",
+      )
+    }),
+  )
+}
+
+///|
+test "split bytecode VM runtime import fails audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-runtime-import-split-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|using
+    #|  /* split declaration */
+    #|  @runtime { type Value }
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  eval_binary_op(interp)
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(""),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:1 [compiler] bytecode-vm-runtime-import: using @runtime",
+      )
+    }),
+  )
 }
