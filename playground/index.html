@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c1220" />
+    <title>js_engine Playground</title>
+    <script type="module" crossorigin src="/js_engine/playground/assets/index-DQD33JWG.js"></script>
+    <link rel="stylesheet" crossorigin href="/js_engine/playground/assets/index-BF3BZxVL.css">
+  </head>
+  <body>
+    <main class="playground-shell" aria-labelledby="page-title">
+      <header class="page-header">
+        <div class="title-group">
+          <h1 id="page-title">JavaScript Playground</h1>
+          <p>Run each snippet in a fresh realm inside a dedicated worker.</p>
+        </div>
+        <div class="header-actions">
+          <a
+            class="repo-link"
+            href="https://github.com/dowdiness/js_engine"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open js_engine on GitHub"
+          >
+            <svg
+              class="repo-icon"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 4.35c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"
+              />
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </header>
+
+      <section class="workspace" aria-label="Playground workspace">
+        <section class="panel editor-panel" aria-labelledby="editor-heading">
+          <h2 id="editor-heading" class="panel-heading">JavaScript source</h2>
+          <textarea
+            id="editor"
+            spellcheck="false"
+            aria-labelledby="editor-heading"
+          ></textarea>
+        </section>
+
+        <div class="results-column">
+          <section class="panel" aria-labelledby="console-heading">
+            <h2 id="console-heading" class="panel-heading">Console</h2>
+            <pre id="console" class="output" aria-live="polite"></pre>
+          </section>
+          <section class="panel" aria-labelledby="result-heading">
+            <h2 id="result-heading" class="panel-heading">Result</h2>
+            <pre id="result" class="output" aria-live="polite"></pre>
+          </section>
+          <section class="panel" aria-labelledby="diagnostics-heading">
+            <h2 id="diagnostics-heading" class="panel-heading">Diagnostics</h2>
+            <pre id="diagnostics" class="output diagnostics" aria-live="polite"></pre>
+          </section>
+        </div>
+      </section>
+
+      <footer class="toolbar" aria-label="Playground controls">
+        <span
+          id="status"
+          class="status"
+          data-state="idle"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >Ready</span>
+        <button id="run" type="button" class="primary">Run <kbd>Ctrl/⌘ ↵</kbd></button>
+        <button id="stop" type="button">Stop</button>
+        <button id="clear" type="button">Clear</button>
+        <label class="example-picker">
+          <span>Example</span>
+          <select id="example" aria-label="Load example">
+            <optgroup label="Repository examples">
+            </optgroup>
+          </select>
+        </label>
+      </footer>
+    </main>
+  </body>
+</html>
