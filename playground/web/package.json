@@ -1,0 +1,20 @@
+{
+  "name": "js-engine-playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:bridge && npm run build:examples && vite build",
+    "build:bridge": "mkdir -p generated && moon -C ../.. build --target js --release playground/bridge && cp ../../_build/js/release/build/playground/bridge/bridge.js generated/playground_bridge.js && cp ../../_build/js/release/build/playground/bridge/bridge.d.ts generated/playground_bridge.d.ts && cp ../../_build/js/release/build/playground/bridge/moonbit.d.ts generated/moonbit.d.ts",
+    "build:examples": "mkdir -p generated/examples && cp ../../example/*.js generated/examples/",
+    "check": "npm run build:bridge && npm run build:examples && tsc --noEmit",
+    "dev": "npm run build:bridge && npm run build:examples && vite",
+    "preview": "vite preview",
+    "test": "npm run build && tsc --noEmit && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3"
+  }
+}

@@ -1,0 +1,99 @@
+name: Deploy Playground
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "playground/**"
+      - "example/**"
+      - "*.mbt"
+      - "**/*.mbt"
+      - "moon.mod"
+      - "moon.pkg"
+      - "**/moon.pkg"
+      - ".github/workflows/playground.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: js-engine-gh-pages
+  cancel-in-progress: false
+
+env:
+  MOONBIT_CACHE_VERSION: "2026-07"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Set up MoonBit
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Update MoonBit registry
+        run: moon update
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: playground/web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: playground/web
+        run: npm ci
+
+      - name: Build Playground
+        working-directory: playground/web
+        run: npm run build
+
+      - name: Stage Playground artifact
+        run: cp -R playground/web/dist "$RUNNER_TEMP/playground-dist"
+
+      - name: Publish Playground to gh-pages
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin gh-pages:refs/remotes/origin/gh-pages
+          git switch --force-create gh-pages refs/remotes/origin/gh-pages
+          rm -rf playground
+          mkdir -p playground
+          cp -R "$RUNNER_TEMP/playground-dist/." playground/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add playground
+          if git diff --cached --quiet; then
+            echo "Playground is already up to date."
+          else
+            git commit -m "Deploy playground site"
+            git push origin gh-pages
+          fi
