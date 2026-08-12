@@ -13,6 +13,7 @@ priv enum BytecodeActivationResultDestination {
 ///|
 priv struct BytecodeFrame {
   func_def : BytecodeFunction
+  verified_func_def : VerifiedBytecodeFunction
   stack : Array[Value]
   arg_lists : Array[Array[Value]]
   for_in_iters : Array[BytecodeForInState]
@@ -35,11 +36,12 @@ priv enum BytecodeFrameStep {
 
 ///|
 fn BytecodeFrame::BytecodeFrame(
-  func_def : BytecodeFunction,
+  verified_func_def : VerifiedBytecodeFunction,
   env : Environment,
   ctx : ExecContext,
   direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
+  let func_def = verified_func_def.function
   let locals = Array::make(func_def.local_names.length(), Value::Undefined)
   match direct_args {
     Some(args) =>
@@ -71,6 +73,7 @@ fn BytecodeFrame::BytecodeFrame(
   }
   {
     func_def,
+    verified_func_def,
     stack: [],
     arg_lists: [],
     for_in_iters: [],
@@ -87,12 +90,12 @@ fn BytecodeFrame::BytecodeFrame(
 
 ///|
 priv struct BytecodeExecutorCode {
-  func_def : BytecodeFunction
+  func_def : VerifiedBytecodeFunction
 }
 
 ///|
 fn BytecodeExecutorCode::BytecodeExecutorCode(
-  func_def~ : BytecodeFunction,
+  func_def~ : VerifiedBytecodeFunction,
 ) -> BytecodeExecutorCode {
   { func_def, }
 }
@@ -102,12 +105,12 @@ fn start_bytecode_frame(
   interp : Interpreter,
   ctx : ExecContext,
   env : Environment,
-  func_def : BytecodeFunction,
+  func_def : VerifiedBytecodeFunction,
   direct_args : ArrayView[Value]?,
 ) -> BytecodeFrame raise Error {
   let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
   // needs_own_env=false implies all four hoist calls are provably no-ops.
-  if func_def.needs_own_env {
+  if frame.func_def.needs_own_env {
     frame.hoist_env_var_bindings(interp)
     frame.hoist_lexical_bindings()
     if frame.func_def.env_slot_names.length() > 0 {
@@ -331,7 +334,7 @@ fn BytecodeFrame::define_function_decl(
   name : String,
   child_index : Int,
 ) -> Unit raise Error {
-  let child = self.func_def.children[child_index]
+  let child = self.verified_func_def.child(child_index)
   let func = make_bytecode_func(child, self.env, self.ctx)
   match local_index_from_names(self.func_def.local_names, name) {
     Some(slot) => self.locals[slot] = func
@@ -355,10 +358,11 @@ fn BytecodeFrame::hoist_function_decls(
 
 ///|
 fn make_bytecode_func(
-  func_def : BytecodeFunction,
+  verified_func_def : VerifiedBytecodeFunction,
   closure : Environment,
   enclosing_ctx : ExecContext,
 ) -> Value raise Error {
+  let func_def = verified_func_def.function
   match func_def.rest_param {
     Some(rest_param) =>
       @runtime.validate_function_signature_ext(
@@ -382,7 +386,7 @@ fn make_bytecode_func(
     func_def.params,
     closure,
     strict,
-    BytecodeExecutorCode(func_def~),
+    BytecodeExecutorCode(func_def=verified_func_def),
     func_def.source_body,
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
@@ -391,7 +395,7 @@ fn make_bytecode_func(
 
 ///|
 fn make_named_bytecode_func(
-  func_def : BytecodeFunction,
+  func_def : VerifiedBytecodeFunction,
   closure : Environment,
   enclosing_ctx : ExecContext,
   name : String,
@@ -404,11 +408,12 @@ fn make_named_bytecode_func(
 
 ///|
 fn make_bytecode_method_func(
-  func_def : BytecodeFunction,
+  verified_func_def : VerifiedBytecodeFunction,
   closure : Environment,
   enclosing_ctx : ExecContext,
   home_object : Value,
 ) -> Value raise Error {
+  let func_def = verified_func_def.function
   match func_def.rest_param {
     Some(rest_param) =>
       @runtime.validate_function_signature_ext(
@@ -434,7 +439,7 @@ fn make_bytecode_method_func(
     func_def.params,
     method_env,
     strict,
-    BytecodeExecutorCode(func_def~),
+    BytecodeExecutorCode(func_def=verified_func_def),
     func_def.source_body,
     rest_param=func_def.rest_param,
     constructable=false,
@@ -459,10 +464,11 @@ fn bytecode_ext_params_from_names(params : Array[String]) -> Array[@ast.Param] {
 
 ///|
 fn make_bytecode_arrow_func(
-  func_def : BytecodeFunction,
+  verified_func_def : VerifiedBytecodeFunction,
   closure : Environment,
   enclosing_ctx : ExecContext,
 ) -> Value raise Error {
+  let func_def = verified_func_def.function
   match func_def.rest_param {
     Some(_) =>
       @runtime.validate_function_signature_ext(
@@ -485,7 +491,7 @@ fn make_bytecode_arrow_func(
     func_def.params,
     closure,
     strict,
-    BytecodeExecutorCode(func_def~),
+    BytecodeExecutorCode(func_def=verified_func_def),
     func_def.source_body,
     rest_param=func_def.rest_param,
   )
@@ -496,7 +502,7 @@ fn run_bytecode_function(
   interp : Interpreter,
   ctx : ExecContext,
   env : Environment,
-  func_def : BytecodeFunction,
+  func_def : VerifiedBytecodeFunction,
   direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeRunResult raise Error {
   let frame = start_bytecode_frame(interp, ctx, env, func_def, direct_args)
@@ -980,20 +986,20 @@ fn BytecodeFrame::step_bytecode(
         @runtime.apply_object_literal_proto_property(frame.peek(), value)
       }
       MakeFunction(index) => {
-        let child = frame.func_def.children[index]
+        let child = frame.verified_func_def.child(index)
         stack.push(make_bytecode_func(child, env, ctx))
       }
       MakeNamedFunction(index, name) => {
-        let child = frame.func_def.children[index]
+        let child = frame.verified_func_def.child(index)
         stack.push(make_named_bytecode_func(child, env, ctx, name))
       }
       MakeMethodFunction(index) => {
-        let child = frame.func_def.children[index]
+        let child = frame.verified_func_def.child(index)
         let home_object = frame.peek()
         stack.push(make_bytecode_method_func(child, env, ctx, home_object))
       }
       MakeComputedMethodFunction(index) => {
-        let child = frame.func_def.children[index]
+        let child = frame.verified_func_def.child(index)
         guard stack.length() >= 2 else {
           raise @errors.InternalError(
             message="bytecode computed method missing home object",
@@ -1003,7 +1009,7 @@ fn BytecodeFrame::step_bytecode(
         stack.push(make_bytecode_method_func(child, env, ctx, home_object))
       }
       MakeArrowFunction(index) => {
-        let child = frame.func_def.children[index]
+        let child = frame.verified_func_def.child(index)
         stack.push(make_bytecode_arrow_func(child, env, ctx))
       }
       DeclareFunction(_, _) => ()

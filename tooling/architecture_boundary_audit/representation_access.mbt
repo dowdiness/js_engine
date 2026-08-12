@@ -8,7 +8,6 @@ struct RepresentationPattern {
   kind : String
   reason : String
   tokens : Array[String]
-  paths : Array[String]
 } derive(Debug)
 
 ///|
@@ -42,12 +41,6 @@ struct RepresentationAccess {
 } derive(Debug)
 
 ///|
-priv struct NormalizedRepresentationSource {
-  code : String
-  line_numbers : Array[Int]
-}
-
-///|
 fn representation_path(root : String) -> String {
   @path_utils.join_path(root, "scripts/architecture_representation_access.json")
 }
@@ -60,21 +53,6 @@ fn decode_int_field(
 ) -> Int raise {
   @json.from_json(require_field(data, key, path)) catch {
     _ => schema_error(path, "\{key} must be an integer")
-  }
-}
-
-///|
-fn decode_optional_string_array_field(
-  data : Map[String, Json],
-  key : String,
-  path : String,
-) -> Array[String] raise {
-  match data.get(key) {
-    Some(raw) =>
-      @json.from_json(raw) catch {
-        _ => schema_error(path, "{key} must be an array of strings")
-      }
-    None => []
   }
 }
 
@@ -116,9 +94,6 @@ fn decode_representation_pattern(
   let kind = decode_string_field(data, "kind", path)
   let reason = decode_string_field(data, "reason", path)
   let tokens = pattern_tokens(pattern)
-  let paths = decode_optional_string_array_field(data, "paths", path).map(path => {
-    normalize_rel_path(path)
-  })
   if id == "" {
     schema_error(path, "representation pattern id must not be empty")
   }
@@ -134,12 +109,7 @@ fn decode_representation_pattern(
   if reason == "" {
     schema_error(path, "representation pattern \{id} reason must not be empty")
   }
-  for scoped_path in paths {
-    if scoped_path == "" || scoped_path == "." {
-      schema_error(path, "representation pattern paths must be file paths")
-    }
-  }
-  { id, pattern, kind, reason, tokens, paths }
+  { id, pattern, kind, reason, tokens }
 }
 
 ///|
@@ -267,7 +237,7 @@ fn load_representation_rules(root : String) -> RepresentationRules raise {
 }
 
 ///|
-fn is_ascii_identifier_char(ch : Char) -> Bool {
+fn is_ascii_identifier_char(ch : UInt16) -> Bool {
   (ch >= 'a' && ch <= 'z') ||
   (ch >= 'A' && ch <= 'Z') ||
   (ch >= '0' && ch <= '9') ||
@@ -280,16 +250,15 @@ fn token_match_has_boundaries(
   token : String,
   index : Int,
 ) -> Bool {
-  let left_ok = if is_ascii_identifier_char(token[0].unsafe_to_char()) {
-    index == 0 || !is_ascii_identifier_char(line[index - 1].unsafe_to_char())
+  let left_ok = if is_ascii_identifier_char(token[0]) {
+    index == 0 || !is_ascii_identifier_char(line[index - 1])
   } else {
     true
   }
   let end = index + token.length()
   let last = token[token.length() - 1]
-  let right_ok = if is_ascii_identifier_char(last.unsafe_to_char()) {
-    end >= line.length() ||
-    !is_ascii_identifier_char(line[end].unsafe_to_char())
+  let right_ok = if is_ascii_identifier_char(last) {
+    end >= line.length() || !is_ascii_identifier_char(line[end])
   } else {
     true
   }
@@ -300,22 +269,6 @@ fn token_match_has_boundaries(
 fn starts_with_at(line : String, token : String, index : Int) -> Bool {
   let end = index + token.length()
   end <= line.length() && line[index:end].to_owned() == token
-}
-
-///|
-fn is_ascii_whitespace(ch : Char) -> Bool {
-  ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
-}
-
-///|
-fn normalize_representation_token(token : String) -> String {
-  let normalized = StringBuilder()
-  for ch in token {
-    if !is_ascii_whitespace(ch) {
-      normalized.write_char(ch)
-    }
-  }
-  normalized.to_string()
 }
 
 ///|
@@ -382,113 +335,8 @@ fn code_without_comments(line : String) -> String {
 }
 
 ///|
-fn normalize_representation_source(
-  source : String,
-) -> NormalizedRepresentationSource {
-  let code = StringBuilder()
-  let line_numbers : Array[Int] = []
-  let mut in_block_comment = false
-  let mut in_string = false
-  let mut escaped = false
-  let mut in_char = false
-  let mut char_escaped = false
-  let mut pending_gap = false
-  let mut previous_is_identifier = false
-  let lines = source.split("\n").map(line => line.to_owned()).to_array()
-  for line_index, line in lines {
-    let line_number = line_index + 1
-    if is_multiline_string_content_line(line) {
-      pending_gap = true
-      continue
-    }
-    let len = line.length()
-    let mut index = 0
-    while index < len {
-      let ch = line[index].unsafe_to_char()
-      if in_block_comment {
-        if ch == '*' &&
-          index + 1 < len &&
-          line[index + 1].unsafe_to_char() == '/' {
-          in_block_comment = false
-          index += 2
-        } else {
-          index += 1
-        }
-      } else if in_string {
-        code.write_char(ch)
-        line_numbers.push(line_number)
-        if escaped {
-          escaped = false
-        } else if ch == '\\' {
-          escaped = true
-        } else if ch == '"' {
-          in_string = false
-        }
-        index += 1
-      } else if in_char {
-        code.write_char(ch)
-        line_numbers.push(line_number)
-        if char_escaped {
-          char_escaped = false
-        } else if ch == '\\' {
-          char_escaped = true
-        } else if ch == '\'' {
-          in_char = false
-        }
-        index += 1
-      } else if ch == '/' &&
-        index + 1 < len &&
-        line[index + 1].unsafe_to_char() == '/' {
-        pending_gap = true
-        break
-      } else if ch == '/' &&
-        index + 1 < len &&
-        line[index + 1].unsafe_to_char() == '*' {
-        in_block_comment = true
-        pending_gap = true
-        index += 2
-      } else if ch == '"' {
-        code.write_char(ch)
-        line_numbers.push(line_number)
-        in_string = true
-        index += 1
-      } else if ch == '\'' {
-        code.write_char(ch)
-        line_numbers.push(line_number)
-        in_char = true
-        index += 1
-      } else if is_ascii_whitespace(ch) {
-        pending_gap = true
-        index += 1
-      } else {
-        let current_is_identifier = is_ascii_identifier_char(ch)
-        if pending_gap && previous_is_identifier && current_is_identifier {
-          code.write_char(' ')
-          line_numbers.push(line_number)
-        }
-        code.write_char(ch)
-        line_numbers.push(line_number)
-        previous_is_identifier = current_is_identifier
-        pending_gap = false
-        index += 1
-      }
-    }
-    pending_gap = true
-  }
-  { code: code.to_string(), line_numbers }
-}
-
-///|
 fn representation_signature_line(line : String) -> String {
   code_without_comments(line).trim().to_owned()
-}
-
-///|
-fn representation_pattern_matches_path(
-  pattern : RepresentationPattern,
-  rel_path : String,
-) -> Bool {
-  pattern.paths.length() == 0 || pattern.paths.any(path => path == rel_path)
 }
 
 ///|
@@ -501,22 +349,13 @@ fn is_empty_core_map_literal_at(
 }
 
 ///|
-fn normalized_representation_matches(
-  source : NormalizedRepresentationSource,
-  token : String,
-) -> Array[Int] {
-  let normalized_token = normalize_representation_token(token)
-  if normalized_token == "" {
-    return []
-  }
-  let code = source.code
+fn count_token_in_code_line(line : String, token : String) -> Int {
+  let code = code_without_comments(line)
   let len = code.length()
-  let matches : Array[Int] = []
   let mut index = 0
+  let mut count = 0
   let mut in_string = false
   let mut escaped = false
-  let mut in_char = false
-  let mut char_escaped = false
   while index < len {
     if in_string {
       if escaped {
@@ -527,32 +366,20 @@ fn normalized_representation_matches(
         in_string = false
       }
       index += 1
-    } else if in_char {
-      if char_escaped {
-        char_escaped = false
-      } else if code[index] == '\\' {
-        char_escaped = true
-      } else if code[index] == '\'' {
-        in_char = false
-      }
-      index += 1
     } else if code[index] == '"' {
       in_string = true
       index += 1
-    } else if code[index] == '\'' {
-      in_char = true
-      index += 1
-    } else if starts_with_at(code, normalized_token, index) &&
-      token_match_has_boundaries(code, normalized_token, index) {
-      if !is_empty_core_map_literal_at(code, normalized_token, index) {
-        matches.push(index)
+    } else if starts_with_at(code, token, index) &&
+      token_match_has_boundaries(code, token, index) {
+      if !is_empty_core_map_literal_at(code, token, index) {
+        count += 1
       }
-      index += normalized_token.length()
+      index += token.length()
     } else {
       index += 1
     }
   }
-  matches
+  count
 }
 
 ///|
@@ -630,16 +457,14 @@ fn scan_representation_file(
   out : Array[RepresentationAccess],
 ) -> Unit raise {
   let source = @fs.read_file_to_string(@path_utils.join_path(root, rel_path))
-  let source_lines = source.split("\n").map(line => line.to_owned()).to_array()
-  let normalized = normalize_representation_source(source)
-  for pattern in rules.representation_patterns {
-    if representation_pattern_matches_path(pattern, rel_path) {
+  let lines = source.split("\n").map(line => line.to_owned()).to_array()
+  for line_index, line in lines {
+    let line_number = line_index + 1
+    let signature_line = representation_signature_line(line)
+    for pattern in rules.representation_patterns {
       for token in pattern.tokens {
-        for match_index in normalized_representation_matches(normalized, token) {
-          let line_number = normalized.line_numbers[match_index]
-          let signature_line = representation_signature_line(
-            source_lines[line_number - 1],
-          )
+        let matches = count_token_in_code_line(line, token)
+        for _i in 0..<matches {
           out.push({
             path: rel_path,
             line: line_number,

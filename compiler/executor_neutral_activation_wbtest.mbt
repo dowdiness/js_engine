@@ -230,12 +230,12 @@ test "plain static member calls use suspended preparation at root and recursion"
   let lowered = parse_bytecode_for_wb(source)
   assert_true(
     assert_plain_member_call_lowering(
-      lowered.main.code,
+      lowered.main_for_wb().code,
       "root plain member call",
     ),
   )
   let mut saw_recursive_plain_call = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     if assert_plain_member_call_lowering(
         child.code,
         "recursive plain member call",
@@ -258,18 +258,20 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
   let chain = parse_bytecode_for_wb(prefix + "receiver?.step.next();")
   let tagged = parse_bytecode_for_wb(prefix + "receiver.step`tag`;")
   let mut saw_plain = false
-  for instr in plain.main.code {
+  for instr in plain.main_for_wb().code {
     match instr {
       PreparePlainPropertyCall("step", _) => saw_plain = true
       _ => ()
     }
   }
   assert_true(saw_plain)
-  assert_true(legacy_property_prepare_count(optional.main.code) >= 1)
-  assert_true(legacy_property_prepare_count(optional_callee.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(optional.main_for_wb().code) >= 1)
+  assert_true(
+    legacy_property_prepare_count(optional_callee.main_for_wb().code) >= 1,
+  )
   let mut grouped_receiver_call = false
   let mut grouped_plain_prepare = false
-  for instr in grouped.main.code {
+  for instr in grouped.main_for_wb().code {
     match instr {
       CallWithReceiver(_, _) => grouped_receiver_call = true
       PreparePlainPropertyCall(_, _) => grouped_plain_prepare = true
@@ -278,9 +280,9 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
   }
   assert_true(grouped_receiver_call)
   assert_false(grouped_plain_prepare)
-  assert_eq(legacy_property_prepare_count(grouped.main.code), 1)
-  assert_true(legacy_property_prepare_count(chain.main.code) >= 1)
-  assert_true(legacy_property_prepare_count(tagged.main.code) >= 1)
+  assert_eq(legacy_property_prepare_count(grouped.main_for_wb().code), 1)
+  assert_true(legacy_property_prepare_count(chain.main_for_wb().code) >= 1)
+  assert_true(legacy_property_prepare_count(tagged.main_for_wb().code) >= 1)
 }
 
 ///|
@@ -345,9 +347,9 @@ test "static tagged member calls retain property preparation at root and recursi
     "} };" +
     "receiver.tag`x`;"
   let lowered = parse_bytecode_for_wb(source)
-  assert_eq(legacy_property_prepare_count(lowered.main.code), 1)
+  assert_eq(legacy_property_prepare_count(lowered.main_for_wb().code), 1)
   let mut recursive_prepare_count = 0
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     recursive_prepare_count += legacy_property_prepare_count(child.code)
   }
   assert_true(recursive_prepare_count >= 1)
@@ -561,14 +563,14 @@ test "runtime-string computed getter recursion lowers through GetComputed" {
     "receiver[key];"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_get = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       GetComputed(_) => root_get = true
       _ => ()
     }
   }
   let mut getter_get = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         GetComputed(_) => getter_get = true
@@ -856,7 +858,7 @@ test "RED: static own accessor reads lower through GetProperty" {
     "receiver.x;"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_get = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       GetProperty("x", _) => root_get = true
       PreparePropertyCall(_, _) | GetComputed(_) | PrepareComputedCall(_) =>
@@ -865,7 +867,7 @@ test "RED: static own accessor reads lower through GetProperty" {
     }
   }
   let mut getter_get = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         GetProperty("x", _) => getter_get = true
@@ -967,14 +969,14 @@ test "static compound-read lowering keeps reference reads at root and recursion"
     "receiver.x &&= 1;"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_assign_read = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ReadPropertyForAssign("x", _) => root_assign_read = true
       _ => ()
     }
   }
   let mut recursive_assign_read = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         ReadPropertyForAssign("x", _) => recursive_assign_read = true
@@ -998,14 +1000,14 @@ test "exact-string computed compound-read lowering keeps reference reads at root
     "receiver['x'] &&= 1;"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_assign_read = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ReadComputedForAssign(_) => root_assign_read = true
       _ => ()
     }
   }
   let mut recursive_assign_read = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         ReadComputedForAssign(_) => recursive_assign_read = true
@@ -1141,7 +1143,7 @@ test "static property lowering keeps non-read property families residual" {
   let mut saw_arg_spread = false
   let mut saw_construct = false
   let mut saw_eval = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       GetProperty("x", _) => saw_get = true
       PreparePlainPropertyCall("x", _) => saw_plain_prepare = true
@@ -1198,7 +1200,7 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
     "} }; let result = (left.x = 320); result;"
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_set = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       SetProperty("x", _) => saw_root_set = true
       _ => ()
@@ -1206,7 +1208,7 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
   }
   assert_true(saw_root_set)
   let mut saw_recursive_set = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     if bytecode_function_contains_set_property_for_wb(child) {
       saw_recursive_set = true
     }
@@ -1241,7 +1243,7 @@ test "RED: runtime-string computed setter preserves identity and suspends deeply
     "} }; let result = (left[key] = 320); result;"
   let lowered = parse_bytecode_for_wb(deep_source)
   let mut saw_root_set = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       SetComputed(_) => saw_root_set = true
       _ => ()
@@ -1249,7 +1251,7 @@ test "RED: runtime-string computed setter preserves identity and suspends deeply
   }
   assert_true(saw_root_set)
   let mut saw_recursive_set = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     if bytecode_function_contains_set_computed_for_wb(child) {
       saw_recursive_set = true
     }
@@ -1344,7 +1346,7 @@ test "bytecode static update getter reentry shallow control" {
   let source = static_update_getter_reentry_source_for_wb(8)
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_update = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       UpdateProperty("x", _, _, _, _) => saw_root_update = true
       _ => ()
@@ -1352,7 +1354,7 @@ test "bytecode static update getter reentry shallow control" {
   }
   assert_true(saw_root_update)
   let mut saw_recursive_update = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         UpdateProperty("x", _, _, _, _) => saw_recursive_update = true
@@ -1409,7 +1411,7 @@ test "runtime-string computed update lowering remains UpdateComputed at root and
     runtime_string_computed_update_getter_reentry_source_for_wb(8),
   )
   let mut saw_root_update = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       UpdateComputed(_, _, _, _) => saw_root_update = true
       _ => ()
@@ -1417,7 +1419,7 @@ test "runtime-string computed update lowering remains UpdateComputed at root and
   }
   assert_true(saw_root_update)
   let mut saw_recursive_update = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     if bytecode_function_contains_update_computed_for_wb(child) {
       saw_recursive_update = true
     }
@@ -1943,7 +1945,7 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_arg_spread = false
   let mut saw_call_spread = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ArgPushSpread(_) => saw_arg_spread = true
       CallSpread(_) => saw_call_spread = true
@@ -1955,7 +1957,7 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
   let mut saw_count_child = false
   let mut saw_recursive_arg_spread = false
   let mut saw_recursive_call_spread = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "count" => {
         saw_count_child = true
@@ -2084,7 +2086,7 @@ test "spread lowering keeps receiver construct and direct-eval opcodes residual"
   let mut saw_fixed_receiver = false
   let mut saw_construct = false
   let mut saw_direct_eval = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       CallSpread(_) => saw_call_spread = true
       CallSpreadWithReceiver(_) => saw_receiver = true
@@ -2228,7 +2230,7 @@ test "bytecode receiver spread reaches the synchronous final call boundary" {
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_main_spread = false
   let mut saw_main_receiver_call = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ArgPushSpread(_) => saw_main_spread = true
       CallSpreadWithReceiver(_) => saw_main_receiver_call = true
@@ -2240,7 +2242,7 @@ test "bytecode receiver spread reaches the synchronous final call boundary" {
   let mut saw_step_child = false
   let mut saw_child_spread = false
   let mut saw_child_receiver_call = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "step" => {
         saw_step_child = true
@@ -2289,13 +2291,13 @@ test "spread receiver mutual recursion completes deeply" {
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_receiver_spread = false
   let mut child_receiver_spreads = 0
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       CallSpreadWithReceiver(_) => saw_root_receiver_spread = true
       _ => ()
     }
   }
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         CallSpreadWithReceiver(_) => child_receiver_spreads += 1
@@ -2614,7 +2616,7 @@ test "ordinary bytecode call consumes its result once at the advanced IP" {
 test "bytecode frame accepts one pending activation result" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -2652,7 +2654,7 @@ test "bytecode frame accepts one pending activation result" {
 test "bytecode frame delivers an owned receiver with a plain property result" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -2678,7 +2680,7 @@ test "bytecode frame delivers an owned receiver with a plain property result" {
 test "bytecode frame clears its destination before re-raising an abrupt completion" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -2789,7 +2791,7 @@ test "bytecode construct recursion reaches the synchronous constructor boundary"
     "new Step(320).value;"
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_construct = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       Construct(_, _) => saw_root_construct = true
       _ => ()
@@ -2798,7 +2800,7 @@ test "bytecode construct recursion reaches the synchronous constructor boundary"
   assert_true(saw_root_construct)
   let mut saw_step_child = false
   let mut saw_child_construct = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "Step" => {
         saw_step_child = true
@@ -2835,7 +2837,7 @@ test "bytecode construct spread recursion lowers and completes deeply" {
   let mut saw_root_call_spread = false
   let mut saw_root_receiver_spread = false
   let mut saw_root_direct_eval = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ArgPushSpread(_) => saw_root_arg_spread = true
       ConstructSpread(_) => saw_root_construct_spread = true
@@ -2859,7 +2861,7 @@ test "bytecode construct spread recursion lowers and completes deeply" {
   let mut saw_child_call_spread = false
   let mut saw_child_receiver_spread = false
   let mut saw_child_direct_eval = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "Step" => {
         saw_step_child = true
@@ -3252,7 +3254,7 @@ test "executor-neutral bytecode activation preserves strict and sloppy this" {
 test "executor-neutral primitive receiver calls normalize strict and sloppy this" {
   let lowered = parse_bytecode_for_wb("(7).receiver_730_strict();")
   let mut saw_receiver_call = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       CallWithReceiver(_, _) => saw_receiver_call = true
       _ => ()

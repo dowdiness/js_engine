@@ -7,6 +7,11 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn BytecodeProgram::main_for_wb(self : BytecodeProgram) -> BytecodeFunction {
+  self.verified_main.function
+}
+
+///|
 fn source_table_has_role_for_wb(
   source_points : Array[SourcePoint],
   role : SourcePointRole,
@@ -211,11 +216,11 @@ test "RED: activation contract distinguishes leaf managed and unsupported" {
 test "managed disposition corresponds to a typed VM suspension" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("({ x: 1 }).x;")
-  match select_bytecode_function_activation(program.main, []) {
+  match select_bytecode_function_activation(program.verified_main, []) {
     Ok(ManagedSuspension) => ()
     _ => fail("static property access must select managed suspension")
   }
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -224,7 +229,7 @@ test "managed disposition corresponds to a typed VM suspension" {
     _ => fail("static property access must return a typed property request")
   }
   let conditional = parse_bytecode_for_wb("var key = \"x\"; ({ x: 1 })[key];")
-  match select_bytecode_function_activation(conditional.main, []) {
+  match select_bytecode_function_activation(conditional.verified_main, []) {
     Err(unsupported) =>
       match unsupported.reason {
         ConditionalComputedProperty => ()
@@ -232,10 +237,11 @@ test "managed disposition corresponds to a typed VM suspension" {
       }
     Ok(_) => fail("computed access must not be admitted as managed")
   }
-  let conditional_frame = BytecodeFrame(conditional.main, interp.global, {
-    strict: false,
-    current_generator: None,
-  })
+  let conditional_frame = BytecodeFrame(
+    conditional.verified_main,
+    interp.global,
+    { strict: false, current_generator: None },
+  )
   match conditional_frame.step_bytecode(interp) {
     BytecodeFrameSuspended(_) =>
       fail("data-key computed access must retain its synchronous fallback")
@@ -249,10 +255,10 @@ test "activation selection is per function and precedes frame construction" {
     #|function child() { return 1 + 2; }
     #|1;
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  match select_bytecode_function_activation(bytecode.main, []) {
+  match select_bytecode_function_activation(bytecode.verified_main, []) {
     Ok(SynchronousLeaf) => ()
     Ok(ManagedSuspension) =>
       fail("unsupported child body must not taint the parent")
@@ -260,7 +266,7 @@ test "activation selection is per function and precedes frame construction" {
       fail("parent has no unsupported instruction")
     Err(_) => fail("parent activation must be selectable")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.verified_main.child(0)
   match select_bytecode_function_activation(child, [0]) {
     Err(unsupported) => {
       assert_eq(unsupported.function_path, [0])
@@ -278,12 +284,12 @@ test "activation selection is per function and precedes frame construction" {
 test "activation selection recomputes typed reasons without a cached summary" {
   let loc = @token.Loc::default()
   let bytecode = parse_bytecode_for_wb("1;")
-  match select_bytecode_function_activation(bytecode.main, []) {
+  match select_bytecode_function_activation(bytecode.verified_main, []) {
     Ok(SynchronousLeaf) => ()
     _ => fail("literal-only function must be a synchronous leaf")
   }
-  bytecode.main.code.push(BinaryOp(Add, loc))
-  match select_bytecode_function_activation(bytecode.main, []) {
+  bytecode.main_for_wb().code.push(BinaryOp(Add, loc))
+  match select_bytecode_function_activation(bytecode.verified_main, []) {
     Err(unsupported) =>
       match unsupported.reason {
         BinaryOperation => ()
@@ -294,41 +300,71 @@ test "activation selection recomputes typed reasons without a cached summary" {
 }
 
 ///|
+test "verified program carrier gates activation selection before frame construction" {
+  let bytecode = parse_bytecode_for_wb("function child() { return 1 + 2; } 1;")
+  match select_bytecode_function_activation(bytecode.verified_main, []) {
+    Ok(SynchronousLeaf) => ()
+    _ => fail("verified literal-only function must be a synchronous leaf")
+  }
+  let child = bytecode.verified_main.child(0)
+  match select_bytecode_function_activation(child, [0]) {
+    Err(unsupported) => {
+      assert_eq(unsupported.function_path, [0])
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("verified child must retain its own unsupported reason")
+      }
+    }
+    Ok(_) => fail("verified child must be rejected before frame construction")
+  }
+}
+
+///|
 test "RED: bytecode functions own typed source tables" {
   let src =
     #|function failer() { throw 1; }
     #|failer();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
-  guard bytecode.main.source_points.length() > 0 else {
+  let child = bytecode.main_for_wb().children[0]
+  guard bytecode.main_for_wb().source_points.length() > 0 else {
     abort("root function must own source points")
   }
   guard child.source_points.length() > 0 else {
     abort("nested function must own source points")
   }
-  assert_eq(bytecode.main.source_unit, child.source_unit)
-  let root_point = bytecode.main.resolve_source_point(
-    SourcePointId(
-      bytecode.main.source_unit,
-      bytecode.main.source_point_owner,
-      0,
-    ),
-  )
+  assert_eq(bytecode.main_for_wb().source_unit, child.source_unit)
+  let root_point = bytecode
+    .main_for_wb()
+    .resolve_source_point(
+      SourcePointId(
+        bytecode.main_for_wb().source_unit,
+        bytecode.main_for_wb().source_point_owner,
+        0,
+      ),
+    )
   let child_point = child.resolve_source_point(
     SourcePointId(child.source_unit, child.source_point_owner, 0),
   )
-  assert_eq(root_point.source_unit, bytecode.main.source_unit)
+  assert_eq(root_point.source_unit, bytecode.main_for_wb().source_unit)
   assert_eq(child_point.source_unit, child.source_unit)
   assert_true(
-    source_table_has_role_for_wb(bytecode.main.source_points, StatementEntry),
+    source_table_has_role_for_wb(
+      bytecode.main_for_wb().source_points,
+      StatementEntry,
+    ),
   )
   assert_true(
-    source_table_has_role_for_wb(bytecode.main.source_points, ExpressionEntry),
+    source_table_has_role_for_wb(
+      bytecode.main_for_wb().source_points,
+      ExpressionEntry,
+    ),
   )
-  assert_true(source_table_has_role_for_wb(bytecode.main.source_points, Call))
+  assert_true(
+    source_table_has_role_for_wb(bytecode.main_for_wb().source_points, Call),
+  )
   assert_true(source_table_has_role_for_wb(child.source_points, StatementEntry))
   assert_true(
     source_table_has_role_for_wb(child.source_points, ExpressionEntry),
@@ -383,7 +419,7 @@ test "RED: lowered instructions satisfy their source contracts" {
     #|throw 1;
     #|
   let bytecode = parse_bytecode_for_wb(src)
-  assert_function_instruction_sources_for_wb(bytecode.main)
+  assert_function_instruction_sources_for_wb(bytecode.main_for_wb())
 }
 
 ///|
@@ -658,7 +694,7 @@ test "structured equivalence preserves VM invariant defects through run envelope
     Ok(program) => program
     Err(_) => fail("expected supported bytecode fixture")
   }
-  program.main.code[0] = Pop
+  program.main_for_wb().code[0] = Pop
   let interp = @interpreter.new_interpreter()
   let observed = observe_execution(interp, BytecodeRuntimeDefect, () => {
     program.run(interp)
@@ -789,15 +825,15 @@ fn lowered_observation_kinds_for_wb(
 ) -> Array[String] raise Error {
   let bytecode = parse_bytecode_for_wb(source)
   let kinds : Array[String] = []
-  for instruction in bytecode.main.code {
+  for instruction in bytecode.main_for_wb().code {
     match instruction {
       ObserveStatement(source_id) => {
-        let point = bytecode.main.resolve_source_point(source_id)
+        let point = bytecode.main_for_wb().resolve_source_point(source_id)
         assert_true(point.role is StatementEntry)
         kinds.push("statement")
       }
       ObserveExpression(source_id) => {
-        let point = bytecode.main.resolve_source_point(source_id)
+        let point = bytecode.main_for_wb().resolve_source_point(source_id)
         assert_true(point.role is ExpressionEntry)
         kinds.push("expression")
       }
@@ -876,10 +912,10 @@ test "bytecode uses local slots for function params and vars" {
     #|}
     #|f(1);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=["a", "b"])
   inspect(child.needs_arguments_object, content="false")
 }
@@ -893,10 +929,10 @@ test "bytecode uses mixed slots when arguments is referenced" {
     #|}
     #|f(1);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=["b"])
   json_inspect(child.env_slot_names, content=[])
   inspect(child.needs_arguments_object, content="true")
@@ -920,10 +956,10 @@ test "bytecode ignores nested ordinary arguments references for outer slots" {
     #|}
     #|outer(1);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected outer child function")
   }
-  let outer = bytecode.main.children[0]
+  let outer = bytecode.main_for_wb().children[0]
   json_inspect(outer.local_names, content=["a", "b", "inner"])
   inspect(outer.needs_arguments_object, content="false")
   guard outer.children.length() == 1 else {
@@ -944,10 +980,10 @@ test "bytecode keeps arrow arguments references on the enclosing function" {
     #|}
     #|outer(1);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected outer child function")
   }
-  let outer = bytecode.main.children[0]
+  let outer = bytecode.main_for_wb().children[0]
   json_inspect(outer.local_names, content=["b", "read"])
   inspect(outer.needs_arguments_object, content="true")
 }
@@ -963,10 +999,10 @@ test "bytecode keeps direct eval functions on environment bindings" {
     #|}
     #|outer();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let outer = bytecode.main.children[0]
+  let outer = bytecode.main_for_wb().children[0]
   json_inspect(outer.local_names, content=[])
   inspect(outer.needs_arguments_object, content="true")
   guard outer.children.length() == 1 else {
@@ -982,7 +1018,7 @@ test "bytecode lowers direct eval calls to direct-eval instructions" {
   let bytecode = parse_bytecode_for_wb("eval(...[\"1\"]);")
   let mut saw_load = false
   let mut saw_call = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       LoadDirectEvalCallee => saw_load = true
       CallDirectEval(_) => saw_call = true
@@ -1003,10 +1039,10 @@ test "bytecode keeps destructuring assignment functions on environment bindings"
     #|}
     #|f();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=[])
   let mut saw_assign_pattern = false
   for instr in child.code {
@@ -1027,10 +1063,10 @@ test "bytecode keeps var destructuring declaration functions on environment bind
     #|}
     #|f();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=[])
   let mut saw_assign_pattern = false
   for instr in child.code {
@@ -1053,10 +1089,10 @@ test "bytecode treats destructuring assignment targets as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -1068,10 +1104,10 @@ test "bytecode plans block var declarations as function locals" {
     #|}
     #|f();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=["x"])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=["x"])
 }
 
 ///|
@@ -1085,10 +1121,12 @@ test "bytecode plans control-flow var declarations as function locals" {
     #|}
     #|f(true);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=["flag", "x"])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[
+    "flag", "x",
+  ])
 }
 
 ///|
@@ -1100,10 +1138,10 @@ test "bytecode plans labeled var declarations as function locals" {
     #|}
     #|f();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=["x"])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=["x"])
 }
 
 ///|
@@ -1118,10 +1156,12 @@ test "bytecode plans switch var declarations as function locals" {
     #|}
     #|f(true);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=["flag", "x"])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[
+    "flag", "x",
+  ])
 }
 
 ///|
@@ -1135,10 +1175,10 @@ test "bytecode treats names inside nested labeled statements as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -1150,10 +1190,10 @@ test "bytecode omits captured vars from local slots" {
     #|}
     #|outer(1)();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=["a"])
   json_inspect(child.env_slot_names, content=[])
 }
@@ -1169,10 +1209,10 @@ test "bytecode uses env slots for captured vars read by the owning function" {
     #|}
     #|outer(1);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=["a", "read"])
   json_inspect(child.env_slot_names, content=["b"])
 }
@@ -1187,10 +1227,10 @@ test "bytecode uses env slots for captured params read by the owning function" {
     #|}
     #|outer(1);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   json_inspect(child.local_names, content=["read"])
   json_inspect(child.env_slot_names, content=["a"])
 }
@@ -1199,7 +1239,7 @@ test "bytecode uses env slots for captured params read by the owning function" {
 test "bytecode lowers unary minus to a unary value instruction" {
   let bytecode = parse_bytecode_for_wb("var x = -1;")
   let mut saw_unary = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       UnaryValueOp(Neg, _) => saw_unary = true
       _ => ()
@@ -1213,7 +1253,7 @@ test "bytecode lowers member and computed updates to update instructions" {
   let bytecode = parse_bytecode_for_wb("var o = { x: 1 }; o.x++; ++o['x'];")
   let mut saw_property_update = false
   let mut saw_computed_update = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       UpdateProperty("x", Increment, false, _, _) => saw_property_update = true
       UpdateComputed(Increment, true, _, _) => saw_computed_update = true
@@ -1233,10 +1273,10 @@ test "bytecode treats names inside nested computed updates as captured" {
     #|}
     #|outer()({ x: 1 });
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -1246,7 +1286,7 @@ test "bytecode lowers property delete expressions to delete instructions" {
   )
   let mut saw_property_delete = false
   let mut saw_computed_delete = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       DeleteProperty("foo") => saw_property_delete = true
       DeleteComputed => saw_computed_delete = true
@@ -1261,7 +1301,7 @@ test "bytecode lowers property delete expressions to delete instructions" {
 test "bytecode lowers identifier delete expressions to delete-name instructions" {
   let bytecode = parse_bytecode_for_wb("delete missing;")
   let mut saw_name_delete = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       DeleteName("missing") => saw_name_delete = true
       _ => ()
@@ -1274,7 +1314,7 @@ test "bytecode lowers identifier delete expressions to delete-name instructions"
 test "bytecode lowers typeof identifiers to a typeof-name instruction" {
   let bytecode = parse_bytecode_for_wb("typeof missing;")
   let mut saw_typeof = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       TypeofName("missing") => saw_typeof = true
       _ => ()
@@ -1288,12 +1328,12 @@ test "bytecode lowers typeof local slots through value typeof" {
   let bytecode = parse_bytecode_for_wb(
     "function f(a) { return typeof a; } f(1);",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
   let mut saw_local = false
   let mut saw_typeof = false
-  for instr in bytecode.main.children[0].code {
+  for instr in bytecode.main_for_wb().children[0].code {
     match instr {
       LoadLocal(0) => saw_local = true
       UnaryValueOp(Typeof, _) => saw_typeof = true
@@ -1313,17 +1353,17 @@ test "bytecode treats names inside nested typeof expressions as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
 test "bytecode lowers instanceof to the shared binary op instruction" {
   let bytecode = parse_bytecode_for_wb("var r = 1 instanceof function() {};")
   let mut saw_instanceof = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       BinaryOp(Instanceof, _) => saw_instanceof = true
       _ => ()
@@ -1336,7 +1376,7 @@ test "bytecode lowers instanceof to the shared binary op instruction" {
 test "bytecode lowers template literals to append instructions" {
   let bytecode = parse_bytecode_for_wb("var x = 1; `a${x}b`;")
   let mut saw_template = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       AppendTemplate("b") => saw_template = true
       _ => ()
@@ -1354,7 +1394,7 @@ test "bytecode lowers literal computed member calls through plain preparation" {
   let mut root_plain = 0
   let mut root_computed = 0
   let mut root_literal_observation = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ObserveExpression(_) => root_literal_observation = true
       PreparePlainPropertyCall("step", _) => {
@@ -1368,10 +1408,10 @@ test "bytecode lowers literal computed member calls through plain preparation" {
   }
   assert_eq(root_plain, 1)
   assert_eq(root_computed, 1)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     fail("expected one recursive getter child")
   }
-  let getter = bytecode.main.children[0]
+  let getter = bytecode.main_for_wb().children[0]
   let mut getter_plain = 0
   let mut getter_literal_observation = false
   for instr in getter.code {
@@ -1399,7 +1439,7 @@ test "bytecode keeps dynamic string member calls on computed preparation" {
   )
   let mut root_computed = 0
   let mut root_plain = 0
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       PrepareComputedCall(_) => root_computed += 1
       PreparePlainPropertyCall(_, _) => root_plain += 1
@@ -1408,12 +1448,12 @@ test "bytecode keeps dynamic string member calls on computed preparation" {
   }
   assert_eq(root_computed, 1)
   assert_eq(root_plain, 0)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     fail("expected one recursive getter child")
   }
   let mut recursive_computed = 0
   let mut recursive_plain = 0
-  for instr in bytecode.main.children[0].code {
+  for instr in bytecode.main_for_wb().children[0].code {
     match instr {
       PrepareComputedCall(_) => recursive_computed += 1
       PreparePlainPropertyCall(_, _) => recursive_plain += 1
@@ -1429,7 +1469,7 @@ test "bytecode lowers tagged templates to template-object calls" {
   let bytecode = parse_bytecode_for_wb("tag`a${x}b`;")
   let mut saw_template_object = false
   let mut saw_call = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       MakeTemplateObject(strings) => {
         saw_template_object = true
@@ -1449,7 +1489,7 @@ test "bytecode lowers member tagged templates to receiver calls" {
   let mut saw_property_prepare = false
   let mut saw_computed_prepare = false
   let mut saw_receiver_call = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       PreparePropertyCall("tag", _) => saw_property_prepare = true
       PrepareComputedCall(_) => saw_computed_prepare = true
@@ -1486,17 +1526,17 @@ test "bytecode treats names inside nested tagged templates as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
 test "bytecode lowers regex literals to a runtime regexp instruction" {
   let bytecode = parse_bytecode_for_wb("var r = /a/i;")
   let mut saw_regexp = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       MakeRegExp("a", "i") => saw_regexp = true
       _ => ()
@@ -1509,7 +1549,7 @@ test "bytecode lowers regex literals to a runtime regexp instruction" {
 test "bytecode lowers array holes to sparse make array instruction" {
   let bytecode = parse_bytecode_for_wb("var xs = [1,,3];")
   let mut saw_sparse_array = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       MakeArrayWithHoles(3, holes) => {
         saw_sparse_array = true
@@ -1528,7 +1568,7 @@ test "bytecode lowers array spreads to incremental append instructions" {
   let mut saw_value = false
   let mut saw_spread = false
   let mut saw_hole = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartArray => saw_start = true
       ArrayPushValue => saw_value = true
@@ -1554,7 +1594,7 @@ test "bytecode lowers spread call arguments to dynamic arg instructions" {
   let mut saw_call = false
   let mut saw_receiver_call = false
   let mut saw_construct = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartArgs => saw_start = true
       ArgPushValue => saw_value = true
@@ -1582,17 +1622,17 @@ test "bytecode treats names inside nested array spreads as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
 test "bytecode lowers simple object literals to a make object instruction" {
   let bytecode = parse_bytecode_for_wb("var o = { a: 1, b: 2 };")
   let mut saw_object = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       MakeObject(keys) => {
         saw_object = true
@@ -1612,7 +1652,7 @@ test "bytecode lowers object literal methods to method functions" {
   let mut saw_start = false
   let mut saw_method = false
   let mut saw_set = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartObject => saw_start = true
       MakeMethodFunction(_) => saw_method = true
@@ -1630,13 +1670,13 @@ test "bytecode does not mark object methods for call self binding" {
   let bytecode = parse_bytecode_for_wb(
     "var o = { m() { return m; }, get x() { return x; } };",
   )
-  guard bytecode.main.children.length() == 2 else {
+  guard bytecode.main_for_wb().children.length() == 2 else {
     abort("expected method and getter children")
   }
-  guard !bytecode.main.children[0].call_self_name else {
+  guard !bytecode.main_for_wb().children[0].call_self_name else {
     abort("method should not get a self binding")
   }
-  guard !bytecode.main.children[1].call_self_name else {
+  guard !bytecode.main_for_wb().children[1].call_self_name else {
     abort("getter should not get a self binding")
   }
 }
@@ -1648,7 +1688,7 @@ test "bytecode lowers object literal static accessors to accessor instructions" 
   )
   let mut saw_getter = false
   let mut saw_setter = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ObjectSetStaticGetter("x") => saw_getter = true
       ObjectSetStaticSetter("x") => saw_setter = true
@@ -1668,7 +1708,7 @@ test "bytecode lowers object literal computed accessors to computed accessor ins
   let mut saw_method = false
   let mut saw_getter = false
   let mut saw_setter = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ToObjectLiteralPropertyKey => saw_key = true
       MakeComputedMethodFunction(_) => saw_method = true
@@ -1695,10 +1735,10 @@ test "bytecode treats names inside nested computed accessors as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -1710,10 +1750,10 @@ test "bytecode treats names inside nested object literal methods as captured" {
     #|}
     #|outer().m();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -1724,7 +1764,7 @@ test "bytecode lowers computed object literal methods with computed home object"
   let mut saw_key = false
   let mut saw_method = false
   let mut saw_computed = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ToObjectLiteralPropertyKey => saw_key = true
       MakeComputedMethodFunction(_) => saw_method = true
@@ -1742,10 +1782,10 @@ test "bytecode lowers super property access and calls inside methods" {
   let bytecode = parse_bytecode_for_wb(
     "var o = { m() { super.x; super['m'](); } };",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one method child")
   }
-  let method_child = bytecode.main.children[0]
+  let method_child = bytecode.main_for_wb().children[0]
   let mut saw_property = false
   let mut saw_computed_call = false
   for instr in method_child.code {
@@ -1764,13 +1804,13 @@ test "bytecode gets this before computed super read and call keys" {
   let bytecode = parse_bytecode_for_wb(
     "var readKey = 'x'; var callKey = 'f'; var o = { m() { super[readKey]; super[callKey](); } };",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one method child")
   }
   let mut stage = 0
   let mut saw_guarded_read = false
   let mut saw_guarded_call = false
-  for instr in bytecode.main.children[0].code {
+  for instr in bytecode.main_for_wb().children[0].code {
     match instr {
       LoadThis => stage = 1
       Pop => stage = if stage == 1 { 2 } else { 0 }
@@ -1809,10 +1849,10 @@ test "bytecode treats names inside nested super computed keys as captured" {
     #|}
     #|outer().m();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -1822,7 +1862,7 @@ test "bytecode lowers object spreads to incremental object instructions" {
   let mut saw_a = false
   let mut saw_spread = false
   let mut saw_b = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartObject => saw_start = true
       ObjectSetStatic("a") => saw_a = true
@@ -1846,7 +1886,7 @@ test "bytecode lowers object literal __proto__ through proto instruction" {
   let mut saw_proto = false
   let mut saw_a = false
   let mut saw_b = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartObject => saw_start = true
       ObjectSetStatic("a") => saw_a = true
@@ -1869,7 +1909,7 @@ test "bytecode lowers computed object literal data properties" {
   let mut saw_key = false
   let mut saw_computed = false
   let mut saw_after = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ToObjectLiteralPropertyKey => saw_key = true
       ObjectSetComputed => saw_computed = true
@@ -1886,7 +1926,7 @@ test "bytecode lowers computed object literal data properties" {
 test "bytecode lowers named function expressions with a self-name instruction" {
   let bytecode = parse_bytecode_for_wb("var f = function g() { return g; };")
   let mut saw_named_function = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       MakeNamedFunction(_, "g") => saw_named_function = true
       _ => ()
@@ -1899,7 +1939,7 @@ test "bytecode lowers named function expressions with a self-name instruction" {
 test "bytecode lowers arrow functions with a dedicated arrow instruction" {
   let bytecode = parse_bytecode_for_wb("var f = a => a + 1;")
   let mut saw_arrow_function = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       MakeArrowFunction(_) => saw_arrow_function = true
       _ => ()
@@ -1911,10 +1951,10 @@ test "bytecode lowers arrow functions with a dedicated arrow instruction" {
 ///|
 test "bytecode lowers rest arrow functions as environment-backed children" {
   let bytecode = parse_bytecode_for_wb("var f = (a, ...rest) => rest[0];")
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one arrow child")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   guard child.rest_param is Some("rest") else {
     abort("expected rest parameter metadata")
   }
@@ -1926,10 +1966,10 @@ test "bytecode lowers ordinary rest functions as environment-backed children" {
   let bytecode = parse_bytecode_for_wb(
     "function f(a, ...rest) { return rest[0]; } f(1, 2);",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one function child")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   guard child.rest_param is Some("rest") else {
     abort("expected rest parameter metadata")
   }
@@ -1941,10 +1981,10 @@ test "bytecode lowers object method rest functions as environment-backed childre
   let bytecode = parse_bytecode_for_wb(
     "var o = { m(a, ...rest) { return rest[0]; } }; o.m(1, 2);",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one method child")
   }
-  let child = bytecode.main.children[0]
+  let child = bytecode.main_for_wb().children[0]
   guard child.rest_param is Some("rest") else {
     abort("expected rest parameter metadata")
   }
@@ -1960,20 +2000,20 @@ test "bytecode treats names inside nested arrow functions as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
   let mut saw_this = false
-  for instr in bytecode.main.children[0].code {
+  for instr in bytecode.main_for_wb().children[0].code {
     match instr {
       LoadThis => saw_this = true
       _ => ()
@@ -1987,11 +2027,11 @@ test "bytecode lowers new.target expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb(
     "function f() { return new.target; } new f();",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
   let mut saw_new_target = false
-  for instr in bytecode.main.children[0].code {
+  for instr in bytecode.main_for_wb().children[0].code {
     match instr {
       LoadNewTarget => saw_new_target = true
       _ => ()
@@ -2004,7 +2044,7 @@ test "bytecode lowers new.target expressions to a dedicated load instruction" {
 test "bytecode lowers console members to a shared host helper load" {
   let bytecode = parse_bytecode_for_wb("console.log(1);")
   let mut saw_console = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       LoadConsoleMember("log") => saw_console = true
       _ => ()
@@ -2022,10 +2062,10 @@ test "bytecode treats names inside nested unary expressions as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2037,10 +2077,10 @@ test "bytecode treats names inside nested template expressions as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2054,10 +2094,10 @@ test "bytecode treats names inside nested do while statements as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2068,7 +2108,7 @@ test "bytecode lowers switch statements with duplicated discriminant dispatch" {
   let mut saw_dup = false
   let mut saw_strict_equal = false
   let mut saw_patched_jump = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       Dup => saw_dup = true
       BinaryOp(EqEqEq, _) => saw_strict_equal = true
@@ -2104,10 +2144,10 @@ test "bytecode treats names inside nested switch statements as captured" {
     #|}
     #|outer()(true);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2118,7 +2158,7 @@ test "bytecode lowers for-in assignment loops to iterator instructions" {
   let mut saw_start = false
   let mut saw_next = false
   let mut saw_end = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartForIn => saw_start = true
       ForInNext(target) => {
@@ -2146,10 +2186,10 @@ test "bytecode treats names inside nested for-in assignment loops as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2159,7 +2199,7 @@ test "bytecode lowers for-in member and computed assignment targets" {
   )
   let mut saw_property_set = false
   let mut saw_computed_set = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       SetForInProperty("x", _) => saw_property_set = true
       SetForInComputed(_) => saw_computed_set = true
@@ -2175,7 +2215,7 @@ test "bytecode lowers for-in destructuring assignment targets" {
   let bytecode = parse_bytecode_for_wb("var first; for ([first] in obj) {}")
   let mut saw_start = false
   let mut saw_assign_pattern = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       StartForIn => saw_start = true
       AssignPattern(_) => saw_assign_pattern = true
@@ -2195,10 +2235,10 @@ test "bytecode treats names inside nested for-in destructuring targets as captur
     #|}
     #|outer()({ xy: 1 });
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2211,23 +2251,23 @@ test "bytecode treats names inside nested for-in expression targets as captured"
     #|}
     #|outer()({ x: 1 });
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
 test "bytecode patches unlabeled break and continue jumps" {
   let break_bytecode = parse_bytecode_for_wb("while (true) break;")
   let mut saw_break_to_exit = false
-  for instr in break_bytecode.main.code {
+  for instr in break_bytecode.main_for_wb().code {
     match instr {
       Jump(target) => {
         if target == -1 {
           abort("unpatched break jump")
         }
-        if target == break_bytecode.main.code.length() {
+        if target == break_bytecode.main_for_wb().code.length() {
           saw_break_to_exit = true
         }
       }
@@ -2241,7 +2281,7 @@ test "bytecode patches unlabeled break and continue jumps" {
   guard saw_break_to_exit else { abort("expected break jump to loop exit") }
   let continue_bytecode = parse_bytecode_for_wb("do continue; while (false);")
   let mut saw_continue_to_condition = false
-  for i, instr in continue_bytecode.main.code {
+  for i, instr in continue_bytecode.main_for_wb().code {
     match instr {
       Jump(target) => {
         if target == -1 {
@@ -2267,13 +2307,13 @@ test "bytecode patches unlabeled break and continue jumps" {
 test "bytecode patches labeled break and continue jumps" {
   let break_bytecode = parse_bytecode_for_wb("label: { break label; }")
   let mut saw_labeled_break = false
-  for instr in break_bytecode.main.code {
+  for instr in break_bytecode.main_for_wb().code {
     match instr {
       Jump(target) => {
         if target == -1 {
           abort("unpatched labeled break jump")
         }
-        if target == break_bytecode.main.code.length() {
+        if target == break_bytecode.main_for_wb().code.length() {
           saw_labeled_break = true
         }
       }
@@ -2285,7 +2325,7 @@ test "bytecode patches labeled break and continue jumps" {
     "outer: do continue outer; while (false);",
   )
   let mut saw_labeled_continue = false
-  for i, instr in continue_bytecode.main.code {
+  for i, instr in continue_bytecode.main_for_wb().code {
     match instr {
       Jump(target) => {
         if target == -1 {
@@ -2316,10 +2356,10 @@ test "bytecode treats names inside nested object literals as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2331,10 +2371,10 @@ test "bytecode treats names inside nested computed object literal keys as captur
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2346,10 +2386,10 @@ test "bytecode treats names inside nested object spreads as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2357,7 +2397,7 @@ test "bytecode lowers optional member access with a nullish guard" {
   let bytecode = parse_bytecode_for_wb("var r = obj?.x;")
   let mut saw_guard = false
   let mut saw_get = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       JumpIfNotNullishKeep(target) => {
         if target == -1 {
@@ -2380,7 +2420,7 @@ test "RED: bytecode keeps dynamic computed reads while normalizing literal keys"
   )
   let mut literal_gets = 0
   let mut computed_gets = 0
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       GetProperty("x", _) => literal_gets += 1
       GetComputed(_) => computed_gets += 1
@@ -2398,7 +2438,7 @@ test "computed literal reads observe the key without replaying its value" {
   let mut key_loads = 0
   let mut saw_get = false
   let ordered_events : Array[String] = []
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ObserveExpression(_) => {
         expression_observations += 1
@@ -2430,10 +2470,10 @@ test "bytecode treats names inside nested optional chains as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2445,7 +2485,7 @@ test "bytecode lowers member and computed assignments to property set instructio
   let bytecode = parse_bytecode_for_wb(src)
   let mut saw_property_set = false
   let mut saw_computed_set = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       SetProperty("foo", _) => saw_property_set = true
       SetComputed(_) => saw_computed_set = true
@@ -2461,12 +2501,12 @@ test "bytecode lowers identifier compound assignment through binary op and local
   let bytecode = parse_bytecode_for_wb(
     "function f() { var x = 1; x += 2; return x; } f();",
   )
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
   let mut saw_add = false
   let mut saw_store_local = false
-  for instr in bytecode.main.children[0].code {
+  for instr in bytecode.main_for_wb().children[0].code {
     match instr {
       BinaryOp(Add, _) => saw_add = true
       StoreLocal(0) => saw_store_local = true
@@ -2481,7 +2521,7 @@ test "bytecode lowers identifier compound assignment through binary op and local
 test "bytecode lowers global compound assignment reads through assignment names" {
   let bytecode = parse_bytecode_for_wb("x += 1;")
   let mut saw_assignment_load = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       LoadAssignmentName("x") => saw_assignment_load = true
       _ => ()
@@ -2499,10 +2539,10 @@ test "bytecode treats names inside nested compound assignments as captured" {
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
@@ -2511,7 +2551,7 @@ test "bytecode lowers member compound assignments through reference-preserving r
   let mut saw_add = false
   let mut saw_property_read = false
   let mut saw_property_set = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ReadPropertyForAssign("x", _) => saw_property_read = true
       BinaryOp(Add, _) => saw_add = true
@@ -2532,7 +2572,7 @@ test "bytecode lowers computed compound assignments through canonicalized keys" 
   let mut saw_mul = false
   let mut saw_computed_read = false
   let mut saw_computed_set = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       ReadComputedForAssign(_) => saw_computed_read = true
       BinaryOp(Mul, _) => saw_mul = true
@@ -2554,7 +2594,7 @@ test "bytecode lowers logical member compound assignments with reference cleanup
   let mut saw_and_guard = false
   let mut saw_property_cleanup = false
   let mut saw_computed_cleanup = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       JumpIfTrueKeep(target) => {
         if target == -1 {
@@ -2592,17 +2632,17 @@ test "bytecode treats names inside nested computed compound assignments as captu
     #|}
     #|outer()({ x: 1 });
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }
 
 ///|
 test "bytecode lowers new expressions to construct instructions" {
   let bytecode = parse_bytecode_for_wb("function C() {} new C();")
   let mut saw_construct = false
-  for instr in bytecode.main.code {
+  for instr in bytecode.main_for_wb().code {
     match instr {
       Construct(0, _) => saw_construct = true
       _ => ()
@@ -2620,8 +2660,8 @@ test "bytecode treats names inside nested computed assignments as captured" {
     #|}
     #|outer()([]);
   let bytecode = parse_bytecode_for_wb(src)
-  guard bytecode.main.children.length() == 1 else {
+  guard bytecode.main_for_wb().children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=[])
+  json_inspect(bytecode.main_for_wb().children[0].local_names, content=[])
 }

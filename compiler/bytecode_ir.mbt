@@ -644,6 +644,22 @@ fn BytecodeFunction::resolve_source_point(
 }
 
 ///|
+// This carrier is created only by bytecode finalization after the complete
+// function tree has passed every verifier. Its private representation keeps
+// the verification provenance attached to every nested activation.
+priv struct VerifiedBytecodeFunction {
+  function : BytecodeFunction
+}
+
+///|
+fn VerifiedBytecodeFunction::child(
+  self : VerifiedBytecodeFunction,
+  index : Int,
+) -> VerifiedBytecodeFunction {
+  { function: self.function.children[index] }
+}
+
+///|
 priv struct BytecodeBuilder {
   code : Array[BytecodeInstr]
   source_unit : SourceUnitHandle
@@ -704,7 +720,7 @@ priv struct BytecodeLocalPlan {
 ///|
 pub struct BytecodeProgram {
   priv source_stmts : Array[@ast.Stmt]
-  priv main : BytecodeFunction
+  priv verified_main : VerifiedBytecodeFunction
 }
 
 ///|
@@ -733,11 +749,11 @@ priv struct BytecodeActivationUnsupported {
 // selected when their own executor activation starts.
 #warnings("-unused_value")
 fn select_bytecode_function_activation(
-  function : BytecodeFunction,
+  function : VerifiedBytecodeFunction,
   function_path : Array[Int],
 ) -> Result[BytecodeActivationDisposition, BytecodeActivationUnsupported] {
   let mut has_managed_suspension = false
-  for instruction_index, instruction in function.code {
+  for instruction_index, instruction in function.function.code {
     match bytecode_instruction_contract(instruction).activation_disposition {
       UnsupportedBeforeActivation(reason) =>
         return Err({
