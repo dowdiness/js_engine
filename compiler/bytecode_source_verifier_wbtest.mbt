@@ -1698,6 +1698,59 @@ test "frame-shape verifier accepts representative resource topologies" {
 }
 
 ///|
+test "frame-shape verifier permits throw to discard active for-in state" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { throw key; }",
+  )
+  let finalized = finalize_bytecode_program(program)
+  assert_eq(finalized.main.code.length(), program.main.code.length())
+}
+
+///|
+test "frame-shape verifier permits return to discard active for-in state" {
+  let program = unverified_source_program_for_wb(
+    "function first(object) { var key; for (key in object) { return key; } return undefined; }",
+  )
+  let finalized = finalize_bytecode_program(program)
+  assert_eq(finalized.main.children.length(), 1)
+  assert_eq(
+    finalized.main.children[0].code.length(),
+    program.main.children[0].code.length(),
+  )
+}
+
+///|
+test "frame-shape verifier still rejects residual operands at throw" {
+  let program = unverified_source_program_for_wb("value; throw error;")
+  let mut mutated = false
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      SetCompletion => {
+        program.main.code[instruction_index] = LoadUndefined
+        mutated = true
+        break
+      }
+      _ => ()
+    }
+  }
+  guard mutated else { abort("expected SetCompletion instruction") }
+  let mut defect : BytecodeFrameShapeDefect? = None
+  try {
+    let _ = finalize_bytecode_program(program)
+  } catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  match defect.invariant {
+    TerminalShape => ()
+    _ => fail("expected terminal-shape invariant")
+  }
+  assert_true(defect.actual.operand_stack_height > 0)
+  assert_eq(defect.expected.operand_stack_height, 0)
+}
+
+///|
 fn expect_control_flow_defect_for_wb(
   program : BytecodeUnverifiedProgram,
   expected_path : Array[Int],

@@ -453,6 +453,28 @@ fn verify_bytecode_terminal_shape(
 }
 
 ///|
+fn verify_bytecode_terminator_shape(
+  state : BytecodeAbstractFrameShape,
+  function_path : Array[Int],
+  instruction_index : Int,
+) -> Unit raise Error {
+  guard state.operand_stack_height == 0 else {
+    raise bytecode_frame_shape_defect(
+      function_path,
+      instruction_index,
+      Some(instruction_index),
+      TerminalShape,
+      bytecode_abstract_frame_shape(
+        0,
+        state.argument_list_depth,
+        state.for_in_iterator_depth,
+      ),
+      state,
+    )
+  }
+}
+
+///|
 fn verify_bytecode_frame_shapes(
   program : BytecodeUnverifiedProgram,
 ) -> Unit raise Error {
@@ -538,11 +560,8 @@ fn verify_bytecode_function_frame_shapes(
         let terminal = apply_bytecode_resource_effect(
           state, effect, function_path, instruction_index,
         )
-        verify_bytecode_terminal_shape(
-          terminal,
-          function_path,
-          instruction_index,
-          Some(instruction_index),
+        verify_bytecode_terminator_shape(
+          terminal, function_path, instruction_index,
         )
       }
     }
