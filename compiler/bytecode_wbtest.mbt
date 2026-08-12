@@ -51,15 +51,42 @@ test "RED: private finalization rejects malformed source metadata" {
 }
 
 ///|
+fn activation_reason_matches_for_wb(
+  actual : BytecodeActivationUnsupportedReason,
+  expected : BytecodeActivationUnsupportedReason,
+) -> Bool {
+  match (actual, expected) {
+    (DirectEval, DirectEval)
+    | (SuperComputedPropertyCall, SuperComputedPropertyCall)
+    | (ArgumentSpread, ArgumentSpread)
+    | (BinaryOperation, BinaryOperation)
+    | (SynchronousPropertyAssignment, SynchronousPropertyAssignment)
+    | (
+      SynchronousComputedPropertyAssignment,
+      SynchronousComputedPropertyAssignment,
+    )
+    | (ConditionalComputedProperty, ConditionalComputedProperty) => true
+    _ => false
+  }
+}
+
+///|
 fn assert_instruction_contract_for_wb(
   instr : BytecodeInstr,
   may_raise_js : Bool,
-  may_invoke_guest : Bool,
+  activation_disposition : BytecodeActivationDisposition,
   required_source_roles : Array[SourcePointRole],
 ) -> Unit raise Error {
   let contract = bytecode_instruction_contract(instr)
   assert_eq(contract.may_raise_js, may_raise_js)
-  assert_eq(contract.may_invoke_guest, may_invoke_guest)
+  match (contract.activation_disposition, activation_disposition) {
+    (SynchronousLeaf, SynchronousLeaf) | (ManagedSuspension, ManagedSuspension) => ()
+    (
+      UnsupportedBeforeActivation(actual),
+      UnsupportedBeforeActivation(expected),
+    ) => assert_true(activation_reason_matches_for_wb(actual, expected))
+    _ => fail("activation disposition mismatch")
+  }
   assert_eq(contract.required_source_roles, required_source_roles)
   assert_true(contract.observation_barrier is NotObservationBarrier)
 }
@@ -67,51 +94,69 @@ fn assert_instruction_contract_for_wb(
 ///|
 test "RED: bytecode instruction contracts retain semantic source roles" {
   let loc = @token.Loc::default()
-  assert_instruction_contract_for_wb(Throw, true, false, [Throw])
-  assert_instruction_contract_for_wb(Call(0, loc), true, true, [Call])
-  assert_instruction_contract_for_wb(CallDirectEval(loc), true, true, [
+  assert_instruction_contract_for_wb(Throw, true, SynchronousLeaf, [Throw])
+  assert_instruction_contract_for_wb(Call(0, loc), true, ManagedSuspension, [Call])
+  assert_instruction_contract_for_wb(CallDirectEval(loc), true, UnsupportedBeforeActivation(DirectEval), [
     DirectEval,
     Call,
   ])
   assert_instruction_contract_for_wb(
     PreparePlainPropertyCall("method", loc),
     true,
-    true,
+    ManagedSuspension,
     [MemberAccess],
+  )
+  assert_instruction_contract_for_wb(
+    UpdateProperty("count", Increment, true, loc, loc),
+    true,
+    ManagedSuspension,
+    [MemberAccess, Operator],
+  )
+  assert_instruction_contract_for_wb(
+    SetForInProperty("count", loc),
+    true,
+    UnsupportedBeforeActivation(SynchronousPropertyAssignment),
+    [MemberAccess],
+  )
+  assert_instruction_contract_for_wb(
+    SetForInComputed(loc),
+    true,
+    UnsupportedBeforeActivation(SynchronousComputedPropertyAssignment),
+    [MemberAccess, PropertyKey],
   )
   assert_instruction_contract_for_wb(
     PrepareSuperComputedCall(loc),
     true,
-    true,
+    UnsupportedBeforeActivation(SuperComputedPropertyCall),
     [SuperMemberAccess, PropertyKey],
   )
-  assert_instruction_contract_for_wb(ArgPushSpread(loc), true, true, [
+  assert_instruction_contract_for_wb(ArgPushSpread(loc), true, UnsupportedBeforeActivation(ArgumentSpread), [
     Spread,
     Iterator,
   ])
-  assert_instruction_contract_for_wb(BinaryOp(Add, loc), true, true, [Operator])
-  assert_instruction_contract_for_wb(LoadName("binding"), true, false, [
+  assert_instruction_contract_for_wb(BinaryOp(Add, loc), true, UnsupportedBeforeActivation(BinaryOperation), [Operator])
+  assert_instruction_contract_for_wb(LoadName("binding"), true, SynchronousLeaf, [
     BindingAccess,
   ])
-  assert_instruction_contract_for_wb(MakeRegExp("a", ""), true, false, [
+  assert_instruction_contract_for_wb(MakeRegExp("a", ""), true, SynchronousLeaf, [
     ExpressionEntry,
   ])
-  assert_instruction_contract_for_wb(MakeFunction(0), true, false, [
+  assert_instruction_contract_for_wb(MakeFunction(0), true, SynchronousLeaf, [
     ExpressionEntry,
   ])
-  assert_instruction_contract_for_wb(MakeNamedFunction(0, "f"), true, false, [
+  assert_instruction_contract_for_wb(MakeNamedFunction(0, "f"), true, SynchronousLeaf, [
     ExpressionEntry,
   ])
-  assert_instruction_contract_for_wb(MakeMethodFunction(0), true, false, [
+  assert_instruction_contract_for_wb(MakeMethodFunction(0), true, SynchronousLeaf, [
     ExpressionEntry,
   ])
   assert_instruction_contract_for_wb(
     MakeComputedMethodFunction(0),
     true,
-    false,
+    SynchronousLeaf,
     [ExpressionEntry],
   )
-  assert_instruction_contract_for_wb(MakeArrowFunction(0), true, false, [
+  assert_instruction_contract_for_wb(MakeArrowFunction(0), true, SynchronousLeaf, [
     ExpressionEntry,
   ])
 }
@@ -133,6 +178,57 @@ test "RED: activation contract distinguishes leaf managed and unsupported" {
   match conditional.activation_disposition {
     UnsupportedBeforeActivation(ConditionalComputedProperty) => ()
     _ => fail("conditional computed access must be unsupported before activation")
+  }
+}
+
+///|
+test "activation selection is per function and precedes frame construction" {
+  let src =
+    #|function child() { return 1 + 2; }
+    #|1;
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  match select_bytecode_function_activation(bytecode.main, []) {
+    Ok(SynchronousLeaf) => ()
+    Ok(ManagedSuspension) =>
+      fail("unsupported child body must not taint the parent")
+    Ok(UnsupportedBeforeActivation(_)) =>
+      fail("parent has no unsupported instruction")
+    Err(_) => fail("parent activation must be selectable")
+  }
+  let child = bytecode.main.children[0]
+  match select_bytecode_function_activation(child, [0]) {
+    Err(unsupported) => {
+      assert_eq(unsupported.function_path, [0])
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("child must retain its own binary-operation reason")
+      }
+      assert_true(unsupported.instruction_index >= 0)
+    }
+    Ok(_) => fail("unsupported child must be rejected at its own activation")
+  }
+}
+
+///|
+test "activation selection recomputes typed reasons without a cached summary" {
+  let loc = @token.Loc::default()
+  let bytecode = parse_bytecode_for_wb("1;")
+  match bytecode_function_activation_disposition(bytecode.main, []) {
+    SynchronousLeaf => ()
+    _ => fail("literal-only function must be a synchronous leaf")
+  }
+  bytecode.main.code.push(BinaryOp(Add, loc))
+  match select_bytecode_function_activation(bytecode.main, []) {
+    Err(unsupported) => {
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("recomputed reason must identify binary operation")
+      }
+    }
+    Ok(_) => fail("stale eligibility must not remain accepted")
   }
 }
 

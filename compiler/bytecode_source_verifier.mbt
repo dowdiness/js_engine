@@ -920,6 +920,13 @@ fn verify_bytecode_function_source_metadata(
   function_path : Array[Int],
   expected_owner_id : Int,
 ) -> Int raise Error {
+  // Recompute activation eligibility from this verified instruction stream.
+  // The result is deliberately not cached: executor admission can reject
+  // UnsupportedBeforeActivation before constructing a frame.
+  let _activation_disposition = bytecode_function_activation_disposition(
+    function,
+    function_path,
+  )
   guard expected_owner_id >= 0 && expected_owner_id < MAX_SOURCE_POINT_OWNER_ID else {
     raise BytecodeSourcePointOwnerAllocationDefect(expected_owner_id)
   }

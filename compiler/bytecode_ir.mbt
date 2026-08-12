@@ -95,10 +95,56 @@ priv enum BytecodeObservationBarrierKind {
 }
 
 ///|
+// Activation eligibility is intentionally a closed compiler-owned decision.
+// The runtime request remains the authority for managed execution; this
+// disposition only decides whether a verified function may start in bytecode.
+#warnings("-unused_constructor")
+priv enum BytecodeActivationDisposition {
+  SynchronousLeaf
+  ManagedSuspension
+  UnsupportedBeforeActivation(BytecodeActivationUnsupportedReason)
+}
+
+///|
+// These reasons describe activation admission, not lowering/front-end
+// rejection. Keep this type private so the lowering and selection contracts
+// cannot accidentally share a phase-specific diagnostic.
+#warnings("-unused_constructor")
+priv enum BytecodeActivationUnsupportedReason {
+  SuperPropertyAccess
+  SuperComputedPropertyAccess
+  BinaryOperation
+  UnaryNumericConversion
+  DeleteName
+  DeleteProperty
+  DeleteComputedProperty
+  TemplateInterpolation
+  UpdateName
+  UpdateLocal
+  UpdateEnvSlot
+  ConditionalComputedUpdate
+  ForInEnumeration
+  ArraySpread
+  ArgumentSpread
+  ObjectPropertyKey
+  ObjectSpread
+  SynchronousPropertyAssignment
+  SynchronousComputedPropertyAssignment
+  ConditionalComputedProperty
+  ComputedAssignmentRead
+  ConditionalComputedAssignment
+  DestructuringAssignment
+  SuperPropertyCall
+  SuperComputedPropertyCall
+  DirectEval
+  ConditionalComputedCall
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeInstructionContract {
   may_raise_js : Bool
-  may_invoke_guest : Bool
+  activation_disposition : BytecodeActivationDisposition
   required_source_roles : Array[SourcePointRole]
   observation_barrier : BytecodeObservationBarrierKind
 }
@@ -217,14 +263,14 @@ fn bytecode_instruction_contract(
     ObserveStatement(_) =>
       {
         may_raise_js: false,
-        may_invoke_guest: false,
+        activation_disposition: SynchronousLeaf,
         required_source_roles: [StatementEntry],
         observation_barrier: StatementObservationBarrier,
       }
     ObserveExpression(_) =>
       {
         may_raise_js: false,
-        may_invoke_guest: false,
+        activation_disposition: SynchronousLeaf,
         required_source_roles: [ExpressionEntry],
         observation_barrier: ExpressionObservationBarrier,
       }
@@ -271,84 +317,206 @@ fn bytecode_instruction_contract(
     | DeclareFunction(_, _)
     | DropPropertyAssignReference
     | DropComputedAssignReference
-    | Return => bytecode_contract(false, false, [])
+    | Return => bytecode_contract(false, SynchronousLeaf, [])
     LoadThis
     | LoadName(_)
     | LoadAssignmentName(_)
     | StoreName(_)
     | LoadEnvSlot(_)
     | StoreEnvSlot(_)
-    | TypeofName(_)
-    | DeleteName(_) => bytecode_contract(true, false, [BindingAccess])
+    | TypeofName(_) => bytecode_contract(true, SynchronousLeaf, [BindingAccess])
+    DeleteName(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(DeleteName),
+        [BindingAccess],
+      )
     LoadDirectEvalCallee =>
-      bytecode_contract(true, false, [BindingAccess, DirectEval])
-    LoadConsoleMember(_) => bytecode_contract(true, false, [MemberAccess])
+      bytecode_contract(true, SynchronousLeaf, [BindingAccess, DirectEval])
+    LoadConsoleMember(_) =>
+      bytecode_contract(true, SynchronousLeaf, [MemberAccess])
     LoadSuperProperty(_, _) =>
-      bytecode_contract(true, true, [SuperMemberAccess])
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(SuperPropertyAccess),
+        [SuperMemberAccess],
+      )
     LoadSuperComputed(_) =>
-      bytecode_contract(true, true, [SuperMemberAccess, PropertyKey])
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(SuperComputedPropertyAccess),
+        [SuperMemberAccess, PropertyKey],
+      )
     BinaryOp(op, _) => bytecode_binary_contract(op)
     UnaryValueOp(op, _) => bytecode_unary_contract(op)
-    DeleteProperty(_) => bytecode_contract(true, true, [MemberAccess])
-    DeleteComputed => bytecode_contract(true, true, [MemberAccess, PropertyKey])
-    AppendTemplate(_) => bytecode_contract(true, true, [Operator])
-    MakeTemplateObject(_) => bytecode_contract(false, false, [])
-    MakeRegExp(_, _) => bytecode_contract(true, false, [ExpressionEntry])
-    UpdateName(_, _, _, _) | UpdateLocal(_, _, _) | UpdateEnvSlot(_, _, _) =>
-      bytecode_contract(true, true, [BindingAccess, Operator])
+    DeleteProperty(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(DeleteProperty),
+        [MemberAccess],
+      )
+    DeleteComputed =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(DeleteComputedProperty),
+        [MemberAccess, PropertyKey],
+      )
+    AppendTemplate(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(TemplateInterpolation),
+        [Operator],
+      )
+    MakeTemplateObject(_) => bytecode_contract(false, SynchronousLeaf, [])
+    MakeRegExp(_, _) => bytecode_contract(true, SynchronousLeaf, [ExpressionEntry])
+    UpdateName(_, _, _, _) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(UpdateName),
+        [BindingAccess, Operator],
+      )
+    UpdateLocal(_, _, _) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(UpdateLocal),
+        [BindingAccess, Operator],
+      )
+    UpdateEnvSlot(_, _, _) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(UpdateEnvSlot),
+        [BindingAccess, Operator],
+      )
     UpdateProperty(_, _, _, _, _) =>
-      bytecode_contract(true, true, [MemberAccess, Operator])
+      bytecode_contract(true, ManagedSuspension, [MemberAccess, Operator])
     UpdateComputed(_, _, _, _) =>
-      bytecode_contract(true, true, [MemberAccess, PropertyKey, Operator])
-    StartForIn => bytecode_contract(true, true, [Iterator])
-    ArrayPushSpread(_) | ArgPushSpread(_) =>
-      bytecode_contract(true, true, [Spread, Iterator])
-    ToObjectLiteralPropertyKey => bytecode_contract(true, true, [PropertyKey])
-    ObjectSpread(_) => bytecode_contract(true, true, [Spread])
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ConditionalComputedUpdate),
+        [MemberAccess, PropertyKey, Operator],
+      )
+    StartForIn =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ForInEnumeration),
+        [Iterator],
+      )
+    ArrayPushSpread(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ArraySpread),
+        [Spread, Iterator],
+      )
+    ArgPushSpread(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ArgumentSpread),
+        [Spread, Iterator],
+      )
+    ToObjectLiteralPropertyKey =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ObjectPropertyKey),
+        [PropertyKey],
+      )
+    ObjectSpread(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ObjectSpread),
+        [Spread],
+      )
     MakeFunction(_)
     | MakeNamedFunction(_, _)
     | MakeMethodFunction(_)
     | MakeComputedMethodFunction(_)
-    | MakeArrowFunction(_) => bytecode_contract(true, false, [ExpressionEntry])
+    | MakeArrowFunction(_) =>
+      bytecode_contract(true, SynchronousLeaf, [ExpressionEntry])
     GetProperty(_, _)
     | ReadPropertyForAssign(_, _)
     | SetProperty(_, _)
-    | SetForInProperty(_, _)
     | PreparePropertyCall(_, _)
     | PreparePlainPropertyCall(_, _) =>
-      bytecode_contract(true, true, [MemberAccess])
-    GetComputed(_)
-    | ReadComputedForAssign(_)
-    | SetComputed(_)
-    | SetForInComputed(_)
-    | PrepareComputedCall(_) =>
-      bytecode_contract(true, true, [MemberAccess, PropertyKey])
+      bytecode_contract(true, ManagedSuspension, [MemberAccess])
+    SetForInProperty(_, _) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(SynchronousPropertyAssignment),
+        [MemberAccess],
+      )
+    GetComputed(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ConditionalComputedProperty),
+        [MemberAccess, PropertyKey],
+      )
+    ReadComputedForAssign(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ComputedAssignmentRead),
+        [MemberAccess, PropertyKey],
+      )
+    SetComputed(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ConditionalComputedAssignment),
+        [MemberAccess, PropertyKey],
+      )
+    SetForInComputed(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(SynchronousComputedPropertyAssignment),
+        [MemberAccess, PropertyKey],
+      )
+    PrepareComputedCall(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(ConditionalComputedCall),
+        [MemberAccess, PropertyKey],
+      )
     AssignPattern(_) =>
-      bytecode_contract(true, true, [BindingAccess, MemberAccess, Iterator])
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(DestructuringAssignment),
+        [BindingAccess, MemberAccess, Iterator],
+      )
     PrepareSuperPropertyCall(_, _) =>
-      bytecode_contract(true, true, [SuperMemberAccess])
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(SuperPropertyCall),
+        [SuperMemberAccess],
+      )
     PrepareSuperComputedCall(_) =>
-      bytecode_contract(true, true, [SuperMemberAccess, PropertyKey])
-    CallDirectEval(_) => bytecode_contract(true, true, [DirectEval, Call])
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(SuperComputedPropertyCall),
+        [SuperMemberAccess, PropertyKey],
+      )
+    CallDirectEval(_) =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(DirectEval),
+        [DirectEval, Call],
+      )
     Call(_, _)
     | CallWithReceiver(_, _)
     | CallSpread(_)
-    | CallSpreadWithReceiver(_) => bytecode_contract(true, true, [Call])
+    | CallSpreadWithReceiver(_) =>
+      bytecode_contract(true, ManagedSuspension, [Call])
     Construct(_, _) | ConstructSpread(_) =>
-      bytecode_contract(true, true, [Construct])
-    Throw => bytecode_contract(true, false, [Throw])
+      bytecode_contract(true, ManagedSuspension, [Construct])
+    Throw => bytecode_contract(true, SynchronousLeaf, [Throw])
   }
 }
 
 ///|
 fn bytecode_contract(
   may_raise_js : Bool,
-  may_invoke_guest : Bool,
+  activation_disposition : BytecodeActivationDisposition,
   required_source_roles : Array[SourcePointRole],
 ) -> BytecodeInstructionContract {
   {
     may_raise_js,
-    may_invoke_guest,
+    activation_disposition,
     required_source_roles,
     observation_barrier: NotObservationBarrier,
   }
@@ -358,7 +526,7 @@ fn bytecode_contract(
 fn bytecode_binary_contract(op : @ast.BinOp) -> BytecodeInstructionContract {
   match op {
     EqEqEq | NotEqEq | And | Or | NullishCoalesce =>
-      bytecode_contract(false, false, [Operator])
+      bytecode_contract(false, SynchronousLeaf, [Operator])
     Add
     | Sub
     | Mul
@@ -378,15 +546,26 @@ fn bytecode_binary_contract(op : @ast.BinOp) -> BytecodeInstructionContract {
     | URShift
     | Exp
     | In
-    | Instanceof => bytecode_contract(true, true, [Operator])
+    | Instanceof =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(BinaryOperation),
+        [Operator],
+      )
   }
 }
 
 ///|
 fn bytecode_unary_contract(op : @ast.UnaryOp) -> BytecodeInstructionContract {
   match op {
-    Not | Typeof | Void | Delete => bytecode_contract(false, false, [Operator])
-    Neg | Pos | BitNot => bytecode_contract(true, true, [Operator])
+    Not | Typeof | Void | Delete =>
+      bytecode_contract(false, SynchronousLeaf, [Operator])
+    Neg | Pos | BitNot =>
+      bytecode_contract(
+        true,
+        UnsupportedBeforeActivation(UnaryNumericConversion),
+        [Operator],
+      )
   }
 }
 
@@ -557,6 +736,49 @@ priv struct BytecodeUnverifiedProgram {
 priv enum BytecodeRunResult {
   BytecodeNormal(Value)
   BytecodeReturn(Value)
+}
+
+///|
+#warnings("-unused_field")
+priv struct BytecodeActivationUnsupported {
+  function_path : Array[Int]
+  instruction_index : Int
+  reason : BytecodeActivationUnsupportedReason
+}
+
+///|
+// This selection is pure and does not construct a BytecodeFrame.  It scans
+// only the function whose activation is being admitted; child functions are
+// selected when their own executor activation starts.
+fn select_bytecode_function_activation(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Result[BytecodeActivationDisposition, BytecodeActivationUnsupported] {
+  let mut has_managed_suspension = false
+  for instruction_index, instruction in function.code {
+    match bytecode_instruction_contract(instruction).activation_disposition {
+      UnsupportedBeforeActivation(reason) =>
+        return Err({
+          function_path: function_path.copy(),
+          instruction_index,
+          reason,
+        })
+      SynchronousLeaf => ()
+      ManagedSuspension => has_managed_suspension = true
+    }
+  }
+  Ok(if has_managed_suspension { ManagedSuspension } else { SynchronousLeaf })
+}
+
+///|
+fn bytecode_function_activation_disposition(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> BytecodeActivationDisposition {
+  match select_bytecode_function_activation(function, function_path) {
+    Ok(disposition) => disposition
+    Err(unsupported) => UnsupportedBeforeActivation(unsupported.reason)
+  }
 }
 
 ///|
