@@ -289,10 +289,8 @@ fn BytecodeFrame::hoist_lexical_bindings_from_stmt(
   stmt : @ast.Stmt,
 ) -> Unit raise Error {
   match stmt {
-    VarDecl(LetKind, name, _, _) =>
-      self.env.def_let_tdz_if_absent(name)
-    VarDecl(ConstKind, name, _, _) =>
-      self.env.def_const_tdz_if_absent(name)
+    VarDecl(LetKind, name, _, _) => self.env.def_let_tdz_if_absent(name)
+    VarDecl(ConstKind, name, _, _) => self.env.def_const_tdz_if_absent(name)
     StmtList(stmts, _) =>
       for child in stmts {
         self.hoist_lexical_bindings_from_stmt(child)
