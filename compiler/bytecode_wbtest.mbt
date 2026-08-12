@@ -208,6 +208,42 @@ test "RED: activation contract distinguishes leaf managed and unsupported" {
 }
 
 ///|
+test "managed disposition corresponds to a typed VM suspension" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("({ x: 1 }).x;")
+  match select_bytecode_function_activation(program.main, []) {
+    Ok(ManagedSuspension) => ()
+    _ => fail("static property access must select managed suspension")
+  }
+  let frame = BytecodeFrame(program.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match frame.step_bytecode(interp) {
+    BytecodeFrameSuspended(@runtime.ExecutorActivationPropertyGet(_)) => ()
+    _ => fail("static property access must return a typed property request")
+  }
+  let conditional = parse_bytecode_for_wb("var key = \"x\"; ({ x: 1 })[key];")
+  match select_bytecode_function_activation(conditional.main, []) {
+    Err(unsupported) =>
+      match unsupported.reason {
+        ConditionalComputedProperty => ()
+        _ => fail("computed access must retain its conditional reason")
+      }
+    Ok(_) => fail("computed access must not be admitted as managed")
+  }
+  let conditional_frame = BytecodeFrame(conditional.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match conditional_frame.step_bytecode(interp) {
+    BytecodeFrameSuspended(_) =>
+      fail("data-key computed access must retain its synchronous fallback")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) => ()
+  }
+}
+
+///|
 test "activation selection is per function and precedes frame construction" {
   let src =
     #|function child() { return 1 + 2; }
