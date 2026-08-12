@@ -16,11 +16,9 @@ from typing import Any, Iterator
 
 
 CONFIG = "scripts/architecture_representation_access.json"
-MEMBER = re.compile(
-    r"\b(?P<receiver>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*"
-    r"(?P<field>[A-Za-z_][A-Za-z0-9_]*)\b"
-)
-MOONBIT_BLOCK = re.compile(r"```moonbit\s+([^\n`]+)")
+MEMBER = re.compile(r"\.\s*(?P<field>[A-Za-z_][A-Za-z0-9_]*)\b")
+STRUCT_DEFINITION = re.compile(r"\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+DEFINITION_PATH = re.compile(r"^Definition found at file (.+)$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -53,22 +51,32 @@ def run(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
 
 
 def load_config(root: Path) -> tuple[dict[str, Any], list[Rule]]:
-    data = json.loads((root / CONFIG).read_text())
+    try:
+        data = json.loads((root / CONFIG).read_text())
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"invalid JSON in {CONFIG}: {error}") from error
     patterns = {item["id"]: item for item in data["representation_patterns"]}
-    rules = [
-        Rule(
-            id=item["id"],
-            receiver_type=item["receiver_type"],
-            fields=frozenset(
-                token.removeprefix(".")
-                for token in patterns[item["id"]]["pattern"].split("|")
-            ),
-            kind=patterns[item["id"]]["kind"],
-            reason=patterns[item["id"]]["reason"],
-            areas=frozenset(item.get("areas", [])),
+    rules: list[Rule] = []
+    for item in data.get("semantic_member_rules", []):
+        rule_id = item["id"]
+        pattern = patterns.get(rule_id)
+        if pattern is None:
+            raise RuntimeError(
+                f"semantic member rule {rule_id!r} has no representation pattern"
+            )
+        rules.append(
+            Rule(
+                id=rule_id,
+                receiver_type=item["receiver_type"],
+                fields=frozenset(
+                    token[1:] if token.startswith(".") else token
+                    for token in pattern["pattern"].split("|")
+                ),
+                kind=pattern["kind"],
+                reason=pattern["reason"],
+                areas=frozenset(item.get("areas", [])),
+            )
         )
-        for item in data.get("semantic_member_rules", [])
-    ]
     if not rules:
         raise RuntimeError("semantic_member_rules must list at least one rule")
     return data, rules
@@ -89,26 +97,36 @@ def compiler_sources(root: Path, data: dict[str, Any]) -> Iterator[Path]:
                 yield path
 
 
-def hover_type(root: Path, rel: str, line: int, column: int) -> str | None:
+def member_owner(root: Path, rel: str, line: int, column: int, field: str) -> str | None:
     result = run(
         root,
         "moon",
         "ide",
-        "hover",
+        "peek-def",
+        field,
         "--loc",
         f"{rel}:{line}:{column}",
-        "--output-json",
         "--no-check",
         check=False,
     )
     if result.returncode != 0:
+        diagnostic = (result.stderr or result.stdout).strip()
+        raise RuntimeError(
+            f"Moon IDE could not resolve {rel}:{line}:{column} .{field}: {diagnostic}"
+        )
+    if "Definition found at file " not in result.stdout:
+        raise RuntimeError(
+            f"Moon IDE returned no definition for {rel}:{line}:{column} .{field}"
+        )
+    path_match = DEFINITION_PATH.search(result.stdout)
+    struct_match = STRUCT_DEFINITION.search(result.stdout)
+    if path_match is None or struct_match is None:
         return None
-    try:
-        contents = "\n".join(json.loads(result.stdout)["contents"])
-    except (json.JSONDecodeError, KeyError, TypeError):
+    definition_path = Path(path_match.group(1)).resolve()
+    runtime_root = (root / "interpreter/runtime").resolve()
+    if not definition_path.is_relative_to(runtime_root):
         return None
-    match = MOONBIT_BLOCK.search(contents)
-    return match.group(1).strip() if match else None
+    return f"@runtime.{struct_match.group(1)}"
 
 
 def normalize_line(line: str) -> str:
@@ -129,8 +147,8 @@ def scan_file(root: Path, path: Path, rules: list[Rule]) -> list[Access]:
             candidates = by_field.get(field, [])
             if not candidates:
                 continue
-            receiver_type = hover_type(
-                root, rel, line_no, match.start("receiver") + 1
+            receiver_type = member_owner(
+                root, rel, line_no, match.start("field") + 1, field
             )
             for rule in candidates:
                 if receiver_type == rule.receiver_type:
@@ -186,7 +204,7 @@ def audit(root: Path, paths: list[Path] | None = None) -> tuple[list[str], int]:
                 f"expected {debt['allowed_count']} / {debt['fingerprint']}, "
                 f"found {len(items)} / {actual}"
             )
-    for key, debt in debts.items():
+    for key in debts:
         if key not in grouped:
             failures.append(f"stale semantic representation debt: {key[0]} {key[1]}")
     return failures, len(accesses)
@@ -195,6 +213,7 @@ def audit(root: Path, paths: list[Path] | None = None) -> tuple[list[str], int]:
 FIXTURE = """///|
 pub fn runtime_representation_audit_fixture_tmp(
   env : @runtime.Environment,
+  envs : Array[@runtime.Environment],
 ) -> Unit {
   let environment = runtime_representation_audit_wrapper_tmp(env)
   let cell = environment.bindings.get("x").unwrap()
@@ -202,6 +221,8 @@ pub fn runtime_representation_audit_fixture_tmp(
     cell.value = cell.value
     ignore(cell.kind)
   }
+  ignore(runtime_representation_audit_wrapper_tmp(env).bindings)
+  ignore(envs[0].bindings)
 }
 """
 WRAPPER_FIXTURE = """///|
@@ -217,8 +238,8 @@ pub fn runtime_representation_audit_wrapper_tmp(
 def fixture(root: Path) -> Iterator[Path]:
     path = root / "compiler/runtime_representation_audit_fixture_tmp.mbt"
     wrapper = root / "compiler/runtime_representation_audit_wrapper_tmp.mbt"
-    if path.exists() or wrapper.exists():
-        raise RuntimeError(f"fixture path already exists: {path} or {wrapper}")
+    path.unlink(missing_ok=True)
+    wrapper.unlink(missing_ok=True)
     try:
         path.write_text(FIXTURE)
         wrapper.write_text(WRAPPER_FIXTURE)
@@ -229,23 +250,33 @@ def fixture(root: Path) -> Iterator[Path]:
     finally:
         path.unlink(missing_ok=True)
         wrapper.unlink(missing_ok=True)
-        run(root, "moon", "check", "--deny-warn")
+        run(root, "moon", "check", "--deny-warn", check=False)
 
 
 def self_test(root: Path) -> None:
     with fixture(root) as path:
         _, rules = load_config(root)
         accesses = scan_file(root, path, rules)
-        found = {(item.rule.id, item.field) for item in accesses}
+        found: dict[tuple[str, str], int] = {}
+        for item in accesses:
+            key = (item.rule.id, item.field)
+            found[key] = found.get(key, 0) + 1
         expected = {
-            ("runtime-environment-bindings-field", "bindings"),
-            ("runtime-binding-fields", "initialized"),
-            ("runtime-binding-fields", "value"),
-            ("runtime-binding-fields", "kind"),
+            ("runtime-environment-bindings-field", "bindings"): 3,
+            ("runtime-binding-fields", "initialized"): 1,
+            ("runtime-binding-fields", "value"): 2,
+            ("runtime-binding-fields", "kind"): 1,
         }
         if found != expected:
-            raise RuntimeError(f"semantic fixture mismatch: {sorted(found)}")
-    print("ok: semantic representation audit rejects receiver aliases")
+            raise RuntimeError(f"semantic fixture mismatch: {sorted(found.items())}")
+    resolution_failed_closed = False
+    try:
+        member_owner(root, "compiler/bytecode_vm.mbt", 1, 1, "bindings")
+    except RuntimeError:
+        resolution_failed_closed = True
+    if not resolution_failed_closed:
+        raise RuntimeError("unresolved executable member did not fail closed")
+    print("ok: semantic representation audit rejects aliased and expression receivers")
 
 
 def main() -> int:
@@ -255,6 +286,8 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(args.root).resolve()
     try:
+        if sys.version_info < (3, 9):
+            raise RuntimeError("Python 3.9 or newer is required")
         if args.self_test:
             self_test(root)
         ensure = run(root, "moon", "check", "--deny-warn", check=False)

@@ -47,6 +47,18 @@ fn representation_path(root : String) -> String {
 }
 
 ///|
+fn RepresentationPattern::RepresentationPattern(
+  id~ : String,
+  pattern~ : String,
+  kind~ : String,
+  reason~ : String,
+  tokens~ : Array[String],
+  areas~ : Array[String],
+) -> RepresentationPattern {
+  { id, pattern, kind, reason, tokens, areas }
+}
+
+///|
 fn decode_int_field(
   data : Map[String, Json],
   key : String,
@@ -125,7 +137,7 @@ fn decode_representation_pattern(
       )
     }
   }
-  { id, pattern, kind, reason, tokens, areas }
+  RepresentationPattern(id~, pattern~, kind~, reason~, tokens~, areas~)
 }
 
 ///|
