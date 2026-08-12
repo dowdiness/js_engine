@@ -84,19 +84,23 @@ summary or child-folded cache is stored.
 
 The architecture gate in
 [`scripts/audit_bytecode_vm_semantic_edges.py`](../../scripts/audit_bytecode_vm_semantic_edges.py)
-roots a resolved call graph at `BytecodeFrame::step_bytecode`. It asks
-`moon ide hover` for symbol identity, follows reachable compiler helpers across
-files, and inventories both compiler edges and runtime boundary calls with
-their enclosing function and source location. Receiver aliases and calls in
-ordinary or `$|` interpolation therefore remain executable semantic edges;
-comments, escaped interpolation text, and raw `#|` content do not resolve as
-calls. The checked baseline is generated evidence from MoonBit's typed symbol
-graph, not a hand-maintained list of guest-capable helper names.
+roots a resolved call graph at `BytecodeExecutorCode::start`,
+`BytecodeFrame::step`, `BytecodeFrame::deliver_activation_completion`, and
+`run_bytecode_function`. Together these roots cover startup and hoisting,
+normal dispatch, suspension completion, and the direct bytecode runner. The
+gate asks `moon ide hover` for symbol identity, follows reachable compiler
+helpers across files, and inventories both compiler edges and runtime boundary
+calls with their enclosing function and source location. Receiver aliases and
+calls in ordinary or `$|` interpolation therefore remain executable semantic
+edges; comments, escaped interpolation text, and raw `#|` content do not
+resolve as calls. The checked baseline is generated evidence from MoonBit's
+typed symbol graph, not a hand-maintained list of guest-capable helper names.
 
 A new instruction must update both the exhaustive compiler contract and VM
 dispatch before the project type-checks. A new or relocated synchronous call
-edge reachable from dispatch changes the semantic graph and fails
-`make architecture-audit` until the reviewed evidence is updated.
+edge reachable from the bytecode activation lifecycle changes the semantic
+graph and fails `make architecture-audit` until the reviewed evidence is
+updated.
 
 The intentionally unsupported families are the synchronous guest-capable
 edges listed above: super access/reference preparation, coercive operators,

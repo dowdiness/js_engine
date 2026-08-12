@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Fail closed when the bytecode VM's resolved call graph changes.
+"""Fail closed when the bytecode activation's resolved call graph changes.
 
-The graph is rooted at BytecodeFrame::step_bytecode.  MoonBit's IDE resolves
-each candidate reference; this script never treats receiver spelling as symbol
-identity.  Consequently receiver aliases, compiler wrappers, and expressions
-inside interpolated strings are ordinary semantic edges, while comments and
-raw/literal string text are not.
+The graph is rooted at the activation's start, step, completion-delivery, and
+direct-run boundaries. MoonBit's IDE resolves each candidate reference; this
+script never treats receiver spelling as symbol identity. Consequently receiver
+aliases, compiler wrappers, and expressions inside interpolated strings are
+ordinary semantic edges, while comments and raw/literal string text are not.
 """
 
 from __future__ import annotations
@@ -21,7 +21,12 @@ import sys
 from typing import Any
 
 
-ROOT_SYMBOL = "BytecodeFrame::step_bytecode"
+ROOT_SYMBOLS = (
+    "BytecodeExecutorCode::start",
+    "BytecodeFrame::step",
+    "BytecodeFrame::deliver_activation_completion",
+    "run_bytecode_function",
+)
 COMPILER_PACKAGE = "dowdiness/js_engine/compiler"
 RUNTIME_PREFIXES = (
     "@runtime.",
@@ -58,6 +63,19 @@ fn semantic_edge_audit_fixture_root(interp : Interpreter) -> String raise Error 
   let raw =
     #|raw \{interp.get_console_member("ignored")} \{@runtime.make_array([])}
   ordinary + dollar + escaped + raw
+}
+
+///|
+#warnings("-unused_value")
+fn semantic_edge_audit_startup_fixture_root(interp : Interpreter) -> Unit raise Error {
+  semantic_edge_audit_cross_file_wrapper(interp)
+}
+
+///|
+#warnings("-unused_value")
+fn semantic_edge_audit_completion_fixture_root() -> Unit {
+  let complete = @runtime.make_array
+  ignore(complete([]))
 }
 '''
 
@@ -125,6 +143,8 @@ def symbol_identity(entry: dict[str, Any]) -> str | None:
         return kind[1]
     if len(kind) == 3 and kind[0] == "SymChild":
         return f"{kind[1]}::{kind[2]}"
+    if len(kind) == 4 and kind[0] == "TraitImpl":
+        return f"{kind[3]}::{kind[2]}"
     return None
 
 
@@ -173,6 +193,8 @@ def candidate_locations(
     path = root / entry["path"]
     lines = path.read_text().splitlines()
     start_line, start_col, end_line, end_col = entry["range"]
+    name_line, name_start, _, name_end = entry["name_range"]
+    exclude_declaration_name = entry.get("kind", [None])[0] == "TraitImpl"
     locations: set[tuple[int, int]] = set()
     bare_names = {name.split("::")[-1] for name in compiler_names}
     bare_pattern = re.compile(
@@ -193,7 +215,14 @@ def candidate_locations(
                 token_start = match.start()
                 if token.startswith("@"):
                     token_start += token.rfind(".") + 1
-                locations.add((line_no, lo + token_start + 1))
+                column = lo + token_start + 1
+                if (
+                    exclude_declaration_name
+                    and line_no == name_line
+                    and name_start <= column <= name_end
+                ):
+                    continue
+                locations.add((line_no, column))
     return sorted(locations)
 
 
@@ -228,7 +257,9 @@ def contains_dollar_multiline(root: Path, entry: dict[str, Any]) -> bool:
     )
 
 
-FN_IDENTITY = re.compile(r"\bfn\s+([^\s(]+)")
+FN_IDENTITY = re.compile(
+    r"```moonbit\s+(?:(?:pub(?:\([^)]*\))?|priv)\s+)?fn\s+([^\s(]+)",
+)
 
 
 def resolve_hover(root: Path, path: str, line: int, col: int) -> str | None:
@@ -291,11 +322,15 @@ def semantic_references(
     return references
 
 
-def semantic_edges(root: Path, root_symbol: str = ROOT_SYMBOL) -> list[dict[str, Any]]:
+def semantic_edges_from_roots(
+    root: Path,
+    root_symbols: tuple[str, ...],
+) -> list[dict[str, Any]]:
     symbols, symbols_by_name = load_symbols(root)
-    if root_symbol not in symbols:
-        raise RuntimeError(f"semantic audit root not found: {root_symbol}")
-    pending = [root_symbol]
+    missing_roots = [symbol for symbol in root_symbols if symbol not in symbols]
+    if missing_roots:
+        raise RuntimeError(f"semantic audit roots not found: {missing_roots}")
+    pending = list(root_symbols)
     visited: set[str] = set()
     reference_cache: dict[str, list[tuple[str, int, int]]] = {}
     edges: set[tuple[str, str, int, int, str, str]] = set()
@@ -384,6 +419,10 @@ def semantic_edges(root: Path, root_symbol: str = ROOT_SYMBOL) -> list[dict[str,
     ]
 
 
+def semantic_edges(root: Path, root_symbol: str) -> list[dict[str, Any]]:
+    return semantic_edges_from_roots(root, (root_symbol,))
+
+
 def render_payload(payload: dict[str, Any]) -> str:
     edge_lines = [
         "    " + json.dumps(edge, sort_keys=True, separators=(",", ":"))
@@ -393,7 +432,7 @@ def render_payload(payload: dict[str, Any]) -> str:
     return (
         "{\n"
         f"  \"version\": {payload['version']},\n"
-        f"  \"root\": {json.dumps(payload['root'])},\n"
+        f"  \"roots\": {json.dumps(payload['roots'])},\n"
         "  \"edges\": [\n"
         f"{rendered_edges}\n"
         "  ]\n"
@@ -405,7 +444,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--root-symbol", default=ROOT_SYMBOL)
+    parser.add_argument(
+        "--root-symbol",
+        action="append",
+        dest="root_symbols",
+        help="override an activation root; repeat to supply a root set",
+    )
     parser.add_argument("--print", action="store_true", dest="print_edges")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -413,7 +457,8 @@ def main() -> int:
     # CI restores `_build` from another commit. Never let `--no-check` IDE
     # queries consume that stale source-position/type index.
     ensure_semantic_index(root)
-    edges = semantic_edges(root, args.root_symbol)
+    root_symbols = tuple(args.root_symbols) if args.root_symbols else ROOT_SYMBOLS
+    edges = semantic_edges_from_roots(root, root_symbols)
     if args.self_test:
         with semantic_fixture_sources(root):
             ordinary_edges = semantic_edges(
@@ -445,8 +490,13 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 return 1
-            fixture_edges = semantic_edges(
-                root, "semantic_edge_audit_fixture_root",
+            fixture_edges = semantic_edges_from_roots(
+                root,
+                (
+                    "semantic_edge_audit_fixture_root",
+                    "semantic_edge_audit_startup_fixture_root",
+                    "semantic_edge_audit_completion_fixture_root",
+                ),
             )
         observed = [
             (edge["enclosing"], edge["kind"], edge["target"])
@@ -462,6 +512,16 @@ def main() -> int:
                 "semantic_edge_audit_cross_file_wrapper",
                 "runtime",
                 "@runtime.Interpreter::get_console_member",
+            ),
+            (
+                "semantic_edge_audit_startup_fixture_root",
+                "compiler",
+                "semantic_edge_audit_cross_file_wrapper",
+            ),
+            (
+                "semantic_edge_audit_completion_fixture_root",
+                "runtime",
+                "@dowdiness/js_engine/interpreter/runtime.make_array",
             ),
         }
         missing = sorted(required - set(observed))
@@ -493,7 +553,7 @@ def main() -> int:
             )
             return 1
         print("ok: semantic resolver covers aliases, wrappers, and interpolation")
-    payload = {"version": 1, "root": args.root_symbol, "edges": edges}
+    payload = {"version": 2, "roots": list(root_symbols), "edges": edges}
     baseline = root / BASELINE
     rendered = render_payload(payload)
     if args.print_edges:

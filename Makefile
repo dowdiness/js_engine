@@ -127,7 +127,7 @@ architecture-state-audit-mbt-test:
 # Runs the Stage 0 architecture guardrails.
 architecture-audit: architecture-state-audit architecture-boundary-audit architecture-bytecode-semantic-audit
 
-# Guards the resolved compiler/runtime call graph reachable from bytecode dispatch.
+# Guards the resolved compiler/runtime call graph for the bytecode activation lifecycle.
 architecture-bytecode-semantic-audit:
 	python3 scripts/audit_bytecode_vm_semantic_edges.py --root . --self-test
 
