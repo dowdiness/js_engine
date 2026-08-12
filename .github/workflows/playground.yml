@@ -1,4 +1,4 @@
-name: Deploy Playground
+name: Verify and Deploy Playground
 
 on:
   push:
@@ -12,6 +12,8 @@ on:
       - "moon.pkg"
       - "**/moon.pkg"
       - ".github/workflows/playground.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -22,15 +24,17 @@ env:
   MOONBIT_CACHE_VERSION: "2026-07"
 
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Cache MoonBit toolchain
         id: toolchain-cache
@@ -73,16 +77,67 @@ jobs:
         working-directory: playground/web
         run: npm ci
 
-      - name: Build Playground
+      - name: Install Playwright browser
         working-directory: playground/web
-        run: npm run build
+        run: npx playwright install --with-deps chromium
 
-      - name: Stage Playground artifact
-        run: cp -R playground/web/dist "$RUNNER_TEMP/playground-dist"
+      - name: Run web checks
+        working-directory: playground/web
+        run: npm test
 
-      - name: Publish Playground to gh-pages
+      - name: Package Playground artifact
+        run: tar -C playground/web/dist -czf "$RUNNER_TEMP/playground-dist.tar.gz" .
+
+      - name: Upload Playground artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playground-dist-${{ github.sha }}
+          path: ${{ runner.temp }}/playground-dist.tar.gz
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playground-playwright-report-${{ github.sha }}
+          path: |
+            playground/web/playwright-report
+            playground/web/test-results
+          if-no-files-found: ignore
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Download Playground artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: playground-dist-${{ github.sha }}
+          path: ${{ runner.temp }}/playground-artifact
+
+      - name: Unpack Playground artifact
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/playground-dist"
+          tar -xzf "$RUNNER_TEMP/playground-artifact/playground-dist.tar.gz" \
+            -C "$RUNNER_TEMP/playground-dist"
+
+      - name: Publish Playground to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git fetch --no-tags origin gh-pages:refs/remotes/origin/gh-pages
           git switch --force-create gh-pages refs/remotes/origin/gh-pages
           rm -rf playground

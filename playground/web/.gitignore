@@ -2,3 +2,5 @@
 /dist/
 /generated/
 /test-results/
+
+/playwright-report/

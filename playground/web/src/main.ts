@@ -55,7 +55,7 @@ function exampleLabel(name: string): string {
 
 let worker = spawnWorker();
 let active:
-  | { requestId: string; timerId: number; worker: Worker }
+  | { requestId: string; timerId: number; worker: Worker; source: string }
   | undefined;
 
 runButton.addEventListener("click", () => run());
@@ -118,7 +118,12 @@ function run(): void {
     });
   }, HARD_TIMEOUT_MS);
 
-  active = { requestId, timerId, worker: executingWorker };
+  active = {
+    requestId,
+    timerId,
+    worker: executingWorker,
+    source,
+  };
   renderRunning();
   const request: WorkerRequest = {
     protocolVersion: PROTOCOL_VERSION,
@@ -153,21 +158,22 @@ function spawnWorker(): Worker {
   createdWorker.addEventListener(
     "message",
     (event: MessageEvent<WorkerResponse>) => {
+      const currentRun = active;
       const response = event.data;
       if (
-        !active ||
-        active.worker !== createdWorker ||
-        response.requestId !== active.requestId
+        !currentRun ||
+        currentRun.worker !== createdWorker ||
+        response.requestId !== currentRun.requestId
       ) {
         return;
       }
 
-      window.clearTimeout(active.timerId);
+      window.clearTimeout(currentRun.timerId);
       active = undefined;
       if (response.kind === "completed") {
         renderCompleted(response.output, response.result);
       } else if (response.kind === "failed") {
-        renderFailed(response);
+        renderFailed(response, readSource() === currentRun.source);
       } else {
         renderTerminated(response);
       }

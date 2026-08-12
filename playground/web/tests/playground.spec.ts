@@ -3,10 +3,8 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
-async function readGeneratedExamples(): Promise<Record<string, string>> {
-  const directory = fileURLToPath(
-    new URL("../generated/examples/", import.meta.url),
-  );
+async function readExamples(directoryUrl: URL): Promise<Record<string, string>> {
+  const directory = fileURLToPath(directoryUrl);
   const fileNames = (await readdir(directory))
     .filter(fileName => fileName.endsWith(".js"))
     .sort();
@@ -17,6 +15,14 @@ async function readGeneratedExamples(): Promise<Record<string, string>> {
     ] as const),
   );
   return Object.fromEntries(entries);
+}
+
+async function readGeneratedExamples(): Promise<Record<string, string>> {
+  return readExamples(new URL("../generated/examples/", import.meta.url));
+}
+
+async function readRepositoryExamples(): Promise<Record<string, string>> {
+  return readExamples(new URL("../../../example/", import.meta.url));
 }
 
 
@@ -43,6 +49,9 @@ test("links to the repository", async ({ page }) => {
   );
   await expect(repositoryLink).toHaveAttribute("target", "_blank");
   await expect(repositoryLink).toHaveAttribute("rel", /noopener/);
+  await expect(page.getByText(
+    "Run each snippet in a fresh realm inside a dedicated worker.",
+  )).toBeVisible();
 });
 
 test("recovers after timeout and stop", async ({ page }) => {
@@ -169,6 +178,103 @@ test("ignores a stale response after Run starts again", async ({ page }) => {
   await expect(page.locator("#console")).toHaveText("");
 });
 
+test("does not select a diagnostic from a changed source", async ({ page }) => {
+  await page.addInitScript(() => {
+    const workers: ControlledWorker[] = [];
+
+    class ControlledWorker {
+      request: { requestId: string } | undefined;
+      listeners = new Map<string, EventListener[]>();
+
+      constructor() {
+        workers.push(this);
+      }
+
+      postMessage(message: { requestId: string }): void {
+        this.request = message;
+      }
+
+      terminate(): void {}
+
+      addEventListener(type: string, listener: EventListener): void {
+        const current = this.listeners.get(type) ?? [];
+        current.push(listener);
+        this.listeners.set(type, current);
+      }
+
+      dispatchResponse(response: unknown): void {
+        const event = new MessageEvent("message", { data: response });
+        for (const listener of this.listeners.get("message") ?? []) {
+          listener(event);
+        }
+      }
+    }
+
+    Object.defineProperty(window, "__playgroundWorkers", {
+      configurable: true,
+      value: workers,
+    });
+    Object.defineProperty(window, "Worker", {
+      configurable: true,
+      value: ControlledWorker,
+    });
+  });
+
+  await page.goto("./");
+  const editor = page.locator("#editor");
+  await editor.fill("let =");
+  await page.getByRole("button", { name: /Run/ }).click();
+  await expect(page.locator("#status")).toHaveText("Running");
+
+  await editor.fill("safe();");
+  await page.evaluate(() => {
+    const editor = document.querySelector<HTMLTextAreaElement>("#editor");
+    if (!editor) throw new Error("editor is missing");
+    editor.focus();
+    editor.setSelectionRange(2, 2);
+
+    const workers = (window as unknown as {
+      __playgroundWorkers: Array<{
+        request: { requestId: string } | undefined;
+        dispatchResponse(response: unknown): void;
+      }>;
+    }).__playgroundWorkers;
+    const requestId = workers[0]?.request?.requestId;
+    if (!requestId) throw new Error("worker did not receive a request");
+    workers[0]?.dispatchResponse({
+      protocolVersion: 1,
+      requestId,
+      kind: "failed",
+      output: [],
+      partialOutputAvailable: false,
+      diagnostic: {
+        failureKind: "parse-error",
+        message: "old source",
+        operation: "run",
+        phase: "parse",
+        sourceId: "playground:test",
+        location: {
+          start: { line: 1, column: 1, offset: 0 },
+          end: { line: 1, column: 4, offset: 3 },
+        },
+        engineIntegrity: "not-applicable",
+        retainedEffects: "none",
+        pendingJobs: "unknown",
+      },
+    });
+  });
+
+  await expect(page.locator("#status")).toHaveText("Failed");
+  await expect(editor).toHaveValue("safe();");
+  await expect.poll(() => editor.evaluate(element => {
+    const textarea = element as HTMLTextAreaElement;
+    return {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+  })).toEqual({ start: 2, end: 2 });
+});
+
 test("does not share globals between runs", async ({ page }) => {
   await page.goto("./");
   const editor = page.locator("#editor");
@@ -286,16 +392,18 @@ test("rejects oversized source at the worker boundary", async ({ page }) => {
 });
 
 
-test("lists and loads every generated repository example", async ({ page }) => {
+test("lists and loads every repository example", async ({ page }) => {
+  const repositoryExamples = await readRepositoryExamples();
   const generatedExamples = await readGeneratedExamples();
-  const expectedValues = Object.keys(generatedExamples);
+  expect(generatedExamples).toEqual(repositoryExamples);
+  const expectedValues = Object.keys(repositoryExamples);
   const firstValue = expectedValues[0];
   if (firstValue === undefined) {
-    throw new Error("Generated repository examples are empty");
+    throw new Error("Repository examples are empty");
   }
-  const firstSource = generatedExamples[firstValue];
+  const firstSource = repositoryExamples[firstValue];
   if (firstSource === undefined) {
-    throw new Error(`Missing generated source for ${firstValue}`);
+    throw new Error(`Missing repository source for ${firstValue}`);
   }
 
   await page.goto("./");
@@ -310,9 +418,9 @@ test("lists and loads every generated repository example", async ({ page }) => {
   expect(actualValues).toEqual(expectedValues);
   for (const value of expectedValues) {
     await examplePicker.selectOption(value);
-    const source = generatedExamples[value];
+    const source = repositoryExamples[value];
     if (source === undefined) {
-      throw new Error(`Missing generated source for ${value}`);
+      throw new Error(`Missing repository source for ${value}`);
     }
     await expect(editor).toHaveValue(source);
   }

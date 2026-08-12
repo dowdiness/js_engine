@@ -62,12 +62,15 @@ export function renderCompleted(output: string[], result: string): void {
   renderText(diagnosticsOutput, "");
 }
 
-export function renderFailed(response: FailedResponse): void {
+export function renderFailed(
+  response: FailedResponse,
+  selectLocation = true,
+): void {
   setStatus("Failed", "failed");
   renderText(consoleOutput, response.output.join("\n"));
   renderText(resultOutput, "");
   renderText(diagnosticsOutput, formatDiagnostic(response.diagnostic));
-  selectDiagnostic(response.diagnostic.location);
+  if (selectLocation) selectDiagnostic(response.diagnostic.location);
 }
 
 export function renderTerminated(response: TerminatedResponse): void {
