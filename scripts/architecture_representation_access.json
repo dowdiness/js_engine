@@ -172,6 +172,13 @@
       "paths": ["compiler/bytecode_vm.mbt"],
       "kind": "guest-capable VM runtime edge",
       "reason": "raw interpreter capability access in bytecode dispatch requires typed edge classification"
+    },
+    {
+      "id": "bytecode-vm-runtime-edge",
+      "pattern": "@runtime.",
+      "paths": ["compiler/bytecode_vm.mbt"],
+      "kind": "guest-capable VM runtime edge",
+      "reason": "raw runtime capability access in bytecode dispatch requires typed edge classification"
     }
   ],
   "allowlisted_access": [
@@ -183,6 +190,15 @@
       "owner": "bytecode activation eligibility inventory",
       "retire_by_stage": "Stage 7-12",
       "reason": "raw VM interpreter edges remain evidence until each guest-capable path has an explicit managed seam or typed unsupported disposition"
+    },
+    {
+      "path": "compiler/bytecode_vm.mbt",
+      "pattern_id": "bytecode-vm-runtime-edge",
+      "allowed_count": 80,
+      "fingerprint": "80:5046:892737:49175",
+      "owner": "bytecode activation eligibility inventory",
+      "retire_by_stage": "Stage 7-12",
+      "reason": "raw VM runtime edges remain evidence until each guest-capable path has an explicit managed seam or typed unsupported disposition"
     },
     {
       "path": "compiler/closure_conversion.mbt",

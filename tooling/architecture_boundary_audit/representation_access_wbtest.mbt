@@ -30,6 +30,13 @@ fn base_representation_json(allowlisted : String) -> String {
     #|      "paths": ["compiler/bytecode_vm.mbt"],
     #|      "kind": "guest-capable VM runtime edge",
     #|      "reason": "raw interpreter capability access in bytecode dispatch requires typed edge classification"
+    #|    },
+    #|    {
+    #|      "id": "bytecode-vm-runtime-edge",
+    #|      "pattern": "@runtime.",
+    #|      "paths": ["compiler/bytecode_vm.mbt"],
+    #|      "kind": "guest-capable VM runtime edge",
+    #|      "reason": "raw runtime capability access in bytecode dispatch requires typed edge classification"
     #|    }
     #|  ],
     #|  "allowlisted_access": [
@@ -59,6 +66,29 @@ fn bytecode_vm_interpreter_edge_debt_json(
     #|      "owner": "bytecode activation eligibility inventory",
     #|      "retire_by_stage": "Stage 7-12",
     #|      "reason": "raw VM interpreter edges remain evidence until each guest-capable path has an explicit managed seam or typed unsupported disposition"
+    #|    }
+    #|
+  prefix + allowed_count.to_string() + suffix + fingerprint + after_fingerprint
+}
+
+///|
+fn bytecode_vm_runtime_edge_debt_json(
+  allowed_count : Int,
+  fingerprint : String,
+) -> String {
+  let prefix =
+    #|    {
+    #|      "path": "compiler/bytecode_vm.mbt",
+    #|      "pattern_id": "bytecode-vm-runtime-edge",
+    #|      "allowed_count":
+  let suffix =
+    #|,
+    #|      "fingerprint": "
+  let after_fingerprint =
+    #|",
+    #|      "owner": "bytecode activation eligibility inventory",
+    #|      "retire_by_stage": "Stage 7-12",
+    #|      "reason": "raw VM runtime edges remain evidence until each guest-capable path has an explicit managed seam or typed unsupported disposition"
     #|    }
     #|
   prefix + allowed_count.to_string() + suffix + fingerprint + after_fingerprint
@@ -630,4 +660,97 @@ test "whitespace-separated bytecode VM interpreter edge fails audit" {
       )
     }),
   )
+}
+
+///|
+test "bytecode VM runtime edge fingerprint is accepted" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-runtime-pass-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  write_file(
+    root, "compiler/other.mbt", "fn unrelated(interp : Interpreter) -> Unit { @runtime.unrelated(interp) }\n",
+  )
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  @runtime.get_property(interp)
+    #|  @runtime.spread_iterable(interp)
+    #|  let text = "@runtime.string_literal()"
+    #|  // @runtime.comment_only(interp)
+    #|  ignore(text)
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_runtime_edge_debt_json(
+    2,
+    representation_fingerprint([
+      "@runtime.:@runtime.get_property(interp)", "@runtime.:@runtime.spread_iterable(interp)",
+    ]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=true,
+  )
+  assert_eq(code, 0)
+  assert_eq(stderr_lines.length(), 0)
+  assert_true(
+    stdout_lines.any(line => {
+      line.contains(
+        "compiler/bytecode_vm.mbt:2 [compiler] bytecode-vm-runtime-edge: @runtime. -- DEBT",
+      )
+    }),
+  )
+  assert_eq(
+    stdout_lines[stdout_lines.length() - 1],
+    "ok: architecture representation access matches inventory (2 classified accesses)",
+  )
+}
+
+///|
+test "new bytecode VM runtime edge fails fingerprint audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-runtime-new-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  @runtime.get_property(interp)
+    #|  @runtime/* split comment */.new_guest_helper(interp)
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_runtime_edge_debt_json(
+    2,
+    representation_fingerprint([
+      "@runtime.:@runtime.get_property(interp)", "@runtime.:@runtime.spread_iterable(interp)",
+    ]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:3 [compiler] bytecode-vm-runtime-edge: @runtime.",
+      )
+    }),
+  )
+  assert_true(stderr_lines.any(line => line == "stale allowlist entries:"))
 }
