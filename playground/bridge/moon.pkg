@@ -1,0 +1,9 @@
+import {
+  "dowdiness/js_engine",
+}
+
+supported_targets = "js"
+
+options(
+  link: { "js": { "format": "esm", "exports": [ "playground_run" ] } },
+)

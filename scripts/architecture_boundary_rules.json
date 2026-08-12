@@ -46,6 +46,10 @@
       "packages": ["example/*"]
     },
     {
+      "name": "playground",
+      "packages": ["playground/*"]
+    },
+    {
       "name": "static-semantics",
       "packages": ["static_semantics"]
     },
@@ -96,6 +100,18 @@
       "to": ".",
       "scope": "prod",
       "reason": "runnable embedding examples consume the stable root facade"
+    },
+    {
+      "from": "playground/bridge",
+      "to": ".",
+      "scope": "prod",
+      "reason": "Web playground bridge consumes the stable root facade"
+    },
+    {
+      "from": "playground/bridge_test",
+      "to": "playground/bridge",
+      "scope": "test",
+      "reason": "Playground bridge tests exercise the exported worker boundary"
     },
     {
       "from": "integration/external_consumer",
