@@ -78,12 +78,13 @@ scan; no mutable summary or child-folded cache exists. Closure-making
 instructions therefore remain leaf operations in the parent, while the child
 body is independently selected at child activation.
 
-`verify_bytecode_function_source_metadata` recomputes the disposition while
-checking each verified function's source table. This reuses the existing
-source-verifier traversal and compiler exhaustiveness rather than maintaining
-a manually synchronized instruction/helper registry. A new instruction must
-therefore update both the compiler contract and the VM dispatch before the
-project can type-check.
+`finalize_bytecode_program` calls `verify_bytecode_activation_eligibility`
+after all existing source, control-flow, indexed-operand, shape, and frame
+verifiers have accepted the representation. That traversal recomputes each
+function's disposition independently and reuses the existing verifier
+structure rather than maintaining a manually synchronized instruction/helper
+registry. A new instruction must therefore update both the compiler contract
+and the VM dispatch before the project can type-check.
 
 The intentionally unsupported families are the synchronous guest-capable
 edges listed above: super access/reference preparation, coercive operators,
