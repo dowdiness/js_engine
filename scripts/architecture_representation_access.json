@@ -165,6 +165,34 @@
       "pattern": ".entries|.values",
       "kind": "field",
       "reason": "observes or mutates Map/Set backing collections directly"
+    },
+    {
+      "id": "runtime-binding-type",
+      "pattern": "Binding",
+      "kind": "type",
+      "reason": "compiler must not import or inspect the runtime Binding representation",
+      "areas": ["compiler"]
+    },
+    {
+      "id": "runtime-binding-kind-type",
+      "pattern": "BindingKind",
+      "kind": "type",
+      "reason": "compiler must not inspect runtime binding-kind representation",
+      "areas": ["compiler"]
+    },
+    {
+      "id": "runtime-binding-fields",
+      "pattern": "binding.value|binding.initialized|binding.kind",
+      "kind": "field",
+      "reason": "compiler must not inspect or mutate mutable Binding state",
+      "areas": ["compiler"]
+    },
+    {
+      "id": "runtime-environment-bindings-field",
+      "pattern": "env.bindings",
+      "kind": "field",
+      "reason": "compiler must not inspect the Environment.bindings collection",
+      "areas": ["compiler"]
     }
   ],
   "allowlisted_access": [
