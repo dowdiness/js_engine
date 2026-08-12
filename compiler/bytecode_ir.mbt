@@ -1,10 +1,4 @@
 ///|
-using @runtime {type Binding}
-
-///|
-let empty_bytecode_env_slots : Array[Binding] = []
-
-///|
 // A handle is scoped to one BytecodeProgram. Separate compilations need not
 // produce numerically distinct handles; the owning program provides the
 // identity boundary, while every nested function shares this source unit.
