@@ -304,13 +304,15 @@ test "source metadata verifier accepts nested valid programs" {
     #|compute("ok");
   let program = unverified_source_program_for_wb(src)
   let finalized = finalize_bytecode_program(program)
-  assert_true(finalized.main.children.length() == 1)
+  assert_true(finalized.main_for_wb().children.length() == 1)
   assert_true(
-    finalized.main.source_point_owner !=
-    finalized.main.children[0].source_point_owner,
+    finalized.main_for_wb().source_point_owner !=
+    finalized.main_for_wb().children[0].source_point_owner,
   )
-  assert_true(function_contains_construction_for_wb(finalized.main))
-  assert_true(function_contains_property_preparation_for_wb(finalized.main))
+  assert_true(function_contains_construction_for_wb(finalized.main_for_wb()))
+  assert_true(
+    function_contains_property_preparation_for_wb(finalized.main_for_wb()),
+  )
 }
 
 ///|
@@ -1076,9 +1078,12 @@ test "indexed operand verifier rejects every zero-length owning table" {
 test "indexed operand verifier preserves valid root and nested programs" {
   let root_program = unverified_source_program_for_wb("var x = 1; x = x + 1;")
   let root_finalized = finalize_bytecode_program(root_program)
-  assert_eq(root_finalized.main.code.length(), root_program.main.code.length())
   assert_eq(
-    root_finalized.main.local_names.length(),
+    root_finalized.main_for_wb().code.length(),
+    root_program.main.code.length(),
+  )
+  assert_eq(
+    root_finalized.main_for_wb().local_names.length(),
     root_program.main.local_names.length(),
   )
 
@@ -1092,15 +1097,15 @@ test "indexed operand verifier preserves valid root and nested programs" {
   let nested_program = unverified_source_program_for_wb(nested_src)
   let nested_finalized = finalize_bytecode_program(nested_program)
   assert_eq(
-    nested_finalized.main.children.length(),
+    nested_finalized.main_for_wb().children.length(),
     nested_program.main.children.length(),
   )
   assert_eq(
-    nested_finalized.main.children[0].children.length(),
+    nested_finalized.main_for_wb().children[0].children.length(),
     nested_program.main.children[0].children.length(),
   )
   assert_eq(
-    nested_finalized.main.children[0].env_slot_names.length(),
+    nested_finalized.main_for_wb().children[0].env_slot_names.length(),
     nested_program.main.children[0].env_slot_names.length(),
   )
 }
@@ -1450,7 +1455,7 @@ test "shape operand verifier accepts valid boundary and lowering operands" {
   for source in sources {
     let program = unverified_source_program_for_wb(source)
     let finalized = finalize_bytecode_program(program)
-    assert_eq(finalized.main.code.length(), program.main.code.length())
+    assert_eq(finalized.main_for_wb().code.length(), program.main.code.length())
   }
 }
 
@@ -1693,7 +1698,7 @@ test "frame-shape verifier accepts representative resource topologies" {
   for source in sources {
     let program = unverified_source_program_for_wb(source)
     let finalized = finalize_bytecode_program(program)
-    assert_eq(finalized.main.code.length(), program.main.code.length())
+    assert_eq(finalized.main_for_wb().code.length(), program.main.code.length())
   }
 }
 
@@ -1703,7 +1708,7 @@ test "frame-shape verifier permits throw to discard active for-in state" {
     "var key; for (key in object) { throw key; }",
   )
   let finalized = finalize_bytecode_program(program)
-  assert_eq(finalized.main.code.length(), program.main.code.length())
+  assert_eq(finalized.main_for_wb().code.length(), program.main.code.length())
 }
 
 ///|
@@ -1712,9 +1717,9 @@ test "frame-shape verifier permits return to discard active for-in state" {
     "function first(object) { var key; for (key in object) { return key; } return undefined; }",
   )
   let finalized = finalize_bytecode_program(program)
-  assert_eq(finalized.main.children.length(), 1)
+  assert_eq(finalized.main_for_wb().children.length(), 1)
   assert_eq(
-    finalized.main.children[0].code.length(),
+    finalized.main_for_wb().children[0].code.length(),
     program.main.children[0].code.length(),
   )
 }
@@ -1890,7 +1895,7 @@ test "control-flow verifier accepts the inclusive terminal boundary" {
     terminal,
   )
   let finalized = finalize_bytecode_program(program)
-  match finalized.main.code[instruction_index] {
+  match finalized.main_for_wb().code[instruction_index] {
     JumpIfFalse(target) => assert_eq(target, terminal)
     _ => fail("expected mutated conditional jump")
   }
@@ -1905,7 +1910,7 @@ test "control-flow verifier accepts zero and in-range targets" {
     0,
   )
   let zero_finalized = finalize_bytecode_program(zero_program)
-  match zero_finalized.main.code[zero_index] {
+  match zero_finalized.main_for_wb().code[zero_index] {
     JumpIfFalse(target) => assert_eq(target, 0)
     _ => fail("expected zero-target conditional jump")
   }
@@ -1923,7 +1928,7 @@ test "control-flow verifier accepts zero and in-range targets" {
     abort("expected an in-range instruction target")
   }
   let in_range_finalized = finalize_bytecode_program(in_range_program)
-  match in_range_finalized.main.code[in_range_index] {
+  match in_range_finalized.main_for_wb().code[in_range_index] {
     JumpIfFalse(target) => assert_eq(target, in_range_target)
     _ => fail("expected in-range conditional jump")
   }

@@ -1779,7 +1779,7 @@ pub fn BytecodeProgram::run(
   interp : Interpreter,
 ) -> Value raise Error {
   interp.run_compiled_script(self.source_stmts, fn(ctx, env) raise {
-    let result = run_bytecode_function(interp, ctx, env, self.main) catch {
+    let result = run_bytecode_function(interp, ctx, env, self.verified_main) catch {
       @errors.InternalError(message~) =>
         raise BytecodeRuntimeDefectSignal(message)
       error => raise error

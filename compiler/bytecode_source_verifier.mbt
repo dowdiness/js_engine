@@ -592,7 +592,15 @@ fn finalize_bytecode_program(
   verify_bytecode_indexed_operands(program)
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)
-  { source_stmts: program.source_stmts, main: program.main }
+  let verified_main = make_verified_bytecode_function(program.main)
+  { source_stmts: program.source_stmts, verified_main }
+}
+
+///|
+fn make_verified_bytecode_function(
+  function : BytecodeFunction,
+) -> VerifiedBytecodeFunction {
+  { function, }
 }
 
 ///|
