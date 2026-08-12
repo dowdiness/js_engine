@@ -39,8 +39,8 @@ pub(all) struct Binding {
 /// retains the binding cell itself, so captured activations and direct eval
 /// observe the same mutable identity without exposing Binding's fields.
 pub struct EnvironmentSlot {
-  name : String
-  binding : Binding
+  priv name : String
+  priv binding : Binding
 }
 
 ///|
@@ -281,7 +281,7 @@ pub fn Environment::def_tdz(
 ///|
 /// Ensure a local lexical binding exists without exposing the binding map to
 /// compiler clients. Existing parameters/captures are intentionally reused.
-pub fn Environment::def_tdz_if_absent(
+fn Environment::def_tdz_if_absent(
   self : Environment,
   name : String,
   kind : BindingKind,
@@ -289,6 +289,26 @@ pub fn Environment::def_tdz_if_absent(
   if !self.bindings.contains(name) {
     self.def_tdz(name, kind)
   }
+}
+
+///|
+/// Ensure a local `let` binding exists without exposing BindingKind to the
+/// compiler's indexed-slot path.
+pub fn Environment::def_let_tdz_if_absent(
+  self : Environment,
+  name : String,
+) -> Unit raise Error {
+  self.def_tdz_if_absent(name, LetBinding)
+}
+
+///|
+/// Ensure a local `const` binding exists without exposing BindingKind to the
+/// compiler's indexed-slot path.
+pub fn Environment::def_const_tdz_if_absent(
+  self : Environment,
+  name : String,
+) -> Unit raise Error {
+  self.def_tdz_if_absent(name, ConstBinding)
 }
 
 ///|

@@ -572,6 +572,8 @@ pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::assign_var(Self, String, Value) -> Unit raise
 pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
 pub fn Environment::def_builtin(Self, String, Value) -> Unit
+pub fn Environment::def_const_tdz_if_absent(Self, String) -> Unit raise
+pub fn Environment::def_let_tdz_if_absent(Self, String) -> Unit raise
 pub fn Environment::def_param_tdz(Self, String) -> Unit raise
 pub fn Environment::def_parameter(Self, String, Value) -> Unit raise
 pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
@@ -583,6 +585,14 @@ pub fn Environment::has_var(Self, String) -> Bool
 pub fn Environment::initialize(Self, String, Value) -> Unit raise
 pub fn Environment::initialize_in_chain(Self, String, Value) -> Unit raise
 pub fn Environment::new(parent? : Self?) -> Self
+pub fn Environment::resolve_slot(Self, String) -> EnvironmentSlot?
+
+pub struct EnvironmentSlot {
+  // private fields
+}
+pub fn EnvironmentSlot::assign(Self, Value) -> Unit raise
+pub fn EnvironmentSlot::initialize(Self, Value) -> Unit
+pub fn EnvironmentSlot::read(Self) -> Value raise
 
 pub(all) struct ExecContext {
   strict : Bool
