@@ -80,11 +80,10 @@ fn assert_instruction_contract_for_wb(
   let contract = bytecode_instruction_contract(instr)
   assert_eq(contract.may_raise_js, may_raise_js)
   match (contract.activation_disposition, activation_disposition) {
-    (SynchronousLeaf, SynchronousLeaf) | (ManagedSuspension, ManagedSuspension) => ()
-    (
-      UnsupportedBeforeActivation(actual),
-      UnsupportedBeforeActivation(expected),
-    ) => assert_true(activation_reason_matches_for_wb(actual, expected))
+    (SynchronousLeaf, SynchronousLeaf)
+    | (ManagedSuspension, ManagedSuspension) => ()
+    (UnsupportedBeforeActivation(actual), UnsupportedBeforeActivation(expected)) =>
+      assert_true(activation_reason_matches_for_wb(actual, expected))
     _ => fail("activation disposition mismatch")
   }
   assert_eq(contract.required_source_roles, required_source_roles)
@@ -95,11 +94,15 @@ fn assert_instruction_contract_for_wb(
 test "RED: bytecode instruction contracts retain semantic source roles" {
   let loc = @token.Loc::default()
   assert_instruction_contract_for_wb(Throw, true, SynchronousLeaf, [Throw])
-  assert_instruction_contract_for_wb(Call(0, loc), true, ManagedSuspension, [Call])
-  assert_instruction_contract_for_wb(CallDirectEval(loc), true, UnsupportedBeforeActivation(DirectEval), [
-    DirectEval,
+  assert_instruction_contract_for_wb(Call(0, loc), true, ManagedSuspension, [
     Call,
   ])
+  assert_instruction_contract_for_wb(
+    CallDirectEval(loc),
+    true,
+    UnsupportedBeforeActivation(DirectEval),
+    [DirectEval, Call],
+  )
   assert_instruction_contract_for_wb(
     PreparePlainPropertyCall("method", loc),
     true,
@@ -130,35 +133,57 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     UnsupportedBeforeActivation(SuperComputedPropertyCall),
     [SuperMemberAccess, PropertyKey],
   )
-  assert_instruction_contract_for_wb(ArgPushSpread(loc), true, UnsupportedBeforeActivation(ArgumentSpread), [
-    Spread,
-    Iterator,
-  ])
-  assert_instruction_contract_for_wb(BinaryOp(Add, loc), true, UnsupportedBeforeActivation(BinaryOperation), [Operator])
-  assert_instruction_contract_for_wb(LoadName("binding"), true, SynchronousLeaf, [
-    BindingAccess,
-  ])
-  assert_instruction_contract_for_wb(MakeRegExp("a", ""), true, SynchronousLeaf, [
-    ExpressionEntry,
-  ])
+  assert_instruction_contract_for_wb(
+    ArgPushSpread(loc),
+    true,
+    UnsupportedBeforeActivation(ArgumentSpread),
+    [Spread, Iterator],
+  )
+  assert_instruction_contract_for_wb(
+    BinaryOp(Add, loc),
+    true,
+    UnsupportedBeforeActivation(BinaryOperation),
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
+    LoadName("binding"),
+    true,
+    SynchronousLeaf,
+    [BindingAccess],
+  )
+  assert_instruction_contract_for_wb(
+    MakeRegExp("a", ""),
+    true,
+    SynchronousLeaf,
+    [ExpressionEntry],
+  )
   assert_instruction_contract_for_wb(MakeFunction(0), true, SynchronousLeaf, [
     ExpressionEntry,
   ])
-  assert_instruction_contract_for_wb(MakeNamedFunction(0, "f"), true, SynchronousLeaf, [
-    ExpressionEntry,
-  ])
-  assert_instruction_contract_for_wb(MakeMethodFunction(0), true, SynchronousLeaf, [
-    ExpressionEntry,
-  ])
+  assert_instruction_contract_for_wb(
+    MakeNamedFunction(0, "f"),
+    true,
+    SynchronousLeaf,
+    [ExpressionEntry],
+  )
+  assert_instruction_contract_for_wb(
+    MakeMethodFunction(0),
+    true,
+    SynchronousLeaf,
+    [ExpressionEntry],
+  )
   assert_instruction_contract_for_wb(
     MakeComputedMethodFunction(0),
     true,
     SynchronousLeaf,
     [ExpressionEntry],
   )
-  assert_instruction_contract_for_wb(MakeArrowFunction(0), true, SynchronousLeaf, [
-    ExpressionEntry,
-  ])
+  assert_instruction_contract_for_wb(
+    MakeArrowFunction(0),
+    true,
+    SynchronousLeaf,
+    [ExpressionEntry],
+  )
 }
 
 ///|
@@ -177,7 +202,8 @@ test "RED: activation contract distinguishes leaf managed and unsupported" {
   }
   match conditional.activation_disposition {
     UnsupportedBeforeActivation(ConditionalComputedProperty) => ()
-    _ => fail("conditional computed access must be unsupported before activation")
+    _ =>
+      fail("conditional computed access must be unsupported before activation")
   }
 }
 
@@ -222,12 +248,11 @@ test "activation selection recomputes typed reasons without a cached summary" {
   }
   bytecode.main.code.push(BinaryOp(Add, loc))
   match select_bytecode_function_activation(bytecode.main, []) {
-    Err(unsupported) => {
+    Err(unsupported) =>
       match unsupported.reason {
         BinaryOperation => ()
         _ => fail("recomputed reason must identify binary operation")
       }
-    }
     Ok(_) => fail("stale eligibility must not remain accepted")
   }
 }

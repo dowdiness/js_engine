@@ -326,11 +326,9 @@ fn bytecode_instruction_contract(
     | StoreEnvSlot(_)
     | TypeofName(_) => bytecode_contract(true, SynchronousLeaf, [BindingAccess])
     DeleteName(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(DeleteName),
-        [BindingAccess],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(DeleteName), [
+        BindingAccess,
+      ])
     LoadDirectEvalCallee =>
       bytecode_contract(true, SynchronousLeaf, [BindingAccess, DirectEval])
     LoadConsoleMember(_) =>
@@ -350,11 +348,9 @@ fn bytecode_instruction_contract(
     BinaryOp(op, _) => bytecode_binary_contract(op)
     UnaryValueOp(op, _) => bytecode_unary_contract(op)
     DeleteProperty(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(DeleteProperty),
-        [MemberAccess],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(DeleteProperty), [
+        MemberAccess,
+      ])
     DeleteComputed =>
       bytecode_contract(
         true,
@@ -368,25 +364,23 @@ fn bytecode_instruction_contract(
         [Operator],
       )
     MakeTemplateObject(_) => bytecode_contract(false, SynchronousLeaf, [])
-    MakeRegExp(_, _) => bytecode_contract(true, SynchronousLeaf, [ExpressionEntry])
+    MakeRegExp(_, _) =>
+      bytecode_contract(true, SynchronousLeaf, [ExpressionEntry])
     UpdateName(_, _, _, _) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(UpdateName),
-        [BindingAccess, Operator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(UpdateName), [
+        BindingAccess,
+        Operator,
+      ])
     UpdateLocal(_, _, _) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(UpdateLocal),
-        [BindingAccess, Operator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(UpdateLocal), [
+        BindingAccess,
+        Operator,
+      ])
     UpdateEnvSlot(_, _, _) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(UpdateEnvSlot),
-        [BindingAccess, Operator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(UpdateEnvSlot), [
+        BindingAccess,
+        Operator,
+      ])
     UpdateProperty(_, _, _, _, _) =>
       bytecode_contract(true, ManagedSuspension, [MemberAccess, Operator])
     UpdateComputed(_, _, _, _) =>
@@ -396,35 +390,27 @@ fn bytecode_instruction_contract(
         [MemberAccess, PropertyKey, Operator],
       )
     StartForIn =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ForInEnumeration),
-        [Iterator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(ForInEnumeration), [
+        Iterator,
+      ])
     ArrayPushSpread(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ArraySpread),
-        [Spread, Iterator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(ArraySpread), [
+        Spread,
+        Iterator,
+      ])
     ArgPushSpread(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ArgumentSpread),
-        [Spread, Iterator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(ArgumentSpread), [
+        Spread,
+        Iterator,
+      ])
     ToObjectLiteralPropertyKey =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ObjectPropertyKey),
-        [PropertyKey],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(ObjectPropertyKey), [
+        PropertyKey,
+      ])
     ObjectSpread(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ObjectSpread),
-        [Spread],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(ObjectSpread), [
+        Spread,
+      ])
     MakeFunction(_)
     | MakeNamedFunction(_, _)
     | MakeMethodFunction(_)
@@ -480,11 +466,9 @@ fn bytecode_instruction_contract(
         [BindingAccess, MemberAccess, Iterator],
       )
     PrepareSuperPropertyCall(_, _) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(SuperPropertyCall),
-        [SuperMemberAccess],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(SuperPropertyCall), [
+        SuperMemberAccess,
+      ])
     PrepareSuperComputedCall(_) =>
       bytecode_contract(
         true,
@@ -492,11 +476,10 @@ fn bytecode_instruction_contract(
         [SuperMemberAccess, PropertyKey],
       )
     CallDirectEval(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(DirectEval),
-        [DirectEval, Call],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(DirectEval), [
+        DirectEval,
+        Call,
+      ])
     Call(_, _)
     | CallWithReceiver(_, _)
     | CallSpread(_)
@@ -547,11 +530,9 @@ fn bytecode_binary_contract(op : @ast.BinOp) -> BytecodeInstructionContract {
     | Exp
     | In
     | Instanceof =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(BinaryOperation),
-        [Operator],
-      )
+      bytecode_contract(true, UnsupportedBeforeActivation(BinaryOperation), [
+        Operator,
+      ])
   }
 }
 
