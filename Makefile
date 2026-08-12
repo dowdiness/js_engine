@@ -137,6 +137,7 @@ architecture-boundary-audit: architecture-boundary-audit-mbt
 architecture-boundary-audit-mbt: architecture-boundary-audit-mbt-test
 	moon build --target native cmd/architecture_boundary_audit
 	./_build/native/debug/build/cmd/architecture_boundary_audit/architecture_boundary_audit.exe --root .
+	python3 scripts/audit_runtime_representation_access.py --root . --self-test
 
 architecture-boundary-audit-mbt-test:
 	moon test --target native tooling/architecture_boundary_audit

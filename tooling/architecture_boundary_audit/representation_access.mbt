@@ -118,10 +118,10 @@ fn decode_representation_pattern(
     schema_error(path, "representation pattern \{id} reason must not be empty")
   }
   for area in areas {
-    if area != "compiler" && area != "stdlib" {
+    if area != "compiler" && area != "stdlib" && area != "semantic" {
       schema_error(
         path,
-        "representation pattern \{id} area must be compiler or stdlib",
+        "representation pattern \{id} area must be compiler, stdlib, or semantic",
       )
     }
   }
