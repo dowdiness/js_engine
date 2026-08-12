@@ -11,6 +11,7 @@ Long-form design, architecture, and research notes for `js_engine`.
 - [architecture-stage0-implementation-spec-2026-06-12.md](architecture-stage0-implementation-spec-2026-06-12.md) — concrete Stage 0 guardrail/inventory implementation specs.
 - [engine-activation-continuation-implementation-notes.md](engine-activation-continuation-implementation-notes.md) — current-code mapping, cleanup inventory, and migration sequence for the accepted #630 activation-continuation contract.
 - [engine-activation-continuation-closure-inventory.md](engine-activation-continuation-closure-inventory.md) — source-backed #630 call-edge, value-consumer, cleanup, and #608 residual classification.
+- [bytecode-activation-eligibility-inventory-2026-08-12.md](bytecode-activation-eligibility-inventory-2026-08-12.md) — source-backed #884 inventory of bytecode dispositions, VM guest-capable edges, and independent child selection.
 - [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — migration record for realm state ownership, runtime surface control, and execution boundaries.
 - [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — exploratory sizing probes for earlier restructuring work.
 - [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md) — closure-conversion prototype status, research notes, and bytecode/IR direction.
