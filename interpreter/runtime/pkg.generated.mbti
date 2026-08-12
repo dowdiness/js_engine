@@ -93,7 +93,11 @@ pub fn executor_activation_continue() -> ExecutorActivationStep
 
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
 
+pub fn executor_activation_property_decrement(Value, String, Bool, @token.Loc, @token.Loc, Bool) -> ExecutorActivationStep
+
 pub fn executor_activation_property_get(Value, String, @token.Loc) -> ExecutorActivationStep
+
+pub fn executor_activation_property_increment(Value, String, Bool, @token.Loc, @token.Loc, Bool) -> ExecutorActivationStep
 
 pub fn executor_activation_property_set(Value, String, Value, @token.Loc, Bool) -> ExecutorActivationStep
 
@@ -609,6 +613,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationConstruct(ExecutorConstructRequest)
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
+  ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -632,6 +637,10 @@ pub struct ExecutorPropertyGetRequest {
 }
 
 pub struct ExecutorPropertySetRequest {
+  // private fields
+}
+
+pub struct ExecutorPropertyUpdateRequest {
   // private fields
 }
 

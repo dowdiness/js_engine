@@ -154,6 +154,42 @@ fn bytecode_function_contains_set_property_for_wb(
 }
 
 ///|
+fn bytecode_function_contains_set_computed_for_wb(
+  function : BytecodeFunction,
+) -> Bool {
+  for instr in function.code {
+    match instr {
+      SetComputed(_) => return true
+      _ => ()
+    }
+  }
+  for child in function.children {
+    if bytecode_function_contains_set_computed_for_wb(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_function_contains_update_computed_for_wb(
+  function : BytecodeFunction,
+) -> Bool {
+  for instr in function.code {
+    match instr {
+      UpdateComputed(_, _, _, _) => return true
+      _ => ()
+    }
+  }
+  for child in function.children {
+    if bytecode_function_contains_update_computed_for_wb(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn assert_grouped_optional_member_source_for_wb(
   source : String,
 ) -> Unit raise Error {
@@ -194,12 +230,12 @@ test "plain static member calls use suspended preparation at root and recursion"
   let lowered = parse_bytecode_for_wb(source)
   assert_true(
     assert_plain_member_call_lowering(
-      lowered.main.code,
+      lowered.main_for_wb().code,
       "root plain member call",
     ),
   )
   let mut saw_recursive_plain_call = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     if assert_plain_member_call_lowering(
         child.code,
         "recursive plain member call",
@@ -222,18 +258,20 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
   let chain = parse_bytecode_for_wb(prefix + "receiver?.step.next();")
   let tagged = parse_bytecode_for_wb(prefix + "receiver.step`tag`;")
   let mut saw_plain = false
-  for instr in plain.main.code {
+  for instr in plain.main_for_wb().code {
     match instr {
       PreparePlainPropertyCall("step", _) => saw_plain = true
       _ => ()
     }
   }
   assert_true(saw_plain)
-  assert_true(legacy_property_prepare_count(optional.main.code) >= 1)
-  assert_true(legacy_property_prepare_count(optional_callee.main.code) >= 1)
+  assert_true(legacy_property_prepare_count(optional.main_for_wb().code) >= 1)
+  assert_true(
+    legacy_property_prepare_count(optional_callee.main_for_wb().code) >= 1,
+  )
   let mut grouped_receiver_call = false
   let mut grouped_plain_prepare = false
-  for instr in grouped.main.code {
+  for instr in grouped.main_for_wb().code {
     match instr {
       CallWithReceiver(_, _) => grouped_receiver_call = true
       PreparePlainPropertyCall(_, _) => grouped_plain_prepare = true
@@ -242,9 +280,9 @@ test "plain preparation leaves optional chain and tagged producers on legacy opc
   }
   assert_true(grouped_receiver_call)
   assert_false(grouped_plain_prepare)
-  assert_eq(legacy_property_prepare_count(grouped.main.code), 1)
-  assert_true(legacy_property_prepare_count(chain.main.code) >= 1)
-  assert_true(legacy_property_prepare_count(tagged.main.code) >= 1)
+  assert_eq(legacy_property_prepare_count(grouped.main_for_wb().code), 1)
+  assert_true(legacy_property_prepare_count(chain.main_for_wb().code) >= 1)
+  assert_true(legacy_property_prepare_count(tagged.main_for_wb().code) >= 1)
 }
 
 ///|
@@ -309,9 +347,9 @@ test "static tagged member calls retain property preparation at root and recursi
     "} };" +
     "receiver.tag`x`;"
   let lowered = parse_bytecode_for_wb(source)
-  assert_eq(legacy_property_prepare_count(lowered.main.code), 1)
+  assert_eq(legacy_property_prepare_count(lowered.main_for_wb().code), 1)
   let mut recursive_prepare_count = 0
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     recursive_prepare_count += legacy_property_prepare_count(child.code)
   }
   assert_true(recursive_prepare_count >= 1)
@@ -525,14 +563,14 @@ test "runtime-string computed getter recursion lowers through GetComputed" {
     "receiver[key];"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_get = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       GetComputed(_) => root_get = true
       _ => ()
     }
   }
   let mut getter_get = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         GetComputed(_) => getter_get = true
@@ -820,7 +858,7 @@ test "RED: static own accessor reads lower through GetProperty" {
     "receiver.x;"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_get = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       GetProperty("x", _) => root_get = true
       PreparePropertyCall(_, _) | GetComputed(_) | PrepareComputedCall(_) =>
@@ -829,7 +867,7 @@ test "RED: static own accessor reads lower through GetProperty" {
     }
   }
   let mut getter_get = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         GetProperty("x", _) => getter_get = true
@@ -886,6 +924,23 @@ test "RED: static compound-read getter recursion reaches depth 320" {
 }
 
 ///|
+test "RED: exact-string computed compound-read getter recursion reaches depth 320" {
+  let source = "let remaining = 320;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver['x'] &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver['x'] &&= 1;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="1")
+}
+
+///|
 test "static compound-read getter recursion keeps shallow control" {
   let source = "let remaining = 8;" +
     "let receiver = { get x() {" +
@@ -914,17 +969,48 @@ test "static compound-read lowering keeps reference reads at root and recursion"
     "receiver.x &&= 1;"
   let lowered = parse_bytecode_for_wb(source)
   let mut root_assign_read = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ReadPropertyForAssign("x", _) => root_assign_read = true
       _ => ()
     }
   }
   let mut recursive_assign_read = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         ReadPropertyForAssign("x", _) => recursive_assign_read = true
+        _ => ()
+      }
+    }
+  }
+  assert_true(root_assign_read)
+  assert_true(recursive_assign_read)
+}
+
+///|
+test "exact-string computed compound-read lowering keeps reference reads at root and recursion" {
+  let source = "let remaining = 8;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "receiver['x'] &&= 1;" +
+    "return 1;" +
+    "} };" +
+    "receiver['x'] &&= 1;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut root_assign_read = false
+  for instr in lowered.main_for_wb().code {
+    match instr {
+      ReadComputedForAssign(_) => root_assign_read = true
+      _ => ()
+    }
+  }
+  let mut recursive_assign_read = false
+  for child in lowered.main_for_wb().children {
+    for instr in child.code {
+      match instr {
+        ReadComputedForAssign(_) => recursive_assign_read = true
         _ => ()
       }
     }
@@ -965,6 +1051,22 @@ test "static logical assignment short-circuits RHS and setter" {
 }
 
 ///|
+test "exact-string computed logical assignment preserves receiver key and RHS order" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var trace = ''; var rhs_calls = 0; var setter_calls = 0;" +
+    "var receiver = { get x() { trace = trace + 'g'; return 0; }," +
+    "set x(value) { setter_calls = setter_calls + 1; } };" +
+    "function target() { trace = trace + 'o'; return receiver; }" +
+    "function key() { trace = trace + 'k'; return 'x'; }" +
+    "function rhs() { rhs_calls = rhs_calls + 1; trace = trace + 'r'; return 1; }" +
+    "var result = target()[key()] &&= rhs();" +
+    "result === 0 && trace === 'okg' && rhs_calls === 0 && setter_calls === 0;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "static compound getter throw preserves identity and interpreter reuse" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
@@ -993,6 +1095,35 @@ test "static compound getter throw preserves identity and interpreter reuse" {
 }
 
 ///|
+test "exact-string computed compound getter throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var reads = 0; var result = 0;" +
+    "var receiver = { get x() { reads = reads + 1;" +
+    "if (reads === 1) throw marker; return 2; }," +
+    "set x(value) { result = value; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver['x'] += 1;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None =>
+      fail("exact-string computed compound getter throw must reach the caller")
+  }
+  let result = run_executor_neutral_bytecode(
+    interp, "receiver['x'] += 1; result === 3 && reads === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "static property lowering keeps non-read property families residual" {
   let lowered = parse_bytecode_for_wb(
     "function C() {}; var base = { x: 1 }; var key = 'x'; " +
@@ -1012,7 +1143,7 @@ test "static property lowering keeps non-read property families residual" {
   let mut saw_arg_spread = false
   let mut saw_construct = false
   let mut saw_eval = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       GetProperty("x", _) => saw_get = true
       PreparePlainPropertyCall("x", _) => saw_plain_prepare = true
@@ -1069,7 +1200,7 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
     "} }; let result = (left.x = 320); result;"
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_set = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       SetProperty("x", _) => saw_root_set = true
       _ => ()
@@ -1077,7 +1208,7 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
   }
   assert_true(saw_root_set)
   let mut saw_recursive_set = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     if bytecode_function_contains_set_property_for_wb(child) {
       saw_recursive_set = true
     }
@@ -1088,6 +1219,49 @@ test "bytecode static setter lowering stays SetProperty at root and recursion" {
     source,
   )
   inspect(result.to_string(), content="320")
+}
+
+///|
+test "RED: runtime-string computed setter preserves identity and suspends deeply" {
+  let shallow_source = "var seenThis = false; var seenArgs = false; var seenRhs = false;" +
+    "var key = 'x'; var rhs = {}; var receiver = { set x(value) {" +
+    "seenThis = this === receiver;" +
+    "seenArgs = arguments.length === 1;" +
+    "seenRhs = arguments[0] === rhs;" +
+    "return 99;" +
+    "} }; var result = receiver[key] = rhs;" +
+    "result === rhs && seenThis && seenArgs && seenRhs;"
+  let shallow_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    shallow_source,
+  )
+  inspect(shallow_result.to_string(), content="true")
+  let deep_source = "let key = 'x'; let left = { set x(value) {" +
+    "if (value > 0) right[key] = value - 1;" +
+    "} }; let right = { set x(value) {" +
+    "if (value > 0) left[key] = value - 1;" +
+    "} }; let result = (left[key] = 320); result;"
+  let lowered = parse_bytecode_for_wb(deep_source)
+  let mut saw_root_set = false
+  for instr in lowered.main_for_wb().code {
+    match instr {
+      SetComputed(_) => saw_root_set = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_set)
+  let mut saw_recursive_set = false
+  for child in lowered.main_for_wb().children {
+    if bytecode_function_contains_set_computed_for_wb(child) {
+      saw_recursive_set = true
+    }
+  }
+  assert_true(saw_recursive_set)
+  let deep_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    deep_source,
+  )
+  inspect(deep_result.to_string(), content="320")
 }
 
 ///|
@@ -1149,6 +1323,487 @@ test "bytecode static own setter recursion completes deeply" {
     source,
   )
   inspect(result.to_string(), content="320")
+}
+
+///|
+fn static_update_getter_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  ";" +
+  "var getterCalls = 0; var receiver = {};" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { getterCalls = getterCalls + 1;" +
+  "if (remaining === 0) return 0; remaining--; return receiver.x++; }," +
+  "set: Math.abs });" +
+  "var result = receiver.x++;" +
+  "result === 0 && remaining === 0 && getterCalls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update getter reentry shallow control" {
+  let source = static_update_getter_reentry_source_for_wb(8)
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_update = false
+  for instr in lowered.main_for_wb().code {
+    match instr {
+      UpdateProperty("x", _, _, _, _) => saw_root_update = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_update)
+  let mut saw_recursive_update = false
+  for child in lowered.main_for_wb().children {
+    for instr in child.code {
+      match instr {
+        UpdateProperty("x", _, _, _, _) => saw_recursive_update = true
+        _ => ()
+      }
+    }
+  }
+  assert_true(saw_recursive_update)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update getter reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_getter_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn runtime_string_computed_update_getter_reentry_source_for_wb(
+  depth : Int,
+) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var getterCalls = 0; var key = 'x'; var receiver = {};" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { getterCalls = getterCalls + 1;" +
+  "if (remaining === 0) return 0; remaining--; return receiver[key]++; }," +
+  "set: Math.abs });" +
+  "var result = receiver[key]++;" +
+  "result === 0 && remaining === 0 && getterCalls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "RED: runtime-string computed update getter reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    runtime_string_computed_update_getter_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "runtime-string computed update lowering remains UpdateComputed at root and recursion" {
+  let lowered = parse_bytecode_for_wb(
+    runtime_string_computed_update_getter_reentry_source_for_wb(8),
+  )
+  let mut saw_root_update = false
+  for instr in lowered.main_for_wb().code {
+    match instr {
+      UpdateComputed(_, _, _, _) => saw_root_update = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_update)
+  let mut saw_recursive_update = false
+  for child in lowered.main_for_wb().children {
+    if bytecode_function_contains_update_computed_for_wb(child) {
+      saw_recursive_update = true
+    }
+  }
+  assert_true(saw_recursive_update)
+}
+
+///|
+test "runtime-string computed update preserves prefix postfix and setter successor" {
+  let source = "var trace = ''; var key = 'x'; var seenValue = 0;" +
+    "var receiver = {};" +
+    "var numeric = { valueOf: function() { trace = trace + 'v'; return 4; } };" +
+    "Object.defineProperty(receiver, 'x', {" +
+    "get: function() { trace = trace + 'g'; return numeric; }," +
+    "set: function(value) { trace = trace + 's'; seenValue = value; }" +
+    "});" +
+    "var postfix = receiver[key]--; var prefix = ++receiver[key];" +
+    "trace === 'gvsgvs' && postfix === 4 && prefix === 5 && seenValue === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "runtime-string computed update getter throw preserves identity and interpreter reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var key = 'x'; var marker = {}; var shouldThrow = true;" +
+    "var receiver = { get x() {" +
+    "if (shouldThrow) { shouldThrow = false; throw marker; } return 4; }," +
+    "set x(value) {} };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver[key]++;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) =>
+      assert_true(
+        physical_equal(
+          @runtime.js_error_to_value(error),
+          interp.global.get("marker"),
+        ),
+      )
+    None => fail("computed update getter must propagate its guest throw")
+  }
+  let result = run_executor_neutral_bytecode(interp, "receiver[key]++;")
+  inspect(result.to_string(), content="4")
+}
+
+///|
+fn static_update_coercion_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  ";" +
+  "var coercionCalls = 0; var receiver = {};" +
+  "var numeric = { valueOf: function() {" +
+  "coercionCalls = coercionCalls + 1;" +
+  "if (remaining === 0) return 0; remaining--; return receiver.x++;" +
+  "} }; receiver.x = numeric;" +
+  "var result = receiver.x++;" +
+  "result === 0 && receiver.x === 1 && remaining === 0 && coercionCalls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update coercion reentry shallow control" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_coercion_reentry_source_for_wb(8),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update coercion reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_coercion_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update preserves get coercion set order and result" {
+  let source = "var trace = ''; var seenThis = false; var seenValue = 0;" +
+    "var receiver = {};" +
+    "var numeric = { valueOf: function() { trace = trace + 'v'; return 4; } };" +
+    "Object.defineProperty(receiver, 'x', {" +
+    "get: function() { trace = trace + 'g'; return numeric; }," +
+    "set: function(value) { trace = trace + 's';" +
+    "seenThis = this === receiver; seenValue = value; }" +
+    "});" +
+    "var postfix = receiver.x++; var prefix = ++receiver.x;" +
+    "trace === 'gvsgvs' && postfix === 4 && prefix === 5 &&" +
+    "seenThis && seenValue === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static decrement preserves prefix and postfix results" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var receiver = { x: 4 };" +
+    "var postfix = receiver.x--; var prefix = --receiver.x;" +
+    "postfix === 4 && prefix === 2 && receiver.x === 2;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update observes setter replacement by getter" {
+  let source = "var first = 0; var second = 0; var receiver = {};" +
+    "function replacement(value) { second = second + value; }" +
+    "Object.defineProperty(receiver, 'x', { configurable: true," +
+    "get: function() { Object.defineProperty(receiver, 'x', {" +
+    "configurable: true, set: replacement }); return 4; }," +
+    "set: function(value) { first = first + value; }" +
+    "});" +
+    "var result = receiver.x++;" +
+    "result === 4 && first === 0 && second === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update observes setter replacement by coercion" {
+  let source = "var first = 0; var second = 0; var receiver = {};" +
+    "function replacement(value) { second = second + value; }" +
+    "var numeric = { valueOf: function() {" +
+    "Object.defineProperty(receiver, 'x', { configurable: true," +
+    "set: replacement }); return 4; } };" +
+    "Object.defineProperty(receiver, 'x', { configurable: true," +
+    "get: function() { return numeric; }," +
+    "set: function(value) { first = first + value; }" +
+    "});" +
+    "var result = receiver.x++;" +
+    "result === 4 && first === 0 && second === 5;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update coercion throw preserves identity and reuse" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var shouldThrow = true; var assigned = 0;" +
+    "var numeric = { valueOf: function() {" +
+    "if (shouldThrow) { shouldThrow = false; throw marker; } return 4; } };" +
+    "var receiver = { get x() { return numeric; }," +
+    "set x(value) { assigned = value; } };",
+  )
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(interp, "receiver.x++;")
+    None
+  } catch {
+    error => Some(error)
+  }
+  let marker = interp.global.get("marker")
+  match caught {
+    Some(error) =>
+      assert_true(physical_equal(@runtime.js_error_to_value(error), marker))
+    None => fail("static update must propagate the coercion guest throw")
+  }
+  let result = run_executor_neutral_bytecode(interp, "receiver.x++;")
+  inspect(result.to_string(), content="4")
+  inspect(interp.global.get("assigned").to_string(), content="5")
+}
+
+///|
+fn static_update_to_string_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var calls = 0; var receiver = {}; var numeric = {};" +
+  "numeric.valueOf = function() { return numeric; };" +
+  "numeric.toString = function() { calls = calls + 1;" +
+  "if (remaining === 0) return '0';" +
+  "remaining--; return receiver.x++; };" +
+  "receiver.x = numeric; var result = receiver.x++;" +
+  "result === 0 && receiver.x === 1 && remaining === 0 && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update toString reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_to_string_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update valueOf accessor reentry completes deeply" {
+  let source = "var remaining = 320; var lookups = 0; var calls = 0;" +
+    "var receiver = {}; var numeric = {};" +
+    "Object.defineProperty(numeric, 'valueOf', { get: function() {" +
+    "lookups = lookups + 1; return function() { calls = calls + 1;" +
+    "if (remaining === 0) return 0;" +
+    "remaining--; return receiver.x++; }; } });" +
+    "receiver.x = numeric; var result = receiver.x++;" +
+    "result === 0 && receiver.x === 1 && remaining === 0 &&" +
+    "lookups === 321 && calls === 321;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static update inherited toString accessor reentry completes deeply" {
+  let source = "var remaining = 320; var lookups = 0; var calls = 0;" +
+    "var receiver = {}; var numeric = {}; var proto = {};" +
+    "numeric.valueOf = function() { return numeric; };" +
+    "Object.defineProperty(proto, 'toString', { get: function() {" +
+    "lookups = lookups + 1; return function() { calls = calls + 1;" +
+    "if (remaining === 0) return '0';" +
+    "remaining--; return receiver.x++; }; } });" +
+    "Object.setPrototypeOf(numeric, proto); receiver.x = numeric;" +
+    "var result = receiver.x++;" +
+    "result === 0 && receiver.x === 1 && remaining === 0 &&" +
+    "lookups === 321 && calls === 321;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_to_primitive_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var calls = 0; var receiver = {}; var numeric = {};" +
+  "numeric[Symbol.toPrimitive] = function(hint) { calls = calls + 1;" +
+  "if (remaining === 0) return 0;" +
+  "remaining--; return receiver.x++; };" +
+  "receiver.x = numeric; var result = receiver.x++;" +
+  "result === 0 && receiver.x === 1 && remaining === 0 && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update toPrimitive reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_to_primitive_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_to_primitive_accessor_reentry_source_for_wb(
+  depth : Int,
+) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var lookups = 0; var calls = 0; var receiver = {}; var numeric = {};" +
+  "Object.defineProperty(numeric, Symbol.toPrimitive, { get: function() {" +
+  "lookups = lookups + 1; return function(hint) { calls = calls + 1;" +
+  "if (remaining === 0) return 0;" +
+  "remaining--; return receiver.x++; }; } });" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { return numeric; }, set: Math.abs });" +
+  "var result = receiver.x++;" +
+  "result === 0 && remaining === 0 && lookups === " +
+  (depth + 1).to_string() +
+  " && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update toPrimitive accessor reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_to_primitive_accessor_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_proxy_to_primitive_reentry_source_for_wb(
+  depth : Int,
+) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var traps = 0; var calls = 0; var receiver = {};" +
+  "var numeric = new Proxy({}, { get: function(target, key, receiverValue) {" +
+  "traps = traps + 1; if (remaining > 0) {" +
+  "remaining--; receiver.x++; } if (key === Symbol.toPrimitive) {" +
+  "return function(hint) { calls = calls + 1;" +
+  "return 0; }; } return undefined; } });" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { return numeric; }, set: Math.abs });" +
+  "var result = receiver.x++;" +
+  "result === 0 && remaining === 0 && traps === " +
+  (depth + 1).to_string() +
+  " && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update Proxy toPrimitive reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_proxy_to_primitive_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_inherited_proxy_to_primitive_reentry_source_for_wb(
+  depth : Int,
+) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var traps = 0; var calls = 0; var receiver = {};" +
+  "var proto = new Proxy({}, { get: function(target, key, receiverValue) {" +
+  "traps = traps + 1; if (remaining > 0) {" +
+  "remaining--; receiver.x++; } if (key === Symbol.toPrimitive) {" +
+  "return function(hint) { calls = calls + 1;" +
+  "return 0; }; } return undefined; } });" +
+  "var numeric = Object.create(proto);" +
+  "Object.defineProperty(receiver, 'x', {" +
+  "get: function() { return numeric; }, set: Math.abs });" +
+  "var result = receiver.x++;" +
+  "result === 0 && remaining === 0 && traps === " +
+  (depth + 1).to_string() +
+  " && calls === " +
+  (depth + 1).to_string() +
+  ";"
+}
+
+///|
+test "bytecode static update inherited Proxy toPrimitive reentry completes deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_inherited_proxy_to_primitive_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+fn static_update_inherited_setter_reentry_source_for_wb(depth : Int) -> String {
+  "var remaining = " +
+  depth.to_string() +
+  "; var receiver = {};" +
+  "var proto = { set x(value) { if (remaining === 0) return;" +
+  "remaining--; receiver.x++; } };" +
+  "Object.defineProperty(receiver, 'x', { configurable: true," +
+  "get: function() { delete receiver.x;" +
+  "Object.setPrototypeOf(receiver, proto); return 0; } });" +
+  "receiver.x++; remaining === 0;"
+}
+
+///|
+test "bytecode static update follows a replaced inherited setter deeply" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    static_update_inherited_setter_reentry_source_for_wb(320),
+  )
+  inspect(result.to_string(), content="true")
 }
 
 ///|
@@ -1290,7 +1945,7 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_arg_spread = false
   let mut saw_call_spread = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ArgPushSpread(_) => saw_arg_spread = true
       CallSpread(_) => saw_call_spread = true
@@ -1302,7 +1957,7 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
   let mut saw_count_child = false
   let mut saw_recursive_arg_spread = false
   let mut saw_recursive_call_spread = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "count" => {
         saw_count_child = true
@@ -1431,7 +2086,7 @@ test "spread lowering keeps receiver construct and direct-eval opcodes residual"
   let mut saw_fixed_receiver = false
   let mut saw_construct = false
   let mut saw_direct_eval = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       CallSpread(_) => saw_call_spread = true
       CallSpreadWithReceiver(_) => saw_receiver = true
@@ -1575,7 +2230,7 @@ test "bytecode receiver spread reaches the synchronous final call boundary" {
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_main_spread = false
   let mut saw_main_receiver_call = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ArgPushSpread(_) => saw_main_spread = true
       CallSpreadWithReceiver(_) => saw_main_receiver_call = true
@@ -1587,7 +2242,7 @@ test "bytecode receiver spread reaches the synchronous final call boundary" {
   let mut saw_step_child = false
   let mut saw_child_spread = false
   let mut saw_child_receiver_call = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "step" => {
         saw_step_child = true
@@ -1636,13 +2291,13 @@ test "spread receiver mutual recursion completes deeply" {
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_receiver_spread = false
   let mut child_receiver_spreads = 0
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       CallSpreadWithReceiver(_) => saw_root_receiver_spread = true
       _ => ()
     }
   }
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     for instr in child.code {
       match instr {
         CallSpreadWithReceiver(_) => child_receiver_spreads += 1
@@ -1961,7 +2616,7 @@ test "ordinary bytecode call consumes its result once at the advanced IP" {
 test "bytecode frame accepts one pending activation result" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -1999,7 +2654,7 @@ test "bytecode frame accepts one pending activation result" {
 test "bytecode frame delivers an owned receiver with a plain property result" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -2025,7 +2680,7 @@ test "bytecode frame delivers an owned receiver with a plain property result" {
 test "bytecode frame clears its destination before re-raising an abrupt completion" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
-  let frame = BytecodeFrame(program.main, interp.global, {
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
     strict: false,
     current_generator: None,
   })
@@ -2136,7 +2791,7 @@ test "bytecode construct recursion reaches the synchronous constructor boundary"
     "new Step(320).value;"
   let lowered = parse_bytecode_for_wb(source)
   let mut saw_root_construct = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       Construct(_, _) => saw_root_construct = true
       _ => ()
@@ -2145,7 +2800,7 @@ test "bytecode construct recursion reaches the synchronous constructor boundary"
   assert_true(saw_root_construct)
   let mut saw_step_child = false
   let mut saw_child_construct = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "Step" => {
         saw_step_child = true
@@ -2182,7 +2837,7 @@ test "bytecode construct spread recursion lowers and completes deeply" {
   let mut saw_root_call_spread = false
   let mut saw_root_receiver_spread = false
   let mut saw_root_direct_eval = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       ArgPushSpread(_) => saw_root_arg_spread = true
       ConstructSpread(_) => saw_root_construct_spread = true
@@ -2206,7 +2861,7 @@ test "bytecode construct spread recursion lowers and completes deeply" {
   let mut saw_child_call_spread = false
   let mut saw_child_receiver_spread = false
   let mut saw_child_direct_eval = false
-  for child in lowered.main.children {
+  for child in lowered.main_for_wb().children {
     match child.name {
       Some(name) if name == "Step" => {
         saw_step_child = true
@@ -2599,7 +3254,7 @@ test "executor-neutral bytecode activation preserves strict and sloppy this" {
 test "executor-neutral primitive receiver calls normalize strict and sloppy this" {
   let lowered = parse_bytecode_for_wb("(7).receiver_730_strict();")
   let mut saw_receiver_call = false
-  for instr in lowered.main.code {
+  for instr in lowered.main_for_wb().code {
     match instr {
       CallWithReceiver(_, _) => saw_receiver_call = true
       _ => ()
