@@ -17,8 +17,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: js-engine-gh-pages
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('js-engine-playground-pr-{0}', github.event.pull_request.number) || 'js-engine-gh-pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   MOONBIT_CACHE_VERSION: "2026-07"
@@ -91,14 +91,14 @@ jobs:
       - name: Upload Playground artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: playground-dist-${{ github.sha }}
+          name: playground-dist-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/playground-dist.tar.gz
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: playground-playwright-report-${{ github.sha }}
+          name: playground-playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             playground/web/playwright-report
             playground/web/test-results
@@ -121,7 +121,7 @@ jobs:
       - name: Download Playground artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: playground-dist-${{ github.sha }}
+          name: playground-dist-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/playground-artifact
 
       - name: Unpack Playground artifact
