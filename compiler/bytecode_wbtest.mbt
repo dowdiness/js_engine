@@ -278,8 +278,8 @@ test "activation selection is per function and precedes frame construction" {
 test "activation selection recomputes typed reasons without a cached summary" {
   let loc = @token.Loc::default()
   let bytecode = parse_bytecode_for_wb("1;")
-  match bytecode_function_activation_disposition(bytecode.main, []) {
-    SynchronousLeaf => ()
+  match select_bytecode_function_activation(bytecode.main, []) {
+    Ok(SynchronousLeaf) => ()
     _ => fail("literal-only function must be a synchronous leaf")
   }
   bytecode.main.code.push(BinaryOp(Add, loc))

@@ -731,6 +731,7 @@ priv struct BytecodeActivationUnsupported {
 // This selection is pure and does not construct a BytecodeFrame.  It scans
 // only the function whose activation is being admitted; child functions are
 // selected when their own executor activation starts.
+#warnings("-unused_value")
 fn select_bytecode_function_activation(
   function : BytecodeFunction,
   function_path : Array[Int],
@@ -749,17 +750,6 @@ fn select_bytecode_function_activation(
     }
   }
   Ok(if has_managed_suspension { ManagedSuspension } else { SynchronousLeaf })
-}
-
-///|
-fn bytecode_function_activation_disposition(
-  function : BytecodeFunction,
-  function_path : Array[Int],
-) -> BytecodeActivationDisposition {
-  match select_bytecode_function_activation(function, function_path) {
-    Ok(disposition) => disposition
-    Err(unsupported) => UnsupportedBeforeActivation(unsupported.reason)
-  }
 }
 
 ///|

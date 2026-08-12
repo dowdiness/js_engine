@@ -8,6 +8,7 @@ struct RepresentationPattern {
   kind : String
   reason : String
   tokens : Array[String]
+  paths : Array[String]
 } derive(Debug)
 
 ///|
@@ -57,6 +58,21 @@ fn decode_int_field(
 }
 
 ///|
+fn decode_optional_string_array_field(
+  data : Map[String, Json],
+  key : String,
+  path : String,
+) -> Array[String] raise {
+  match data.get(key) {
+    Some(raw) =>
+      @json.from_json(raw) catch {
+        _ => schema_error(path, "{key} must be an array of strings")
+      }
+    None => []
+  }
+}
+
+///|
 fn validate_representation_schema_version(
   data : Map[String, Json],
   path : String,
@@ -94,6 +110,9 @@ fn decode_representation_pattern(
   let kind = decode_string_field(data, "kind", path)
   let reason = decode_string_field(data, "reason", path)
   let tokens = pattern_tokens(pattern)
+  let paths = decode_optional_string_array_field(data, "paths", path).map(path => {
+    normalize_rel_path(path)
+  })
   if id == "" {
     schema_error(path, "representation pattern id must not be empty")
   }
@@ -109,7 +128,12 @@ fn decode_representation_pattern(
   if reason == "" {
     schema_error(path, "representation pattern \{id} reason must not be empty")
   }
-  { id, pattern, kind, reason, tokens }
+  for scoped_path in paths {
+    if scoped_path == "" || scoped_path == "." {
+      schema_error(path, "representation pattern paths must be file paths")
+    }
+  }
+  { id, pattern, kind, reason, tokens, paths }
 }
 
 ///|
@@ -340,6 +364,14 @@ fn representation_signature_line(line : String) -> String {
 }
 
 ///|
+fn representation_pattern_matches_path(
+  pattern : RepresentationPattern,
+  rel_path : String,
+) -> Bool {
+  pattern.paths.length() == 0 || pattern.paths.any(path => path == rel_path)
+}
+
+///|
 fn is_empty_core_map_literal_at(
   code : String,
   token : String,
@@ -462,18 +494,20 @@ fn scan_representation_file(
     let line_number = line_index + 1
     let signature_line = representation_signature_line(line)
     for pattern in rules.representation_patterns {
-      for token in pattern.tokens {
-        let matches = count_token_in_code_line(line, token)
-        for _i in 0..<matches {
-          out.push({
-            path: rel_path,
-            line: line_number,
-            pattern_id: pattern.id,
-            kind: pattern.kind,
-            reason: pattern.reason,
-            token,
-            signature: "\{token}:\{signature_line}",
-          })
+      if representation_pattern_matches_path(pattern, rel_path) {
+        for token in pattern.tokens {
+          let matches = count_token_in_code_line(line, token)
+          for _i in 0..<matches {
+            out.push({
+              path: rel_path,
+              line: line_number,
+              pattern_id: pattern.id,
+              kind: pattern.kind,
+              reason: pattern.reason,
+              token,
+              signature: "\{token}:\{signature_line}",
+            })
+          }
         }
       }
     }

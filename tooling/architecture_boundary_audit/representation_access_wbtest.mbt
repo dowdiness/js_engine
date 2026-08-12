@@ -23,6 +23,13 @@ fn base_representation_json(allowlisted : String) -> String {
     #|      "pattern": ".bag",
     #|      "kind": "field",
     #|      "reason": "property bag field access"
+    #|    },
+    #|    {
+    #|      "id": "bytecode-vm-interpreter-edge",
+    #|      "pattern": "interp.",
+    #|      "paths": ["compiler/bytecode_vm.mbt"],
+    #|      "kind": "guest-capable VM runtime edge",
+    #|      "reason": "raw interpreter capability access in bytecode dispatch requires typed edge classification"
     #|    }
     #|  ],
     #|  "allowlisted_access": [
@@ -32,6 +39,29 @@ fn base_representation_json(allowlisted : String) -> String {
     #|}
     #|
   prefix + allowlisted + suffix
+}
+
+///|
+fn bytecode_vm_interpreter_edge_debt_json(
+  allowed_count : Int,
+  fingerprint : String,
+) -> String {
+  let prefix =
+    #|    {
+    #|      "path": "compiler/bytecode_vm.mbt",
+    #|      "pattern_id": "bytecode-vm-interpreter-edge",
+    #|      "allowed_count":
+  let suffix =
+    #|,
+    #|      "fingerprint": "
+  let after_fingerprint =
+    #|",
+    #|      "owner": "bytecode activation eligibility inventory",
+    #|      "retire_by_stage": "Stage 7-12",
+    #|      "reason": "raw VM interpreter edges remain evidence until each guest-capable path has an explicit managed seam or typed unsupported disposition"
+    #|    }
+    #|
+  prefix + allowed_count.to_string() + suffix + fingerprint + after_fingerprint
 }
 
 ///|
@@ -392,4 +422,94 @@ test "representation scanner ignores tests and string literals" {
     stdout_lines[stdout_lines.length() - 1],
     "ok: architecture representation access matches inventory (0 classified accesses)",
   )
+}
+
+///|
+test "bytecode VM interpreter edge fingerprint is accepted" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-pass-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  write_file(
+    root, "compiler/other.mbt", "fn unrelated(interp : Interpreter) -> Unit { interp.unrelated() }\n",
+  )
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  interp.get_property()
+    #|  interp.spread_iterable()
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_interpreter_edge_debt_json(
+    2,
+    representation_fingerprint([
+      "interp.:interp.get_property()", "interp.:interp.spread_iterable()",
+    ]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=true,
+  )
+  assert_eq(code, 0)
+  assert_eq(stderr_lines.length(), 0)
+  assert_true(
+    stdout_lines.any(line => {
+      line.contains(
+        "compiler/bytecode_vm.mbt:2 [compiler] bytecode-vm-interpreter-edge: interp. -- DEBT",
+      )
+    }),
+  )
+  assert_eq(
+    stdout_lines[stdout_lines.length() - 1],
+    "ok: architecture representation access matches inventory (2 classified accesses)",
+  )
+}
+
+///|
+test "new bytecode VM interpreter edge fails fingerprint audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-new-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  interp.get_property()
+    #|  interp.new_guest_helper()
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_interpreter_edge_debt_json(
+    2,
+    representation_fingerprint([
+      "interp.:interp.get_property()", "interp.:interp.spread_iterable()",
+    ]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:3 [compiler] bytecode-vm-interpreter-edge: interp.",
+      )
+    }),
+  )
+  assert_true(stderr_lines.any(line => line == "stale allowlist entries:"))
 }

@@ -592,32 +592,7 @@ fn finalize_bytecode_program(
   verify_bytecode_indexed_operands(program)
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)
-  verify_bytecode_activation_eligibility(program)
   { source_stmts: program.source_stmts, main: program.main }
-}
-
-///|
-// Activation selection consumes only the representation after every existing
-// verifier has accepted it. Unsupported is an admission result, not a
-// lowering or verifier defect, so the current compatibility executor remains
-// unchanged while the typed result is available before frame construction.
-fn verify_bytecode_activation_eligibility(
-  program : BytecodeUnverifiedProgram,
-) -> Unit {
-  verify_bytecode_function_activation_eligibility(program.main, [])
-}
-
-///|
-fn verify_bytecode_function_activation_eligibility(
-  function : BytecodeFunction,
-  function_path : Array[Int],
-) -> Unit {
-  let _ = bytecode_function_activation_disposition(function, function_path)
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_function_activation_eligibility(child, child_path)
-  }
 }
 
 ///|
