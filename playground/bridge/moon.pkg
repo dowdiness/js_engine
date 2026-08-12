@@ -4,8 +4,6 @@ import {
 
 supported_targets = "js"
 
-pkgtype(kind: "foreign_library")
-
 options(
-  link: { "js": { "format": "esm" } },
+  link: { "js": { "format": "esm", "exports": [ "playground_run" ] } },
 )

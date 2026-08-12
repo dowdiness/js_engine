@@ -2,7 +2,6 @@
 const PROTOCOL_VERSION = 1
 
 ///|
-#export_name("playground_run")
 pub fn playground_run(source : String, source_id : String) -> String {
   match @js_engine.run_diagnostic(source, source_id~) {
     Ok((output, result)) => completed_response(output, result).stringify()
