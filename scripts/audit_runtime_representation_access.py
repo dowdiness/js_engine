@@ -122,7 +122,10 @@ def member_owner(root: Path, rel: str, line: int, column: int, field: str) -> st
     struct_match = STRUCT_DEFINITION.search(result.stdout)
     if path_match is None or struct_match is None:
         return None
-    definition_path = Path(path_match.group(1)).resolve()
+    reported_path = Path(path_match.group(1))
+    definition_path = (
+        reported_path if reported_path.is_absolute() else root / reported_path
+    ).resolve()
     runtime_root = (root / "interpreter/runtime").resolve()
     if not definition_path.is_relative_to(runtime_root):
         return None
@@ -269,6 +272,24 @@ def self_test(root: Path) -> None:
         }
         if found != expected:
             raise RuntimeError(f"semantic fixture mismatch: {sorted(found.items())}")
+        from_non_root = subprocess.run(
+            [sys.executable, str(root / __file__), "--root", str(root)],
+            cwd=root / "scripts",
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        expected_failure = (
+            "compiler/runtime_representation_audit_fixture_tmp.mbt"
+            in from_non_root.stderr
+            and "runtime-environment-bindings-field" in from_non_root.stderr
+        )
+        if from_non_root.returncode != 1 or not expected_failure:
+            raise RuntimeError(
+                "non-root working-directory audit did not detect the fixture: "
+                + from_non_root.stdout
+                + from_non_root.stderr
+            )
     resolution_failed_closed = False
     try:
         member_owner(root, "compiler/bytecode_vm.mbt", 1, 1, "bindings")
