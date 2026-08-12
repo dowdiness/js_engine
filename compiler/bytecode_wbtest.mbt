@@ -117,6 +117,26 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
 }
 
 ///|
+test "RED: activation contract distinguishes leaf managed and unsupported" {
+  let loc = @token.Loc::default()
+  let leaf = bytecode_instruction_contract(LoadConst(Value::Undefined))
+  let managed = bytecode_instruction_contract(Call(0, loc))
+  let conditional = bytecode_instruction_contract(GetComputed(loc))
+  match leaf.activation_disposition {
+    SynchronousLeaf => ()
+    _ => fail("constant load must be a synchronous leaf")
+  }
+  match managed.activation_disposition {
+    ManagedSuspension => ()
+    _ => fail("ordinary call must use managed suspension")
+  }
+  match conditional.activation_disposition {
+    UnsupportedBeforeActivation(ConditionalComputedProperty) => ()
+    _ => fail("conditional computed access must be unsupported before activation")
+  }
+}
+
+///|
 test "RED: bytecode functions own typed source tables" {
   let src =
     #|function failer() { throw 1; }
