@@ -513,3 +513,121 @@ test "new bytecode VM interpreter edge fails fingerprint audit" {
   )
   assert_true(stderr_lines.any(line => line == "stale allowlist entries:"))
 }
+
+///|
+test "newline-separated bytecode VM interpreter edge fails audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-newline-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  interp
+    #|    .new_guest_helper()
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_interpreter_edge_debt_json(
+    1,
+    representation_fingerprint(["interp.:interp.existing_guest_helper()"]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:2 [compiler] bytecode-vm-interpreter-edge: interp.",
+      )
+    }),
+  )
+}
+
+///|
+test "comment-separated bytecode VM interpreter edge fails audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-comment-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  interp/* comment */.new_guest_helper()
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_interpreter_edge_debt_json(
+    1,
+    representation_fingerprint(["interp.:interp.existing_guest_helper()"]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:2 [compiler] bytecode-vm-interpreter-edge: interp.",
+      )
+    }),
+  )
+}
+
+///|
+test "whitespace-separated bytecode VM interpreter edge fails audit" {
+  let root = "_build/architecture-representation-audit-bytecode-vm-whitespace-edge-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn dispatch(interp : Interpreter) -> Unit {
+    #|  interp    .new_guest_helper()
+    #|}
+    #|
+  write_file(root, "compiler/bytecode_vm.mbt", source)
+  let debt = bytecode_vm_interpreter_edge_debt_json(
+    1,
+    representation_fingerprint(["interp.:interp.existing_guest_helper()"]),
+  )
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(debt),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line.contains(
+        "- compiler/bytecode_vm.mbt:2 [compiler] bytecode-vm-interpreter-edge: interp.",
+      )
+    }),
+  )
+}
