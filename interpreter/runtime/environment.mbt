@@ -85,18 +85,9 @@ pub fn EnvironmentSlot::initialize(
 pub fn EnvironmentSlot::assign(
   self : EnvironmentSlot,
   value : Value,
+  strict? : Bool = false,
 ) -> Unit raise Error {
-  if !self.binding.initialized {
-    raise @errors.ReferenceError(
-      message="Cannot access '\{self.name}' before initialization",
-    )
-  } else if self.binding.kind == ConstBinding {
-    raise @errors.TypeError(
-      message="Assignment to constant variable '\{self.name}'",
-    )
-  } else {
-    self.binding.value = value
-  }
+  assign_binding_value(self.binding, self.name, value, strict)
 }
 
 ///|

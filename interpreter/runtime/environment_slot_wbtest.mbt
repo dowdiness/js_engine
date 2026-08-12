@@ -54,3 +54,40 @@ test "environment slot owns const rejection" {
     None => fail("assigning a const slot must throw")
   }
 }
+
+///|
+test "environment slot preserves sloppy FunctionNameBinding assignment" {
+  let env = Environment::new()
+  env.def("self", Number(1.0), FunctionNameBinding)
+  let slot = match env.resolve_slot("self") {
+    Some(slot) => slot
+    None => fail("expected a slot for self")
+  }
+  slot.assign(Number(2.0))
+  inspect(slot.read(), content="1")
+}
+
+///|
+test "environment slot rejects strict FunctionNameBinding assignment" {
+  let env = Environment::new()
+  env.def("self", Number(1.0), FunctionNameBinding)
+  let slot = match env.resolve_slot("self") {
+    Some(slot) => slot
+    None => fail("expected a slot for self")
+  }
+  let strict_error : Error? = try {
+    slot.assign(Number(2.0), strict=true)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match strict_error {
+    Some(error) =>
+      inspect(
+        error.to_string(),
+        content="TypeError: Assignment to constant variable 'self'",
+      )
+    None => fail("strict assignment to a FunctionNameBinding must throw")
+  }
+  inspect(slot.read(), content="1")
+}

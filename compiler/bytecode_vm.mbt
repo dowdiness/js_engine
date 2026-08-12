@@ -205,8 +205,9 @@ fn BytecodeFrame::assign_env_slot(
   self : BytecodeFrame,
   slot : Int,
   value : Value,
+  strict : Bool,
 ) -> Unit raise Error {
-  self.env_slots[slot].assign(value)
+  self.env_slots[slot].assign(value, strict~)
 }
 
 ///|
@@ -569,7 +570,7 @@ fn BytecodeFrame::step_bytecode(
           None =>
             raise @errors.InternalError(message="bytecode stack underflow")
         }
-        frame.assign_env_slot(slot, value)
+        frame.assign_env_slot(slot, value, frame.ctx.strict)
         stack.push(value)
       }
       DefineBinding(kind, name, has_initializer) => {
@@ -693,7 +694,7 @@ fn BytecodeFrame::step_bytecode(
           Increment => Value::Number(old_number + 1.0)
           Decrement => Value::Number(old_number - 1.0)
         }
-        frame.assign_env_slot(slot, next_value)
+        frame.assign_env_slot(slot, next_value, frame.ctx.strict)
         stack.push(if prefix { next_value } else { Value::Number(old_number) })
       }
       UpdateProperty(prop, op, prefix, member_loc, loc) => {

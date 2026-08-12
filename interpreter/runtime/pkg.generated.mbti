@@ -590,7 +590,7 @@ pub fn Environment::resolve_slot(Self, String) -> EnvironmentSlot?
 pub struct EnvironmentSlot {
   // private fields
 }
-pub fn EnvironmentSlot::assign(Self, Value) -> Unit raise
+pub fn EnvironmentSlot::assign(Self, Value, strict? : Bool) -> Unit raise
 pub fn EnvironmentSlot::initialize(Self, Value) -> Unit
 pub fn EnvironmentSlot::read(Self) -> Value raise
 
