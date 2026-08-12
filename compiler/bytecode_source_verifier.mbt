@@ -25,6 +25,14 @@ priv enum BytecodeSourceMetadataFact {
 }
 
 ///|
+#warnings("-unused_constructor")
+priv enum BytecodeIndexedOperandFamily {
+  ChildFunction
+  LocalSlot
+  EnvironmentSlot
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeSourceMetadataDefect {
   function_path : Array[Int]
@@ -38,6 +46,17 @@ priv struct BytecodeSourceMetadataDefect {
 priv suberror BytecodeVerifierDefect {
   BytecodeVerifierDefect(BytecodeSourceMetadataDefect)
   BytecodeControlFlowDefect(BytecodeControlFlowTargetDefect)
+  BytecodeIndexedOperandDefect(BytecodeIndexedOperandTargetDefect)
+}
+
+///|
+#warnings("-unused_field")
+priv struct BytecodeIndexedOperandTargetDefect {
+  function_path : Array[Int]
+  instruction_index : Int
+  family : BytecodeIndexedOperandFamily
+  exclusive_upper_bound : Int
+  actual_operand : Int
 }
 
 ///|
@@ -85,7 +104,174 @@ fn finalize_bytecode_program(
 ) -> BytecodeProgram raise Error {
   verify_bytecode_source_metadata(program)
   verify_bytecode_control_flow(program)
+  verify_bytecode_indexed_operands(program)
   { source_stmts: program.source_stmts, main: program.main }
+}
+
+///|
+fn bytecode_indexed_operand(
+  instruction : BytecodeInstr,
+) -> (BytecodeIndexedOperandFamily, Int)? {
+  // Keep this match exhaustive so every new instruction must declare whether
+  // it owns a verifier-checked table index.
+  match instruction {
+    MakeFunction(index)
+    | MakeNamedFunction(index, _)
+    | MakeMethodFunction(index)
+    | MakeComputedMethodFunction(index)
+    | MakeArrowFunction(index)
+    | DeclareFunction(_, index) => Some((ChildFunction, index))
+    LoadLocal(index)
+    | StoreLocal(index)
+    | DefineLocal(index, _)
+    | UpdateLocal(index, _, _) => Some((LocalSlot, index))
+    LoadEnvSlot(index)
+    | StoreEnvSlot(index)
+    | DefineEnvSlot(index, _)
+    | UpdateEnvSlot(index, _, _) => Some((EnvironmentSlot, index))
+    ObserveStatement(_)
+    | ObserveExpression(_)
+    | LoadConst(_)
+    | LoadUndefined
+    | LoadThis
+    | LoadNewTarget
+    | LoadSuperProperty(_, _)
+    | LoadSuperComputed(_)
+    | LoadConsoleMember(_)
+    | LoadDirectEvalCallee
+    | LoadName(_)
+    | LoadAssignmentName(_)
+    | StoreName(_)
+    | DefineBinding(_, _, _)
+    | SetCompletion
+    | SetCompletionValue(_)
+    | Pop
+    | Dup
+    | BinaryOp(_, _)
+    | UnaryValueOp(_, _)
+    | TypeofName(_)
+    | DeleteName(_)
+    | DeleteProperty(_)
+    | DeleteComputed
+    | AppendTemplate(_)
+    | MakeTemplateObject(_)
+    | MakeRegExp(_, _)
+    | SetFunctionName(_)
+    | UpdateName(_, _, _, _)
+    | UpdateProperty(_, _, _, _, _)
+    | UpdateComputed(_, _, _, _)
+    | Jump(_)
+    | JumpIfFalse(_)
+    | JumpIfFalseKeep(_)
+    | JumpIfTrueKeep(_)
+    | JumpIfNotNullishKeep(_)
+    | BeginOptionalChain
+    | MarkOptionalChainShortCircuit
+    | JumpIfNotOptionalChainShortCircuitKeep(_)
+    | EndOptionalChain
+    | StartForIn
+    | ForInNext(_)
+    | EndForIn
+    | MakeArray(_)
+    | MakeArrayWithHoles(_, _)
+    | StartArray
+    | ArrayPushValue
+    | ArrayPushSpread(_)
+    | ArrayPushHole
+    | StartArgs
+    | ArgPushValue
+    | ArgPushSpread(_)
+    | MakeObject(_)
+    | StartObject
+    | ObjectSetStatic(_)
+    | ObjectSetStaticGetter(_)
+    | ObjectSetStaticSetter(_)
+    | ObjectSetComputedGetter
+    | ObjectSetComputedSetter
+    | ToObjectLiteralPropertyKey
+    | ObjectSetComputed
+    | ObjectSpread(_)
+    | ObjectSetProto
+    | GetProperty(_, _)
+    | GetComputed(_)
+    | ReadPropertyForAssign(_, _)
+    | ReadComputedForAssign(_)
+    | DropPropertyAssignReference
+    | DropComputedAssignReference
+    | SetProperty(_, _)
+    | SetComputed(_)
+    | SetForInProperty(_, _)
+    | SetForInComputed(_)
+    | AssignPattern(_)
+    | PreparePropertyCall(_, _)
+    | PreparePlainPropertyCall(_, _)
+    | PrepareComputedCall(_)
+    | PrepareSuperPropertyCall(_, _)
+    | PrepareSuperComputedCall(_)
+    | CallDirectEval(_)
+    | Call(_, _)
+    | CallWithReceiver(_, _)
+    | CallSpread(_)
+    | CallSpreadWithReceiver(_)
+    | Construct(_, _)
+    | ConstructSpread(_)
+    | Return
+    | Throw => None
+  }
+}
+
+///|
+fn bytecode_indexed_operand_defect(
+  function_path : Array[Int],
+  instruction_index : Int,
+  family : BytecodeIndexedOperandFamily,
+  exclusive_upper_bound : Int,
+  actual_operand : Int,
+) -> BytecodeVerifierDefect {
+  let defect : BytecodeIndexedOperandTargetDefect = {
+    function_path: function_path.copy(),
+    instruction_index,
+    family,
+    exclusive_upper_bound,
+    actual_operand,
+  }
+  BytecodeIndexedOperandDefect(defect)
+}
+
+///|
+fn verify_bytecode_indexed_operands(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  verify_bytecode_function_indexed_operands(program.main, [])
+}
+
+///|
+fn verify_bytecode_function_indexed_operands(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  for instruction_index, instruction in function.code {
+    match bytecode_indexed_operand(instruction) {
+      Some((family, actual_operand)) => {
+        let exclusive_upper_bound = match family {
+          ChildFunction => function.children.length()
+          LocalSlot => function.local_names.length()
+          EnvironmentSlot => function.env_slot_names.length()
+        }
+        guard actual_operand >= 0 && actual_operand < exclusive_upper_bound else {
+          raise bytecode_indexed_operand_defect(
+            function_path, instruction_index, family, exclusive_upper_bound, actual_operand,
+          )
+        }
+      }
+      None => ()
+    }
+  }
+  for child_index, child in function.children {
+    let child_path = function_path.copy()
+    child_path.push(child_index)
+    verify_bytecode_function_indexed_operands(child, child_path)
+  }
 }
 
 ///|

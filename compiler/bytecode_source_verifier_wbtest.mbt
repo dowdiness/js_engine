@@ -838,6 +838,383 @@ test "RED: finalization rejects an unpatched control-flow target" {
 }
 
 ///|
+test "RED: finalization rejects an out-of-range child operand" {
+  let program = unverified_source_program_for_wb("var f = function() {};")
+  let child_count = program.main.children.length()
+  guard child_count > 0 else { abort("expected one child function") }
+  let mut found_instruction_index : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      MakeFunction(_) => {
+        program.main.code[instruction_index] = MakeFunction(child_count)
+        found_instruction_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let instruction_index = match found_instruction_index {
+    Some(index) => index
+    None => abort("expected MakeFunction instruction")
+  }
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed indexed operand defect")
+  } catch {
+    BytecodeIndexedOperandDefect(defect) => {
+      assert_eq(defect.function_path, [])
+      assert_eq(defect.instruction_index, instruction_index)
+      match defect.family {
+        ChildFunction => ()
+        _ => fail("expected child-function family")
+      }
+      assert_eq(defect.exclusive_upper_bound, child_count)
+      assert_eq(defect.actual_operand, child_count)
+    }
+    _ => fail("expected typed indexed operand defect")
+  }
+}
+
+///|
+fn indexed_operand_family_equal_for_wb(
+  left : BytecodeIndexedOperandFamily,
+  right : BytecodeIndexedOperandFamily,
+) -> Bool {
+  match (left, right) {
+    (ChildFunction, ChildFunction)
+    | (LocalSlot, LocalSlot)
+    | (EnvironmentSlot, EnvironmentSlot) => true
+    _ => false
+  }
+}
+
+///|
+fn bytecode_instruction_with_indexed_operand_for_wb(
+  instruction : BytecodeInstr,
+  operand : Int,
+) -> BytecodeInstr {
+  match instruction {
+    MakeFunction(_) => MakeFunction(operand)
+    MakeNamedFunction(_, name) => MakeNamedFunction(operand, name)
+    MakeMethodFunction(_) => MakeMethodFunction(operand)
+    MakeComputedMethodFunction(_) => MakeComputedMethodFunction(operand)
+    MakeArrowFunction(_) => MakeArrowFunction(operand)
+    DeclareFunction(name, _) => DeclareFunction(name, operand)
+    LoadLocal(_) => LoadLocal(operand)
+    StoreLocal(_) => StoreLocal(operand)
+    DefineLocal(_, has_initializer) => DefineLocal(operand, has_initializer)
+    UpdateLocal(_, op, prefix) => UpdateLocal(operand, op, prefix)
+    LoadEnvSlot(_) => LoadEnvSlot(operand)
+    StoreEnvSlot(_) => StoreEnvSlot(operand)
+    DefineEnvSlot(_, has_initializer) => DefineEnvSlot(operand, has_initializer)
+    UpdateEnvSlot(_, op, prefix) => UpdateEnvSlot(operand, op, prefix)
+    _ => abort("expected indexed operand")
+  }
+}
+
+///|
+fn mutate_first_indexed_operand_for_wb(
+  function : BytecodeFunction,
+  family : BytecodeIndexedOperandFamily,
+  operand : Int,
+) -> Int {
+  for instruction_index, instruction in function.code {
+    match bytecode_indexed_operand(instruction) {
+      Some((actual_family, _)) =>
+        if indexed_operand_family_equal_for_wb(actual_family, family) {
+          function.code[instruction_index] = bytecode_instruction_with_indexed_operand_for_wb(
+            instruction, operand,
+          )
+          return instruction_index
+        }
+      None => ()
+    }
+  }
+  abort("expected indexed operand")
+}
+
+///|
+fn expect_indexed_operand_defect_for_wb(
+  program : BytecodeUnverifiedProgram,
+  expected_path : Array[Int],
+  expected_instruction : Int,
+) -> BytecodeIndexedOperandTargetDefect raise Error {
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected typed indexed operand defect")
+  } catch {
+    BytecodeIndexedOperandDefect(defect) => {
+      assert_eq(defect.function_path, expected_path)
+      assert_eq(defect.instruction_index, expected_instruction)
+      defect
+    }
+    _ => fail("expected typed indexed operand defect")
+  }
+}
+
+///|
+test "indexed operand classifier covers every indexed opcode" {
+  let cases : Array[(BytecodeInstr, BytecodeIndexedOperandFamily)] = [
+    (MakeFunction(7), ChildFunction),
+    (MakeNamedFunction(7, "f"), ChildFunction),
+    (MakeMethodFunction(7), ChildFunction),
+    (MakeComputedMethodFunction(7), ChildFunction),
+    (MakeArrowFunction(7), ChildFunction),
+    (DeclareFunction("f", 7), ChildFunction),
+    (LoadLocal(7), LocalSlot),
+    (StoreLocal(7), LocalSlot),
+    (DefineLocal(7, true), LocalSlot),
+    (UpdateLocal(7, Increment, true), LocalSlot),
+    (LoadEnvSlot(7), EnvironmentSlot),
+    (StoreEnvSlot(7), EnvironmentSlot),
+    (DefineEnvSlot(7, true), EnvironmentSlot),
+    (UpdateEnvSlot(7, Increment, true), EnvironmentSlot),
+  ]
+  for case in cases {
+    let (instruction, expected_family) = case
+    match bytecode_indexed_operand(instruction) {
+      Some((actual_family, actual_operand)) => {
+        assert_true(
+          indexed_operand_family_equal_for_wb(actual_family, expected_family),
+        )
+        assert_eq(actual_operand, 7)
+      }
+      None => fail("expected indexed operand classification")
+    }
+  }
+}
+
+///|
+test "indexed operand verifier rejects every zero-length owning table" {
+  let child_program = unverified_source_program_for_wb("var f = function() {};")
+  guard child_program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child_index = mutate_first_indexed_operand_for_wb(
+    child_program.main,
+    ChildFunction,
+    0,
+  )
+  let _ = child_program.main.children.pop()
+  let child_defect = expect_indexed_operand_defect_for_wb(
+    child_program,
+    [],
+    child_index,
+  )
+  match child_defect.family {
+    ChildFunction => ()
+    _ => fail("expected child-function family")
+  }
+  assert_eq(child_defect.exclusive_upper_bound, 0)
+  assert_eq(child_defect.actual_operand, 0)
+
+  let local_program = unverified_source_program_for_wb(
+    "function f(a) { return a; } f(1);",
+  )
+  guard local_program.main.children.length() == 1 else {
+    abort("expected one local-slot child function")
+  }
+  let local_function = local_program.main.children[0]
+  let local_name_count = local_function.local_names.length()
+  guard local_name_count > 0 else { abort("expected local slots") }
+  for _ in 0..<local_name_count {
+    let _ = local_function.local_names.pop()
+  }
+  let local_index = mutate_first_indexed_operand_for_wb(
+    local_function,
+    LocalSlot,
+    0,
+  )
+  let local_defect = expect_indexed_operand_defect_for_wb(
+    local_program,
+    [0],
+    local_index,
+  )
+  match local_defect.family {
+    LocalSlot => ()
+    _ => fail("expected local-slot family")
+  }
+  assert_eq(local_defect.exclusive_upper_bound, 0)
+  assert_eq(local_defect.actual_operand, 0)
+
+  let env_src =
+    #|function outer(a) {
+    #|  function read() { return a; }
+    #|  a = a + 1;
+    #|  return read();
+    #|}
+    #|outer(1);
+  let env_program = unverified_source_program_for_wb(env_src)
+  guard env_program.main.children.length() == 1 else {
+    abort("expected one environment-slot child function")
+  }
+  let env_function = env_program.main.children[0]
+  let env_name_count = env_function.env_slot_names.length()
+  guard env_name_count > 0 else { abort("expected environment slots") }
+  for _ in 0..<env_name_count {
+    let _ = env_function.env_slot_names.pop()
+  }
+  let env_index = mutate_first_indexed_operand_for_wb(
+    env_function,
+    EnvironmentSlot,
+    0,
+  )
+  let env_defect = expect_indexed_operand_defect_for_wb(
+    env_program,
+    [0],
+    env_index,
+  )
+  match env_defect.family {
+    EnvironmentSlot => ()
+    _ => fail("expected environment-slot family")
+  }
+  assert_eq(env_defect.exclusive_upper_bound, 0)
+  assert_eq(env_defect.actual_operand, 0)
+}
+
+///|
+test "indexed operand verifier preserves valid root and nested programs" {
+  let root_program = unverified_source_program_for_wb("var x = 1; x = x + 1;")
+  let root_finalized = finalize_bytecode_program(root_program)
+  assert_eq(root_finalized.main.code.length(), root_program.main.code.length())
+  assert_eq(
+    root_finalized.main.local_names.length(),
+    root_program.main.local_names.length(),
+  )
+
+  let nested_src =
+    #|function outer(a) {
+    #|  function read() { return a; }
+    #|  a = a + 1;
+    #|  return read();
+    #|}
+    #|outer(1);
+  let nested_program = unverified_source_program_for_wb(nested_src)
+  let nested_finalized = finalize_bytecode_program(nested_program)
+  assert_eq(
+    nested_finalized.main.children.length(),
+    nested_program.main.children.length(),
+  )
+  assert_eq(
+    nested_finalized.main.children[0].children.length(),
+    nested_program.main.children[0].children.length(),
+  )
+  assert_eq(
+    nested_finalized.main.children[0].env_slot_names.length(),
+    nested_program.main.children[0].env_slot_names.length(),
+  )
+}
+
+///|
+test "indexed operand verifier rejects negative local slots" {
+  let src =
+    #|function f(a) {
+    #|  var b = a;
+    #|  return b;
+    #|}
+    #|f(1);
+  let program = unverified_source_program_for_wb(src)
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = program.main.children[0]
+  guard child.local_names.length() > 0 else { abort("expected local slots") }
+  let instruction_index = mutate_first_indexed_operand_for_wb(
+    child,
+    LocalSlot,
+    -1,
+  )
+  let defect = expect_indexed_operand_defect_for_wb(
+    program,
+    [0],
+    instruction_index,
+  )
+  match defect.family {
+    LocalSlot => ()
+    _ => fail("expected local-slot family")
+  }
+  assert_eq(defect.exclusive_upper_bound, child.local_names.length())
+  assert_eq(defect.actual_operand, -1)
+}
+
+///|
+test "indexed operand verifier rejects environment slot length" {
+  let src =
+    #|function outer(a) {
+    #|  function read() { return a; }
+    #|  a = a + 1;
+    #|  return read();
+    #|}
+    #|outer(1);
+  let program = unverified_source_program_for_wb(src)
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let outer = program.main.children[0]
+  guard outer.env_slot_names.length() > 0 else {
+    abort("expected environment slots")
+  }
+  let invalid_operand = outer.env_slot_names.length()
+  let instruction_index = mutate_first_indexed_operand_for_wb(
+    outer,
+    EnvironmentSlot,
+    invalid_operand,
+  )
+  let defect = expect_indexed_operand_defect_for_wb(
+    program,
+    [0],
+    instruction_index,
+  )
+  match defect.family {
+    EnvironmentSlot => ()
+    _ => fail("expected environment-slot family")
+  }
+  assert_eq(defect.exclusive_upper_bound, outer.env_slot_names.length())
+  assert_eq(defect.actual_operand, invalid_operand)
+}
+
+///|
+test "indexed operand verifier reports nested function path" {
+  let src =
+    #|function outer() {
+    #|  function inner(a) {
+    #|    var b = a;
+    #|    return b;
+    #|  }
+    #|  return inner;
+    #|}
+    #|outer()();
+  let program = unverified_source_program_for_wb(src)
+  guard program.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let outer = program.main.children[0]
+  guard outer.children.length() == 1 else {
+    abort("expected nested child function")
+  }
+  let inner = outer.children[0]
+  guard inner.local_names.length() > 0 else {
+    abort("expected nested local slots")
+  }
+  let instruction_index = mutate_first_indexed_operand_for_wb(
+    inner,
+    LocalSlot,
+    -1,
+  )
+  let defect = expect_indexed_operand_defect_for_wb(
+    program,
+    [0, 0],
+    instruction_index,
+  )
+  match defect.family {
+    LocalSlot => ()
+    _ => fail("expected local-slot family")
+  }
+  assert_eq(defect.exclusive_upper_bound, inner.local_names.length())
+  assert_eq(defect.actual_operand, -1)
+}
+
+///|
 fn expect_control_flow_defect_for_wb(
   program : BytecodeUnverifiedProgram,
   expected_path : Array[Int],
