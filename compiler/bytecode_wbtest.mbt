@@ -73,6 +73,50 @@ fn replace_signature_inputs_for_wb(
 }
 
 ///|
+fn replace_signature_inputs_and_facts_for_wb(
+  function : BytecodeFunction,
+  name : String?,
+  signature_name : String?,
+  enclosing_strict : Bool,
+  params : Array[String],
+  rest_param : String?,
+  body_has_use_strict : Bool,
+  facts : BytecodeSignatureValidation,
+) -> BytecodeFunction {
+  let old_preparation = function.preparation
+  let preparation = BytecodePreparation(
+    lexical_bindings=old_preparation.lexical_bindings,
+    function_declarations=old_preparation.function_declarations,
+    signature_validation=Some(facts),
+    activation_capability=old_preparation.activation_capability,
+  )
+  BytecodeFunction(
+    name~,
+    signature_name~,
+    enclosing_strict~,
+    params~,
+    rest_param~,
+    source_body=function.source_body,
+    preparation~,
+    body_has_use_strict~,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    children=function.children,
+  )
+}
+
+///|
 fn run_tree_parent_with_bytecode_child_for_wb(
   retained_source_body : Array[@ast.Stmt],
 ) -> Bool raise Error {
@@ -572,6 +616,241 @@ test "finalization rejects method signature-name policy mutation" {
   )
   assert_preparation_rejected_for_wb(
     program, "method signature-name policy mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated signature params and facts mutation" {
+  let parsed = @parser.parse("function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated signature params and facts mutation was accepted",
+  )
+}
+
+///|
+test "RED: coordinated signature name policy and facts mutation" {
+  let parsed = @parser.parse("function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: Some("eval"),
+    enclosing_strict: facts.enclosing_strict,
+    params: facts.params,
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    Some("eval"),
+    child.enclosing_strict,
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated signature-name and facts mutation was accepted",
+  )
+}
+
+///|
+test "RED: coordinated enclosing strictness and facts mutation" {
+  let parsed = @parser.parse(
+    "\"use strict\"; function f(a) { return a; }",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: false,
+    params: facts.params,
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    false,
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated enclosing strictness and facts mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated method signature params and facts mutation" {
+  let parsed = @parser.parse("let holder = { method(a) { return a; } };")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated method params and facts mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated arrow signature params and facts mutation" {
+  let parsed = @parser.parse("let holder = (a) => a;")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated arrow params and facts mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated rest signature params and facts mutation" {
+  let parsed = @parser.parse("function f(a, ...rest) { return rest[0]; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated rest params and facts mutation was accepted",
+  )
+}
+
+///|
+test "RED: coordinated signature params facts and capability mutation" {
+  let parsed = @parser.parse("function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  let mutated_child = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  let mutated_capability = match @runtime.prepare_executor_activation_capability(
+    ["b"], child.source_body,
+  ) {
+    Some(capability) => Some(capability)
+    None => None
+  }
+  let mutated_preparation = BytecodePreparation(
+    lexical_bindings=mutated_child.preparation.lexical_bindings,
+    function_declarations=mutated_child.preparation.function_declarations,
+    signature_validation=mutated_child.preparation.signature_validation,
+    activation_capability=mutated_capability,
+  )
+  program.main.children[0] = replace_preparation_for_wb(
+    mutated_child, mutated_preparation,
+  )
+  assert_preparation_rejected_for_wb(
+    program,
+    "coordinated signature params, facts, and capability mutation was accepted",
   )
 }
 
