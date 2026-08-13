@@ -606,6 +606,7 @@ fn verify_compiled_script_preparation(
     program.main.env_var_hoist_names,
     function_names,
     lexical_bindings,
+    program.script_early_error_settlement,
   ) else {
     raise @errors.InternalError(
       message="compiled script preparation does not match verified root facts",

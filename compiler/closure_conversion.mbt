@@ -265,12 +265,13 @@ fn prepare_closure_script(
     }
   }
   visit(stmts)
-  @runtime.CompiledScriptPreparation(
+  let settlement = @runtime.prepare_compiled_script_early_error(stmts, strict)
+  @runtime.CompiledScriptPreparation::with_early_error_settlement(
     strict~,
     var_names~,
     function_names~,
     lexical_bindings~,
-    early_error=@runtime.prepare_compiled_script_early_error(stmts, strict),
+    settlement~,
   )
 }
 

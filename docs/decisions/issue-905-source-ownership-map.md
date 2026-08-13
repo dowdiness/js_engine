@@ -25,6 +25,7 @@ entry envelopes.
 | `validate_function_signature(... body)` during lowering | lowering-only source input | copied immutable signature facts tied to child/header provenance |
 | `verify_executor_activation_capability(... body)` during lowering | lowering-only source input | opaque immutable activation-capability summary compared inside runtime |
 | `Interpreter::run_compiled_script(stmts, ...)` | runtime AST entry ownership | prepared strictness, early-error proof, declaration facts, and runtime application |
+| script early-error result | freely replaceable root envelope field | opaque settlement token created by source validation and independently retained on the unverified root program |
 | parser function-node source text | exact source metadata | immutable function source text copied at lowering |
 | `SourceUnitHandle`, `SourcePointOwnerId` and source-point tables | typed diagnostics/observation identity | retained source identity and locations; no AST required |
 | `DestructurePlan` runtime adapter | explicitly deferred runtime detail | unchanged, ephemeral plan-to-AST adapter while activation remains unsupported |
@@ -41,7 +42,11 @@ Finalization receives no source AST. Child verification compares typed source
 identity, exact source text, header snapshots, canonical signature/lexical
 facts, declaration consumers, and the runtime-owned activation summary. Root
 preparation is checked against the verified root's strictness, var names,
-function names, and lexical binding order before the verified carrier is built.
+function names, lexical binding order, and the opaque early-error settlement
+token before the verified carrier is built. The general preparation facts
+constructor cannot provide a settlement; source validation creates one token
+per lowering operation, retaining the original typed error (or its successful
+`None` result) for runtime conversion without comparing error text.
 
 ## Required negative evidence
 

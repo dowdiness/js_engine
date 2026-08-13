@@ -1770,6 +1770,10 @@ fn build_script_bytecode(
 ) -> BytecodeUnverifiedProgram raise Error {
   let source_unit = SourceUnitHandle(0)
   let owner_allocator = new_source_point_owner_allocator()
+  let script_strict = @static_semantics.has_use_strict(stmts)
+  let early_error_settlement = @runtime.prepare_compiled_script_early_error(
+    stmts, script_strict,
+  )
   let main = compile_bytecode_function(
     None,
     [],
@@ -1789,17 +1793,18 @@ fn build_script_bytecode(
   let function_names = main.preparation.function_declarations.map(declaration => {
     declaration.name
   })
-  let script_preparation = @runtime.CompiledScriptPreparation(
-    strict=main.body_has_use_strict,
+  let script_preparation = @runtime.CompiledScriptPreparation::with_early_error_settlement(
+    strict=script_strict,
     var_names=main.env_var_hoist_names,
     function_names~,
     lexical_bindings~,
-    early_error=@runtime.prepare_compiled_script_early_error(
-      stmts,
-      main.body_has_use_strict,
-    ),
+    settlement=early_error_settlement,
   )
-  { script_preparation, main }
+  {
+    script_preparation,
+    script_early_error_settlement: early_error_settlement,
+    main,
+  }
 }
 
 ///|

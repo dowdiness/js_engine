@@ -194,7 +194,11 @@ Four current forms cross the intended boundary.
   names, lexical TDZ facts, and settled early-error state. The runtime remains
   the owner of global-object/property attributes, declaration conflicts,
   binding/TDZ mutation, active realm installation, and JavaScript exception
-  conversion. The bytecode runtime entry receives only that envelope.
+  conversion. The bytecode runtime entry receives only that envelope. The
+  settled early-error result is carried by an opaque, per-lowering settlement
+  token; finalization compares that token with the independently retained root
+  provenance before constructing the verified carrier, so a general facts
+  constructor cannot replace or omit the result.
   Tree-walk's source-backed classified-function factories still use `source_body`
   for their existing capability admission; that is outside the finalized
   bytecode boundary. The typed AST audit resolves every executable identifier

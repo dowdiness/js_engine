@@ -952,6 +952,9 @@ pub struct BytecodeProgram {
 ///|
 priv struct BytecodeUnverifiedProgram {
   script_preparation : @runtime.CompiledScriptPreparation
+  // Independent root provenance: finalization accepts a preparation only when
+  // its opaque settlement is tied to this exact lowering operation.
+  script_early_error_settlement : @runtime.CompiledScriptEarlyErrorSettlement
   main : BytecodeFunction
 }
 

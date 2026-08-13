@@ -321,6 +321,7 @@ test "RED: finalization rejects inconsistent root script preparation" {
   )
   let malformed : BytecodeUnverifiedProgram = {
     script_preparation: mutated_preparation,
+    script_early_error_settlement: program.script_early_error_settlement,
     main: program.main,
   }
   assert_preparation_rejected_for_wb(
@@ -329,7 +330,7 @@ test "RED: finalization rejects inconsistent root script preparation" {
 }
 
 ///|
-test "RED: finalization rejects tampered root early-error settlement" {
+test "finalization rejects tampered root early-error settlement" {
   let parsed = @parser.parse("\"use strict\"; delete missing;")
   let program = build_script_bytecode(parsed.stmts)
   let lexical_bindings = program.main.preparation.lexical_bindings.map(binding => {
@@ -339,22 +340,36 @@ test "RED: finalization rejects tampered root early-error settlement" {
     }
     @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
   })
-  let function_names = program.main.preparation.function_declarations.map(
-    declaration => declaration.name,
-  )
+  let function_names = program.main.preparation.function_declarations.map(declaration => {
+    declaration.name
+  })
   let malformed : BytecodeUnverifiedProgram = {
     script_preparation: @runtime.CompiledScriptPreparation(
       strict=program.main.body_has_use_strict,
       var_names=program.main.env_var_hoist_names,
       function_names~,
       lexical_bindings~,
-      early_error=None,
     ),
+    script_early_error_settlement: program.script_early_error_settlement,
     main: program.main,
   }
-  assert_true(
-    finalization_accepts_for_wb(malformed),
-    msg="tampered root early-error settlement was unexpectedly rejected",
+  assert_preparation_rejected_for_wb(
+    malformed, "tampered root early-error settlement was accepted",
+  )
+}
+
+///|
+test "finalization rejects a valid but wrong root early-error settlement" {
+  let parsed = @parser.parse("\"use strict\"; delete missing;")
+  let program = build_script_bytecode(parsed.stmts)
+  let other = build_script_bytecode(@parser.parse("var unrelated;").stmts)
+  let malformed : BytecodeUnverifiedProgram = {
+    script_preparation: program.script_preparation,
+    script_early_error_settlement: other.script_early_error_settlement,
+    main: program.main,
+  }
+  assert_preparation_rejected_for_wb(
+    malformed, "a valid but wrong root settlement was accepted",
   )
 }
 
@@ -419,6 +434,7 @@ fn lexical_preparation_mutation_for_wb(
   let mutated = mutation(program.main.preparation.lexical_bindings.copy())
   {
     script_preparation: program.script_preparation,
+    script_early_error_settlement: program.script_early_error_settlement,
     main: preparation_with_lexical_bindings_for_wb(program.main, mutated),
   }
 }
@@ -499,6 +515,7 @@ fn function_declaration_preparation_mutation_for_wb(
   let mutated = mutation(program.main.preparation.function_declarations.copy())
   {
     script_preparation: program.script_preparation,
+    script_early_error_settlement: program.script_early_error_settlement,
     main: preparation_with_function_declarations_for_wb(program.main, mutated),
   }
 }
@@ -643,7 +660,11 @@ test "RED: finalization rejects duplicate function declaration identity swap" {
     code_child_indices[0],
   )
   assert_preparation_rejected_for_wb(
-    { script_preparation: program.script_preparation, main: mutated_main },
+    {
+      script_preparation: program.script_preparation,
+      script_early_error_settlement: program.script_early_error_settlement,
+      main: mutated_main,
+    },
     "duplicate function declaration identity swap was accepted",
   )
 }
@@ -1154,13 +1175,16 @@ test "bytecode verifier rejects an unprepared function before verification" {
     source_point_owner=SourcePointOwnerId(0),
     children=[],
   )
+  let settlement = @runtime.prepare_compiled_script_early_error([], false)
   let program : BytecodeUnverifiedProgram = {
-    script_preparation: @runtime.CompiledScriptPreparation(
+    script_preparation: @runtime.CompiledScriptPreparation::with_early_error_settlement(
       strict=false,
       var_names=[],
       function_names=[],
       lexical_bindings=[],
+      settlement~,
     ),
+    script_early_error_settlement: settlement,
     main: pending,
   }
   try {

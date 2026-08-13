@@ -17,12 +17,22 @@ pub fn CompiledScriptLexicalBinding::CompiledScriptLexicalBinding(
 }
 
 ///|
+// The settlement token is created only by source validation. Its reference
+// identity binds the retained error (including its typed location data) to
+// the lowering operation that produced the preparation; callers cannot forge
+// a matching token by supplying an arbitrary Error value.
+pub struct CompiledScriptEarlyErrorSettlement {
+  priv token : Ref[Unit]
+  priv error : Error?
+}
+
+///|
 pub struct CompiledScriptPreparation {
   priv strict : Bool
   priv var_names : Array[String]
   priv function_names : Array[String]
   priv lexical_bindings : Array[CompiledScriptLexicalBinding]
-  priv early_error : Error?
+  priv early_error_settlement : CompiledScriptEarlyErrorSettlement?
 }
 
 ///|
@@ -31,14 +41,32 @@ pub fn CompiledScriptPreparation::CompiledScriptPreparation(
   var_names~ : Array[String],
   function_names~ : Array[String],
   lexical_bindings~ : Array[CompiledScriptLexicalBinding],
-  early_error? : Error? = None,
 ) -> CompiledScriptPreparation {
   {
     strict,
     var_names: var_names.copy(),
     function_names: function_names.copy(),
     lexical_bindings: lexical_bindings.copy(),
-    early_error,
+    early_error_settlement: None,
+  }
+}
+
+///|
+// Attach the source-validation result through its opaque settlement
+// capability. A general facts constructor intentionally cannot accept Error.
+pub fn CompiledScriptPreparation::with_early_error_settlement(
+  strict~ : Bool,
+  var_names~ : Array[String],
+  function_names~ : Array[String],
+  lexical_bindings~ : Array[CompiledScriptLexicalBinding],
+  settlement~ : CompiledScriptEarlyErrorSettlement,
+) -> CompiledScriptPreparation {
+  {
+    strict,
+    var_names: var_names.copy(),
+    function_names: function_names.copy(),
+    lexical_bindings: lexical_bindings.copy(),
+    early_error_settlement: Some(settlement),
   }
 }
 
@@ -53,11 +81,17 @@ pub fn compiled_script_preparation_matches(
   var_names : Array[String],
   function_names : Array[String],
   lexical_bindings : Array[CompiledScriptLexicalBinding],
+  expected_settlement : CompiledScriptEarlyErrorSettlement,
 ) -> Bool {
+  let settlement_matches = match preparation.early_error_settlement {
+    Some(actual) => physical_equal(actual.token, expected_settlement.token)
+    None => false
+  }
   if preparation.strict != strict ||
     !Array::equal(preparation.var_names, var_names) ||
     !Array::equal(preparation.function_names, function_names) ||
-    preparation.lexical_bindings.length() != lexical_bindings.length() {
+    preparation.lexical_bindings.length() != lexical_bindings.length() ||
+    !settlement_matches {
     return false
   }
   for index in 0..<lexical_bindings.length() {
@@ -77,13 +111,14 @@ pub fn compiled_script_preparation_matches(
 pub fn prepare_compiled_script_early_error(
   stmts : Array[@ast.Stmt],
   strict : Bool,
-) -> Error? {
-  try {
+) -> CompiledScriptEarlyErrorSettlement {
+  let error : Error? = try {
     validate_compiled_script_early_errors(stmts, strict)
     None
   } catch {
     error => Some(error)
   }
+  { token: { val: () }, error }
 }
 
 ///|
@@ -91,8 +126,12 @@ fn Interpreter::apply_compiled_script_preparation(
   self : Interpreter,
   preparation : CompiledScriptPreparation,
 ) -> Unit raise Error {
-  match preparation.early_error {
-    Some(error) => raise error
+  match preparation.early_error_settlement {
+    Some(settlement) =>
+      match settlement.error {
+        Some(error) => raise error
+        None => ()
+      }
     None => ()
   }
   check_global_function_declarations(self, preparation.function_names)
