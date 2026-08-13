@@ -2094,6 +2094,19 @@ test "bytecode keeps destructuring assignment functions on environment bindings"
 }
 
 ///|
+test "RED: bytecode destructuring execution has no AST pattern operand" {
+  let bytecode = parse_bytecode_for_wb("var [x] = [1]; x;")
+  let mut saw_ast_pattern = false
+  for instr in bytecode.main_for_wb().code {
+    match instr {
+      AssignPattern(_) => saw_ast_pattern = true
+      _ => ()
+    }
+  }
+  assert_false(saw_ast_pattern)
+}
+
+///|
 test "bytecode keeps var destructuring declaration functions on environment bindings" {
   let src =
     #|function f() {
