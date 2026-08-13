@@ -65,6 +65,7 @@ MOONBIT_KEYWORDS = frozenset(
         "raise",
         "return",
         "struct",
+        "suberror",
         "test",
         "trait",
         "true",
