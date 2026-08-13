@@ -7,6 +7,144 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+test "RED: bytecode validates nested function signatures before execution" {
+  let prog = @parser.parse("\"use strict\"; function f(a, a) {}")
+  try {
+    let _ = compile_script_to_bytecode(prog.stmts)
+    fail("expected strict duplicate parameters to fail during preparation")
+  } catch {
+    @errors.SyntaxError(_) => ()
+    _ => fail("expected a preparation-time SyntaxError")
+  }
+}
+
+///|
+test "bytecode preparation preserves parent-before-child signature errors" {
+  let prog = @parser.parse(
+    "\"use strict\"; function outer(eval) { function inner(a, a) {} }",
+  )
+  try {
+    let _ = compile_script_to_bytecode(prog.stmts)
+    fail("expected the outer signature to fail first")
+  } catch {
+    @errors.SyntaxError(message~) =>
+      assert_eq(message, "Unexpected eval or arguments in strict mode")
+    _ => fail("expected a preparation-time SyntaxError")
+  }
+}
+
+///|
+test "RED: VM execution does not traverse retained source bodies" {
+  let prog = @parser.parse(
+    "var outer = 42; function f(a, a) { function nested() {} return outer; } f();",
+  )
+  let bytecode = compile_script_to_bytecode(prog.stmts)
+  let child = bytecode.main_for_wb().children[0]
+  let retained_source_body = @parser.parse("\"use strict\"; let outer;").stmts
+  bytecode.main_for_wb().children[0] = BytecodeFunction(
+    name=child.name,
+    params=child.params,
+    rest_param=child.rest_param,
+    source_body=retained_source_body,
+    preparation=child.preparation,
+    body_has_use_strict=child.body_has_use_strict,
+    call_self_name=child.call_self_name,
+    needs_arguments_object=child.needs_arguments_object,
+    needs_own_env=child.needs_own_env,
+    local_names=child.local_names,
+    local_indices=child.local_indices,
+    env_slot_names=child.env_slot_names,
+    env_var_hoist_names=child.env_var_hoist_names,
+    template_cache_key_prefix=child.template_cache_key_prefix,
+    code=child.code,
+    source_point_owner=child.source_point_owner,
+    source_unit=child.source_unit,
+    source_points=child.source_points,
+    instruction_sources=child.instruction_sources,
+    children=child.children,
+  )
+  try {
+    let result = bytecode.run(@interpreter.new_interpreter())
+    assert_eq(result.to_string(), "42")
+  } catch {
+    @runtime.JsException(value) => fail(value.to_string())
+    error => fail(error.to_string())
+  }
+}
+
+///|
+test "bytecode preparation is owned independently by each function" {
+  let bytecode = parse_bytecode_for_wb(
+    "let first; const second; function f() { const child; let later; function nested() {} }",
+  )
+  let root = bytecode.main_for_wb()
+  guard root.children.length() == 1 else {
+    fail("expected one prepared child function")
+  }
+  guard root.preparation.lexical_bindings.length() == 2 else {
+    fail("root preparation must own only root lexical declarations")
+  }
+  assert_eq(root.preparation.lexical_bindings[0].name, "first")
+  assert_eq(root.preparation.lexical_bindings[1].name, "second")
+  assert_true(
+    root.preparation.lexical_bindings[0].loc.offset <
+    root.preparation.lexical_bindings[1].loc.offset,
+  )
+  guard root.preparation.function_declarations.length() == 1 else {
+    fail("root preparation must own only root function declarations")
+  }
+  assert_eq(root.preparation.function_declarations[0].name, "f")
+  let child = root.children[0]
+  guard child.preparation.lexical_bindings.length() == 2 else {
+    fail("child preparation must own child lexical declarations")
+  }
+  assert_eq(child.preparation.lexical_bindings[0].name, "child")
+  assert_eq(child.preparation.lexical_bindings[1].name, "later")
+  assert_true(
+    child.preparation.lexical_bindings[0].loc.offset <
+    child.preparation.lexical_bindings[1].loc.offset,
+  )
+  guard child.preparation.function_declarations.length() == 1 else {
+    fail("child preparation must own nested function declarations")
+  }
+  assert_eq(child.preparation.function_declarations[0].name, "nested")
+}
+
+///|
+test "bytecode verifier rejects an unprepared function before verification" {
+  let pending = BytecodeFunction(
+    name=None,
+    params=[],
+    rest_param=None,
+    source_body=[],
+    preparation=BytecodePreparation(),
+    body_has_use_strict=false,
+    call_self_name=false,
+    needs_arguments_object=false,
+    needs_own_env=false,
+    local_names=[],
+    local_indices=Map([]),
+    env_slot_names=[],
+    env_var_hoist_names=[],
+    template_cache_key_prefix="pending",
+    code=[],
+    source_point_owner=SourcePointOwnerId(0),
+    children=[],
+  )
+  let program : BytecodeUnverifiedProgram = { source_stmts: [], main: pending }
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected pending preparation to be rejected")
+  } catch {
+    @errors.InternalError(message~) =>
+      assert_eq(
+        message, "bytecode function preparation was not verified at nested depth 0",
+      )
+    _ => fail("expected the typed preparation guard")
+  }
+}
+
+///|
 fn BytecodeProgram::main_for_wb(self : BytecodeProgram) -> BytecodeFunction {
   self.verified_main.function
 }

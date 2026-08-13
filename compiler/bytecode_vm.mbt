@@ -263,7 +263,7 @@ fn BytecodeFrame::hoist_env_var_bindings(
 ) -> Unit raise Error {
   // The env-hoist set (var-declared names that did not become local slots) is
   // precomputed at lowering on the IR (issue #325); iterate it instead of
-  // re-walking source_body and re-filtering on every call.
+  // re-walking source metadata and re-filtering on every call.
   for name in self.func_def.env_var_hoist_names {
     interp.define_compiled_binding(
       self.env,
@@ -279,24 +279,15 @@ fn BytecodeFrame::hoist_env_var_bindings(
 fn BytecodeFrame::hoist_lexical_bindings(
   self : BytecodeFrame,
 ) -> Unit raise Error {
-  for stmt in self.func_def.source_body {
-    self.hoist_lexical_bindings_from_stmt(stmt)
-  }
-}
-
-///|
-fn BytecodeFrame::hoist_lexical_bindings_from_stmt(
-  self : BytecodeFrame,
-  stmt : @ast.Stmt,
-) -> Unit raise Error {
-  match stmt {
-    VarDecl(LetKind, name, _, _) => self.env.def_let_tdz_if_absent(name)
-    VarDecl(ConstKind, name, _, _) => self.env.def_const_tdz_if_absent(name)
-    StmtList(stmts, _) =>
-      for child in stmts {
-        self.hoist_lexical_bindings_from_stmt(child)
-      }
-    _ => ()
+  for binding in self.verified_func_def.preparation.lexical_bindings {
+    // Runtime owns the mutable binding and TDZ operations.  The source
+    // location remains attached to the immutable fact for diagnostics and
+    // future source-aware runtime errors, but is not an executable AST edge.
+    ignore(binding.loc)
+    match binding.kind {
+      BytecodeLet => self.env.def_let_tdz_if_absent(binding.name)
+      BytecodeConst => self.env.def_const_tdz_if_absent(binding.name)
+    }
   }
 }
 
@@ -320,12 +311,24 @@ fn BytecodeFrame::hoist_function_decls(
   self : BytecodeFrame,
   interp : Interpreter,
 ) -> Unit raise Error {
-  for instr in self.func_def.code {
-    match instr {
-      DeclareFunction(name, child_index) =>
-        self.define_function_decl(interp, name, child_index)
-      _ => ()
-    }
+  for declaration in self.verified_func_def.preparation.function_declarations {
+    // The declaration location is retained for source-aware diagnostics; the
+    // VM consumes only the immutable name/index fact and the verified child.
+    ignore(declaration.loc)
+    self.define_function_decl(interp, declaration.name, declaration.child_index)
+  }
+}
+
+///|
+fn ensure_bytecode_signature_validated(
+  verified_func_def : VerifiedBytecodeFunction,
+) -> Unit raise Error {
+  match verified_func_def.preparation.signature_validation {
+    SignatureValidated => ()
+    SignaturePending =>
+      raise @errors.InternalError(
+        message="verified bytecode function has pending signature validation",
+      )
   }
 }
 
@@ -336,24 +339,11 @@ fn make_bytecode_func(
   enclosing_ctx : ExecContext,
 ) -> Value raise Error {
   let func_def = verified_func_def.function
-  match func_def.rest_param {
-    Some(rest_param) =>
-      @runtime.validate_function_signature_ext(
-        enclosing_ctx.strict,
-        func_def.name,
-        bytecode_ext_params_from_names(func_def.params),
-        Some(rest_param),
-        func_def.source_body,
-      )
-    None =>
-      @runtime.validate_function_signature(
-        enclosing_ctx.strict,
-        func_def.name,
-        func_def.params,
-        func_def.source_body,
-      )
-  }
+  ensure_bytecode_signature_validated(verified_func_def)
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
+  // source_body is retained temporarily for runtime activation capability and
+  // source metadata. Signature validation and executable setup use only the
+  // verified preparation facts above.
   @runtime.make_classified_executor_function(
     func_def.name,
     func_def.params,
@@ -387,23 +377,7 @@ fn make_bytecode_method_func(
   home_object : Value,
 ) -> Value raise Error {
   let func_def = verified_func_def.function
-  match func_def.rest_param {
-    Some(rest_param) =>
-      @runtime.validate_function_signature_ext(
-        enclosing_ctx.strict,
-        None,
-        bytecode_ext_params_from_names(func_def.params),
-        Some(rest_param),
-        func_def.source_body,
-      )
-    None =>
-      @runtime.validate_function_signature(
-        enclosing_ctx.strict,
-        None,
-        func_def.params,
-        func_def.source_body,
-      )
-  }
+  ensure_bytecode_signature_validated(verified_func_def)
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   let method_env = Environment::new(parent=Some(closure))
   method_env.def_builtin("[[HomeObject]]", home_object)
@@ -422,43 +396,13 @@ fn make_bytecode_method_func(
 }
 
 ///|
-fn bytecode_ext_params_from_names(params : Array[String]) -> Array[@ast.Param] {
-  let ext_params : Array[@ast.Param] = []
-  for name in params {
-    ext_params.push({
-      name,
-      default_val: None,
-      pattern: None,
-      is_rest_pattern: false,
-    })
-  }
-  ext_params
-}
-
-///|
 fn make_bytecode_arrow_func(
   verified_func_def : VerifiedBytecodeFunction,
   closure : Environment,
   enclosing_ctx : ExecContext,
 ) -> Value raise Error {
   let func_def = verified_func_def.function
-  match func_def.rest_param {
-    Some(_) =>
-      @runtime.validate_function_signature_ext(
-        enclosing_ctx.strict,
-        None,
-        bytecode_ext_params_from_names(func_def.params),
-        func_def.rest_param,
-        func_def.source_body,
-      )
-    None =>
-      @runtime.validate_function_signature(
-        enclosing_ctx.strict,
-        None,
-        func_def.params,
-        func_def.source_body,
-      )
-  }
+  ensure_bytecode_signature_validated(verified_func_def)
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   @runtime.make_classified_executor_arrow_function(
     func_def.params,
@@ -985,7 +929,7 @@ fn BytecodeFrame::step_bytecode(
         let child = frame.verified_func_def.child(index)
         stack.push(make_bytecode_arrow_func(child, env, ctx))
       }
-      DeclareFunction(_, _) => ()
+      DeclareFunction(name, _) => ignore(name)
       GetProperty(prop, loc) => {
         let obj = frame.pop()
         frame.pending_activation_result = Some(PushValue)
