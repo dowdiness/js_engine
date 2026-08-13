@@ -1811,11 +1811,7 @@ fn build_script_bytecode(
     lexical_bindings=root_provenance.lexical_bindings,
     settlement=root_provenance.settlement,
   )
-  {
-    script_preparation,
-    root_provenance,
-    main,
-  }
+  { script_preparation, root_provenance, main }
 }
 
 ///|
