@@ -310,7 +310,16 @@ def semantic_ast_accesses(
         return {**base, "type": marker}
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        violations = [item for item in executor.map(inspect, requests) if item is not None]
+        inspected = list(executor.map(inspect, requests))
+    # `moon ide hover` shares compiler state within the workspace. Concurrent
+    # requests can transiently return no JSON, so retry only those transport
+    # failures serially. A candidate that remains unresolved still fails closed.
+    violations = []
+    for request, item in zip(requests, inspected):
+        if item is not None and item["type"] == "unresolved-executable-candidate":
+            item = inspect(request)
+        if item is not None:
+            violations.append(item)
     return sorted(
         violations,
         key=lambda item: (str(item["path"]), int(item["line"]), int(item["column"])),
