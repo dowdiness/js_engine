@@ -171,11 +171,14 @@ bytecode.
 
 Four current forms cross the intended boundary.
 
-- `AssignPattern(@ast.Pattern)` carries executable AST. It must become a private
-  destructuring plan or explicit lowered operations. Small closed tags such as
-  `@ast.BinOp` may remain temporarily as operation identifiers only; they must
-  never trigger AST evaluation. `AssignPattern(@ast.Pattern)` is intentionally
-  unchanged in #899; this slice does not broaden destructuring eligibility.
+- `AssignDestructure(@runtime.DestructurePlan)` carries an immutable, closed
+  plan for the currently admitted identifier/static-key/nested
+  array/object/hole/rest subset. Small closed tags such as `@ast.BinOp` may
+  remain temporarily as operation identifiers only; they must never trigger
+  AST evaluation. The plan is lowered once and is the sole executable
+  destructuring authority in bytecode; runtime owns iterator, property, and
+  binding semantics. Defaults, computed keys, and member targets remain
+  lowering-time unsupported.
   Issue #636 owns its next preparation/lowering migration.
 - `BytecodeFunction.source_body : Array[@ast.Stmt]` and
   `BytecodeProgram.source_stmts : Array[@ast.Stmt]` retain source trees. The
@@ -207,8 +210,7 @@ Four current forms cross the intended boundary.
   every executable identifier through MoonBit's inferred hover type, fails
   closed on unresolved candidates, rejects inferred AST binders/expressions
   and `source_body` access (including aliases), and permits only the
-  structurally identified `AssignPattern(pattern)` instruction payload retained
-  for #636.
+  structurally identified AST-free destructuring-plan instruction payload.
 - `LoadConst(Value)` and `SetCompletionValue(Value)` embed runtime
   representation. The instruction stream must instead contain private literal
   descriptors or recipes. The verifier checks them, and execution materializes

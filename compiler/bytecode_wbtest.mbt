@@ -1109,6 +1109,7 @@ fn activation_reason_matches_for_wb(
       SynchronousComputedPropertyAssignment,
       SynchronousComputedPropertyAssignment,
     )
+    | (DestructuringAssignment, DestructuringAssignment)
     | (ConditionalComputedProperty, ConditionalComputedProperty) => true
     _ => false
   }
@@ -1188,6 +1189,12 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     true,
     UnsupportedBeforeActivation(BinaryOperation),
     [Operator],
+  )
+  assert_instruction_contract_for_wb(
+    AssignDestructure(@runtime.destructure_plan_bind_name("binding")),
+    true,
+    UnsupportedBeforeActivation(DestructuringAssignment),
+    [BindingAccess, MemberAccess, Iterator],
   )
   assert_instruction_contract_for_wb(
     LoadName("binding"),
@@ -2086,11 +2093,24 @@ test "bytecode keeps destructuring assignment functions on environment bindings"
   let mut saw_assign_pattern = false
   for instr in child.code {
     match instr {
-      AssignPattern(_) => saw_assign_pattern = true
+      AssignDestructure(_) => saw_assign_pattern = true
       _ => ()
     }
   }
   guard saw_assign_pattern else { abort("expected destructuring assignment") }
+}
+
+///|
+test "RED: bytecode destructuring execution has no AST pattern operand" {
+  let bytecode = parse_bytecode_for_wb("var [x] = [1]; x;")
+  let mut saw_destructure_plan = false
+  for instr in bytecode.main_for_wb().code {
+    match instr {
+      AssignDestructure(_) => saw_destructure_plan = true
+      _ => ()
+    }
+  }
+  assert_true(saw_destructure_plan)
 }
 
 ///|
@@ -2110,7 +2130,7 @@ test "bytecode keeps var destructuring declaration functions on environment bind
   let mut saw_assign_pattern = false
   for instr in child.code {
     match instr {
-      AssignPattern(_) => saw_assign_pattern = true
+      AssignDestructure(_) => saw_assign_pattern = true
       _ => ()
     }
   }
@@ -3257,7 +3277,7 @@ test "bytecode lowers for-in destructuring assignment targets" {
   for instr in bytecode.main_for_wb().code {
     match instr {
       StartForIn => saw_start = true
-      AssignPattern(_) => saw_assign_pattern = true
+      AssignDestructure(_) => saw_assign_pattern = true
       _ => ()
     }
   }

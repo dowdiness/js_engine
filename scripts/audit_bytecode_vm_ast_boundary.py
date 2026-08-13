@@ -4,10 +4,10 @@
 The source scanner below only supplies candidate coordinates. MoonBit's IDE
 resolves every executable identifier at those coordinates, so inferred local
 binders and expression results are checked without relying on receiver names.
-An unresolved executable candidate is a failure, not an ignored edge. The
-single existing ``AssignPattern(pattern)`` payload arm is structurally allowed;
-all other ``@ast.Stmt``/``@ast.Pattern`` values and ``source_body`` accesses
-fail. The root ``source_stmts`` script envelope is outside this VM-only scope.
+An unresolved executable candidate is a failure, not an ignored edge. The VM
+must contain no executable ``@ast.Stmt``/``@ast.Expr``/``@ast.Pattern`` values;
+``source_body`` accesses fail too. The root ``source_stmts`` script envelope is
+outside this VM-only scope.
 """
 
 from __future__ import annotations
@@ -23,11 +23,8 @@ import sys
 
 
 VM_PATHS = (Path("compiler/bytecode_vm.mbt"),)
-FORBIDDEN_MARKERS = ("@ast.Stmt", "@ast.Pattern")
+FORBIDDEN_MARKERS = ("@ast.Stmt", "@ast.Pattern", "@ast.Expr")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-ASSIGN_PATTERN_HEADER = re.compile(
-    r"\bAssignPattern\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*=>",
-)
 FIXTURE_PREFIX = "compiler/bytecode_vm_ast_boundary_fixture_"
 FIXTURE_BASENAME_PREFIX = Path(FIXTURE_PREFIX).name
 
@@ -131,15 +128,25 @@ fn bytecode_vm_ast_boundary_fixture_direct_pattern(
   }
 }
 ''',
+    "direct_expr": r'''///|
+#warnings("-unused_value")
+fn bytecode_vm_ast_boundary_fixture_direct_expr(
+  expr : @ast.Expr,
+) -> Unit {
+  match expr {
+    _ => ()
+  }
+}
+''',
 }
 
 POSITIVE_FIXTURE_SOURCE = r'''///|
 #warnings("-unused_value")
-fn bytecode_vm_ast_boundary_fixture_assign_pattern(
+fn bytecode_vm_ast_boundary_fixture_destructure_plan(
   instruction : BytecodeInstr,
 ) -> Unit {
   match instruction {
-    AssignPattern(pattern) => ignore(pattern)
+    AssignDestructure(plan) => ignore(plan)
     _ => ()
   }
 }
@@ -265,46 +272,14 @@ def candidate_locations(root: Path, path: Path) -> list[tuple[int, int, str]]:
     return locations
 
 
-def assign_pattern_allowances(
-    root: Path,
-    path: Path,
-) -> set[tuple[int, int]]:
-    """Return only the payload-arm coordinates of AssignPattern(pattern)."""
-
-    lines = (root / path).read_text().splitlines()
-    masked = executable_lines(lines)
-    allowed: set[tuple[int, int]] = set()
-    for start, line in enumerate(masked):
-        match = ASSIGN_PATTERN_HEADER.search(line)
-        if match is None:
-            continue
-        binder = match.group(1)
-        depth = line[match.end() :].count("{") - line[match.end() :].count("}")
-        end = start
-        while depth > 0 and end + 1 < len(masked):
-            end += 1
-            depth += masked[end].count("{") - masked[end].count("}")
-        for line_number in range(start, end + 1):
-            for token in IDENTIFIER.finditer(masked[line_number]):
-                token_name = token.group(0)
-                is_residual_call = (
-                    token_name == "eval_destructure_assign" and
-                    "interp.eval_destructure_assign" in masked[line_number]
-                )
-                if token_name in ("AssignPattern", binder) or is_residual_call:
-                    allowed.add((line_number + 1, token.start() + 1))
-    return allowed
-
-
 def semantic_ast_accesses(
     root: Path,
     paths: tuple[Path, ...],
 ) -> list[dict[str, object]]:
     requests: list[tuple[Path, int, int, str, set[tuple[int, int]]]] = []
     for path in paths:
-        allowances = assign_pattern_allowances(root, path)
         for line, column, token in candidate_locations(root, path):
-            requests.append((path, line, column, token, allowances))
+            requests.append((path, line, column, token, set()))
 
     def inspect(
         request : tuple[Path, int, int, str, set[tuple[int, int]]],
@@ -320,9 +295,7 @@ def semantic_ast_accesses(
             # not a field read; direct `source_body` candidates remain checked.
             return None
         if token == "BytecodeInstr" and "enum BytecodeInstr" in contents:
-            # The instruction enum still owns the explicitly residual
-            # AssignPattern(@ast.Pattern) payload for #636; a type reference
-            # is not an executable pattern traversal.
+            # A type reference is not an executable AST traversal.
             return None
         marker = next(
             (candidate for candidate in FORBIDDEN_MARKERS if candidate in contents),
@@ -395,6 +368,7 @@ def main() -> int:
             "loop": "item",
             "source_body_alias": "source_body",
             "direct_pattern": "pattern",
+            "direct_expr": "expr",
         }
         with fixture_sources(root, NEGATIVE_FIXTURE_SOURCES) as paths:
             negative = {
@@ -418,14 +392,14 @@ def main() -> int:
             positive = semantic_ast_accesses(root, paths)
         if positive:
             print(
-                "AST boundary AssignPattern residual was rejected: "
+                "AST boundary destructuring plan dispatch was rejected: "
                 + json.dumps(positive, sort_keys=True),
                 file=sys.stderr,
             )
             return 1
         print(
-            "ok: typed bytecode VM AST boundary rejects inferred AST values and "
-            "allows only AssignPattern(pattern)",
+            "ok: typed bytecode VM AST boundary rejects all inferred AST values "
+            "and permits only AST-free destructuring plan dispatch",
         )
     else:
         print("ok: typed bytecode VM AST boundary is clean")

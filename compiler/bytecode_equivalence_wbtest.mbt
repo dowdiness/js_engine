@@ -3436,6 +3436,128 @@ test "bytecode var destructuring declarations can be captured" {
 }
 
 ///|
+test "bytecode destructuring plan preserves nested values and RHS identity" {
+  let src =
+    #|var rhs = { outer: { inner: 7 }, keep: 8, extra: 9 };
+    #|var value;
+    #|var rest;
+    #|value = ({ outer: { inner: value }, ...rest } = rhs);
+    #|value === rhs && value.outer.inner + ":" + rest.keep + ":" + rest.extra;
+  inspect(bytecode_compare(src), content="value:7:8:9")
+}
+
+///|
+test "bytecode destructuring plan preserves holes and iterator close order" {
+  let src =
+    #|var trace = "";
+    #|var step = 0;
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { step = step + 1; trace = trace + "s"; return { value: step, done: step > 3 }; },
+    #|    return: function() { trace = trace + "c"; return {}; }
+    #|  };
+    #|};
+    #|var a;
+    #|var b;
+    #|[a, , b] = iterable;
+    #|trace + ":" + a + ":" + b;
+  inspect(bytecode_compare(src), content="value:sssc:1:3")
+}
+
+///|
+test "bytecode empty destructuring plan still acquires and closes iterator" {
+  let src =
+    #|var trace = "";
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  trace = trace + "i";
+    #|  return { next: function() { trace = trace + "n"; return { done: true }; }, return: function() { trace = trace + "r"; return {}; } };
+    #|};
+    #|[] = iterable;
+    #|trace;
+  inspect(bytecode_compare(src), content="value:ir")
+}
+
+///|
+test "bytecode destructuring plan preserves proxy rest order and symbols" {
+  let src =
+    #|var trace = [];
+    #|var symbol = Symbol("s");
+    #|var target = { a: 1, b: 2 };
+    #|target[symbol] = 3;
+    #|var source = new Proxy(target, {
+    #|  get: function(t, key) { trace.push("get:" + String(key)); return t[key]; },
+    #|  ownKeys: function(t) { trace.push("ownKeys"); return Reflect.ownKeys(t); },
+    #|  getOwnPropertyDescriptor: function(t, key) { trace.push("desc:" + String(key)); return Object.getOwnPropertyDescriptor(t, key); }
+    #|});
+    #|var a;
+    #|var rest;
+    #|({ a: a, ...rest } = source);
+    #|trace.join("|") + ":" + a + ":" + rest.b + ":" + rest[symbol];
+  inspect(
+    bytecode_compare(src),
+    content="value:get:a|ownKeys|desc:b|get:b|desc:Symbol(s)|get:Symbol(s):1:2:3",
+  )
+}
+
+///|
+test "bytecode destructuring plan delegates binding errors to runtime" {
+  inspect(
+    bytecode_compare(
+      "var rhs = [1]; [missing_plan_name] = rhs; typeof missing_plan_name + ':' + missing_plan_name;",
+    ),
+    content="value:number:1",
+  )
+  inspect(
+    bytecode_compare("\"use strict\"; [strict_plan_name] = [1];"),
+    content="throw:ReferenceError: strict_plan_name is not defined",
+  )
+  inspect(
+    bytecode_compare("[tdz_plan_name] = [1]; let tdz_plan_name;"),
+    content="throw:ReferenceError: Cannot access 'tdz_plan_name' before initialization",
+  )
+  inspect(
+    bytecode_compare("const const_plan_name = 0; [const_plan_name] = [1];"),
+    content="throw:TypeError: Assignment to constant variable 'const_plan_name'",
+  )
+}
+
+///|
+test "bytecode destructuring plan closes iterators on abrupt assignment" {
+  let assignment_src =
+    #|var assignment_trace = "";
+    #|var assignment_iterable = {};
+    #|assignment_iterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { console.log("next"); return { value: 1, done: false }; },
+    #|    return: function() { console.log("return"); return {}; }
+    #|  };
+    #|};
+    #|const assignment_target = 0;
+    #|[assignment_target] = assignment_iterable;
+  inspect(
+    bytecode_compare_with_output(assignment_src),
+    content="throw:TypeError: Assignment to constant variable 'assignment_target'; output:next|return",
+  )
+
+  let next_src =
+    #|var next_iterable = {};
+    #|next_iterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { console.log("next"); throw new Error("next"); },
+    #|    return: function() { console.log("return"); return {}; }
+    #|  };
+    #|};
+    #|var next_target;
+    #|[next_target] = next_iterable;
+  inspect(
+    bytecode_compare_with_output(next_src),
+    content="throw:Error: next; output:next",
+  )
+}
+
+///|
 test "bytecode console log writes through shared host output helper" {
   let src =
     #|console.log(1, "two");

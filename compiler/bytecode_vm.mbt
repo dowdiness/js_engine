@@ -1054,9 +1054,9 @@ fn BytecodeFrame::step_bytecode(
           interp.set_computed_property(obj, key, value, loc, strict=ctx.strict),
         )
       }
-      AssignPattern(pattern) => {
+      AssignDestructure(plan) => {
         let value = frame.pop()
-        stack.push(interp.eval_destructure_assign(ctx, pattern, value, env))
+        stack.push(interp.eval_destructure_assign_plan(ctx, plan, value, env))
       }
       PreparePropertyCall(prop, loc) => {
         let receiver = frame.pop()

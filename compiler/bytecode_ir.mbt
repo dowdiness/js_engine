@@ -232,7 +232,7 @@ priv enum BytecodeInstr {
   SetComputed(@token.Loc)
   SetForInProperty(String, @token.Loc)
   SetForInComputed(@token.Loc)
-  AssignPattern(@ast.Pattern)
+  AssignDestructure(@runtime.DestructurePlan)
   PreparePropertyCall(String, @token.Loc)
   PreparePlainPropertyCall(String, @token.Loc)
   PrepareComputedCall(@token.Loc)
@@ -453,7 +453,7 @@ fn bytecode_instruction_contract(
         UnsupportedBeforeActivation(ConditionalComputedCall),
         [MemberAccess, PropertyKey],
       )
-    AssignPattern(_) =>
+    AssignDestructure(_) =>
       bytecode_contract(
         true,
         UnsupportedBeforeActivation(DestructuringAssignment),

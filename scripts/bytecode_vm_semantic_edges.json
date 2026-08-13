@@ -180,7 +180,7 @@
     {"column":27,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","line":1052,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::pop"},
     {"column":18,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","line":1054,"path":"compiler/bytecode_vm.mbt","target":"@runtime.Interpreter::set_computed_property"},
     {"column":27,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","line":1058,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::pop"},
-    {"column":27,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","line":1059,"path":"compiler/bytecode_vm.mbt","target":"@runtime.Interpreter::eval_destructure_assign"},
+    {"column":27,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","line":1059,"path":"compiler/bytecode_vm.mbt","target":"@runtime.Interpreter::eval_destructure_assign_plan"},
     {"column":30,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","line":1062,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::pop"},
     {"column":20,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","line":1065,"path":"compiler/bytecode_vm.mbt","target":"@dowdiness/js_engine/interpreter/runtime.executor_activation_property_get"},
     {"column":30,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","line":1069,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::pop"},

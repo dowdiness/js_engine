@@ -59,6 +59,14 @@ pub fn delete_host_slot(ObjectData, HostSlotKey) -> Unit
 
 pub fn descriptor_to_value(PropDescriptor, Value, realm_state? : RealmState?) -> Value
 
+pub fn destructure_plan_array(Array[DestructurePlan?], DestructurePlan?) -> DestructurePlan
+
+pub fn destructure_plan_bind_name(String) -> DestructurePlan
+
+pub fn destructure_plan_object(Array[DestructurePropertyPlan], DestructurePlan?) -> DestructurePlan
+
+pub fn destructure_plan_property(String, DestructurePlan) -> DestructurePropertyPlan
+
 pub fn detach_keyed_collection_iterator_target(ObjectData, Int) -> Unit
 
 pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
@@ -566,6 +574,14 @@ pub(all) struct ClassFieldInit {
   closure : Environment
 }
 
+pub struct DestructurePlan {
+  // private fields
+}
+
+pub struct DestructurePropertyPlan {
+  // private fields
+}
+
 pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
@@ -823,6 +839,7 @@ pub fn Interpreter::define_unmapped_arguments_object(Self, Environment, Array[Va
 pub fn Interpreter::delete_property_key(Self, Value, Value, strict? : Bool) -> Bool raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::eval_destructure_assign(Self, ExecContext, @ast.Pattern, Value, Environment) -> Value raise
+pub fn Interpreter::eval_destructure_assign_plan(Self, ExecContext, DestructurePlan, Value, Environment) -> Value raise
 pub fn Interpreter::eval_super_computed_call_reference(Self, Environment, Value, @token.Loc) -> (Value, Value) raise
 pub fn Interpreter::eval_super_computed_property(Self, Environment, Value, @token.Loc) -> Value raise
 pub fn Interpreter::eval_super_property(Self, Environment, String, @token.Loc) -> Value raise

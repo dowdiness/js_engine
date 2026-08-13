@@ -1988,7 +1988,7 @@ fn BytecodeBuilder::compile_for_in_pattern(
       bytecode_reject(ForInLexicalDeclaration, loc)
     None => ()
   }
-  bytecode_validate_destructure_assignment_pattern(pattern, loc)
+  let destructure_plan = bytecode_lower_destructure_plan(pattern, loc)
   bytecode_reject_if_present(
     ControlFlowFunctionDeclaration,
     first_decl_loc(body, stmt_is_function_decl),
@@ -2002,7 +2002,7 @@ fn BytecodeBuilder::compile_for_in_pattern(
   let _ = self.emit_with_source_locations(StartForIn, [(Iterator, loc)])
   let loop_pos = self.code.length()
   let done_jump = self.emit(ForInNext(-1))
-  let _ = self.emit_with_source_locations(AssignPattern(pattern), [
+  let _ = self.emit_with_source_locations(AssignDestructure(destructure_plan), [
     (BindingAccess, loc),
     (MemberAccess, loc),
     (Iterator, loc),
@@ -2132,13 +2132,12 @@ fn BytecodeBuilder::compile_stmt_body(
       }
     }
     DestructureDecl(VarKind, pattern, init, loc) => {
-      bytecode_validate_destructure_assignment_pattern(pattern, loc)
+      let destructure_plan = bytecode_lower_destructure_plan(pattern, loc)
       self.compile_expr(init)
-      let _ = self.emit_with_source_locations(AssignPattern(pattern), [
-        (BindingAccess, loc),
-        (MemberAccess, loc),
-        (Iterator, loc),
-      ])
+      let _ = self.emit_with_source_locations(
+        AssignDestructure(destructure_plan),
+        [(BindingAccess, loc), (MemberAccess, loc), (Iterator, loc)],
+      )
       let _ = self.emit(Pop)
       if declaration_updates_completion {
         self.emit_undefined_completion()
@@ -3965,27 +3964,42 @@ fn BytecodeBuilder::compile_object_lit(
 }
 
 ///|
-fn bytecode_validate_destructure_assignment_pattern(
+// Lower the validator's closed subset into the only destructuring execution
+// authority carried by bytecode. The runtime constructors are typed and copy
+// their arrays, so callers cannot mutate a plan after lowering.
+fn bytecode_reject_destructure_plan(
+  reason : BytecodeUnsupportedReason,
+  loc : @token.Loc,
+) -> @runtime.DestructurePlan raise Error {
+  bytecode_reject(reason, loc)
+  @runtime.destructure_plan_bind_name("")
+}
+
+///|
+fn bytecode_lower_destructure_plan(
   pattern : @ast.Pattern,
   owner_loc : @token.Loc,
-) -> Unit raise Error {
+) -> @runtime.DestructurePlan raise Error {
   match pattern {
-    IdentPat(_) => ()
+    IdentPat(name) => @runtime.destructure_plan_bind_name(name)
     ArrayPat(elements, rest) => {
+      let lowered_elements : Array[@runtime.DestructurePlan?] = []
       for element in elements {
-        match element {
-          Some(pat) =>
-            bytecode_validate_destructure_assignment_pattern(pat, owner_loc)
-          None => ()
-        }
+        lowered_elements.push(
+          match element {
+            Some(pat) => Some(bytecode_lower_destructure_plan(pat, owner_loc))
+            None => None
+          },
+        )
       }
-      match rest {
-        Some(pat) =>
-          bytecode_validate_destructure_assignment_pattern(pat, owner_loc)
-        None => ()
+      let lowered_rest : @runtime.DestructurePlan? = match rest {
+        Some(pat) => Some(bytecode_lower_destructure_plan(pat, owner_loc))
+        None => None
       }
+      @runtime.destructure_plan_array(lowered_elements, lowered_rest)
     }
     ObjectPat(props, rest) => {
+      let lowered_props : Array[@runtime.DestructurePropertyPlan] = []
       for prop in props {
         match prop.default_val {
           Some(expr) =>
@@ -4003,18 +4017,25 @@ fn bytecode_validate_destructure_assignment_pattern(
             )
           None => ()
         }
-        bytecode_validate_destructure_assignment_pattern(prop.value, owner_loc)
+        let target = bytecode_lower_destructure_plan(prop.value, owner_loc)
+        lowered_props.push(@runtime.destructure_plan_property(prop.key, target))
       }
-      match rest {
-        Some(pat) =>
-          bytecode_validate_destructure_assignment_pattern(pat, owner_loc)
-        None => ()
+      let lowered_rest : @runtime.DestructurePlan? = match rest {
+        Some(pat) => Some(bytecode_lower_destructure_plan(pat, owner_loc))
+        None => None
       }
+      @runtime.destructure_plan_object(lowered_props, lowered_rest)
     }
     DefaultPat(_, expr) =>
-      bytecode_reject(DestructuringPatternDefault, bytecode_expr_loc(expr))
+      bytecode_reject_destructure_plan(
+        DestructuringPatternDefault,
+        bytecode_expr_loc(expr),
+      )
     AssignTarget(expr) =>
-      bytecode_reject(DestructuringPatternMemberTarget, bytecode_expr_loc(expr))
+      bytecode_reject_destructure_plan(
+        DestructuringPatternMemberTarget,
+        bytecode_expr_loc(expr),
+      )
   }
 }
 
@@ -4291,13 +4312,12 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     DestructureAssign(pattern, value, loc) => {
-      bytecode_validate_destructure_assignment_pattern(pattern, loc)
+      let destructure_plan = bytecode_lower_destructure_plan(pattern, loc)
       self.compile_expr(value)
-      let _ = self.emit_with_source_locations(AssignPattern(pattern), [
-        (BindingAccess, loc),
-        (MemberAccess, loc),
-        (Iterator, loc),
-      ])
+      let _ = self.emit_with_source_locations(
+        AssignDestructure(destructure_plan),
+        [(BindingAccess, loc), (MemberAccess, loc), (Iterator, loc)],
+      )
     }
     Assign(name, value, loc) => {
       self.compile_expr(value)
