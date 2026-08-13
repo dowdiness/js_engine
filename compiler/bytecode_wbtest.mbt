@@ -34,6 +34,7 @@ fn replace_preparation_for_wb(
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     children=function.children,
+    header_provenance=function.header_provenance,
   )
 }
 
@@ -69,6 +70,7 @@ fn replace_signature_inputs_for_wb(
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     children=function.children,
+    header_provenance=function.header_provenance,
   )
 }
 
@@ -113,6 +115,7 @@ fn replace_signature_inputs_and_facts_for_wb(
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     children=function.children,
+    header_provenance=function.header_provenance,
   )
 }
 
@@ -147,6 +150,7 @@ fn run_tree_parent_with_bytecode_child_for_wb(
     source_points=child.source_points,
     instruction_sources=child.instruction_sources,
     children=child.children,
+    header_provenance=child.header_provenance,
   )
   let interp = @interpreter.new_interpreter()
   let byte_child = make_bytecode_func(
@@ -683,9 +687,7 @@ test "RED: coordinated signature name policy and facts mutation" {
 
 ///|
 test "RED: coordinated enclosing strictness and facts mutation" {
-  let parsed = @parser.parse(
-    "\"use strict\"; function f(a) { return a; }",
-  )
+  let parsed = @parser.parse("\"use strict\"; function f(a) { return a; }")
   let program = build_script_bytecode(parsed.stmts)
   let child = program.main.children[0]
   let facts = match child.preparation.signature_validation {
@@ -833,9 +835,8 @@ test "RED: coordinated signature params facts and capability mutation" {
     child.body_has_use_strict,
     mutated_facts,
   )
-  let mutated_capability = match @runtime.prepare_executor_activation_capability(
-    ["b"], child.source_body,
-  ) {
+  let mutated_capability = match
+    @runtime.prepare_executor_activation_capability(["b"], child.source_body) {
     Some(capability) => Some(capability)
     None => None
   }
@@ -849,8 +850,7 @@ test "RED: coordinated signature params facts and capability mutation" {
     mutated_child, mutated_preparation,
   )
   assert_preparation_rejected_for_wb(
-    program,
-    "coordinated signature params, facts, and capability mutation was accepted",
+    program, "coordinated signature params, facts, and capability mutation was accepted",
   )
 }
 
@@ -960,6 +960,7 @@ test "RED: VM execution does not traverse retained source bodies" {
     source_points=child.source_points,
     instruction_sources=child.instruction_sources,
     children=child.children,
+    header_provenance=child.header_provenance,
   )
   try {
     let result = bytecode.run(@interpreter.new_interpreter())

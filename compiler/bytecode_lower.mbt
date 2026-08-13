@@ -1663,6 +1663,7 @@ fn compile_bytecode_function(
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   enclosing_strict? : Bool = false,
   is_method? : Bool = false,
+  header_provenance? : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction raise Error {
   let body_has_use_strict = @static_semantics.has_use_strict(body)
   let function_strict = enclosing_strict || body_has_use_strict
@@ -1742,6 +1743,7 @@ fn compile_bytecode_function(
     source_points=builder.source_points,
     instruction_sources=builder.instruction_sources,
     children=builder.children,
+    header_provenance~,
   )
 }
 
@@ -1823,6 +1825,7 @@ fn BytecodeBuilder::add_function(
   params : Array[String],
   body : Array[@ast.Stmt],
   rest_param : String?,
+  consumer_form : BytecodeFunctionConsumerForm,
   call_self_name? : Bool = false,
   is_method? : Bool = false,
 ) -> Int raise Error {
@@ -1842,6 +1845,18 @@ fn BytecodeBuilder::add_function(
       source_unit=self.source_unit,
       enclosing_strict=self.enclosing_strict,
       is_method~,
+      header_provenance=Some(
+        BytecodeHeaderProvenance(
+          body,
+          name,
+          params.copy(),
+          rest_param,
+          self.enclosing_strict,
+          self.source_point_owner,
+          idx,
+          consumer_form,
+        ),
+      ),
     ),
   )
   idx
@@ -2310,7 +2325,13 @@ fn BytecodeBuilder::compile_stmt_body(
     SwitchStmt(discriminant, cases, _) =>
       self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _, _) => {
-      let fn_idx = self.add_function(Some(name), params, body, None)
+      let fn_idx = self.add_function(
+        Some(name),
+        params,
+        body,
+        None,
+        DeclareFunctionConsumer(name),
+      )
       self.function_declarations.push({
         name,
         child_index: fn_idx,
@@ -2328,6 +2349,7 @@ fn BytecodeBuilder::compile_stmt_body(
         simple_params,
         body,
         simple_rest,
+        DeclareFunctionConsumer(name),
       )
       self.function_declarations.push({
         name,
@@ -3679,11 +3701,23 @@ fn BytecodeBuilder::compile_object_method(
   computed_key_on_stack? : Bool = false,
 ) -> Unit raise Error {
   let function_loc = bytecode_expr_loc(prop.value)
+  let consumer_form = if computed_key_on_stack {
+    ComputedMethodFunctionConsumer
+  } else {
+    MethodFunctionConsumer
+  }
   let fn_idx = match prop.value {
     FuncExpr(Some(name), params, body, _, _) =>
-      self.add_function(Some(name), params, body, None, is_method=true)
+      self.add_function(
+        Some(name),
+        params,
+        body,
+        None,
+        consumer_form,
+        is_method=true,
+      )
     FuncExpr(None, params, body, _, _) =>
-      self.add_function(None, params, body, None, is_method=true)
+      self.add_function(None, params, body, None, consumer_form, is_method=true)
     FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
@@ -3693,6 +3727,7 @@ fn BytecodeBuilder::compile_object_method(
         simple_params,
         body,
         simple_rest,
+        consumer_form,
         is_method=true,
       )
     }
@@ -3700,7 +3735,14 @@ fn BytecodeBuilder::compile_object_method(
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
-      self.add_function(None, simple_params, body, simple_rest, is_method=true)
+      self.add_function(
+        None,
+        simple_params,
+        body,
+        simple_rest,
+        consumer_form,
+        is_method=true,
+      )
     }
     GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) => {
       bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
@@ -4340,13 +4382,19 @@ fn BytecodeBuilder::compile_expr_body(
           }
       }
     FuncExpr(Some(name), params, body, loc, _) => {
-      let fn_idx = self.add_function(Some(name), params, body, None)
+      let fn_idx = self.add_function(
+        Some(name),
+        params,
+        body,
+        None,
+        NamedFunctionConsumer(name),
+      )
       let _ = self.emit_with_source_locations(MakeNamedFunction(fn_idx, name), [
         (ExpressionEntry, loc),
       ])
     }
     FuncExpr(None, params, body, loc, _) => {
-      let fn_idx = self.add_function(None, params, body, None)
+      let fn_idx = self.add_function(None, params, body, None, FunctionConsumer)
       let _ = self.emit_with_source_locations(MakeFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])
@@ -4360,6 +4408,7 @@ fn BytecodeBuilder::compile_expr_body(
         simple_params,
         body,
         simple_rest,
+        NamedFunctionConsumer(name),
       )
       let _ = self.emit_with_source_locations(MakeNamedFunction(fn_idx, name), [
         (ExpressionEntry, loc),
@@ -4369,13 +4418,25 @@ fn BytecodeBuilder::compile_expr_body(
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
-      let fn_idx = self.add_function(None, simple_params, body, simple_rest)
+      let fn_idx = self.add_function(
+        None,
+        simple_params,
+        body,
+        simple_rest,
+        FunctionConsumer,
+      )
       let _ = self.emit_with_source_locations(MakeFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])
     }
     ArrowFunc(params, body, loc, _) => {
-      let fn_idx = self.add_function(None, params, body, None)
+      let fn_idx = self.add_function(
+        None,
+        params,
+        body,
+        None,
+        ArrowFunctionConsumer,
+      )
       let _ = self.emit_with_source_locations(MakeArrowFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])
@@ -4384,7 +4445,13 @@ fn BytecodeBuilder::compile_expr_body(
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
-      let fn_idx = self.add_function(None, simple_params, body, simple_rest)
+      let fn_idx = self.add_function(
+        None,
+        simple_params,
+        body,
+        simple_rest,
+        ArrowFunctionConsumer,
+      )
       let _ = self.emit_with_source_locations(MakeArrowFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])

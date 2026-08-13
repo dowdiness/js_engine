@@ -182,6 +182,7 @@ fn bytecode_function_with_source_unit_for_wb(
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     children=function.children,
+    header_provenance=function.header_provenance,
   )
 }
 
@@ -253,6 +254,7 @@ fn bytecode_function_with_source_point_owner_for_wb(
     source_points=function.source_points,
     instruction_sources~,
     children~,
+    header_provenance=function.header_provenance,
   )
 }
 

@@ -567,6 +567,66 @@ priv struct BytecodeFunctionDeclaration {
   loc : @token.Loc
 }
 
+///|
+// The closed bytecode consumer is the independent authority for a child's
+// effective signature policy.  Its payload is retained only for named forms.
+#warnings("-unused_constructor")
+priv enum BytecodeFunctionConsumerForm {
+  DeclareFunctionConsumer(String)
+  FunctionConsumer
+  NamedFunctionConsumer(String)
+  MethodFunctionConsumer
+  ComputedMethodFunctionConsumer
+  ArrowFunctionConsumer
+} derive(Eq)
+
+///|
+// Lowering provenance binds a child header to its original source body and
+// parent consumer.  It contains no executable AST beyond the temporary body
+// identity needed by the verifier.
+#warnings("-unused_field")
+priv struct BytecodeHeaderProvenance {
+  origin_body : Array[@ast.Stmt]
+  name : String?
+  signature_name : String?
+  params : Array[String]
+  rest_param : String?
+  enclosing_strict : Bool
+  parent_source_point_owner : SourcePointOwnerId
+  child_index : Int
+  consumer_form : BytecodeFunctionConsumerForm
+}
+
+///|
+#warnings("-unused_value")
+fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
+  origin_body : Array[@ast.Stmt],
+  name : String?,
+  params : Array[String],
+  rest_param : String?,
+  enclosing_strict : Bool,
+  parent_source_point_owner : SourcePointOwnerId,
+  child_index : Int,
+  consumer_form : BytecodeFunctionConsumerForm,
+) -> BytecodeHeaderProvenance {
+  {
+    origin_body,
+    name,
+    signature_name: match consumer_form {
+      MethodFunctionConsumer
+      | ComputedMethodFunctionConsumer
+      | ArrowFunctionConsumer => None
+      _ => name
+    },
+    params,
+    rest_param,
+    enclosing_strict,
+    parent_source_point_owner,
+    child_index,
+    consumer_form,
+  }
+}
+
 // Canonical signature inputs captured after the runtime-owned validator has
 // accepted a function. The parameter array is a private copy, so preparation
 // never shares the lowering/runtime input array.
@@ -645,6 +705,7 @@ priv struct BytecodeFunction {
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
+  header_provenance : BytecodeHeaderProvenance?
 }
 
 ///|
@@ -671,6 +732,7 @@ fn BytecodeFunction::BytecodeFunction(
   source_points? : Array[SourcePoint] = [],
   instruction_sources? : Array[Array[SourcePointId]] = [],
   children~ : Array[BytecodeFunction],
+  header_provenance? : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction {
   {
     name,
@@ -695,6 +757,7 @@ fn BytecodeFunction::BytecodeFunction(
     source_points,
     instruction_sources,
     children,
+    header_provenance,
   }
 }
 

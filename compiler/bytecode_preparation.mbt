@@ -163,17 +163,61 @@ fn derive_function_declarations_for_verification(
 }
 
 ///|
-fn collect_declare_function_consumers_for_verification(
+priv struct BytecodeFunctionConsumerScan {
+  by_child : Array[BytecodeFunctionConsumerForm?]
+  declarations : Array[(String, Int)]
+  invalid_index : Bool
+}
+
+///|
+fn bytecode_function_consumer_for_verification(
+  instruction : BytecodeInstr,
+) -> (BytecodeFunctionConsumerForm, Int)? {
+  match instruction {
+    DeclareFunction(name, index) => Some((DeclareFunctionConsumer(name), index))
+    MakeFunction(index) => Some((FunctionConsumer, index))
+    MakeNamedFunction(index, name) => Some((NamedFunctionConsumer(name), index))
+    MakeMethodFunction(index) => Some((MethodFunctionConsumer, index))
+    MakeComputedMethodFunction(index) =>
+      Some((ComputedMethodFunctionConsumer, index))
+    MakeArrowFunction(index) => Some((ArrowFunctionConsumer, index))
+    _ => None
+  }
+}
+
+///|
+fn scan_bytecode_function_consumers_for_verification(
   code : Array[BytecodeInstr],
-) -> Array[(String, Int)] {
-  let consumers : Array[(String, Int)] = []
+  child_count : Int,
+) -> BytecodeFunctionConsumerScan raise Error {
+  let by_child : Array[BytecodeFunctionConsumerForm?] = Array::makei(
+    child_count,
+    _ => None,
+  )
+  let declarations : Array[(String, Int)] = []
+  let mut invalid_index = false
   for instruction in code {
     match instruction {
-      DeclareFunction(name, child_index) => consumers.push((name, child_index))
+      DeclareFunction(name, index) => declarations.push((name, index))
       _ => ()
     }
+    match bytecode_function_consumer_for_verification(instruction) {
+      Some((consumer, index)) =>
+        if index < 0 || index >= child_count {
+          invalid_index = true
+        } else {
+          match by_child[index] {
+            Some(_) =>
+              raise @errors.InternalError(
+                message="bytecode child consumer index is duplicated",
+              )
+            None => by_child[index] = Some(consumer)
+          }
+        }
+      None => ()
+    }
   }
-  consumers
+  { by_child, declarations, invalid_index }
 }
 
 ///|
@@ -253,14 +297,12 @@ fn verify_lexical_preparation(
 fn verify_function_declaration_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
+  consumers : Array[(String, Int)],
 ) -> Unit raise Error {
   let expected = derive_function_declarations_for_verification(
     function.source_body,
   )
   let actual = function.preparation.function_declarations
-  let consumers = collect_declare_function_consumers_for_verification(
-    function.code,
-  )
   if expected.length() != actual.length() {
     bytecode_preparation_mismatch_for_verification(
       function_path,
@@ -404,6 +446,7 @@ fn validate_current_signature_for_verification(
 fn verify_signature_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
+  provenance : BytecodeHeaderProvenance?,
 ) -> Unit raise Error {
   let facts = match function.preparation.signature_validation {
     Some(facts) => facts
@@ -412,6 +455,25 @@ fn verify_signature_preparation(
         message="bytecode function preparation was not verified at nested depth " +
           function_path.length().to_string(),
       )
+  }
+  let source_body = match provenance {
+    Some(provenance) => provenance.origin_body
+    None => function.source_body
+  }
+  let source_body_has_use_strict = @static_semantics.has_use_strict(source_body)
+  match provenance {
+    Some(provenance) =>
+      if facts.effective_name != provenance.signature_name ||
+        facts.enclosing_strict != provenance.enclosing_strict ||
+        !Array::equal(facts.params, provenance.params) ||
+        facts.rest_param != provenance.rest_param ||
+        facts.body_has_use_strict != source_body_has_use_strict {
+        raise @errors.InternalError(
+          message="bytecode signature provenance mismatch at nested depth " +
+            function_path.length().to_string(),
+        )
+      }
+    None => ()
   }
   if facts.effective_name != function.signature_name {
     bytecode_preparation_mismatch_for_verification(
@@ -460,9 +522,6 @@ fn verify_signature_preparation(
       bytecode_signature_name_for_verification(function.rest_param),
     )
   }
-  let source_body_has_use_strict = @static_semantics.has_use_strict(
-    function.source_body,
-  )
   if facts.body_has_use_strict != source_body_has_use_strict {
     bytecode_preparation_mismatch_for_verification(
       function_path,
@@ -485,13 +544,58 @@ fn verify_signature_preparation(
 }
 
 ///|
+fn verify_bytecode_child_provenance(
+  parent : BytecodeFunction,
+  child : BytecodeFunction,
+  child_index : Int,
+  function_path : Array[Int],
+  expected_consumer : BytecodeFunctionConsumerForm?,
+) -> Unit raise Error {
+  let provenance = match child.header_provenance {
+    Some(provenance) => provenance
+    None =>
+      raise @errors.InternalError(
+        message="bytecode child header provenance missing at nested depth " +
+          function_path.length().to_string(),
+      )
+  }
+  let parent_strict = parent.enclosing_strict || parent.body_has_use_strict
+  let consumer_matches = match expected_consumer {
+    Some(expected) => expected == provenance.consumer_form
+    None => false
+  }
+  guard provenance.parent_source_point_owner == parent.source_point_owner &&
+    provenance.child_index == child_index &&
+    physical_equal(provenance.origin_body, child.source_body) &&
+    provenance.enclosing_strict == parent_strict &&
+    provenance.name == child.name &&
+    consumer_matches else {
+    bytecode_preparation_mismatch_for_verification(
+      function_path, "child provenance", child_index, "verified", "mismatch",
+    )
+  }
+}
+
+///|
 fn verify_bytecode_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
+  let consumer_scan = scan_bytecode_function_consumers_for_verification(
+    function.code,
+    function.children.length(),
+  )
   verify_lexical_preparation(function, function_path)
-  verify_function_declaration_preparation(function, function_path)
-  verify_signature_preparation(function, function_path)
+  verify_function_declaration_preparation(
+    function,
+    function_path,
+    consumer_scan.declarations,
+  )
+  verify_signature_preparation(
+    function,
+    function_path,
+    function.header_provenance,
+  )
   guard @runtime.verify_executor_activation_capability(
     function.params,
     function.source_body,
@@ -510,6 +614,26 @@ fn verify_bytecode_preparation(
         message="bytecode function declaration preparation child index is invalid at line " +
           declaration.loc.line.to_string(),
       )
+    }
+  }
+  if !consumer_scan.invalid_index {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      match consumer_scan.by_child[child_index] {
+        Some(expected) =>
+          verify_bytecode_child_provenance(
+            function,
+            child,
+            child_index,
+            child_path,
+            Some(expected),
+          )
+        None =>
+          bytecode_preparation_mismatch_for_verification(
+            child_path, "child consumer", child_index, "present", "missing",
+          )
+      }
     }
   }
   for child_index, child in function.children {
