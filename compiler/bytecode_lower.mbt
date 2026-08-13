@@ -2134,11 +2134,10 @@ fn BytecodeBuilder::compile_stmt_body(
     DestructureDecl(VarKind, pattern, init, loc) => {
       let destructure_plan = bytecode_lower_destructure_plan(pattern, loc)
       self.compile_expr(init)
-      let _ = self.emit_with_source_locations(AssignDestructure(destructure_plan), [
-        (BindingAccess, loc),
-        (MemberAccess, loc),
-        (Iterator, loc),
-      ])
+      let _ = self.emit_with_source_locations(
+        AssignDestructure(destructure_plan),
+        [(BindingAccess, loc), (MemberAccess, loc), (Iterator, loc)],
+      )
       let _ = self.emit(Pop)
       if declaration_updates_completion {
         self.emit_undefined_completion()
@@ -4003,17 +4002,19 @@ fn bytecode_lower_destructure_plan(
       let lowered_props : Array[@runtime.DestructurePropertyPlan] = []
       for prop in props {
         match prop.default_val {
-          Some(expr) => bytecode_reject(
-            DestructuringPatternDefault,
-            bytecode_expr_loc(expr),
-          )
+          Some(expr) =>
+            bytecode_reject(
+              DestructuringPatternDefault,
+              bytecode_expr_loc(expr),
+            )
           None => ()
         }
         match prop.computed_key {
-          Some(expr) => bytecode_reject(
-            DestructuringPatternComputedKey,
-            bytecode_expr_loc(expr),
-          )
+          Some(expr) =>
+            bytecode_reject(
+              DestructuringPatternComputedKey,
+              bytecode_expr_loc(expr),
+            )
           None => ()
         }
         let target = bytecode_lower_destructure_plan(prop.value, owner_loc)
@@ -4313,11 +4314,10 @@ fn BytecodeBuilder::compile_expr_body(
     DestructureAssign(pattern, value, loc) => {
       let destructure_plan = bytecode_lower_destructure_plan(pattern, loc)
       self.compile_expr(value)
-      let _ = self.emit_with_source_locations(AssignDestructure(destructure_plan), [
-        (BindingAccess, loc),
-        (MemberAccess, loc),
-        (Iterator, loc),
-      ])
+      let _ = self.emit_with_source_locations(
+        AssignDestructure(destructure_plan),
+        [(BindingAccess, loc), (MemberAccess, loc), (Iterator, loc)],
+      )
     }
     Assign(name, value, loc) => {
       self.compile_expr(value)

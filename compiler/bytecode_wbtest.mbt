@@ -1190,6 +1190,12 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     [Operator],
   )
   assert_instruction_contract_for_wb(
+    AssignDestructure(@runtime.destructure_plan_bind_name("binding")),
+    true,
+    UnsupportedBeforeActivation(DestructuringAssignment),
+    [BindingAccess, MemberAccess, Iterator],
+  )
+  assert_instruction_contract_for_wb(
     LoadName("binding"),
     true,
     SynchronousLeaf,
