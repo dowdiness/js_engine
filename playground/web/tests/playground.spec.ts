@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 test("runs source and keeps output text-only", async ({ page }) => {
@@ -205,3 +206,38 @@ test("offers installed realm globals in completion", async ({ page }) => {
      "7 / 100,000 UTF-16",
    );
  });
+
+async function runExample(page: Page, name: string) {
+  await page.goto("./");
+  await page.locator("#example").selectOption(name);
+  await page.getByRole("button", { name: /^Run/ }).click();
+  await expect(page.locator("#status")).toHaveText("Complete");
+}
+
+test("runs the seeded dungeon workload", async ({ page }) => {
+  await runExample(page, "seeded_dungeon");
+  const expectedOutput = [
+    "seed: moonbit-42",
+    "path length: 50",
+    [
+      "#############################",
+      "#S..#...................#   #",
+      "###.#.#################.### #",
+      "# #.#.#   #     #     #.....#",
+      "# #.#.# # # ### # ### #####.#",
+      "# #...# # # #   # # #   # #.#",
+      "# ##### # ### ### # # # # #.#",
+      "# #     #     #   # # #   #.#",
+      "# # # ####### # ### # ### #.#",
+      "#   #   #     # #   # #   #.#",
+      "# ##### ####### # # # # ###.#",
+      "# #     #     # # # # # #...#",
+      "# # ##### ### # ### # ###.###",
+      "# #         #       #    ..G#",
+      "#############################",
+    ].join("\n"),
+  ].join("\n");
+  await expect
+    .poll(async () => page.locator("#console").textContent())
+    .toBe(expectedOutput);
+});
