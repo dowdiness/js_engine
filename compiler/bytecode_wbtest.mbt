@@ -1109,6 +1109,7 @@ fn activation_reason_matches_for_wb(
       SynchronousComputedPropertyAssignment,
       SynchronousComputedPropertyAssignment,
     )
+    | (DestructuringAssignment, DestructuringAssignment)
     | (ConditionalComputedProperty, ConditionalComputedProperty) => true
     _ => false
   }
