@@ -1,3 +1,5 @@
+import { isSourceWithinLimit } from "./playground-contracts";
+
 export const PROTOCOL_VERSION = 1 as const;
 export const MAX_SOURCE_LENGTH = 100_000;
 
@@ -88,6 +90,6 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
     value.requestId.length > 0 &&
     value.operation === "run" &&
     typeof value.source === "string" &&
-    value.source.length <= MAX_SOURCE_LENGTH
+    isSourceWithinLimit(value.source, MAX_SOURCE_LENGTH)
   );
 }

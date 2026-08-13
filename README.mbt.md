@@ -5,6 +5,7 @@ A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript
 - Conformance on [test262](https://github.com/tc39/test262): each file is run in strict and non-strict modes and reported per mode. Do not sum the modes. Generate current numbers from CI artifacts with `make test262-report`; see [docs/TEST262.md](docs/TEST262.md).
 - Cross-target embedding: the same stateful `Engine` API is tested on native, JavaScript, Wasm, and Wasm-GC.
 - Benchmark dashboard: https://dowdiness.github.io/js_engine/benchmarks/
+- Interactive [JavaScript Playground](https://dowdiness.github.io/js_engine/playground/).
 
 ## Quick Start
 
