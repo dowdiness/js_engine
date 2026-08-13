@@ -201,7 +201,7 @@ pub fn compile_script_to_closure(
   let (function_prelude, body) = compile_script_parts(stmts)
   let preparation = prepare_closure_script(stmts)
   fn(interp) raise {
-    interp.run_compiled_script(preparation, fn(ctx, env) raise {
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
       let _ = (function_prelude.0)(interp, ctx, env)
       reduce_program_signal((body.0)(interp, ctx, env))
     })
