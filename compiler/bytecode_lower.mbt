@@ -1657,6 +1657,7 @@ fn compile_bytecode_function(
   body : Array[@ast.Stmt],
   rest_param : String?,
   owner_allocator : Ref[SourcePointOwnerAllocator],
+  source_text? : String? = None,
   use_local_slots? : Bool = true,
   call_self_name? : Bool = false,
   template_cache_key_prefix? : String = "main",
@@ -1696,6 +1697,21 @@ fn compile_bytecode_function(
     builder.function_declarations,
     signature_validation,
   )
+  let source_identity = match header_provenance {
+    Some(header) => BytecodeSourceIdentity::child(
+      source_unit,
+      source_point_owner,
+      header.parent_source_point_owner,
+      header.child_index,
+      header.consumer_form,
+    )
+    None => BytecodeSourceIdentity::root(source_unit, source_point_owner)
+  }
+  let header_provenance = match header_provenance {
+    Some(header) =>
+      Some(header.with_child_facts(source_identity, preparation))
+    None => None
+  }
   // Precompute the env-hoist name set once, now that builder.local_names is
   // final (compile_stmt above may have added locals). The VM used to derive
   // this on every call (issue #325); store it on the IR instead. It must
@@ -1716,7 +1732,8 @@ fn compile_bytecode_function(
     enclosing_strict~,
     params~,
     rest_param~,
-    source_body=body,
+    source_text~,
+    source_identity=Some(source_identity),
     preparation~,
     body_has_use_strict~,
     call_self_name~,
@@ -1753,18 +1770,36 @@ fn build_script_bytecode(
 ) -> BytecodeUnverifiedProgram raise Error {
   let source_unit = SourceUnitHandle(0)
   let owner_allocator = new_source_point_owner_allocator()
-  {
-    source_stmts: stmts,
-    main: compile_bytecode_function(
-      None,
-      [],
+  let main = compile_bytecode_function(
+    None,
+    [],
+    stmts,
+    None,
+    owner_allocator,
+    use_local_slots=false,
+    source_unit~,
+  )
+  let lexical_bindings = main.preparation.lexical_bindings.map(binding => {
+    let kind = match binding.kind {
+      BytecodeLet => @runtime.LetBinding
+      BytecodeConst => @runtime.ConstBinding
+    }
+    @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+  })
+  let function_names = main.preparation.function_declarations.map(
+    declaration => declaration.name,
+  )
+  let script_preparation = @runtime.CompiledScriptPreparation(
+    strict=main.body_has_use_strict,
+    var_names=main.env_var_hoist_names,
+    function_names~,
+    lexical_bindings~,
+    early_error=@runtime.prepare_compiled_script_early_error(
       stmts,
-      None,
-      owner_allocator,
-      use_local_slots=false,
-      source_unit~,
+      main.body_has_use_strict,
     ),
-  }
+  )
+  { script_preparation, main }
 }
 
 ///|
@@ -1800,7 +1835,7 @@ pub fn BytecodeProgram::run(
   self : BytecodeProgram,
   interp : Interpreter,
 ) -> Value raise Error {
-  interp.run_compiled_script(self.source_stmts, fn(ctx, env) raise {
+  interp.run_compiled_script(self.script_preparation, fn(ctx, env) raise {
     let result = run_bytecode_function(interp, ctx, env, self.verified_main) catch {
       @errors.InternalError(message~) =>
         raise BytecodeRuntimeDefectSignal(message)
@@ -1826,6 +1861,7 @@ fn BytecodeBuilder::add_function(
   body : Array[@ast.Stmt],
   rest_param : String?,
   consumer_form : BytecodeFunctionConsumerForm,
+  source_text? : String? = None,
   call_self_name? : Bool = false,
   is_method? : Bool = false,
 ) -> Int raise Error {
@@ -1840,6 +1876,7 @@ fn BytecodeBuilder::add_function(
       body,
       rest_param,
       self.owner_allocator,
+      source_text~,
       call_self_name~,
       template_cache_key_prefix~,
       source_unit=self.source_unit,
@@ -1847,7 +1884,6 @@ fn BytecodeBuilder::add_function(
       is_method~,
       header_provenance=Some(
         BytecodeHeaderProvenance(
-          body,
           name,
           params.copy(),
           rest_param,
@@ -1855,6 +1891,7 @@ fn BytecodeBuilder::add_function(
           self.source_point_owner,
           idx,
           consumer_form,
+          source_text,
         ),
       ),
     ),
@@ -2323,23 +2360,25 @@ fn BytecodeBuilder::compile_stmt_body(
       self.compile_for_in_expr(target, obj_expr, body)
     SwitchStmt(discriminant, cases, _) =>
       self.compile_switch(discriminant, cases)
-    FuncDecl(name, params, body, _, _) => {
+    FuncDecl(name, params, body, _, source_text) => {
       let fn_idx = self.add_function(
         Some(name),
         params,
         body,
         None,
         DeclareFunctionConsumer(name),
+        source_text~,
       )
       self.function_declarations.push({
         name,
         child_index: fn_idx,
         loc: bytecode_stmt_loc(stmt),
+        source_identity: self.children[fn_idx].source_identity,
       })
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
-    FuncDeclExt(name, params, rest_param, body, loc, _) => {
+    FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
@@ -2349,11 +2388,13 @@ fn BytecodeBuilder::compile_stmt_body(
         body,
         simple_rest,
         DeclareFunctionConsumer(name),
+        source_text~,
       )
       self.function_declarations.push({
         name,
         child_index: fn_idx,
         loc: bytecode_stmt_loc(stmt),
+        source_identity: self.children[fn_idx].source_identity,
       })
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
@@ -3706,18 +3747,27 @@ fn BytecodeBuilder::compile_object_method(
     MethodFunctionConsumer
   }
   let fn_idx = match prop.value {
-    FuncExpr(Some(name), params, body, _, _) =>
+    FuncExpr(Some(name), params, body, _, source_text) =>
       self.add_function(
         Some(name),
         params,
         body,
         None,
         consumer_form,
+        source_text~,
         is_method=true,
       )
-    FuncExpr(None, params, body, _, _) =>
-      self.add_function(None, params, body, None, consumer_form, is_method=true)
-    FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
+    FuncExpr(None, params, body, _, source_text) =>
+      self.add_function(
+        None,
+        params,
+        body,
+        None,
+        consumer_form,
+        source_text~,
+        is_method=true,
+      )
+    FuncExprExt(Some(name), params, rest_param, body, loc, source_text) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
@@ -3727,10 +3777,11 @@ fn BytecodeBuilder::compile_object_method(
         body,
         simple_rest,
         consumer_form,
+        source_text~,
         is_method=true,
       )
     }
-    FuncExprExt(None, params, rest_param, body, loc, _) => {
+    FuncExprExt(None, params, rest_param, body, loc, source_text) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
@@ -3740,6 +3791,7 @@ fn BytecodeBuilder::compile_object_method(
         body,
         simple_rest,
         consumer_form,
+        source_text~,
         is_method=true,
       )
     }
@@ -4401,25 +4453,33 @@ fn BytecodeBuilder::compile_expr_body(
             )
           }
       }
-    FuncExpr(Some(name), params, body, loc, _) => {
+    FuncExpr(Some(name), params, body, loc, source_text) => {
       let fn_idx = self.add_function(
         Some(name),
         params,
         body,
         None,
         NamedFunctionConsumer(name),
+        source_text~,
       )
       let _ = self.emit_with_source_locations(MakeNamedFunction(fn_idx, name), [
         (ExpressionEntry, loc),
       ])
     }
-    FuncExpr(None, params, body, loc, _) => {
-      let fn_idx = self.add_function(None, params, body, None, FunctionConsumer)
+    FuncExpr(None, params, body, loc, source_text) => {
+      let fn_idx = self.add_function(
+        None,
+        params,
+        body,
+        None,
+        FunctionConsumer,
+        source_text~,
+      )
       let _ = self.emit_with_source_locations(MakeFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])
     }
-    FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
+    FuncExprExt(Some(name), params, rest_param, body, loc, source_text) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
@@ -4429,12 +4489,13 @@ fn BytecodeBuilder::compile_expr_body(
         body,
         simple_rest,
         NamedFunctionConsumer(name),
+        source_text~,
       )
       let _ = self.emit_with_source_locations(MakeNamedFunction(fn_idx, name), [
         (ExpressionEntry, loc),
       ])
     }
-    FuncExprExt(None, params, rest_param, body, loc, _) => {
+    FuncExprExt(None, params, rest_param, body, loc, source_text) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
@@ -4444,24 +4505,26 @@ fn BytecodeBuilder::compile_expr_body(
         body,
         simple_rest,
         FunctionConsumer,
+        source_text~,
       )
       let _ = self.emit_with_source_locations(MakeFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])
     }
-    ArrowFunc(params, body, loc, _) => {
+    ArrowFunc(params, body, loc, source_text) => {
       let fn_idx = self.add_function(
         None,
         params,
         body,
         None,
         ArrowFunctionConsumer,
+        source_text~,
       )
       let _ = self.emit_with_source_locations(MakeArrowFunction(fn_idx), [
         (ExpressionEntry, loc),
       ])
     }
-    ArrowFuncExt(params, rest_param, body, loc, _) => {
+    ArrowFuncExt(params, rest_param, body, loc, source_text) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
@@ -4471,6 +4534,7 @@ fn BytecodeBuilder::compile_expr_body(
         body,
         simple_rest,
         ArrowFunctionConsumer,
+        source_text~,
       )
       let _ = self.emit_with_source_locations(MakeArrowFunction(fn_idx), [
         (ExpressionEntry, loc),

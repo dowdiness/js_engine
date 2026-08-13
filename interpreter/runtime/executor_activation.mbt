@@ -474,6 +474,9 @@ pub struct ExecutorCallableData {
   priv define_arguments_object : Bool
   priv kind : ExecutorCallableKind
   priv activation_capability_summary : ExecutorActivationCapabilitySummary?
+  // Exact parser text for prepared bytecode functions. This is source
+  // metadata only and never participates in execution or capability checks.
+  priv source_text : String?
 }
 
 ///|
@@ -484,6 +487,11 @@ pub fn ExecutorCallableData::name(self : ExecutorCallableData) -> String {
 ///|
 pub fn ExecutorCallableData::length(self : ExecutorCallableData) -> Int {
   self.params.length()
+}
+
+///|
+pub fn ExecutorCallableData::source_text(self : ExecutorCallableData) -> String? {
+  self.source_text
 }
 
 ///|
@@ -2171,6 +2179,7 @@ fn make_executor_callable_with_capability(
   define_arguments_object : Bool,
   kind : ExecutorCallableKind,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
+  source_text : String?,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -2188,6 +2197,7 @@ fn make_executor_callable_with_capability(
     define_arguments_object,
     kind,
     activation_capability_summary,
+    source_text,
   }
   let function = build_func_object(
     function_name,
@@ -2258,6 +2268,7 @@ pub fn[T : ExecutorCode] make_executor_function(
     define_arguments_object,
     OrdinaryExecutorCallable,
     None,
+    None,
   )
 }
 
@@ -2290,6 +2301,7 @@ pub fn[T : ExecutorCode] make_classified_executor_function(
     define_arguments_object,
     OrdinaryExecutorCallable,
     executor_activation_capability_summary(params, source_body),
+    None,
   )
 }
 
@@ -2305,6 +2317,7 @@ pub fn[T : ExecutorCode] make_prepared_executor_function(
   strict : Bool,
   code : T,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
+  source_text? : String? = None,
   rest_param? : String? = None,
   constructable? : Bool = true,
   call_self_name? : Bool = false,
@@ -2324,6 +2337,7 @@ pub fn[T : ExecutorCode] make_prepared_executor_function(
     define_arguments_object,
     OrdinaryExecutorCallable,
     activation_capability_summary,
+    source_text,
   )
 }
 
@@ -2346,6 +2360,7 @@ pub fn[T : ExecutorCode] make_executor_arrow_function(
     None,
     false,
     ArrowExecutorCallable,
+    None,
     None,
   )
 }
@@ -2373,6 +2388,7 @@ pub fn[T : ExecutorCode] make_classified_executor_arrow_function(
     false,
     ArrowExecutorCallable,
     executor_activation_capability_summary(params, source_body),
+    None,
   )
 }
 
@@ -2385,6 +2401,7 @@ pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(
   strict : Bool,
   code : T,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
+  source_text? : String? = None,
   rest_param? : String? = None,
 ) -> Value {
   make_executor_callable_with_capability(
@@ -2399,5 +2416,6 @@ pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(
     false,
     ArrowExecutorCallable,
     activation_capability_summary,
+    source_text,
   )
 }

@@ -348,6 +348,7 @@ fn make_bytecode_func(
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
     verified_func_def.preparation.activation_capability,
+    source_text=func_def.source_text,
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
   )
@@ -385,6 +386,7 @@ fn make_bytecode_method_func(
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
     verified_func_def.preparation.activation_capability,
+    source_text=func_def.source_text,
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
@@ -407,6 +409,7 @@ fn make_bytecode_arrow_func(
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
     verified_func_def.preparation.activation_capability,
+    source_text=func_def.source_text,
     rest_param=func_def.rest_param,
   )
 }

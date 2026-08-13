@@ -565,6 +565,7 @@ priv struct BytecodeFunctionDeclaration {
   name : String
   child_index : Int
   loc : @token.Loc
+  source_identity : BytecodeSourceIdentity
 }
 
 ///|
@@ -581,12 +582,55 @@ priv enum BytecodeFunctionConsumerForm {
 } derive(Eq)
 
 ///|
-// Lowering provenance binds a child header to its original source body and
-// parent consumer.  It contains no executable AST beyond the temporary body
-// identity needed by the verifier.
+// A function's source identity is composed from the existing source-unit and
+// function-local owner handles plus its parent consumer position.  The
+// program facade is the compilation boundary, so separate compilations do
+// not share this private identity even when their numeric handles coincide.
+priv struct BytecodeSourceIdentity {
+  source_unit : SourceUnitHandle
+  source_point_owner : SourcePointOwnerId
+  parent_source_point_owner : SourcePointOwnerId?
+  child_index : Int?
+  consumer_form : BytecodeFunctionConsumerForm?
+} derive(Eq)
+
+///|
+fn BytecodeSourceIdentity::root(
+  source_unit : SourceUnitHandle,
+  source_point_owner : SourcePointOwnerId,
+) -> BytecodeSourceIdentity {
+  {
+    source_unit,
+    source_point_owner,
+    parent_source_point_owner: None,
+    child_index: None,
+    consumer_form: None,
+  }
+}
+
+///|
+fn BytecodeSourceIdentity::child(
+  source_unit : SourceUnitHandle,
+  source_point_owner : SourcePointOwnerId,
+  parent_source_point_owner : SourcePointOwnerId,
+  child_index : Int,
+  consumer_form : BytecodeFunctionConsumerForm,
+) -> BytecodeSourceIdentity {
+  {
+    source_unit,
+    source_point_owner,
+    parent_source_point_owner: Some(parent_source_point_owner),
+    child_index: Some(child_index),
+    consumer_form: Some(consumer_form),
+  }
+}
+
+///|
+// Lowering provenance binds a child header to its parent consumer and the
+// immutable facts captured for the selected child.  It never retains source
+// AST; exact source text is copied separately at the lowering boundary.
 #warnings("-unused_field")
 priv struct BytecodeHeaderProvenance {
-  origin_body : Array[@ast.Stmt]
   name : String?
   signature_name : String?
   params : Array[String]
@@ -595,12 +639,14 @@ priv struct BytecodeHeaderProvenance {
   parent_source_point_owner : SourcePointOwnerId
   child_index : Int
   consumer_form : BytecodeFunctionConsumerForm
+  exact_source_text : String?
+  child_source_identity : BytecodeSourceIdentity?
+  expected_preparation : BytecodePreparation?
 }
 
 ///|
 #warnings("-unused_value")
 fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
-  origin_body : Array[@ast.Stmt],
   name : String?,
   params : Array[String],
   rest_param : String?,
@@ -608,9 +654,9 @@ fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
   parent_source_point_owner : SourcePointOwnerId,
   child_index : Int,
   consumer_form : BytecodeFunctionConsumerForm,
+  exact_source_text : String?,
 ) -> BytecodeHeaderProvenance {
   {
-    origin_body,
     name,
     signature_name: match consumer_form {
       MethodFunctionConsumer
@@ -624,6 +670,30 @@ fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
     parent_source_point_owner,
     child_index,
     consumer_form,
+    exact_source_text,
+    child_source_identity: None,
+    expected_preparation: None,
+  }
+}
+
+///|
+fn BytecodeHeaderProvenance::with_child_facts(
+  self : BytecodeHeaderProvenance,
+  child_source_identity : BytecodeSourceIdentity,
+  preparation : BytecodePreparation,
+) -> BytecodeHeaderProvenance {
+  {
+    name: self.name,
+    signature_name: self.signature_name,
+    params: self.params.copy(),
+    rest_param: self.rest_param,
+    enclosing_strict: self.enclosing_strict,
+    parent_source_point_owner: self.parent_source_point_owner,
+    child_index: self.child_index,
+    consumer_form: self.consumer_form,
+    exact_source_text: self.exact_source_text,
+    child_source_identity: Some(child_source_identity),
+    expected_preparation: Some(preparation.copy()),
   }
 }
 
@@ -664,6 +734,27 @@ fn BytecodePreparation::BytecodePreparation(
 }
 
 ///|
+fn BytecodePreparation::copy(self : BytecodePreparation) -> BytecodePreparation {
+  let signature_validation = match self.signature_validation {
+    Some(facts) =>
+      Some({
+        effective_name: facts.effective_name,
+        enclosing_strict: facts.enclosing_strict,
+        params: facts.params.copy(),
+        rest_param: facts.rest_param,
+        body_has_use_strict: facts.body_has_use_strict,
+      })
+    None => None
+  }
+  {
+    lexical_bindings: self.lexical_bindings.copy(),
+    function_declarations: self.function_declarations.copy(),
+    signature_validation,
+    activation_capability: self.activation_capability,
+  }
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
@@ -671,10 +762,10 @@ priv struct BytecodeFunction {
   enclosing_strict : Bool
   params : Array[String]
   rest_param : String?
-  // Temporary source metadata retained until the remaining AST representation
-  // debt is removed. VM preparation and execution must use the verified facts
-  // below, never traverse this tree.
-  source_body : Array[@ast.Stmt]
+  // Exact parser text is source metadata only; executable preparation below
+  // never depends on a reserialized or retained source tree.
+  source_text : String?
+  source_identity : BytecodeSourceIdentity
   preparation : BytecodePreparation
   body_has_use_strict : Bool
   call_self_name : Bool
@@ -694,9 +785,7 @@ priv struct BytecodeFunction {
   env_slot_names : Array[String]
   // Var-declared names that are NOT local slots, in source order with duplicates
   // preserved — precomputed at lowering so the VM hoists them without re-walking
-  // source_body on every call (issue #325). Equals, by construction,
-  // collect_var_declared_names(source_body) filtered to names absent from
-  // local_names; the VM's old runtime filter agreed with this exactly.
+  // source input on every call (issue #325).
   env_var_hoist_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
@@ -715,7 +804,8 @@ fn BytecodeFunction::BytecodeFunction(
   enclosing_strict~ : Bool,
   params~ : Array[String],
   rest_param~ : String?,
-  source_body~ : Array[@ast.Stmt],
+  source_text? : String? = None,
+  source_identity? : BytecodeSourceIdentity? = None,
   preparation~ : BytecodePreparation,
   body_has_use_strict~ : Bool,
   call_self_name~ : Bool,
@@ -740,7 +830,11 @@ fn BytecodeFunction::BytecodeFunction(
     enclosing_strict,
     params,
     rest_param,
-    source_body,
+    source_text,
+    source_identity: match source_identity {
+      Some(identity) => identity
+      None => BytecodeSourceIdentity::root(source_unit, source_point_owner)
+    },
     preparation,
     body_has_use_strict,
     call_self_name,
@@ -851,13 +945,13 @@ priv struct BytecodeLocalPlan {
 
 ///|
 pub struct BytecodeProgram {
-  priv source_stmts : Array[@ast.Stmt]
+  priv script_preparation : @runtime.CompiledScriptPreparation
   priv verified_main : VerifiedBytecodeFunction
 }
 
 ///|
 priv struct BytecodeUnverifiedProgram {
-  source_stmts : Array[@ast.Stmt]
+  script_preparation : @runtime.CompiledScriptPreparation
   main : BytecodeFunction
 }
 

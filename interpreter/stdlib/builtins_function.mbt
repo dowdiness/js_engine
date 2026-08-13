@@ -95,6 +95,7 @@ fn callable_source_text(data : @runtime.ObjectData) -> String? {
         Some(String_(text)) => Some(text)
         _ => None
       }
+    Some(ExecutorCallable(executable)) => executable.source_text()
     _ => None
   }
 }
@@ -164,9 +165,7 @@ fn setup_function_builtins(
                 | Some(InterpreterCallableWithContext(name, _)) =>
                   Value::String_(prefix + name + "() { [native code] }")
                 Some(ExecutorCallable(executable)) =>
-                  Value::String_(
-                    prefix + executable.name() + "() { [native code] }",
-                  )
+                  Value::String_(prefix + executable.name() + "() { [native code] }")
                 Some(NonConstructableInterpreterCallable(name, _)) =>
                   Value::String_(prefix + name + "() { [native code] }")
                 Some(ConstructorOnlyCallable(name, _)) =>

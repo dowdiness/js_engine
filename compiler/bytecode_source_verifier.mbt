@@ -584,17 +584,48 @@ fn verify_bytecode_function_frame_shapes(
 }
 
 ///|
+// The runtime entry receives only this immutable setup envelope.  Rebuild the
+// lowering facts at the compiler boundary so a mutation of the root plan
+// cannot diverge from the verified main function.
+fn verify_compiled_script_preparation(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  let lexical_bindings = program.main.preparation.lexical_bindings.map(binding => {
+    let kind = match binding.kind {
+      BytecodeLet => @runtime.LetBinding
+      BytecodeConst => @runtime.ConstBinding
+    }
+    @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+  })
+  let function_names = program.main.preparation.function_declarations.map(
+    declaration => declaration.name,
+  )
+  guard @runtime.compiled_script_preparation_matches(
+    program.script_preparation,
+    program.main.body_has_use_strict,
+    program.main.env_var_hoist_names,
+    function_names,
+    lexical_bindings,
+  ) else {
+    raise @errors.InternalError(
+      message="compiled script preparation does not match verified root facts",
+    )
+  }
+}
+
+///|
 fn finalize_bytecode_program(
   program : BytecodeUnverifiedProgram,
 ) -> BytecodeProgram raise Error {
-  verify_bytecode_preparation(program.main, [])
+  verify_compiled_script_preparation(program)
   verify_bytecode_source_metadata(program)
+  verify_bytecode_preparation(program.main, [])
   verify_bytecode_control_flow(program)
   verify_bytecode_indexed_operands(program)
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)
   let verified_main = make_verified_bytecode_function(program.main)
-  { source_stmts: program.source_stmts, verified_main }
+  { script_preparation: program.script_preparation, verified_main }
 }
 
 ///|

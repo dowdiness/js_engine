@@ -221,6 +221,7 @@ fn tree_executor_graph_copy_executor_data(
     define_arguments_object: data.define_arguments_object,
     kind: data.kind,
     activation_capability_summary,
+    source_text: data.source_text,
   }
 }
 
@@ -631,6 +632,7 @@ fn tree_executor_graph_node_executable(
         define_arguments_object: false,
         kind: OrdinaryExecutorCallable,
         activation_capability_summary: None,
+        source_text: None,
       })
     }
     TreeExecutorGraphExecutorCallable(executable) => Some(executable)
