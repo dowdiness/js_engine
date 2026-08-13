@@ -374,6 +374,45 @@ test "finalization rejects a valid but wrong root early-error settlement" {
 }
 
 ///|
+test "RED: finalization rejects coordinated root strictness mutation" {
+  let parsed = @parser.parse("\"use strict\"; x = 1; x;")
+  let program = build_script_bytecode(parsed.stmts)
+  let facts : BytecodeSignatureValidation = {
+    effective_name: None,
+    enclosing_strict: false,
+    params: [],
+    rest_param: None,
+    body_has_use_strict: false,
+  }
+  let mutated_main = replace_signature_inputs_and_facts_for_wb(
+    program.main,
+    None,
+    None,
+    false,
+    [],
+    None,
+    false,
+    facts,
+  )
+  let mutated_preparation = @runtime.CompiledScriptPreparation::with_early_error_settlement(
+    strict=false,
+    var_names=program.main.env_var_hoist_names,
+    function_names=[],
+    lexical_bindings=[],
+    settlement=program.script_early_error_settlement,
+  )
+  let malformed : BytecodeUnverifiedProgram = {
+    script_preparation: mutated_preparation,
+    script_early_error_settlement: program.script_early_error_settlement,
+    main: mutated_main,
+  }
+  assert_true(
+    finalization_accepts_for_wb(malformed),
+    msg="coordinated root strictness mutation was unexpectedly rejected",
+  )
+}
+
+///|
 fn preparation_with_lexical_bindings_for_wb(
   function : BytecodeFunction,
   lexical_bindings : Array[BytecodeLexicalBinding],
