@@ -102,13 +102,24 @@ fn start_bytecode_frame(
 ) -> BytecodeFrame raise Error {
   let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
   // needs_own_env=false implies all four hoist calls are provably no-ops.
-  if frame.func_def.needs_own_env {
-    frame.hoist_env_var_bindings(interp)
-    frame.hoist_lexical_bindings()
-    if frame.func_def.env_slot_names.length() > 0 {
-      frame.bind_env_slots()
+  match frame.func_def.activation_kind {
+    ScriptRootActivation => {
+      // Runtime preparation owns root var/lexical setup. The VM still
+      // materializes verified function declarations and binds captured slots.
+      if frame.func_def.env_slot_names.length() > 0 {
+        frame.bind_env_slots()
+      }
+      frame.hoist_function_decls(interp)
     }
-    frame.hoist_function_decls(interp)
+    FunctionActivation =>
+      if frame.func_def.needs_own_env {
+        frame.hoist_env_var_bindings(interp)
+        frame.hoist_lexical_bindings()
+        if frame.func_def.env_slot_names.length() > 0 {
+          frame.bind_env_slots()
+        }
+        frame.hoist_function_decls(interp)
+      }
   }
   frame
 }
