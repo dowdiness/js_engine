@@ -1698,18 +1698,18 @@ fn compile_bytecode_function(
     signature_validation,
   )
   let source_identity = match header_provenance {
-    Some(header) => BytecodeSourceIdentity::child(
-      source_unit,
-      source_point_owner,
-      header.parent_source_point_owner,
-      header.child_index,
-      header.consumer_form,
-    )
+    Some(header) =>
+      BytecodeSourceIdentity::child(
+        source_unit,
+        source_point_owner,
+        header.parent_source_point_owner,
+        header.child_index,
+        header.consumer_form,
+      )
     None => BytecodeSourceIdentity::root(source_unit, source_point_owner)
   }
   let header_provenance = match header_provenance {
-    Some(header) =>
-      Some(header.with_child_facts(source_identity, preparation))
+    Some(header) => Some(header.with_child_facts(source_identity, preparation))
     None => None
   }
   // Precompute the env-hoist name set once, now that builder.local_names is
@@ -1786,9 +1786,9 @@ fn build_script_bytecode(
     }
     @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
   })
-  let function_names = main.preparation.function_declarations.map(
-    declaration => declaration.name,
-  )
+  let function_names = main.preparation.function_declarations.map(declaration => {
+    declaration.name
+  })
   let script_preparation = @runtime.CompiledScriptPreparation(
     strict=main.body_has_use_strict,
     var_names=main.env_var_hoist_names,

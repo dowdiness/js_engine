@@ -222,7 +222,10 @@ fn verify_lexical_preparation(
         )
       }
       for index in 0..<expected.length() {
-        let (expected_binding, actual_binding) = (expected[index], actual[index])
+        let (expected_binding, actual_binding) = (
+          expected[index],
+          actual[index],
+        )
         if !bytecode_lexical_kind_equal_for_verification(
             expected_binding.kind,
             actual_binding.kind,
@@ -308,10 +311,7 @@ fn verify_function_declaration_preparation(
     let child = function.children[actual_declaration.child_index]
     guard actual_declaration.source_identity == child.source_identity else {
       bytecode_preparation_mismatch_for_verification(
-        function_path,
-        "function declaration source identity",
-        index,
-        "child source identity",
+        function_path, "function declaration source identity", index, "child source identity",
         "mismatch",
       )
     }
@@ -548,8 +548,7 @@ fn verify_bytecode_preparation(
       let expected_capability = expected_preparation.activation_capability
       let actual_capability = function.preparation.activation_capability
       guard @runtime.executor_activation_capability_summary_equal(
-        expected_capability,
-        actual_capability,
+        expected_capability, actual_capability,
       ) else {
         raise @errors.InternalError(
           message="bytecode activation capability provenance mismatch at nested depth " +

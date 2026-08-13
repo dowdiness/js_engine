@@ -31,7 +31,7 @@ pub fn CompiledScriptPreparation::CompiledScriptPreparation(
   var_names~ : Array[String],
   function_names~ : Array[String],
   lexical_bindings~ : Array[CompiledScriptLexicalBinding],
-  early_error~ : Error? = None,
+  early_error? : Error? = None,
 ) -> CompiledScriptPreparation {
   {
     strict,
@@ -95,10 +95,7 @@ fn Interpreter::apply_compiled_script_preparation(
     Some(error) => raise error
     None => ()
   }
-  check_global_function_declarations(
-    self,
-    preparation.function_names,
-  )
+  check_global_function_declarations(self, preparation.function_names)
   check_global_var_declarations(
     self,
     preparation.function_names,

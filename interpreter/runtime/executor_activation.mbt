@@ -490,7 +490,9 @@ pub fn ExecutorCallableData::length(self : ExecutorCallableData) -> Int {
 }
 
 ///|
-pub fn ExecutorCallableData::source_text(self : ExecutorCallableData) -> String? {
+pub fn ExecutorCallableData::source_text(
+  self : ExecutorCallableData,
+) -> String? {
   self.source_text
 }
 

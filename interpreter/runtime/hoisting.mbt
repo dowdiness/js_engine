@@ -925,8 +925,9 @@ fn check_global_var_declarations(
       }
       for name in var_names {
         if !function_set.contains(name) {
-          let definable = ordinary_get_own_string_desc(data.bag, name) is
-            Some(_) || data.extensible
+          let definable = ordinary_get_own_string_desc(data.bag, name)
+            is Some(_) ||
+            data.extensible
           if !definable {
             raise @errors.TypeError(
               message="Cannot declare global var '\\{name}': global object is non-extensible",

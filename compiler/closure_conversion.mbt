@@ -250,8 +250,7 @@ fn prepare_closure_script(
         | AsyncGeneratorDecl(name, _, _, _, _)
         | AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
           function_names.push(name)
-        VarDecl(LetKind, name, _, _)
-        | VarDecl(ConstKind, name, _, _) => {
+        VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) => {
           let kind = match stmt {
             VarDecl(LetKind, _, _, _) => @runtime.LetBinding
             _ => @runtime.ConstBinding

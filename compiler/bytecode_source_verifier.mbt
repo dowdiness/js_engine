@@ -597,9 +597,9 @@ fn verify_compiled_script_preparation(
     }
     @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
   })
-  let function_names = program.main.preparation.function_declarations.map(
-    declaration => declaration.name,
-  )
+  let function_names = program.main.preparation.function_declarations.map(declaration => {
+    declaration.name
+  })
   guard @runtime.compiled_script_preparation_matches(
     program.script_preparation,
     program.main.body_has_use_strict,
