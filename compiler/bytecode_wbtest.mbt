@@ -151,6 +151,242 @@ test "RED: finalization rejects a swapped activation capability" {
 }
 
 ///|
+fn preparation_with_lexical_bindings_for_wb(
+  function : BytecodeFunction,
+  lexical_bindings : Array[BytecodeLexicalBinding],
+) -> BytecodeFunction {
+  let preparation = function.preparation
+  replace_preparation_for_wb(
+    function,
+    BytecodePreparation(
+      lexical_bindings~,
+      function_declarations=preparation.function_declarations,
+      signature_validation=preparation.signature_validation,
+      activation_capability=preparation.activation_capability,
+    ),
+  )
+}
+
+///|
+fn preparation_with_function_declarations_for_wb(
+  function : BytecodeFunction,
+  function_declarations : Array[BytecodeFunctionDeclaration],
+) -> BytecodeFunction {
+  let preparation = function.preparation
+  replace_preparation_for_wb(
+    function,
+    BytecodePreparation(
+      lexical_bindings=preparation.lexical_bindings,
+      function_declarations~,
+      signature_validation=preparation.signature_validation,
+      activation_capability=preparation.activation_capability,
+    ),
+  )
+}
+
+///|
+fn finalization_accepts_for_wb(program : BytecodeUnverifiedProgram) -> Bool {
+  try {
+    let _ = finalize_bytecode_program(program)
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+fn assert_preparation_rejected_for_wb(
+  program : BytecodeUnverifiedProgram,
+  label : String,
+) -> Unit raise Error {
+  assert_false(finalization_accepts_for_wb(program), msg=label)
+}
+
+///|
+fn lexical_preparation_mutation_for_wb(
+  mutation : (Array[BytecodeLexicalBinding]) -> Array[BytecodeLexicalBinding],
+) -> BytecodeUnverifiedProgram raise Error {
+  let parsed = @parser.parse("let first; const second;")
+  let program = build_script_bytecode(parsed.stmts)
+  let mutated = mutation(program.main.preparation.lexical_bindings.copy())
+  {
+    source_stmts: program.source_stmts,
+    main: preparation_with_lexical_bindings_for_wb(program.main, mutated),
+  }
+}
+
+///|
+test "RED: finalization rejects lexical preparation name swap" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    bindings[0] = {
+      kind: bindings[0].kind,
+      name: "second",
+      loc: bindings[0].loc,
+    }
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation name swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation kind swap" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    bindings[0] = {
+      kind: BytecodeConst,
+      name: bindings[0].name,
+      loc: bindings[0].loc,
+    }
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation kind swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation deletion" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    let _ = bindings.pop()
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation deletion was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation addition" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    bindings.push({ kind: BytecodeLet, name: "extra", loc: bindings[0].loc })
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation addition was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation reordering" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    let first = bindings[0]
+    bindings[0] = bindings[1]
+    bindings[1] = first
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation reordering was accepted",
+  )
+}
+
+///|
+fn function_declaration_preparation_mutation_for_wb(
+  mutation : (Array[BytecodeFunctionDeclaration]) -> Array[
+    BytecodeFunctionDeclaration,
+  ],
+) -> BytecodeUnverifiedProgram raise Error {
+  let parsed = @parser.parse("function first() {} function second() {}")
+  let program = build_script_bytecode(parsed.stmts)
+  let mutated = mutation(program.main.preparation.function_declarations.copy())
+  {
+    source_stmts: program.source_stmts,
+    main: preparation_with_function_declarations_for_wb(program.main, mutated),
+  }
+}
+
+///|
+test "RED: finalization rejects function declaration name swap" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    declarations[0] = {
+      name: "second",
+      child_index: declarations[0].child_index,
+      loc: declarations[0].loc,
+    }
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration name swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration child-index swap" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let first = declarations[0]
+    declarations[0] = {
+      name: first.name,
+      child_index: declarations[1].child_index,
+      loc: first.loc,
+    }
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration child-index swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration deletion" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let _ = declarations.pop()
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration deletion was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration addition" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    declarations.push({
+      name: "extra",
+      child_index: 0,
+      loc: declarations[0].loc,
+    })
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration addition was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration reordering" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let first = declarations[0]
+    declarations[0] = declarations[1]
+    declarations[1] = first
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration reordering was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects DeclareFunction preparation mismatch" {
+  let parsed = @parser.parse("function first() {} function second() {}")
+  let program = build_script_bytecode(parsed.stmts)
+  let mut found = false
+  for index, instruction in program.main.code {
+    match instruction {
+      DeclareFunction(_, child_index) => {
+        program.main.code[index] = DeclareFunction("mismatch", child_index)
+        found = true
+        break
+      }
+      _ => ()
+    }
+  }
+  guard found else { abort("expected DeclareFunction instruction") }
+  assert_preparation_rejected_for_wb(
+    program, "DeclareFunction preparation mismatch was accepted",
+  )
+}
+
+///|
 test "RED: bytecode validates nested function signatures before execution" {
   let prog = @parser.parse("\"use strict\"; function f(a, a) {}")
   try {
