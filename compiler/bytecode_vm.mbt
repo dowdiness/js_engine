@@ -1,4 +1,7 @@
 ///|
+using @runtime {type EnvironmentSlot}
+
+///|
 priv struct BytecodeForInState {
   keys : Array[String]
   mut index : Int
@@ -18,7 +21,7 @@ priv struct BytecodeFrame {
   arg_lists : Array[Array[Value]]
   for_in_iters : Array[BytecodeForInState]
   locals : Array[Value]
-  env_slots : Array[Binding]
+  env_slots : Array[EnvironmentSlot]
   env : Environment
   ctx : ExecContext
   mut ip : Int
@@ -59,18 +62,7 @@ fn BytecodeFrame::BytecodeFrame(
         }
       }
   }
-  let env_slots : Array[Binding] = if func_def.env_slot_names.length() == 0 {
-    empty_bytecode_env_slots
-  } else {
-    let dummy_env_slot : Binding = {
-      value: Value::Undefined,
-      kind: BindingKind::VarBinding,
-      initialized: true,
-      annex_b_hoisted: false,
-      is_parameter: false,
-    }
-    Array::make(func_def.env_slot_names.length(), dummy_env_slot)
-  }
+  let env_slots : Array[EnvironmentSlot] = []
   {
     func_def,
     verified_func_def,
@@ -180,9 +172,9 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
 
 ///|
 fn BytecodeFrame::bind_env_slots(self : BytecodeFrame) -> Unit raise Error {
-  for i, name in self.func_def.env_slot_names {
-    match self.env.bindings.get(name) {
-      Some(binding) => self.env_slots[i] = binding
+  for name in self.func_def.env_slot_names {
+    match self.env.resolve_slot(name) {
+      Some(slot) => self.env_slots.push(slot)
       None =>
         raise @errors.InternalError(
           message="bytecode env slot binding missing for '\{name}'",
@@ -192,43 +184,30 @@ fn BytecodeFrame::bind_env_slots(self : BytecodeFrame) -> Unit raise Error {
 }
 
 ///|
-fn BytecodeFrame::env_slot_name(self : BytecodeFrame, slot : Int) -> String {
-  self.func_def.env_slot_names[slot]
-}
-
-///|
 fn BytecodeFrame::read_env_slot(
   self : BytecodeFrame,
   slot : Int,
 ) -> Value raise Error {
-  let binding = self.env_slots[slot]
-  if !binding.initialized {
-    let name = self.env_slot_name(slot)
-    raise @errors.ReferenceError(
-      message="Cannot access '\{name}' before initialization",
-    )
-  }
-  binding.value
+  self.env_slots[slot].read()
 }
 
 ///|
-fn BytecodeFrame::write_env_slot(
+fn BytecodeFrame::initialize_env_slot(
   self : BytecodeFrame,
   slot : Int,
   value : Value,
+) -> Unit {
+  self.env_slots[slot].initialize(value)
+}
+
+///|
+fn BytecodeFrame::assign_env_slot(
+  self : BytecodeFrame,
+  slot : Int,
+  value : Value,
+  strict : Bool,
 ) -> Unit raise Error {
-  let binding = self.env_slots[slot]
-  if !binding.initialized {
-    let name = self.env_slot_name(slot)
-    raise @errors.ReferenceError(
-      message="Cannot access '\{name}' before initialization",
-    )
-  } else if binding.kind == BindingKind::ConstBinding {
-    let name = self.env_slot_name(slot)
-    raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
-  } else {
-    binding.value = value
-  }
+  self.env_slots[slot].assign(value, strict~)
 }
 
 ///|
@@ -311,14 +290,8 @@ fn BytecodeFrame::hoist_lexical_bindings_from_stmt(
   stmt : @ast.Stmt,
 ) -> Unit raise Error {
   match stmt {
-    VarDecl(LetKind, name, _, _) =>
-      if !self.env.bindings.contains(name) {
-        self.env.def_tdz(name, BindingKind::LetBinding)
-      }
-    VarDecl(ConstKind, name, _, _) =>
-      if !self.env.bindings.contains(name) {
-        self.env.def_tdz(name, BindingKind::ConstBinding)
-      }
+    VarDecl(LetKind, name, _, _) => self.env.def_let_tdz_if_absent(name)
+    VarDecl(ConstKind, name, _, _) => self.env.def_const_tdz_if_absent(name)
     StmtList(stmts, _) =>
       for child in stmts {
         self.hoist_lexical_bindings_from_stmt(child)
@@ -597,7 +570,7 @@ fn BytecodeFrame::step_bytecode(
           None =>
             raise @errors.InternalError(message="bytecode stack underflow")
         }
-        frame.write_env_slot(slot, value)
+        frame.assign_env_slot(slot, value, frame.ctx.strict)
         stack.push(value)
       }
       DefineBinding(kind, name, has_initializer) => {
@@ -613,7 +586,7 @@ fn BytecodeFrame::step_bytecode(
       DefineEnvSlot(slot, has_initializer) => {
         let value = frame.pop()
         if has_initializer {
-          frame.write_env_slot(slot, value)
+          frame.initialize_env_slot(slot, value)
         }
       }
       SetCompletion =>
@@ -721,7 +694,7 @@ fn BytecodeFrame::step_bytecode(
           Increment => Value::Number(old_number + 1.0)
           Decrement => Value::Number(old_number - 1.0)
         }
-        frame.write_env_slot(slot, next_value)
+        frame.assign_env_slot(slot, next_value, frame.ctx.strict)
         stack.push(if prefix { next_value } else { Value::Number(old_number) })
       }
       UpdateProperty(prop, op, prefix, member_loc, loc) => {

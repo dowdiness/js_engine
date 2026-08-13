@@ -165,9 +165,69 @@
       "pattern": ".entries|.values",
       "kind": "field",
       "reason": "observes or mutates Map/Set backing collections directly"
+    },
+    {
+      "id": "runtime-binding-type",
+      "pattern": "Binding",
+      "kind": "type",
+      "reason": "compiler must not import or inspect the runtime Binding representation",
+      "areas": ["compiler"]
+    },
+    {
+      "id": "runtime-binding-kind-type",
+      "pattern": "BindingKind",
+      "kind": "type",
+      "reason": "compiler must not inspect runtime binding-kind representation",
+      "areas": ["compiler"]
+    },
+    {
+      "id": "runtime-binding-fields",
+      "pattern": ".value|.initialized|.kind",
+      "kind": "field",
+      "reason": "compiler must not inspect or mutate mutable Binding state",
+      "areas": ["semantic"]
+    },
+    {
+      "id": "runtime-environment-bindings-field",
+      "pattern": ".bindings",
+      "kind": "field",
+      "reason": "compiler must not inspect the Environment.bindings collection",
+      "areas": ["semantic"]
+    }
+  ],
+  "semantic_member_rules": [
+    {
+      "id": "runtime-binding-fields",
+      "receiver_type": "@runtime.Binding",
+      "areas": ["compiler"]
+    },
+    {
+      "id": "runtime-environment-bindings-field",
+      "receiver_type": "@runtime.Environment",
+      "areas": ["compiler"]
+    }
+  ],
+  "semantic_allowlisted_access": [
+    {
+      "path": "compiler/closure_conversion.mbt",
+      "pattern_id": "runtime-environment-bindings-field",
+      "allowed_count": 4,
+      "fingerprint": "4:211:860660:179594",
+      "owner": "closure conversion freeze and representation retirement",
+      "retire_by_stage": "Stage 1 / Stage 12",
+      "reason": "legacy closure conversion still reaches Environment.bindings as an evidence-bearing comparison path"
     }
   ],
   "allowlisted_access": [
+    {
+      "path": "compiler/closure_conversion.mbt",
+      "pattern_id": "runtime-binding-kind-type",
+      "allowed_count": 11,
+      "fingerprint": "11:567:537292:26631",
+      "owner": "closure conversion freeze and representation retirement",
+      "retire_by_stage": "Stage 1 / Stage 12",
+      "reason": "legacy closure conversion still carries runtime binding-kind decisions as an evidence-bearing comparison path"
+    },
     {
       "path": "compiler/closure_conversion.mbt",
       "pattern_id": "representation-bag-field",

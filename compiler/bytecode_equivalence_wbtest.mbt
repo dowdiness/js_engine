@@ -797,6 +797,57 @@ test "bytecode equivalence: var hoisting across local-plan branches (#325)" {
 }
 
 ///|
+/// Environment-slot parity must retain one shared runtime cell across child
+/// closures, captured parameters, direct eval, TDZ checks, const rejection,
+/// and update-expression result ordering.
+test "bytecode equivalence: runtime slot identity and lifecycle" {
+  let shared_cell =
+    #|function make() {
+    #|  var x = 1;
+    #|  function read() { return x; }
+    #|  function write() { x = x + 1; return x; }
+    #|  return read() + ":" + write() + ":" + read();
+    #|}
+    #|make();
+  inspect(bytecode_compare(shared_cell), content="value:1:2:2")
+
+  let captured_parameter =
+    #|function f(value) { function read() { return value; } value = 8; return read(); }
+    #|f(3);
+  inspect(bytecode_compare(captured_parameter), content="value:8")
+
+  let eval_reads_capture =
+    #|function f() { var x = 1; function read() { return x; } eval("x = 5"); return read(); }
+    #|f();
+  inspect(bytecode_compare(eval_reads_capture), content="value:5")
+
+  let capture_reads_eval =
+    #|function f() { var x = 1; function write() { x = 7; } write(); return eval("x"); }
+    #|f();
+  inspect(bytecode_compare(capture_reads_eval), content="value:7")
+
+  inspect(
+    bytecode_compare("function f() { return x; let x = 1; } f();"),
+    content="throw:ReferenceError: Cannot access 'x' before initialization",
+  )
+  inspect(
+    bytecode_compare("function f() { const x = 1; x = 2; } f();"),
+    content="throw:TypeError: Assignment to constant variable 'x'",
+  )
+
+  let update_results =
+    #|function f() {
+    #|  var x = 1;
+    #|  function hold() { return x; }
+    #|  var post = x++;
+    #|  var pre = ++x;
+    #|  return post + ":" + pre + ":" + x + ":" + hold();
+    #|}
+    #|f();
+  inspect(bytecode_compare(update_results), content="value:1:3:3:3")
+}
+
+///|
 test "bytecode constants locals and binary ops" {
   let src =
     #|var x = 1;

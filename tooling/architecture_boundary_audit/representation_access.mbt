@@ -8,6 +8,7 @@ struct RepresentationPattern {
   kind : String
   reason : String
   tokens : Array[String]
+  areas : Array[String]
 } derive(Debug)
 
 ///|
@@ -43,6 +44,18 @@ struct RepresentationAccess {
 ///|
 fn representation_path(root : String) -> String {
   @path_utils.join_path(root, "scripts/architecture_representation_access.json")
+}
+
+///|
+fn RepresentationPattern::RepresentationPattern(
+  id~ : String,
+  pattern~ : String,
+  kind~ : String,
+  reason~ : String,
+  tokens~ : Array[String],
+  areas~ : Array[String],
+) -> RepresentationPattern {
+  { id, pattern, kind, reason, tokens, areas }
 }
 
 ///|
@@ -93,6 +106,13 @@ fn decode_representation_pattern(
   let pattern = decode_string_field(data, "pattern", path)
   let kind = decode_string_field(data, "kind", path)
   let reason = decode_string_field(data, "reason", path)
+  let areas : Array[String] = match data.get("areas") {
+    None => []
+    Some(value) =>
+      @json.from_json(value) catch {
+        _ => schema_error(path, "areas must be an array of strings")
+      }
+  }
   let tokens = pattern_tokens(pattern)
   if id == "" {
     schema_error(path, "representation pattern id must not be empty")
@@ -109,7 +129,15 @@ fn decode_representation_pattern(
   if reason == "" {
     schema_error(path, "representation pattern \{id} reason must not be empty")
   }
-  { id, pattern, kind, reason, tokens }
+  for area in areas {
+    if area != "compiler" && area != "stdlib" && area != "semantic" {
+      schema_error(
+        path,
+        "representation pattern \{id} area must be compiler, stdlib, or semantic",
+      )
+    }
+  }
+  RepresentationPattern(id~, pattern~, kind~, reason~, tokens~, areas~)
 }
 
 ///|
@@ -462,18 +490,21 @@ fn scan_representation_file(
     let line_number = line_index + 1
     let signature_line = representation_signature_line(line)
     for pattern in rules.representation_patterns {
-      for token in pattern.tokens {
-        let matches = count_token_in_code_line(line, token)
-        for _i in 0..<matches {
-          out.push({
-            path: rel_path,
-            line: line_number,
-            pattern_id: pattern.id,
-            kind: pattern.kind,
-            reason: pattern.reason,
-            token,
-            signature: "\{token}:\{signature_line}",
-          })
+      if pattern.areas.is_empty() ||
+        pattern.areas.any(area => area == representation_area(rel_path)) {
+        for token in pattern.tokens {
+          let matches = count_token_in_code_line(line, token)
+          for _i in 0..<matches {
+            out.push({
+              path: rel_path,
+              line: line_number,
+              pattern_id: pattern.id,
+              kind: pattern.kind,
+              reason: pattern.reason,
+              token,
+              signature: "\{token}:\{signature_line}",
+            })
+          }
         }
       }
     }

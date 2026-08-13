@@ -35,6 +35,62 @@ pub(all) struct Binding {
 }
 
 ///|
+/// An opaque capability for one local environment binding. The capability
+/// retains the binding cell itself, so captured activations and direct eval
+/// observe the same mutable identity without exposing Binding's fields.
+pub struct EnvironmentSlot {
+  priv name : String
+  priv binding : Binding
+}
+
+///|
+/// Resolve one local binding once for indexed bytecode access. The caller
+/// retains the returned capability and must not repeat name lookup per op.
+pub fn Environment::resolve_slot(
+  self : Environment,
+  name : String,
+) -> EnvironmentSlot? {
+  match self.bindings.get(name) {
+    Some(binding) => Some({ name, binding })
+    None => None
+  }
+}
+
+///|
+/// Read a binding through its runtime-owned capability, preserving TDZ
+/// diagnostics and the exact cell identity captured by the environment.
+pub fn EnvironmentSlot::read(self : EnvironmentSlot) -> Value raise Error {
+  if !self.binding.initialized {
+    raise @errors.ReferenceError(
+      message="Cannot access '\{self.name}' before initialization",
+    )
+  }
+  self.binding.value
+}
+
+///|
+/// Initialize a declaration's TDZ cell. Initialization is distinct from
+/// assignment so the runtime, rather than bytecode, owns declaration state.
+pub fn EnvironmentSlot::initialize(
+  self : EnvironmentSlot,
+  value : Value,
+) -> Unit {
+  self.binding.value = value
+  self.binding.initialized = true
+}
+
+///|
+/// Assign an already initialized binding, enforcing TDZ and const semantics
+/// at the runtime boundary while retaining the shared cell identity.
+pub fn EnvironmentSlot::assign(
+  self : EnvironmentSlot,
+  value : Value,
+  strict? : Bool = false,
+) -> Unit raise Error {
+  assign_binding_value(self.binding, self.name, value, strict)
+}
+
+///|
 pub(all) struct Environment {
   bindings : Map[String, Binding]
   parent : Environment?
@@ -211,6 +267,39 @@ pub fn Environment::def_tdz(
     annex_b_hoisted: false,
     is_parameter: false,
   }
+}
+
+///|
+/// Ensure a local lexical binding exists without exposing the binding map to
+/// compiler clients. Existing parameters/captures are intentionally reused.
+fn Environment::def_tdz_if_absent(
+  self : Environment,
+  name : String,
+  kind : BindingKind,
+) -> Unit raise Error {
+  if !self.bindings.contains(name) {
+    self.def_tdz(name, kind)
+  }
+}
+
+///|
+/// Ensure a local `let` binding exists without exposing BindingKind to the
+/// compiler's indexed-slot path.
+pub fn Environment::def_let_tdz_if_absent(
+  self : Environment,
+  name : String,
+) -> Unit raise Error {
+  self.def_tdz_if_absent(name, LetBinding)
+}
+
+///|
+/// Ensure a local `const` binding exists without exposing BindingKind to the
+/// compiler's indexed-slot path.
+pub fn Environment::def_const_tdz_if_absent(
+  self : Environment,
+  name : String,
+) -> Unit raise Error {
+  self.def_tdz_if_absent(name, ConstBinding)
 }
 
 ///|
