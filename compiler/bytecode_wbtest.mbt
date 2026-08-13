@@ -382,6 +382,59 @@ test "finalization rejects function declaration source location mismatch" {
 }
 
 ///|
+test "RED: finalization rejects duplicate function declaration identity swap" {
+  let parsed = @parser.parse(
+    "function f() { return 1; } function f() { return 2; }",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let declarations = program.main.preparation.function_declarations.copy()
+  let first = declarations[0]
+  let second = declarations[1]
+  declarations[0] = {
+    name: first.name,
+    child_index: second.child_index,
+    loc: first.loc,
+  }
+  declarations[1] = {
+    name: second.name,
+    child_index: first.child_index,
+    loc: second.loc,
+  }
+  let code_indices : Array[Int] = []
+  let code_names : Array[String] = []
+  let code_child_indices : Array[Int] = []
+  for index, instruction in program.main.code {
+    match instruction {
+      DeclareFunction(name, child_index) => {
+        code_indices.push(index)
+        code_names.push(name)
+        code_child_indices.push(child_index)
+      }
+      _ => ()
+    }
+  }
+  guard code_indices.length() == 2 else {
+    abort("expected two DeclareFunction instructions")
+  }
+  let mutated_main = preparation_with_function_declarations_for_wb(
+    program.main,
+    declarations,
+  )
+  mutated_main.code[code_indices[0]] = DeclareFunction(
+    code_names[0],
+    code_child_indices[1],
+  )
+  mutated_main.code[code_indices[1]] = DeclareFunction(
+    code_names[1],
+    code_child_indices[0],
+  )
+  assert_preparation_rejected_for_wb(
+    { source_stmts: program.source_stmts, main: mutated_main },
+    "duplicate function declaration identity swap was accepted",
+  )
+}
+
+///|
 test "RED: finalization rejects DeclareFunction preparation mismatch" {
   let parsed = @parser.parse("function first() {} function second() {}")
   let program = build_script_bytecode(parsed.stmts)

@@ -187,8 +187,9 @@ Four current forms cross the intended boundary.
   re-derives its lexical facts and function-declaration names/locations from
   that function's retained source body. It compares those facts with the
   preparation records and with the ordered `DeclareFunction` consumers in the
-  function's own code, including child indices and the referenced child name;
-  it performs the same check recursively for every child. `source_body`
+  function's own code, including child indices, the referenced child name, and
+  the exact retained source-body identity for the selected child; it performs
+  the same check recursively for every child. `source_body`
   remains only as temporary source metadata while the remaining AST
   representation debt is tracked; bytecode VM function creation no longer
   passes it to runtime or traverses it. Tree-walk's

@@ -137,12 +137,15 @@ fn bytecode_lexical_kind_equal_for_verification(
 ///|
 fn derive_function_declarations_for_verification(
   stmts : Array[@ast.Stmt],
-) -> Array[(String, @token.Loc)] {
-  let declarations : Array[(String, @token.Loc)] = []
+) -> Array[(String, Array[@ast.Stmt], @token.Loc)] {
+  // Keep the source body with its declaration location. Names alone are not
+  // an identity: duplicate declarations must bind to their exact child.
+  let declarations : Array[(String, Array[@ast.Stmt], @token.Loc)] = []
   for stmt in stmts {
     match stmt {
-      FuncDecl(name, _, _, loc, _) => declarations.push((name, loc))
-      FuncDeclExt(name, _, _, _, loc, _) => declarations.push((name, loc))
+      FuncDecl(name, _, body, loc, _) => declarations.push((name, body, loc))
+      FuncDeclExt(name, _, _, body, loc, _) =>
+        declarations.push((name, body, loc))
       StmtList(children, _) =>
         declarations.append(
           derive_function_declarations_for_verification(children),
@@ -271,7 +274,7 @@ fn verify_function_declaration_preparation(
     )
   }
   for index in 0..<expected.length() {
-    let (expected_name, expected_loc) = expected[index]
+    let (expected_name, expected_body, expected_loc) = expected[index]
     let actual_declaration = actual[index]
     let (consumer_name, consumer_child_index) = consumers[index]
     if expected_name != actual_declaration.name {
@@ -316,7 +319,17 @@ fn verify_function_declaration_preparation(
         actual_declaration.child_index.to_string(),
       )
     }
-    match function.children[actual_declaration.child_index].name {
+    let child = function.children[actual_declaration.child_index]
+    guard physical_equal(child.source_body, expected_body) else {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "function declaration child source body",
+        index,
+        "source body at " + expected_loc.to_string(),
+        "child " + actual_declaration.child_index.to_string(),
+      )
+    }
+    match child.name {
       Some(child_name) if child_name == expected_name => ()
       Some(child_name) =>
         bytecode_preparation_mismatch_for_verification(
