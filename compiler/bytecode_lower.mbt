@@ -1662,13 +1662,15 @@ fn compile_bytecode_function(
   template_cache_key_prefix? : String = "main",
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   enclosing_strict? : Bool = false,
+  is_method? : Bool = false,
 ) -> BytecodeFunction raise Error {
   let body_has_use_strict = @static_semantics.has_use_strict(body)
   let function_strict = enclosing_strict || body_has_use_strict
+  let signature_name = if is_method { None } else { name }
   // Validate this function's own parameter/body combination before lowering
   // nested children, preserving header-before-body diagnostic order.
   let signature_validation = prepare_function_signature(
-    enclosing_strict, name, params, rest_param, body,
+    enclosing_strict, signature_name, params, rest_param, body,
   )
   let plan = plan_bytecode_locals(
     params,
@@ -1819,6 +1821,7 @@ fn BytecodeBuilder::add_function(
   body : Array[@ast.Stmt],
   rest_param : String?,
   call_self_name? : Bool = false,
+  is_method? : Bool = false,
 ) -> Int raise Error {
   let idx = self.children.length()
   let template_cache_key_prefix = self.template_cache_key_prefix +
@@ -1835,6 +1838,7 @@ fn BytecodeBuilder::add_function(
       template_cache_key_prefix~,
       source_unit=self.source_unit,
       enclosing_strict=self.enclosing_strict,
+      is_method~,
     ),
   )
   idx
@@ -3674,20 +3678,26 @@ fn BytecodeBuilder::compile_object_method(
   let function_loc = bytecode_expr_loc(prop.value)
   let fn_idx = match prop.value {
     FuncExpr(Some(name), params, body, _, _) =>
-      self.add_function(Some(name), params, body, None)
+      self.add_function(Some(name), params, body, None, is_method=true)
     FuncExpr(None, params, body, _, _) =>
-      self.add_function(None, params, body, None)
+      self.add_function(None, params, body, None, is_method=true)
     FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
-      self.add_function(Some(name), simple_params, body, simple_rest)
+      self.add_function(
+        Some(name),
+        simple_params,
+        body,
+        simple_rest,
+        is_method=true,
+      )
     }
     FuncExprExt(None, params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param, loc,
       )
-      self.add_function(None, simple_params, body, simple_rest)
+      self.add_function(None, simple_params, body, simple_rest, is_method=true)
     }
     GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) => {
       bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)

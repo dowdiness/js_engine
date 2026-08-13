@@ -34,6 +34,16 @@ test "bytecode preparation preserves parent-before-child signature errors" {
 }
 
 ///|
+test "bytecode preserves method signature-name validation" {
+  let prog = @parser.parse(
+    "var object = { eval() { \"use strict\"; return 1; } }; object.eval();",
+  )
+  let bytecode = compile_script_to_bytecode(prog.stmts)
+  let result = bytecode.run(@interpreter.new_interpreter())
+  assert_eq(result.to_string(), "1")
+}
+
+///|
 test "RED: VM execution does not traverse retained source bodies" {
   let prog = @parser.parse(
     "var outer = 42; function f(a, a) { function nested() {} return outer; } f();",
