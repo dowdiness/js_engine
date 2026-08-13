@@ -366,6 +366,22 @@ test "RED: finalization rejects function declaration reordering" {
 }
 
 ///|
+test "finalization rejects function declaration source location mismatch" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let first = declarations[0]
+    declarations[0] = {
+      name: first.name,
+      child_index: first.child_index,
+      loc: declarations[1].loc,
+    }
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration location mismatch was accepted",
+  )
+}
+
+///|
 test "RED: finalization rejects DeclareFunction preparation mismatch" {
   let parsed = @parser.parse("function first() {} function second() {}")
   let program = build_script_bytecode(parsed.stmts)
@@ -383,6 +399,23 @@ test "RED: finalization rejects DeclareFunction preparation mismatch" {
   guard found else { abort("expected DeclareFunction instruction") }
   assert_preparation_rejected_for_wb(
     program, "DeclareFunction preparation mismatch was accepted",
+  )
+}
+
+///|
+test "finalization recursively verifies nested preparation correspondence" {
+  let parsed = @parser.parse(
+    "function outer() { let child; function nested() {} }",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let bindings = child.preparation.lexical_bindings.copy()
+  bindings[0] = { kind: bindings[0].kind, name: "wrong", loc: bindings[0].loc }
+  program.main.children[0] = preparation_with_lexical_bindings_for_wb(
+    child, bindings,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "nested lexical preparation mismatch was accepted",
   )
 }
 

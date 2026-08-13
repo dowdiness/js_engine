@@ -90,10 +90,255 @@ fn prepare_bytecode_function(
 }
 
 ///|
+// Re-derive lexical facts independently at the verification boundary. This
+// intentionally does not reuse the lowering accumulator: source_body is the
+// authority, so a swapped/deleted/reordered preparation entry cannot verify.
+fn derive_lexical_bindings_for_verification(
+  stmts : Array[@ast.Stmt],
+) -> Array[BytecodeLexicalBinding] {
+  let bindings : Array[BytecodeLexicalBinding] = []
+  for stmt in stmts {
+    match stmt {
+      VarDecl(LetKind, name, _, loc) =>
+        bindings.push({ kind: BytecodeLet, name, loc })
+      VarDecl(ConstKind, name, _, loc) =>
+        bindings.push({ kind: BytecodeConst, name, loc })
+      StmtList(children, _) => {
+        let nested = derive_lexical_bindings_for_verification(children)
+        bindings.append(nested)
+      }
+      _ => ()
+    }
+  }
+  bindings
+}
+
+///|
+fn bytecode_lexical_kind_name_for_verification(
+  kind : BytecodeLexicalKind,
+) -> String {
+  match kind {
+    BytecodeLet => "let"
+    BytecodeConst => "const"
+  }
+}
+
+///|
+fn bytecode_lexical_kind_equal_for_verification(
+  left : BytecodeLexicalKind,
+  right : BytecodeLexicalKind,
+) -> Bool {
+  match (left, right) {
+    (BytecodeLet, BytecodeLet) | (BytecodeConst, BytecodeConst) => true
+    _ => false
+  }
+}
+
+///|
+fn derive_function_declarations_for_verification(
+  stmts : Array[@ast.Stmt],
+) -> Array[(String, @token.Loc)] {
+  let declarations : Array[(String, @token.Loc)] = []
+  for stmt in stmts {
+    match stmt {
+      FuncDecl(name, _, _, loc, _) => declarations.push((name, loc))
+      FuncDeclExt(name, _, _, _, loc, _) => declarations.push((name, loc))
+      StmtList(children, _) =>
+        declarations.append(
+          derive_function_declarations_for_verification(children),
+        )
+      _ => ()
+    }
+  }
+  declarations
+}
+
+///|
+fn collect_declare_function_consumers_for_verification(
+  code : Array[BytecodeInstr],
+) -> Array[(String, Int)] {
+  let consumers : Array[(String, Int)] = []
+  for instruction in code {
+    match instruction {
+      DeclareFunction(name, child_index) => consumers.push((name, child_index))
+      _ => ()
+    }
+  }
+  consumers
+}
+
+///|
+fn bytecode_preparation_mismatch_for_verification(
+  function_path : Array[Int],
+  category : String,
+  index : Int,
+  expected : String,
+  actual : String,
+) -> Unit raise Error {
+  raise @errors.InternalError(
+    message="bytecode " +
+      category +
+      " mismatch at nested depth " +
+      function_path.length().to_string() +
+      " index " +
+      index.to_string() +
+      ": expected " +
+      expected +
+      ", got " +
+      actual,
+  )
+}
+
+///|
+fn verify_lexical_preparation(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let expected = derive_lexical_bindings_for_verification(function.source_body)
+  let actual = function.preparation.lexical_bindings
+  if expected.length() != actual.length() {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "lexical binding count",
+      -1,
+      expected.length().to_string(),
+      actual.length().to_string(),
+    )
+  }
+  for index in 0..<expected.length() {
+    let (expected_binding, actual_binding) = (expected[index], actual[index])
+    if !bytecode_lexical_kind_equal_for_verification(
+        expected_binding.kind,
+        actual_binding.kind,
+      ) {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "lexical binding kind",
+        index,
+        bytecode_lexical_kind_name_for_verification(expected_binding.kind),
+        bytecode_lexical_kind_name_for_verification(actual_binding.kind),
+      )
+    }
+    if expected_binding.name != actual_binding.name {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "lexical binding name",
+        index,
+        expected_binding.name,
+        actual_binding.name,
+      )
+    }
+    if expected_binding.loc != actual_binding.loc {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "lexical binding location",
+        index,
+        expected_binding.loc.to_string(),
+        actual_binding.loc.to_string(),
+      )
+    }
+  }
+}
+
+///|
+fn verify_function_declaration_preparation(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let expected = derive_function_declarations_for_verification(
+    function.source_body,
+  )
+  let actual = function.preparation.function_declarations
+  let consumers = collect_declare_function_consumers_for_verification(
+    function.code,
+  )
+  if expected.length() != actual.length() {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "function declaration preparation count",
+      -1,
+      expected.length().to_string(),
+      actual.length().to_string(),
+    )
+  }
+  if expected.length() != consumers.length() {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "DeclareFunction source count",
+      -1,
+      expected.length().to_string(),
+      consumers.length().to_string(),
+    )
+  }
+  for index in 0..<expected.length() {
+    let (expected_name, expected_loc) = expected[index]
+    let actual_declaration = actual[index]
+    let (consumer_name, consumer_child_index) = consumers[index]
+    if expected_name != actual_declaration.name {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "function declaration name",
+        index,
+        expected_name,
+        actual_declaration.name,
+      )
+    }
+    if expected_name != consumer_name {
+      bytecode_preparation_mismatch_for_verification(
+        function_path, "DeclareFunction name", index, expected_name, consumer_name,
+      )
+    }
+    if expected_loc != actual_declaration.loc {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "function declaration location",
+        index,
+        expected_loc.to_string(),
+        actual_declaration.loc.to_string(),
+      )
+    }
+    if actual_declaration.child_index != consumer_child_index {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "function declaration child index",
+        index,
+        consumer_child_index.to_string(),
+        actual_declaration.child_index.to_string(),
+      )
+    }
+    guard actual_declaration.child_index >= 0 &&
+      actual_declaration.child_index < function.children.length() else {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "function declaration child index bounds",
+        index,
+        "0..<" + function.children.length().to_string(),
+        actual_declaration.child_index.to_string(),
+      )
+    }
+    match function.children[actual_declaration.child_index].name {
+      Some(child_name) if child_name == expected_name => ()
+      Some(child_name) =>
+        bytecode_preparation_mismatch_for_verification(
+          function_path, "function declaration child name", index, expected_name,
+          child_name,
+        )
+      None =>
+        bytecode_preparation_mismatch_for_verification(
+          function_path, "function declaration child name", index, expected_name,
+          "<anonymous>",
+        )
+    }
+  }
+}
+
+///|
 fn verify_bytecode_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
+  verify_lexical_preparation(function, function_path)
+  verify_function_declaration_preparation(function, function_path)
   guard @runtime.verify_executor_activation_capability(
     function.params,
     function.source_body,
