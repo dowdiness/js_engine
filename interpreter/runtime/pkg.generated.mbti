@@ -457,6 +457,8 @@ pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?
 
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
 
+pub fn verify_executor_activation_capability(Array[String], Array[@ast.Stmt], ExecutorActivationCapabilitySummary?) -> Bool
+
 pub fn with_active_realm_state_unit(RealmState, () -> Unit) -> Unit
 
 pub fn[T] with_source_identity(RealmState, String?, () -> T raise) -> T raise
@@ -616,7 +618,7 @@ pub(all) struct ExecutionPolicyError {
 pub fn ExecutionPolicyError::message(Self) -> String
 pub fn ExecutionPolicyError::parameter_code(Self) -> String
 
-pub(all) struct ExecutorActivationCapabilitySummary {
+pub struct ExecutorActivationCapabilitySummary {
   // private fields
 }
 

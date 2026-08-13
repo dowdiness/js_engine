@@ -7,6 +7,35 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn replace_preparation_for_wb(
+  function : BytecodeFunction,
+  preparation : BytecodePreparation,
+) -> BytecodeFunction {
+  BytecodeFunction(
+    name=function.name,
+    params=function.params,
+    rest_param=function.rest_param,
+    source_body=function.source_body,
+    preparation~,
+    body_has_use_strict=function.body_has_use_strict,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    children=function.children,
+  )
+}
+
+///|
 fn run_tree_parent_with_bytecode_child_for_wb(
   retained_source_body : Array[@ast.Stmt],
 ) -> Bool raise Error {
@@ -81,6 +110,44 @@ test "RED: bytecode activation capability ignores retained source mutation" {
   )
   assert_true(admitted_result)
   assert_true(mutated_result)
+}
+
+///|
+test "RED: finalization rejects a swapped activation capability" {
+  let parsed = @parser.parse(
+    "function admitted(n) { return n + 1; } function unadmitted(n) { let replacement; }",
+  )
+  let malformed = build_script_bytecode(parsed.stmts)
+  let admitted = malformed.main.children[0]
+  let unadmitted = malformed.main.children[1]
+  let admitted_preparation = admitted.preparation
+  let unadmitted_preparation = unadmitted.preparation
+  malformed.main.children[0] = replace_preparation_for_wb(
+    admitted,
+    BytecodePreparation(
+      lexical_bindings=admitted_preparation.lexical_bindings,
+      function_declarations=admitted_preparation.function_declarations,
+      signature_validation=admitted_preparation.signature_validation,
+      activation_capability=unadmitted_preparation.activation_capability,
+    ),
+  )
+  malformed.main.children[1] = replace_preparation_for_wb(
+    unadmitted,
+    BytecodePreparation(
+      lexical_bindings=unadmitted_preparation.lexical_bindings,
+      function_declarations=unadmitted_preparation.function_declarations,
+      signature_validation=unadmitted_preparation.signature_validation,
+      activation_capability=admitted_preparation.activation_capability,
+    ),
+  )
+  try {
+    let _ = finalize_bytecode_program(malformed)
+    fail("expected swapped activation capability to be rejected")
+  } catch {
+    @errors.InternalError(message~) =>
+      assert_true(message.contains("activation capability"))
+    _ => fail("expected the typed activation-capability verifier guard")
+  }
 }
 
 ///|

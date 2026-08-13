@@ -94,6 +94,17 @@ fn verify_bytecode_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
+  guard @runtime.verify_executor_activation_capability(
+    function.params,
+    function.source_body,
+    function.preparation.activation_capability,
+  ) else {
+    raise @errors.InternalError(
+      message="bytecode activation capability was not prepared from its own " +
+        "source at nested depth " +
+        function_path.length().to_string(),
+    )
+  }
   match function.preparation.signature_validation {
     SignatureValidated => ()
     SignaturePending =>

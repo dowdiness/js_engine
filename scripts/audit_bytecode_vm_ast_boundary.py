@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Guard the bytecode VM's executable AST boundary with typed hover checks.
+"""Guard the bytecode VM's executable AST boundary with typed hovers.
 
-The VM may retain source metadata temporarily, but it must not obtain an
-``@ast.Stmt``/``@ast.Pattern`` value or read ``BytecodeFunction.source_body``.
-This audit asks MoonBit's IDE for the type at each candidate token, so an
-alias such as ``let alias = function; alias.source_body`` is checked by the
-resolved type rather than by receiver spelling. The root ``source_stmts``
-script envelope remains outside this VM-only scope.
+The source scanner below only supplies candidate coordinates. MoonBit's IDE
+resolves every executable identifier at those coordinates, so inferred local
+binders and expression results are checked without relying on receiver names.
+An unresolved executable candidate is a failure, not an ignored edge. The
+single existing ``AssignPattern(pattern)`` payload arm is structurally allowed;
+all other ``@ast.Stmt``/``@ast.Pattern`` values and ``source_body`` accesses
+fail. The root ``source_stmts`` script envelope is outside this VM-only scope.
 """
 
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import json
 from pathlib import Path
@@ -22,22 +24,122 @@ import sys
 
 VM_PATHS = (Path("compiler/bytecode_vm.mbt"),)
 FORBIDDEN_MARKERS = ("@ast.Stmt", "@ast.Pattern")
-CANDIDATE = re.compile(r"source_body|@ast\.(?:Stmt|Pattern)")
-FIXTURE_PATH = Path("compiler/bytecode_vm_ast_boundary_fixture_tmp.mbt")
-FIXTURE_SOURCE = r'''///|
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+ASSIGN_PATTERN_HEADER = re.compile(
+    r"\bAssignPattern\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*=>",
+)
+FIXTURE_PREFIX = "compiler/bytecode_vm_ast_boundary_fixture_"
+FIXTURE_BASENAME_PREFIX = Path(FIXTURE_PREFIX).name
+
+# These are syntax words, not executable identifiers. Every other identifier
+# is sent to typed hover resolution; this list deliberately does not contain
+# names such as `pattern`, `stmt`, `alias`, or `item`.
+MOONBIT_KEYWORDS = frozenset(
+    {
+        "as",
+        "async",
+        "break",
+        "catch",
+        "const",
+        "continue",
+        "derive",
+        "else",
+        "enum",
+        "extern",
+        "false",
+        "fn",
+        "for",
+        "guard",
+        "if",
+        "impl",
+        "import",
+        "in",
+        "is",
+        "let",
+        "match",
+        "mut",
+        "newtype",
+        "None",
+        "priv",
+        "pub",
+        "raise",
+        "return",
+        "struct",
+        "test",
+        "trait",
+        "true",
+        "type",
+        "using",
+        "while",
+        "with",
+    },
+)
+
+NEGATIVE_FIXTURE_SOURCES = {
+    "helper_return": r'''///|
 #warnings("-unused_value")
-fn bytecode_vm_ast_boundary_fixture(
+fn bytecode_vm_ast_boundary_fixture_helper() -> @ast.Stmt {
+  abort("")
+}
+
+///|
+pub fn bytecode_vm_ast_boundary_fixture_helper_return() -> Unit {
+  let inferred = bytecode_vm_ast_boundary_fixture_helper()
+  ignore(inferred)
+}
+''',
+    "direct_match": r'''///|
+#warnings("-unused_value")
+fn bytecode_vm_ast_boundary_fixture_direct_match(stmt : @ast.Stmt) -> Unit {
+  let renamed = stmt
+  match renamed {
+    _ => ()
+  }
+}
+''',
+    "loop": r'''///|
+#warnings("-unused_value")
+fn bytecode_vm_ast_boundary_fixture_loop(stmts : Array[@ast.Stmt]) -> Unit {
+  for item in stmts {
+    ignore(item)
+  }
+}
+''',
+    "source_body_alias": r'''///|
+#warnings("-unused_value")
+fn bytecode_vm_ast_boundary_fixture_source_body_alias(
   function : BytecodeFunction,
-  stmt : @ast.Stmt,
-  pattern : @ast.Pattern,
 ) -> Unit {
   let retained = function
   for candidate in retained.source_body {
-    match candidate {
-      _ => ignore(stmt)
-    }
+    ignore(candidate)
   }
+}
+
+///|
+pub fn bytecode_vm_ast_boundary_fixture_source_body_alias_entry() -> Unit {
+  ignore(bytecode_vm_ast_boundary_fixture_source_body_alias)
+}
+''',
+    "direct_pattern": r'''///|
+#warnings("-unused_value")
+fn bytecode_vm_ast_boundary_fixture_direct_pattern(
+  pattern : @ast.Pattern,
+) -> Unit {
   match pattern {
+    _ => ()
+  }
+}
+''',
+}
+
+POSITIVE_FIXTURE_SOURCE = r'''///|
+#warnings("-unused_value")
+fn bytecode_vm_ast_boundary_fixture_assign_pattern(
+  instruction : BytecodeInstr,
+) -> Unit {
+  match instruction {
+    AssignPattern(pattern) => ignore(pattern)
     _ => ()
   }
 }
@@ -76,49 +178,191 @@ def hover(root: Path, path: Path, line: int, column: int) -> str | None:
     return "\n".join(contents)
 
 
-def typed_ast_accesses(root: Path, paths: tuple[Path, ...]) -> list[dict[str, object]]:
-    violations: list[dict[str, object]] = []
-    for path in paths:
-        lines = (root / path).read_text().splitlines()
-        for line_number, line in enumerate(lines, start=1):
-            for match in CANDIDATE.finditer(line):
-                contents = hover(root, path, line_number, match.start() + 1)
-                if contents is None:
+def executable_lines(lines: list[str]) -> list[str]:
+    """Mask comments and literals while preserving source coordinates.
+
+    This is coordinate discovery only; the compiler-backed hover below is the
+    authority for whether a remaining identifier is executable and what type it
+    has. The VM source currently has no multiline raw literals, but block
+    comments are handled to keep unresolved-comment text from becoming a
+    false architecture failure. MoonBit ``\\{...}`` interpolation bodies stay
+    visible so their inferred executable values are audited too.
+    """
+
+    masked: list[str] = []
+    in_block_comment = False
+    for source in lines:
+        chars = list(source)
+        index = 0
+        while index < len(chars):
+            if in_block_comment:
+                end = source.find("*/", index)
+                if end < 0:
+                    for position in range(index, len(chars)):
+                        chars[position] = " "
+                    index = len(chars)
+                else:
+                    for position in range(index, end + 2):
+                        chars[position] = " "
+                    index = end + 2
+                    in_block_comment = False
+                continue
+            if source.startswith("//", index):
+                for position in range(index, len(chars)):
+                    chars[position] = " "
+                break
+            if source.startswith("/*", index):
+                chars[index] = " "
+                if index + 1 < len(chars):
+                    chars[index + 1] = " "
+                in_block_comment = True
+                index += 2
+                continue
+            if chars[index] in ('"', "'"):
+                quote = chars[index]
+                chars[index] = " "
+                index += 1
+                while index < len(chars):
+                    escaped = source[index] == "\\" and index + 1 < len(chars)
+                    if escaped and source[index + 1] == "{":
+                        chars[index] = " "
+                        chars[index + 1] = " "
+                        index += 2
+                        interpolation_depth = 1
+                        while index < len(chars) and interpolation_depth > 0:
+                            if source[index] == "{":
+                                interpolation_depth += 1
+                            elif source[index] == "}":
+                                interpolation_depth -= 1
+                            index += 1
+                        continue
+                    chars[index] = " "
+                    if escaped:
+                        chars[index + 1] = " "
+                        index += 2
+                    else:
+                        closed = source[index] == quote
+                        index += 1
+                        if closed:
+                            break
+                continue
+            index += 1
+        masked.append("".join(chars))
+    return masked
+
+
+def candidate_locations(root: Path, path: Path) -> list[tuple[int, int, str]]:
+    lines = (root / path).read_text().splitlines()
+    locations: list[tuple[int, int, str]] = []
+    for line_number, line in enumerate(executable_lines(lines), start=1):
+        for match in IDENTIFIER.finditer(line):
+            token = match.group(0)
+            if token not in MOONBIT_KEYWORDS:
+                previous = line[: match.start()].rstrip()[-1:]
+                if previous in ("@", "#"):
                     continue
-                marker = next(
-                    (candidate for candidate in FORBIDDEN_MARKERS if candidate in contents),
-                    None,
+                locations.append((line_number, match.start() + 1, token))
+    return locations
+
+
+def assign_pattern_allowances(
+    root: Path,
+    path: Path,
+) -> set[tuple[int, int]]:
+    """Return only the payload-arm coordinates of AssignPattern(pattern)."""
+
+    lines = (root / path).read_text().splitlines()
+    masked = executable_lines(lines)
+    allowed: set[tuple[int, int]] = set()
+    for start, line in enumerate(masked):
+        match = ASSIGN_PATTERN_HEADER.search(line)
+        if match is None:
+            continue
+        binder = match.group(1)
+        depth = line[match.end() :].count("{") - line[match.end() :].count("}")
+        end = start
+        while depth > 0 and end + 1 < len(masked):
+            end += 1
+            depth += masked[end].count("{") - masked[end].count("}")
+        for line_number in range(start, end + 1):
+            for token in IDENTIFIER.finditer(masked[line_number]):
+                token_name = token.group(0)
+                is_residual_call = (
+                    token_name == "eval_destructure_assign" and
+                    "interp.eval_destructure_assign" in masked[line_number]
                 )
-                if marker is not None:
-                    violations.append(
-                        {
-                            "path": str(path),
-                            "line": line_number,
-                            "column": match.start() + 1,
-                            "token": match.group(0),
-                            "type": marker,
-                        }
-                    )
-    return violations
+                if token_name in ("AssignPattern", binder) or is_residual_call:
+                    allowed.add((line_number + 1, token.start() + 1))
+    return allowed
+
+
+def semantic_ast_accesses(
+    root: Path,
+    paths: tuple[Path, ...],
+) -> list[dict[str, object]]:
+    requests: list[tuple[Path, int, int, str, set[tuple[int, int]]]] = []
+    for path in paths:
+        allowances = assign_pattern_allowances(root, path)
+        for line, column, token in candidate_locations(root, path):
+            requests.append((path, line, column, token, allowances))
+
+    def inspect(
+        request : tuple[Path, int, int, str, set[tuple[int, int]]],
+    ) -> dict[str, object] | None:
+        path, line, column, token, allowances = request
+        contents = hover(root, path, line, column)
+        base = {"path": str(path), "line": line, "column": column, "token": token}
+        if contents is None:
+            return {**base, "type": "unresolved-executable-candidate"}
+        if token == "BytecodeFunction" and "struct BytecodeFunction" in contents:
+            # The frame carries the function metadata as a whole. A struct
+            # hover enumerates its retained source metadata, but this token is
+            # not a field read; direct `source_body` candidates remain checked.
+            return None
+        if token == "BytecodeInstr" and "enum BytecodeInstr" in contents:
+            # The instruction enum still owns the explicitly residual
+            # AssignPattern(@ast.Pattern) payload for #636; a type reference
+            # is not an executable pattern traversal.
+            return None
+        marker = next(
+            (candidate for candidate in FORBIDDEN_MARKERS if candidate in contents),
+            None,
+        )
+        if marker is None or (line, column) in allowances:
+            return None
+        return {**base, "type": marker}
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        violations = [item for item in executor.map(inspect, requests) if item is not None]
+    return sorted(
+        violations,
+        key=lambda item: (str(item["path"]), int(item["line"]), int(item["column"])),
+    )
 
 
 @contextmanager
-def negative_fixture(root: Path):
-    path = root / FIXTURE_PATH
-    if path.exists():
-        raise RuntimeError(f"fixture path already exists: {path}")
+def fixture_sources(root: Path, sources: dict[str, str]):
+    paths = {
+        root / f"{FIXTURE_PREFIX}{name}_tmp.mbt": source
+        for name, source in sources.items()
+    }
+    preexisting = [path for path in paths if path.exists()]
+    if preexisting:
+        raise RuntimeError(f"AST boundary fixture paths already exist: {preexisting}")
     try:
-        path.write_text(FIXTURE_SOURCE)
+        for path, source in paths.items():
+            path.write_text(source)
         checked = run(root, "moon", "check", "--deny-warn", check=False)
         if checked.returncode != 0:
             raise RuntimeError(
-                "AST boundary negative fixture did not type-check:\n"
+                "AST boundary fixture did not type-check:\n"
                 + checked.stdout
                 + checked.stderr
             )
-        yield
+        yield tuple(paths)
     finally:
-        path.unlink(missing_ok=True)
+        for path in paths:
+            path.unlink(missing_ok=True)
         cleaned = run(root, "moon", "check", "--deny-warn", check=False)
         if cleaned.returncode != 0 and sys.exc_info()[0] is None:
             raise RuntimeError(
@@ -138,24 +382,51 @@ def main() -> int:
     if checked.returncode != 0:
         print(checked.stdout + checked.stderr, file=sys.stderr)
         return checked.returncode
-    violations = typed_ast_accesses(root, VM_PATHS)
+    violations = semantic_ast_accesses(root, VM_PATHS)
     if violations:
         print("bytecode VM executable AST boundary failed:", file=sys.stderr)
         for violation in violations:
             print(json.dumps(violation, sort_keys=True), file=sys.stderr)
         return 1
     if args.self_test:
-        with negative_fixture(root):
-            fixture_violations = typed_ast_accesses(root, (FIXTURE_PATH,))
-        found_types = {item["type"] for item in fixture_violations}
-        if not {"@ast.Stmt", "@ast.Pattern"}.issubset(found_types):
+        expected_tokens = {
+            "helper_return": "inferred",
+            "direct_match": "renamed",
+            "loop": "item",
+            "source_body_alias": "source_body",
+            "direct_pattern": "pattern",
+        }
+        with fixture_sources(root, NEGATIVE_FIXTURE_SOURCES) as paths:
+            negative = {
+                path.stem.removeprefix(FIXTURE_BASENAME_PREFIX).removesuffix("_tmp"):
+                    semantic_ast_accesses(root, (path,))
+                for path in paths
+            }
+        missing = {
+            name: token
+            for name, token in expected_tokens.items()
+            if not any(item["token"] == token for item in negative[name])
+        }
+        if missing:
             print(
-                "AST boundary negative fixture did not resolve both forbidden types: "
-                + json.dumps(fixture_violations, sort_keys=True),
+                "AST boundary inferred-value fixtures did not fail closed: "
+                + json.dumps(missing, sort_keys=True),
                 file=sys.stderr,
             )
             return 1
-        print("ok: typed bytecode VM AST boundary rejects direct and aliased access")
+        with fixture_sources(root, {"assign_pattern": POSITIVE_FIXTURE_SOURCE}) as paths:
+            positive = semantic_ast_accesses(root, paths)
+        if positive:
+            print(
+                "AST boundary AssignPattern residual was rejected: "
+                + json.dumps(positive, sort_keys=True),
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "ok: typed bytecode VM AST boundary rejects inferred AST values and "
+            "allows only AssignPattern(pattern)",
+        )
     else:
         print("ok: typed bytecode VM AST boundary is clean")
     return 0

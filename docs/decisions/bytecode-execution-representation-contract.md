@@ -190,9 +190,12 @@ Four current forms cross the intended boundary.
   their existing capability admission; that is outside the bytecode VM
   execution boundary. `source_stmts` remains the root script envelope's input
   for strictness, early errors, and global declaration setup. These remaining
-  consumers are non-executable AST boundaries, and the typed VM AST audit
-  rejects direct `@ast.Stmt`, `@ast.Pattern`, and `source_body` access
-  (including receiver aliases).
+  consumers are non-executable AST boundaries. The typed VM AST audit resolves
+  every executable identifier through MoonBit's inferred hover type, fails
+  closed on unresolved candidates, rejects inferred AST binders/expressions
+  and `source_body` access (including aliases), and permits only the
+  structurally identified `AssignPattern(pattern)` instruction payload retained
+  for #636.
 - `LoadConst(Value)` and `SetCompletionValue(Value)` embed runtime
   representation. The instruction stream must instead contain private literal
   descriptors or recipes. The verifier checks them, and execution materializes
