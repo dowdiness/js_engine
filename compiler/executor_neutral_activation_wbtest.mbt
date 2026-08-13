@@ -101,6 +101,15 @@ test "Function.prototype.call preserves name length and source identity" {
 }
 
 ///|
+test "RED: bytecode functions preserve exact source text" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "function f(a) { /* keep */ return a; } f.toString();",
+  )
+  inspect(result.to_string(), content="function f(a) { /* keep */ return a; }")
+}
+
+///|
 fn assert_plain_member_call_lowering(
   code : Array[BytecodeInstr],
   context : String,
