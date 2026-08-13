@@ -25,9 +25,9 @@ fn executor_activation_call_name(
 }
 
 ///|
-priv struct ExecutorActivationCapabilitySummary {
-  parameter_count : Int
-  direct_calls : Array[ExecutorActivationDirectCallRequirement]
+pub(all) struct ExecutorActivationCapabilitySummary {
+  priv parameter_count : Int
+  priv direct_calls : Array[ExecutorActivationDirectCallRequirement]
 }
 
 ///|
@@ -337,4 +337,15 @@ fn executor_activation_capability_summary(
       direct_calls~,
     ),
   )
+}
+
+///|
+// Compiler preparation may retain this immutable proof so executor creation
+// never needs to inspect an executable source tree. The tree-walk path keeps
+// using the private helper above for its source-backed functions.
+pub fn prepare_executor_activation_capability(
+  params : Array[String],
+  body : Array[@ast.Stmt],
+) -> ExecutorActivationCapabilitySummary? {
+  executor_activation_capability_summary(params, body)
 }

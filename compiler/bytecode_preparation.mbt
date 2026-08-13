@@ -1,7 +1,8 @@
 ///|
-// Preparation is a compiler-only product.  It contains immutable names,
-// declaration order, and source locations; runtime Binding cells, mutable
-// environments, callbacks, and executable AST nodes never cross this boundary.
+// Preparation is a compiler-only product. It contains immutable names,
+// declaration order, source locations, and an opaque runtime-owned activation
+// proof; runtime Binding cells, mutable environments, callbacks, and
+// executable AST nodes never cross this boundary.
 
 ///|
 fn prepare_lexical_bindings(
@@ -72,14 +73,19 @@ fn prepare_function_signature(
 
 ///|
 fn prepare_bytecode_function(
+  params : Array[String],
   body : Array[@ast.Stmt],
   function_declarations : Array[BytecodeFunctionDeclaration],
   signature_validation : BytecodeSignatureValidation,
 ) -> BytecodePreparation {
+  let activation_capability = @runtime.prepare_executor_activation_capability(
+    params, body,
+  )
   BytecodePreparation(
     lexical_bindings=prepare_lexical_bindings(body),
     function_declarations~,
     signature_validation~,
+    activation_capability~,
   )
 }
 

@@ -180,13 +180,19 @@ Four current forms cross the intended boundary.
 - `BytecodeFunction.source_body : Array[@ast.Stmt]` and
   `BytecodeProgram.source_stmts : Array[@ast.Stmt]` retain source trees. The
   bytecode preparation product now owns lexical-binding order, function
-  declaration order, and function-signature validation before verification;
-  VM startup applies those verified facts through runtime-owned binding and
-  TDZ operations. `source_body` remains temporarily available only to the
-  runtime executor-activation capability summary and source metadata path,
-  while `source_stmts` remains the root script envelope's input for strictness,
-  early errors, and global declaration setup. Those are non-executable AST
-  consumers; no VM setup or signature-validation decision may traverse them.
+  declaration order, function-signature validation, and the immutable runtime
+  activation-capability proof before verification; VM startup applies those
+  verified facts through runtime-owned binding, TDZ, and executor-construction
+  operations. `source_body` remains only as temporary source metadata while
+  the remaining AST representation debt is tracked; bytecode VM function
+  creation no longer passes it to runtime or traverses it. Tree-walk's
+  source-backed classified-function factories still use `source_body` for
+  their existing capability admission; that is outside the bytecode VM
+  execution boundary. `source_stmts` remains the root script envelope's input
+  for strictness, early errors, and global declaration setup. These remaining
+  consumers are non-executable AST boundaries, and the typed VM AST audit
+  rejects direct `@ast.Stmt`, `@ast.Pattern`, and `source_body` access
+  (including receiver aliases).
 - `LoadConst(Value)` and `SetCompletionValue(Value)` embed runtime
   representation. The instruction stream must instead contain private literal
   descriptors or recipes. The verifier checks them, and execution materializes

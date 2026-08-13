@@ -1690,6 +1690,7 @@ fn compile_bytecode_function(
     builder.compile_stmt(stmt)
   }
   let preparation = prepare_bytecode_function(
+    params,
     body,
     builder.function_declarations,
     signature_validation,

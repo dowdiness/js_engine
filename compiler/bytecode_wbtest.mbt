@@ -7,6 +7,83 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn run_tree_parent_with_bytecode_child_for_wb(
+  retained_source_body : Array[@ast.Stmt],
+) -> Bool raise Error {
+  let bytecode = parse_bytecode_for_wb(
+    "function byteChild(n) { return n + 1; }",
+  )
+  let child = bytecode.main_for_wb().children[0]
+  bytecode.main_for_wb().children[0] = BytecodeFunction(
+    name=child.name,
+    params=child.params,
+    rest_param=child.rest_param,
+    source_body=retained_source_body,
+    preparation=child.preparation,
+    body_has_use_strict=child.body_has_use_strict,
+    call_self_name=child.call_self_name,
+    needs_arguments_object=child.needs_arguments_object,
+    needs_own_env=child.needs_own_env,
+    local_names=child.local_names,
+    local_indices=child.local_indices,
+    env_slot_names=child.env_slot_names,
+    env_var_hoist_names=child.env_var_hoist_names,
+    template_cache_key_prefix=child.template_cache_key_prefix,
+    code=child.code,
+    source_point_owner=child.source_point_owner,
+    source_unit=child.source_unit,
+    source_points=child.source_points,
+    instruction_sources=child.instruction_sources,
+    children=child.children,
+  )
+  let interp = @interpreter.new_interpreter()
+  let byte_child = make_bytecode_func(
+    bytecode.verified_main.child(0),
+    interp.global,
+    { strict: false, current_generator: None },
+  )
+  interp.global.def_builtin("byteChild", byte_child)
+  let _ = interp.run(
+    @parser.parse("function treeParent(n) { return byteChild(n); }").stmts,
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(1000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(error) => fail(error.message())
+  }
+  let result = try {
+    let _ = interp.with_execution_policy(policy, () => {
+      interp.call_value(
+        interp.global.get("treeParent"),
+        @runtime.Undefined,
+        [@runtime.Number(1.0)],
+        @token.Loc::default(),
+      )
+    })
+    false
+  } catch {
+    error =>
+      @runtime.execution_control_failure_code(error)
+      is Some("stack-depth-limit")
+  }
+  result
+}
+
+///|
+test "RED: bytecode activation capability ignores retained source mutation" {
+  let admitted_body = @parser.parse("return n + 1;").stmts
+  let unadmitted_body = @parser.parse("let replacement;").stmts
+  let admitted_result = run_tree_parent_with_bytecode_child_for_wb(
+    admitted_body,
+  )
+  let mutated_result = run_tree_parent_with_bytecode_child_for_wb(
+    unadmitted_body,
+  )
+  assert_true(admitted_result)
+  assert_true(mutated_result)
+}
+
+///|
 test "RED: bytecode validates nested function signatures before execution" {
   let prog = @parser.parse("\"use strict\"; function f(a, a) {}")
   try {

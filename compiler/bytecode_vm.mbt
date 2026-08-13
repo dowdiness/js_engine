@@ -341,16 +341,13 @@ fn make_bytecode_func(
   let func_def = verified_func_def.function
   ensure_bytecode_signature_validated(verified_func_def)
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  // source_body is retained temporarily for runtime activation capability and
-  // source metadata. Signature validation and executable setup use only the
-  // verified preparation facts above.
-  @runtime.make_classified_executor_function(
+  @runtime.make_prepared_executor_function(
     func_def.name,
     func_def.params,
     closure,
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
-    func_def.source_body,
+    verified_func_def.preparation.activation_capability,
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
   )
@@ -381,13 +378,13 @@ fn make_bytecode_method_func(
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   let method_env = Environment::new(parent=Some(closure))
   method_env.def_builtin("[[HomeObject]]", home_object)
-  @runtime.make_classified_executor_function(
+  @runtime.make_prepared_executor_function(
     func_def.name,
     func_def.params,
     method_env,
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
-    func_def.source_body,
+    verified_func_def.preparation.activation_capability,
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
@@ -404,12 +401,12 @@ fn make_bytecode_arrow_func(
   let func_def = verified_func_def.function
   ensure_bytecode_signature_validated(verified_func_def)
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  @runtime.make_classified_executor_arrow_function(
+  @runtime.make_prepared_executor_arrow_function(
     func_def.params,
     closure,
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
-    func_def.source_body,
+    verified_func_def.preparation.activation_capability,
     rest_param=func_def.rest_param,
   )
 }

@@ -2294,6 +2294,40 @@ pub fn[T : ExecutorCode] make_classified_executor_function(
 }
 
 ///|
+// Prepared executor providers supply an immutable capability proof. Unlike
+// make_classified_executor_function, this boundary never accepts executable
+// source AST; compiler-produced bytecode can therefore not regain a source
+// traversal during function creation.
+pub fn[T : ExecutorCode] make_prepared_executor_function(
+  name : String?,
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  code : T,
+  activation_capability_summary : ExecutorActivationCapabilitySummary?,
+  rest_param? : String? = None,
+  constructable? : Bool = true,
+  call_self_name? : Bool = false,
+  define_arguments_object? : Bool = true,
+) -> Value {
+  let function_name = name.unwrap_or("")
+  let self_name = if call_self_name { name } else { None }
+  make_executor_callable_with_capability(
+    function_name,
+    params,
+    closure,
+    strict,
+    code as &ExecutorCode,
+    rest_param,
+    constructable,
+    self_name,
+    define_arguments_object,
+    OrdinaryExecutorCallable,
+    activation_capability_summary,
+  )
+}
+
+///|
 pub fn[T : ExecutorCode] make_executor_arrow_function(
   params : Array[String],
   closure : Environment,
@@ -2339,5 +2373,31 @@ pub fn[T : ExecutorCode] make_classified_executor_arrow_function(
     false,
     ArrowExecutorCallable,
     executor_activation_capability_summary(params, source_body),
+  )
+}
+
+///|
+// Prepared arrow providers carry the immutable capability proof produced
+// before execution and never accept executable source AST.
+pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  code : T,
+  activation_capability_summary : ExecutorActivationCapabilitySummary?,
+  rest_param? : String? = None,
+) -> Value {
+  make_executor_callable_with_capability(
+    "",
+    params,
+    closure,
+    strict,
+    code as &ExecutorCode,
+    rest_param,
+    false,
+    None,
+    false,
+    ArrowExecutorCallable,
+    activation_capability_summary,
   )
 }

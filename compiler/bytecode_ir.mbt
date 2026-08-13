@@ -578,6 +578,7 @@ priv struct BytecodePreparation {
   lexical_bindings : Array[BytecodeLexicalBinding]
   function_declarations : Array[BytecodeFunctionDeclaration]
   signature_validation : BytecodeSignatureValidation
+  activation_capability : @runtime.ExecutorActivationCapabilitySummary?
 }
 
 ///|
@@ -585,8 +586,14 @@ fn BytecodePreparation::BytecodePreparation(
   lexical_bindings? : Array[BytecodeLexicalBinding] = [],
   function_declarations? : Array[BytecodeFunctionDeclaration] = [],
   signature_validation? : BytecodeSignatureValidation = SignaturePending,
+  activation_capability? : @runtime.ExecutorActivationCapabilitySummary? = None,
 ) -> BytecodePreparation {
-  { lexical_bindings, function_declarations, signature_validation }
+  {
+    lexical_bindings,
+    function_declarations,
+    signature_validation,
+    activation_capability,
+  }
 }
 
 ///|
@@ -595,9 +602,9 @@ priv struct BytecodeFunction {
   name : String?
   params : Array[String]
   rest_param : String?
-  // Temporary non-executable source metadata for runtime activation
-  // capability classification. VM preparation and execution must use the
-  // verified facts below, never traverse this tree.
+  // Temporary source metadata retained until the remaining AST representation
+  // debt is removed. VM preparation and execution must use the verified facts
+  // below, never traverse this tree.
   source_body : Array[@ast.Stmt]
   preparation : BytecodePreparation
   body_has_use_strict : Bool
