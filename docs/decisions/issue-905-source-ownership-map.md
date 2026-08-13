@@ -22,8 +22,8 @@ entry envelopes.
 | `BytecodeFunction.source_body` | verification/source-tree leakage | canonical preparation facts plus exact source metadata |
 | `BytecodeHeaderProvenance.origin_body` | child identity leakage | source-unit/function-owner identity, parent owner, child index, consumer form |
 | `physical_equal(origin_body, child.source_body)` | obsolete AST identity proof | typed child/header identity and coordinated facts |
-| `validate_function_signature(... body)` during finalization | runtime AST traversal | canonical immutable signature facts and a provenance-protected runtime validator |
-| `verify_executor_activation_capability(... body)` | runtime AST traversal | canonical immutable activation-capability summary |
+| `validate_function_signature(... body)` during lowering | lowering-only source input | copied immutable signature facts tied to child/header provenance |
+| `verify_executor_activation_capability(... body)` during lowering | lowering-only source input | opaque immutable activation-capability summary compared inside runtime |
 | `Interpreter::run_compiled_script(stmts, ...)` | runtime AST entry ownership | prepared strictness, early-error proof, declaration facts, and runtime application |
 | parser function-node source text | exact source metadata | immutable function source text copied at lowering |
 | `SourceUnitHandle`, `SourcePointOwnerId` and source-point tables | typed diagnostics/observation identity | retained source identity and locations; no AST required |
@@ -36,6 +36,12 @@ global var/function/lexical setup order, TDZ setup, global-object mirroring and
 property attributes, active-realm installation, and JavaScript exception
 conversion. Preparation describes facts; runtime applies those facts through
 the existing semantic operations.
+
+Finalization receives no source AST. Child verification compares typed source
+identity, exact source text, header snapshots, canonical signature/lexical
+facts, declaration consumers, and the runtime-owned activation summary. Root
+preparation is checked against the verified root's strictness, var names,
+function names, and lexical binding order before the verified carrier is built.
 
 ## Required negative evidence
 

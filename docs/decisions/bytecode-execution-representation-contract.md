@@ -180,37 +180,27 @@ Four current forms cross the intended boundary.
   binding semantics. Defaults, computed keys, and member targets remain
   lowering-time unsupported.
   Issue #636 owns its next preparation/lowering migration.
-- `BytecodeFunction.source_body : Array[@ast.Stmt]` and
-  `BytecodeProgram.source_stmts : Array[@ast.Stmt]` retain source trees. The
-  bytecode preparation product now owns lexical-binding order, function
-  declaration order, canonical function-signature inputs and validation, and
-  the immutable runtime activation-capability proof before verification; VM
-  startup applies those verified facts through runtime-owned binding, TDZ, and
-  executor-construction operations. Signature preparation retains the
-  effective name policy, enclosing strictness, copied parameter names, rest
-  parameter, and body-derived strictness without an AST payload. Before a
-  function becomes verified, the verifier independently
-  re-derives its lexical facts and function-declaration names/locations from
-  that function's retained source body. It compares those facts with the
-  preparation records and with the ordered `DeclareFunction` consumers in the
-  function's own code, including child indices, the referenced child name, and
-  the exact retained source-body identity for the selected child; it performs
-  the same check recursively for every child. It also compares the current
-  signature inputs with those canonical facts and re-runs the existing runtime
-  signature validator; any mismatch is a compiler provenance defect rather
-  than a newly selected JavaScript source diagnostic. `source_body`
-  remains only as temporary source metadata while the remaining AST
-  representation debt is tracked; bytecode VM function creation no longer
-  passes it to runtime or traverses it. Tree-walk's
-  source-backed classified-function factories still use `source_body` for
-  their existing capability admission; that is outside the bytecode VM
-  execution boundary. `source_stmts` remains the root script envelope's input
-  for strictness, early errors, and global declaration setup. These remaining
-  consumers are non-executable AST boundaries. The typed VM AST audit resolves
-  every executable identifier through MoonBit's inferred hover type, fails
-  closed on unresolved candidates, rejects inferred AST binders/expressions
-  and `source_body` access (including aliases), and permits only the
-  structurally identified AST-free destructuring-plan instruction payload.
+- Finalized bytecode carriers contain no executable `Stmt`, `Expr`, or
+  `Pattern` AST. Function preparation retains copied signature facts,
+  declaration/lexical setup facts, and an opaque runtime activation-capability
+  summary. Child provenance is tied to the existing
+  `SourceUnitHandle`/`SourcePointOwnerId` pair, parent owner, child index, and
+  closed consumer form; no parallel source-ID registry is introduced. Exact
+  parser source text is copied separately as immutable metadata for
+  `Function.prototype.toString` and is never reconstructed from bytecode.
+  Finalization verifies the typed identity, text, header facts, and immutable
+  preparation snapshot without re-reading an AST body. Root scripts carry a
+  `CompiledScriptPreparation` envelope containing strictness, declaration
+  names, lexical TDZ facts, and settled early-error state. The runtime remains
+  the owner of global-object/property attributes, declaration conflicts,
+  binding/TDZ mutation, active realm installation, and JavaScript exception
+  conversion. The bytecode runtime entry receives only that envelope.
+  Tree-walk's source-backed classified-function factories still use `source_body`
+  for their existing capability admission; that is outside the finalized
+  bytecode boundary. The typed AST audit resolves every executable identifier
+  through MoonBit's inferred hover type, fails closed on unresolved candidates,
+  scans both finalized IR and VM code, and permits only the structurally
+  identified AST-free destructuring-plan instruction payload.
 - `LoadConst(Value)` and `SetCompletionValue(Value)` embed runtime
   representation. The instruction stream must instead contain private literal
   descriptors or recipes. The verifier checks them, and execution materializes
