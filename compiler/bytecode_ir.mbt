@@ -545,12 +545,61 @@ fn bytecode_unary_contract(op : @ast.UnaryOp) -> BytecodeInstructionContract {
 }
 
 ///|
+priv enum BytecodeLexicalKind {
+  BytecodeLet
+  BytecodeConst
+}
+
+///|
+// Immutable declaration facts prepared from a function's own body.  These
+// facts intentionally use compiler-owned tags and source locations rather
+// than runtime Binding values or executable AST nodes.
+priv struct BytecodeLexicalBinding {
+  kind : BytecodeLexicalKind
+  name : String
+  loc : @token.Loc
+}
+
+///|
+priv struct BytecodeFunctionDeclaration {
+  name : String
+  child_index : Int
+  loc : @token.Loc
+}
+
+///|
+priv enum BytecodeSignatureValidation {
+  SignaturePending
+  SignatureValidated
+}
+
+///|
+priv struct BytecodePreparation {
+  lexical_bindings : Array[BytecodeLexicalBinding]
+  function_declarations : Array[BytecodeFunctionDeclaration]
+  signature_validation : BytecodeSignatureValidation
+}
+
+///|
+fn BytecodePreparation::BytecodePreparation(
+  lexical_bindings? : Array[BytecodeLexicalBinding] = [],
+  function_declarations? : Array[BytecodeFunctionDeclaration] = [],
+  signature_validation? : BytecodeSignatureValidation = SignaturePending,
+) -> BytecodePreparation {
+  { lexical_bindings, function_declarations, signature_validation }
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
   params : Array[String]
   rest_param : String?
+  // Temporary non-executable source metadata for runtime activation
+  // capability classification. VM preparation and execution must use the
+  // verified facts below, never traverse this tree.
   source_body : Array[@ast.Stmt]
+  preparation : BytecodePreparation
   body_has_use_strict : Bool
   call_self_name : Bool
   // Direct eval can read `arguments` by string, so only skip arguments-object
@@ -588,6 +637,7 @@ fn BytecodeFunction::BytecodeFunction(
   params~ : Array[String],
   rest_param~ : String?,
   source_body~ : Array[@ast.Stmt],
+  preparation~ : BytecodePreparation,
   body_has_use_strict~ : Bool,
   call_self_name~ : Bool,
   needs_arguments_object~ : Bool,
@@ -609,6 +659,7 @@ fn BytecodeFunction::BytecodeFunction(
     params,
     rest_param,
     source_body,
+    preparation,
     body_has_use_strict,
     call_self_name,
     needs_arguments_object,
@@ -643,6 +694,7 @@ fn BytecodeFunction::resolve_source_point(
 // the verification provenance attached to every nested activation.
 priv struct VerifiedBytecodeFunction {
   function : BytecodeFunction
+  preparation : BytecodePreparation
 }
 
 ///|
@@ -650,7 +702,8 @@ fn VerifiedBytecodeFunction::child(
   self : VerifiedBytecodeFunction,
   index : Int,
 ) -> VerifiedBytecodeFunction {
-  { function: self.function.children[index] }
+  let function = self.function.children[index]
+  { function, preparation: function.preparation }
 }
 
 ///|
@@ -662,6 +715,8 @@ priv struct BytecodeBuilder {
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
+  function_declarations : Array[BytecodeFunctionDeclaration]
+  enclosing_strict : Bool
   local_names : Array[String]
   local_indices : Map[String, Int]
   env_slot_names : Array[String]
@@ -769,6 +824,7 @@ fn BytecodeBuilder::BytecodeBuilder(
   source_point_owner : SourcePointOwnerId,
   owner_allocator : Ref[SourcePointOwnerAllocator],
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
+  enclosing_strict? : Bool = false,
 ) -> BytecodeBuilder {
   {
     code: [],
@@ -778,6 +834,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     source_points: [],
     instruction_sources: [],
     children: [],
+    function_declarations: [],
+    enclosing_strict,
     local_names: plan.names,
     local_indices: plan.indices,
     env_slot_names: plan.env_names,

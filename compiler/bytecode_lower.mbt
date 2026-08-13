@@ -1661,7 +1661,15 @@ fn compile_bytecode_function(
   call_self_name? : Bool = false,
   template_cache_key_prefix? : String = "main",
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
+  enclosing_strict? : Bool = false,
 ) -> BytecodeFunction raise Error {
+  let body_has_use_strict = @static_semantics.has_use_strict(body)
+  let function_strict = enclosing_strict || body_has_use_strict
+  // Validate this function's own parameter/body combination before lowering
+  // nested children, preserving header-before-body diagnostic order.
+  let signature_validation = prepare_function_signature(
+    enclosing_strict, name, params, rest_param, body,
+  )
   let plan = plan_bytecode_locals(
     params,
     body,
@@ -1674,10 +1682,16 @@ fn compile_bytecode_function(
     source_point_owner,
     owner_allocator,
     source_unit~,
+    enclosing_strict=function_strict,
   )
   for stmt in body {
     builder.compile_stmt(stmt)
   }
+  let preparation = prepare_bytecode_function(
+    body,
+    builder.function_declarations,
+    signature_validation,
+  )
   // Precompute the env-hoist name set once, now that builder.local_names is
   // final (compile_stmt above may have added locals). The VM used to derive
   // this on every call (issue #325); store it on the IR instead. It must
@@ -1697,7 +1711,8 @@ fn compile_bytecode_function(
     params~,
     rest_param~,
     source_body=body,
-    body_has_use_strict=@static_semantics.has_use_strict(body),
+    preparation~,
+    body_has_use_strict~,
     call_self_name~,
     needs_arguments_object=needs_arguments_obj,
     // When false, run_bytecode_function skips all hoist calls (each is a no-op per these conditions).
@@ -1709,7 +1724,7 @@ fn compile_bytecode_function(
       rest_param is None &&
       !builder.has_this &&
       !builder.has_new_target &&
-      first_decl_in(body, stmt_is_lexical_decl) is None &&
+      preparation.lexical_bindings.is_empty() &&
       !bytecode_body_contains_destructure_assign(body)),
     local_names=builder.local_names,
     local_indices=builder.local_indices,
@@ -1819,6 +1834,7 @@ fn BytecodeBuilder::add_function(
       call_self_name~,
       template_cache_key_prefix~,
       source_unit=self.source_unit,
+      enclosing_strict=self.enclosing_strict,
     ),
   )
   idx
@@ -2288,6 +2304,11 @@ fn BytecodeBuilder::compile_stmt_body(
       self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
+      self.function_declarations.push({
+        name,
+        child_index: fn_idx,
+        loc: bytecode_stmt_loc(stmt),
+      })
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
@@ -2301,6 +2322,11 @@ fn BytecodeBuilder::compile_stmt_body(
         body,
         simple_rest,
       )
+      self.function_declarations.push({
+        name,
+        child_index: fn_idx,
+        loc: bytecode_stmt_loc(stmt),
+      })
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
