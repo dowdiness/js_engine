@@ -162,16 +162,14 @@ pub fn Interpreter::define_compiled_binding(
 /// same boundary without exposing those internals.
 pub fn Interpreter::run_compiled_script(
   self : Interpreter,
-  stmts : Array[@ast.Stmt],
+  preparation : CompiledScriptPreparation,
   eval : (ExecContext, Environment) -> Value raise Error,
 ) -> Value raise Error {
-  let strict = @static_semantics.has_use_strict(stmts)
+  let strict = preparation.strict
   let ctx : ExecContext = { strict, current_generator: None }
   try {
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
-      self.validate_block_early_errors(stmts, strict)
-      self.hoist_declarations(stmts, self.global, strict~)
-      hoist_block_tdz(stmts, self.global)
+      self.apply_compiled_script_preparation(preparation)
       eval(ctx, self.global)
     })
     result

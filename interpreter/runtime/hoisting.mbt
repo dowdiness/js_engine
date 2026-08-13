@@ -327,8 +327,7 @@ fn schedule_class_members_reverse(
 }
 
 ///|
-pub fn Interpreter::validate_block_early_errors(
-  _self : Interpreter,
+pub fn validate_compiled_script_early_errors(
   stmts : Array[@ast.Stmt],
   strict_context : Bool,
 ) -> Unit raise Error {
@@ -726,6 +725,15 @@ pub fn Interpreter::validate_block_early_errors(
 }
 
 ///|
+pub fn Interpreter::validate_block_early_errors(
+  _self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  strict_context : Bool,
+) -> Unit raise Error {
+  validate_compiled_script_early_errors(stmts, strict_context)
+}
+
+///|
 fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
   @static_semantics.collect_var_declared_names(stmts)
 }
@@ -866,6 +874,98 @@ fn collect_stmts_lex_names(
     add_stmt_lex_names(stmt, names)
   }
   names
+}
+
+///|
+/// Apply the GlobalDeclarationInstantiation CanDeclareGlobalFunction checks.
+/// Both the AST-backed interpreter path and the prepared bytecode path use
+/// this operation so global-object property semantics have one runtime owner.
+fn check_global_function_declarations(
+  interp : Interpreter,
+  names : Array[String],
+) -> Unit raise Error {
+  match interp.global_this {
+    Value::Object(data) => {
+      let declared : @set.Set[String] = @set.Set::default()
+      for name in names {
+        if !declared.contains(name) {
+          let definable = match ordinary_get_own_string_desc(data.bag, name) {
+            None => data.extensible
+            Some(desc) =>
+              desc.configurable ||
+              (!desc.is_accessor && desc.writable && desc.enumerable)
+          }
+          if !definable {
+            raise @errors.TypeError(
+              message="Cannot declare global function '\\{name}': property is non-configurable",
+            )
+          }
+          declared.add(name) |> ignore
+        }
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+/// Apply the GlobalDeclarationInstantiation CanDeclareGlobalVar checks.
+/// Function names are excluded because a function declaration's property has
+/// already been checked by `check_global_function_declarations`.
+fn check_global_var_declarations(
+  interp : Interpreter,
+  function_names : Array[String],
+  var_names : Array[String],
+) -> Unit raise Error {
+  match interp.global_this {
+    Value::Object(data) => {
+      let function_set : @set.Set[String] = @set.Set::default()
+      for name in function_names {
+        function_set.add(name)
+      }
+      for name in var_names {
+        if !function_set.contains(name) {
+          let definable = ordinary_get_own_string_desc(data.bag, name) is
+            Some(_) || data.extensible
+          if !definable {
+            raise @errors.TypeError(
+              message="Cannot declare global var '\\{name}': global object is non-extensible",
+            )
+          }
+        }
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+/// Collect the direct function declarations used by global declaration
+/// instantiation. This is the AST-side lowering of the same names retained by
+/// `CompiledScriptPreparation` for the bytecode path.
+fn collect_global_function_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+  let names = []
+  for stmt in stmts {
+    match stmt {
+      FuncDecl(name, _, _, _, _) => names.push(name)
+      FuncDeclExt(name, _, _, _, _, _) => names.push(name)
+      GeneratorDecl(name, _, _, _, _) => names.push(name)
+      GeneratorDeclExt(name, _, _, _, _, _) => names.push(name)
+      AsyncFuncDecl(name, _, _, _, _) => names.push(name)
+      AsyncFuncDeclExt(name, _, _, _, _, _) => names.push(name)
+      AsyncGeneratorDecl(name, _, _, _, _) => names.push(name)
+      AsyncGeneratorDeclExt(name, _, _, _, _, _) => names.push(name)
+      _ => ()
+    }
+  }
+  names
+}
+
+///|
+/// Collect the var-scoped names with the same static-semantics traversal used
+/// by the AST-backed hoist implementation.
+fn collect_global_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+  @static_semantics.collect_var_declared_names(stmts, include_funcs=false)
 }
 
 ///|
@@ -1185,64 +1285,13 @@ fn Interpreter::hoist_declarations(
   // are definable before creating any bindings (spec steps 9-12). This ensures
   // TypeError is thrown atomically with no partial binding creation.
   if is_global {
-    match _self.global_this {
-      Object(data) => {
-        let declared_function_names : @set.Set[String] = @set.Set::default()
-        // Steps 9-10: CanDeclareGlobalFunction for each function declaration
-        for pre_stmt in stmts {
-          let fname : String? = match pre_stmt {
-            FuncDecl(name, _, _, _, _) => Some(name)
-            FuncDeclExt(name, _, _, _, _, _) => Some(name)
-            GeneratorDecl(name, _, _, _, _) => Some(name)
-            GeneratorDeclExt(name, _, _, _, _, _) => Some(name)
-            AsyncFuncDecl(name, _, _, _, _) => Some(name)
-            AsyncFuncDeclExt(name, _, _, _, _, _) => Some(name)
-            AsyncGeneratorDecl(name, _, _, _, _) => Some(name)
-            AsyncGeneratorDeclExt(name, _, _, _, _, _) => Some(name)
-            _ => None
-          }
-          match fname {
-            Some(name) =>
-              if !declared_function_names.contains(name) {
-                // §9.1.1.4.16 CanDeclareGlobalFunction
-                let definable = match
-                  ordinary_get_own_string_desc(data.bag, name) {
-                  None => data.extensible
-                  Some(desc) =>
-                    desc.configurable ||
-                    (!desc.is_accessor && desc.writable && desc.enumerable)
-                }
-                if !definable {
-                  raise @errors.TypeError(
-                    message="Cannot declare global function '\{name}': property is non-configurable",
-                  )
-                }
-                declared_function_names.add(name) |> ignore
-              }
-            None => ()
-          }
-        }
-        // Steps 11-12: CanDeclareGlobalVar for all var-scoped names. Uses the
-        // same recursive VarScopedDeclarations walk as the actual hoist so that
-        // nested vars (inside blocks, ifs, loops, switch, try-catch) are checked.
-        for pre_stmt in stmts {
-          walk_var_scoped_names(pre_stmt, name => {
-            if !declared_function_names.contains(name) {
-              // §9.1.1.4.15 CanDeclareGlobalVar
-              let definable = ordinary_get_own_string_desc(data.bag, name)
-                is Some(_) ||
-                data.extensible
-              if !definable {
-                raise @errors.TypeError(
-                  message="Cannot declare global var '\{name}': global object is non-extensible",
-                )
-              }
-            }
-          })
-        }
-      }
-      _ => ()
-    }
+    let function_names = collect_global_function_names(stmts)
+    check_global_function_declarations(_self, function_names)
+    check_global_var_declarations(
+      _self,
+      function_names,
+      collect_global_var_names(stmts),
+    )
   }
   for stmt in stmts {
     match stmt {

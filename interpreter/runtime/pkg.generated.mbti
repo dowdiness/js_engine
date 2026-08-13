@@ -41,6 +41,8 @@ pub fn clear_array_length_override(ArrayData) -> Unit
 
 pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
 
+pub fn compiled_script_preparation_matches(CompiledScriptPreparation, Bool, Array[String], Array[String], Array[CompiledScriptLexicalBinding]) -> Bool
+
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
 pub fn constructor_realm_intrinsic_prototype(Value, String, Value) -> Value raise
@@ -88,6 +90,8 @@ pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interprete
 pub fn execution_control_failure_code(Error) -> String?
 
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
+
+pub fn executor_activation_capability_summary_equal(ExecutorActivationCapabilitySummary?, ExecutorActivationCapabilitySummary?) -> Bool
 
 pub fn executor_activation_completion_abrupt(Error) -> ExecutorActivationCompletion
 
@@ -305,9 +309,9 @@ pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, Pro
 
 pub fn make_plain_object() -> Value
 
-pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, rest_param? : String?) -> Value
+pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, source_text? : String?, rest_param? : String?) -> Value
 
-pub fn[T : ExecutorCode] make_prepared_executor_function(String?, Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
+pub fn[T : ExecutorCode] make_prepared_executor_function(String?, Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, source_text? : String?, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
 
 pub fn make_tagged_template_object(Array[(String, String?)]) -> Value
 
@@ -342,6 +346,8 @@ pub fn ordinary_set_prototype(Interpreter, ObjectData, Value) -> Bool
 pub fn own_string_property_names(Interpreter, Value) -> Value raise
 
 pub fn own_symbol_properties(Interpreter, Value) -> Value raise
+
+pub fn prepare_compiled_script_early_error(Array[@ast.Stmt], Bool) -> Error?
 
 pub fn prepare_executor_activation_capability(Array[String], Array[@ast.Stmt]) -> ExecutorActivationCapabilitySummary?
 
@@ -454,6 +460,8 @@ pub fn type_of(Value) -> String
 pub fn unwrap_grouping(@ast.Expr) -> @ast.Expr
 
 pub fn utf16_length(String) -> Int
+
+pub fn validate_compiled_script_early_errors(Array[@ast.Stmt], Bool) -> Unit raise
 
 pub fn validate_function_constructor_params(Bool, Array[String], String?, Array[@ast.Stmt]) -> Unit raise
 
@@ -574,6 +582,16 @@ pub(all) struct ClassFieldInit {
   closure : Environment
 }
 
+pub struct CompiledScriptLexicalBinding {
+  // private fields
+}
+pub fn CompiledScriptLexicalBinding::CompiledScriptLexicalBinding(kind~ : BindingKind, name~ : String) -> Self
+
+pub struct CompiledScriptPreparation {
+  // private fields
+}
+pub fn CompiledScriptPreparation::CompiledScriptPreparation(strict~ : Bool, var_names~ : Array[String], function_names~ : Array[String], lexical_bindings~ : Array[CompiledScriptLexicalBinding], early_error? : Error?) -> Self
+
 pub struct DestructurePlan {
   // private fields
 }
@@ -664,6 +682,7 @@ pub struct ExecutorCallableData {
 pub fn ExecutorCallableData::is_constructable(Self) -> Bool
 pub fn ExecutorCallableData::length(Self) -> Int
 pub fn ExecutorCallableData::name(Self) -> String
+pub fn ExecutorCallableData::source_text(Self) -> String?
 pub fn ExecutorCallableData::start_frame(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
 
 pub struct ExecutorConstructRequest {
@@ -872,7 +891,7 @@ pub fn Interpreter::prepare_executor_callable_call(Self, ExecutorCallableData, V
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_bounded(Self, Array[@ast.Stmt], ExecutionPolicy) -> Value raise
-pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise
+pub fn Interpreter::run_compiled_script(Self, CompiledScriptPreparation, (ExecContext, Environment) -> Value raise) -> Value raise
 pub fn Interpreter::run_executor_activation_coordinator(Self, &ExecutorActivationFrame) -> ExecutorActivationStep raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
 pub fn Interpreter::run_microtasks_observed(Self) -> Result[Unit, MicrotaskRunFailure] raise
