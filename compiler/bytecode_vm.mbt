@@ -324,10 +324,10 @@ fn ensure_bytecode_signature_validated(
   verified_func_def : VerifiedBytecodeFunction,
 ) -> Unit raise Error {
   match verified_func_def.preparation.signature_validation {
-    SignatureValidated => ()
-    SignaturePending =>
+    Some(_) => ()
+    None =>
       raise @errors.InternalError(
-        message="verified bytecode function has pending signature validation",
+        message="verified bytecode function has no canonical signature facts",
       )
   }
 }

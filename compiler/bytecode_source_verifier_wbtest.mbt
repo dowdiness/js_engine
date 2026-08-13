@@ -161,6 +161,8 @@ fn bytecode_function_with_source_unit_for_wb(
 ) -> BytecodeFunction {
   BytecodeFunction(
     name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
     params=function.params,
     rest_param=function.rest_param,
     source_body=function.source_body,
@@ -230,6 +232,8 @@ fn bytecode_function_with_source_point_owner_for_wb(
   })
   BytecodeFunction(
     name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
     params=function.params,
     rest_param=function.rest_param,
     source_body=function.source_body,

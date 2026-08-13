@@ -1711,6 +1711,8 @@ fn compile_bytecode_function(
     bytecode_body_references_eval(body)
   BytecodeFunction(
     name~,
+    signature_name~,
+    enclosing_strict~,
     params~,
     rest_param~,
     source_body=body,

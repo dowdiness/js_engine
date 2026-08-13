@@ -68,7 +68,13 @@ fn prepare_function_signature(
     None =>
       @runtime.validate_function_signature(enclosing_strict, name, params, body)
   }
-  SignatureValidated
+  {
+    effective_name: name,
+    enclosing_strict,
+    params: params.copy(),
+    rest_param,
+    body_has_use_strict: @static_semantics.has_use_strict(body),
+  }
 }
 
 ///|
@@ -84,7 +90,7 @@ fn prepare_bytecode_function(
   BytecodePreparation(
     lexical_bindings=prepare_lexical_bindings(body),
     function_declarations~,
-    signature_validation~,
+    signature_validation=Some(signature_validation),
     activation_capability~,
   )
 }
@@ -346,12 +352,146 @@ fn verify_function_declaration_preparation(
 }
 
 ///|
+fn bytecode_signature_name_for_verification(name : String?) -> String {
+  match name {
+    Some(name) => name
+    None => "<none>"
+  }
+}
+
+///|
+fn bytecode_bool_for_verification(value : Bool) -> String {
+  if value {
+    "true"
+  } else {
+    "false"
+  }
+}
+
+///|
+fn validate_current_signature_for_verification(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  try {
+    match function.rest_param {
+      Some(rest_param) =>
+        @runtime.validate_function_signature_ext(
+          function.enclosing_strict,
+          function.signature_name,
+          bytecode_ext_params_from_names_for_preparation(function.params),
+          Some(rest_param),
+          function.source_body,
+        )
+      None =>
+        @runtime.validate_function_signature(
+          function.enclosing_strict,
+          function.signature_name,
+          function.params,
+          function.source_body,
+        )
+    }
+  } catch {
+    _ =>
+      raise @errors.InternalError(
+        message="bytecode signature validation failed at nested depth " +
+          function_path.length().to_string(),
+      )
+  }
+}
+
+///|
+fn verify_signature_preparation(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let facts = match function.preparation.signature_validation {
+    Some(facts) => facts
+    None =>
+      raise @errors.InternalError(
+        message="bytecode function preparation was not verified at nested depth " +
+          function_path.length().to_string(),
+      )
+  }
+  if facts.effective_name != function.signature_name {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "signature effective name",
+      -1,
+      bytecode_signature_name_for_verification(facts.effective_name),
+      bytecode_signature_name_for_verification(function.signature_name),
+    )
+  }
+  if facts.enclosing_strict != function.enclosing_strict {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "signature enclosing strictness",
+      -1,
+      bytecode_bool_for_verification(facts.enclosing_strict),
+      bytecode_bool_for_verification(function.enclosing_strict),
+    )
+  }
+  if facts.params.length() != function.params.length() {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "signature parameter count",
+      -1,
+      facts.params.length().to_string(),
+      function.params.length().to_string(),
+    )
+  }
+  for index in 0..<facts.params.length() {
+    if facts.params[index] != function.params[index] {
+      bytecode_preparation_mismatch_for_verification(
+        function_path,
+        "signature parameter name",
+        index,
+        facts.params[index],
+        function.params[index],
+      )
+    }
+  }
+  if facts.rest_param != function.rest_param {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "signature rest parameter",
+      -1,
+      bytecode_signature_name_for_verification(facts.rest_param),
+      bytecode_signature_name_for_verification(function.rest_param),
+    )
+  }
+  let source_body_has_use_strict = @static_semantics.has_use_strict(
+    function.source_body,
+  )
+  if facts.body_has_use_strict != source_body_has_use_strict {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "signature source strictness",
+      -1,
+      bytecode_bool_for_verification(facts.body_has_use_strict),
+      bytecode_bool_for_verification(source_body_has_use_strict),
+    )
+  }
+  if function.body_has_use_strict != source_body_has_use_strict {
+    bytecode_preparation_mismatch_for_verification(
+      function_path,
+      "function source strictness",
+      -1,
+      bytecode_bool_for_verification(source_body_has_use_strict),
+      bytecode_bool_for_verification(function.body_has_use_strict),
+    )
+  }
+  validate_current_signature_for_verification(function, function_path)
+}
+
+///|
 fn verify_bytecode_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
   verify_lexical_preparation(function, function_path)
   verify_function_declaration_preparation(function, function_path)
+  verify_signature_preparation(function, function_path)
   guard @runtime.verify_executor_activation_capability(
     function.params,
     function.source_body,
@@ -362,14 +502,6 @@ fn verify_bytecode_preparation(
         "source at nested depth " +
         function_path.length().to_string(),
     )
-  }
-  match function.preparation.signature_validation {
-    SignatureValidated => ()
-    SignaturePending =>
-      raise @errors.InternalError(
-        message="bytecode function preparation was not verified at nested depth " +
-          function_path.length().to_string(),
-      )
   }
   for declaration in function.preparation.function_declarations {
     guard declaration.child_index >= 0 &&

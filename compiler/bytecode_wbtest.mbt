@@ -13,6 +13,8 @@ fn replace_preparation_for_wb(
 ) -> BytecodeFunction {
   BytecodeFunction(
     name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
     params=function.params,
     rest_param=function.rest_param,
     source_body=function.source_body,
@@ -39,12 +41,15 @@ fn replace_preparation_for_wb(
 fn replace_signature_inputs_for_wb(
   function : BytecodeFunction,
   name : String?,
+  signature_name : String?,
   params : Array[String],
   rest_param : String?,
   body_has_use_strict : Bool,
 ) -> BytecodeFunction {
   BytecodeFunction(
     name~,
+    signature_name~,
+    enclosing_strict=function.enclosing_strict,
     params~,
     rest_param~,
     source_body=function.source_body,
@@ -77,6 +82,8 @@ fn run_tree_parent_with_bytecode_child_for_wb(
   let child = bytecode.main_for_wb().children[0]
   bytecode.main_for_wb().children[0] = BytecodeFunction(
     name=child.name,
+    signature_name=child.signature_name,
+    enclosing_strict=child.enclosing_strict,
     params=child.params,
     rest_param=child.rest_param,
     source_body=retained_source_body,
@@ -474,6 +481,7 @@ test "RED: finalization rejects signature rest-parameter mutation" {
   program.main.children[0] = replace_signature_inputs_for_wb(
     child,
     child.name,
+    child.signature_name,
     child.params,
     Some("a"),
     child.body_has_use_strict,
@@ -491,12 +499,23 @@ test "RED: finalization rejects strict duplicate-parameter mutation" {
   program.main.children[0] = replace_signature_inputs_for_wb(
     child,
     child.name,
+    child.signature_name,
     ["a", "a"],
     child.rest_param,
     child.body_has_use_strict,
   )
   assert_preparation_rejected_for_wb(
     program, "strict duplicate-parameter mutation was accepted",
+  )
+}
+
+///|
+test "signature preparation keeps an independent parameter copy" {
+  let parsed = @parser.parse("function f(a) {}")
+  let program = build_script_bytecode(parsed.stmts)
+  program.main.children[0].params[0] = "mutated"
+  assert_preparation_rejected_for_wb(
+    program, "shared signature parameter storage was accepted",
   )
 }
 
@@ -508,6 +527,7 @@ test "RED: finalization rejects source strictness mutation" {
   program.main.children[0] = replace_signature_inputs_for_wb(
     child,
     child.name,
+    child.signature_name,
     child.params,
     child.rest_param,
     false,
@@ -526,6 +546,7 @@ test "RED: finalization rejects ordinary signature-name policy mutation" {
   let child = program.main.children[0]
   program.main.children[0] = replace_signature_inputs_for_wb(
     child,
+    child.name,
     Some("eval"),
     child.params,
     child.rest_param,
@@ -533,6 +554,24 @@ test "RED: finalization rejects ordinary signature-name policy mutation" {
   )
   assert_preparation_rejected_for_wb(
     program, "ordinary signature-name policy mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects method signature-name policy mutation" {
+  let parsed = @parser.parse("let holder = { eval() { \"use strict\"; } };")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    Some("eval"),
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "method signature-name policy mutation was accepted",
   )
 }
 
@@ -621,6 +660,8 @@ test "RED: VM execution does not traverse retained source bodies" {
   let retained_source_body = @parser.parse("\"use strict\"; let outer;").stmts
   bytecode.main_for_wb().children[0] = BytecodeFunction(
     name=child.name,
+    signature_name=child.signature_name,
+    enclosing_strict=child.enclosing_strict,
     params=child.params,
     rest_param=child.rest_param,
     source_body=retained_source_body,
@@ -692,6 +733,8 @@ test "bytecode preparation is owned independently by each function" {
 test "bytecode verifier rejects an unprepared function before verification" {
   let pending = BytecodeFunction(
     name=None,
+    signature_name=None,
+    enclosing_strict=false,
     params=[],
     rest_param=None,
     source_body=[],

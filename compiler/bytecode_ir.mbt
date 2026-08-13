@@ -567,17 +567,24 @@ priv struct BytecodeFunctionDeclaration {
   loc : @token.Loc
 }
 
+// Canonical signature inputs captured after the runtime-owned validator has
+// accepted a function. The parameter array is a private copy, so preparation
+// never shares the lowering/runtime input array.
+
 ///|
-priv enum BytecodeSignatureValidation {
-  SignaturePending
-  SignatureValidated
+priv struct BytecodeSignatureValidation {
+  effective_name : String?
+  enclosing_strict : Bool
+  params : Array[String]
+  rest_param : String?
+  body_has_use_strict : Bool
 }
 
 ///|
 priv struct BytecodePreparation {
   lexical_bindings : Array[BytecodeLexicalBinding]
   function_declarations : Array[BytecodeFunctionDeclaration]
-  signature_validation : BytecodeSignatureValidation
+  signature_validation : BytecodeSignatureValidation?
   activation_capability : @runtime.ExecutorActivationCapabilitySummary?
 }
 
@@ -585,7 +592,7 @@ priv struct BytecodePreparation {
 fn BytecodePreparation::BytecodePreparation(
   lexical_bindings? : Array[BytecodeLexicalBinding] = [],
   function_declarations? : Array[BytecodeFunctionDeclaration] = [],
-  signature_validation? : BytecodeSignatureValidation = SignaturePending,
+  signature_validation? : BytecodeSignatureValidation? = None,
   activation_capability? : @runtime.ExecutorActivationCapabilitySummary? = None,
 ) -> BytecodePreparation {
   {
@@ -600,6 +607,8 @@ fn BytecodePreparation::BytecodePreparation(
 #warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
+  signature_name : String?
+  enclosing_strict : Bool
   params : Array[String]
   rest_param : String?
   // Temporary source metadata retained until the remaining AST representation
@@ -641,6 +650,8 @@ priv struct BytecodeFunction {
 ///|
 fn BytecodeFunction::BytecodeFunction(
   name~ : String?,
+  signature_name~ : String?,
+  enclosing_strict~ : Bool,
   params~ : Array[String],
   rest_param~ : String?,
   source_body~ : Array[@ast.Stmt],
@@ -663,6 +674,8 @@ fn BytecodeFunction::BytecodeFunction(
 ) -> BytecodeFunction {
   {
     name,
+    signature_name,
+    enclosing_strict,
     params,
     rest_param,
     source_body,
