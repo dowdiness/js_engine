@@ -1665,6 +1665,7 @@ fn compile_bytecode_function(
   enclosing_strict? : Bool = false,
   is_method? : Bool = false,
   header_provenance? : BytecodeHeaderProvenance? = None,
+  activation_kind? : BytecodeActivationKind = FunctionActivation,
 ) -> BytecodeFunction raise Error {
   let body_has_use_strict = @static_semantics.has_use_strict(body)
   let function_strict = enclosing_strict || body_has_use_strict
@@ -1734,6 +1735,7 @@ fn compile_bytecode_function(
     rest_param~,
     source_text~,
     source_identity=Some(source_identity),
+    activation_kind~,
     preparation~,
     body_has_use_strict~,
     call_self_name~,
@@ -1782,6 +1784,7 @@ fn build_script_bytecode(
     owner_allocator,
     use_local_slots=false,
     source_unit~,
+    activation_kind=ScriptRootActivation,
   )
   let lexical_bindings = main.preparation.lexical_bindings.map(binding => {
     let kind = match binding.kind {
@@ -1793,16 +1796,24 @@ fn build_script_bytecode(
   let function_names = main.preparation.function_declarations.map(declaration => {
     declaration.name
   })
+  let root_provenance = BytecodeRootScriptProvenance::from_lowering(
+    main,
+    script_strict,
+    main.env_var_hoist_names,
+    function_names,
+    lexical_bindings,
+    early_error_settlement,
+  )
   let script_preparation = @runtime.CompiledScriptPreparation::with_early_error_settlement(
-    strict=script_strict,
-    var_names=main.env_var_hoist_names,
-    function_names~,
-    lexical_bindings~,
-    settlement=early_error_settlement,
+    strict=root_provenance.strict,
+    var_names=root_provenance.var_names,
+    function_names=root_provenance.function_names,
+    lexical_bindings=root_provenance.lexical_bindings,
+    settlement=root_provenance.settlement,
   )
   {
     script_preparation,
-    script_early_error_settlement: early_error_settlement,
+    root_provenance,
     main,
   }
 }

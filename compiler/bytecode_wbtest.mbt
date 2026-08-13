@@ -19,6 +19,7 @@ fn replace_preparation_for_wb(
     rest_param=function.rest_param,
     source_text=function.source_text,
     source_identity=Some(function.source_identity),
+    activation_kind=function.activation_kind,
     preparation~,
     body_has_use_strict=function.body_has_use_strict,
     call_self_name=function.call_self_name,
@@ -56,6 +57,7 @@ fn replace_signature_inputs_for_wb(
     rest_param~,
     source_text=function.source_text,
     source_identity=Some(function.source_identity),
+    activation_kind=function.activation_kind,
     preparation=function.preparation,
     body_has_use_strict~,
     call_self_name=function.call_self_name,
@@ -102,6 +104,7 @@ fn replace_signature_inputs_and_facts_for_wb(
     rest_param~,
     source_text=function.source_text,
     source_identity=Some(function.source_identity),
+    activation_kind=function.activation_kind,
     preparation~,
     body_has_use_strict~,
     call_self_name=function.call_self_name,
@@ -136,6 +139,7 @@ fn replace_source_metadata_for_wb(
     rest_param=function.rest_param,
     source_text~,
     source_identity=Some(source_identity),
+    activation_kind=function.activation_kind,
     preparation=function.preparation,
     body_has_use_strict=function.body_has_use_strict,
     call_self_name=function.call_self_name,
@@ -170,6 +174,7 @@ fn run_tree_parent_with_bytecode_child_for_wb() -> Bool raise Error {
     rest_param=child.rest_param,
     source_text=child.source_text,
     source_identity=Some(child.source_identity),
+    activation_kind=child.activation_kind,
     preparation=child.preparation,
     body_has_use_strict=child.body_has_use_strict,
     call_self_name=child.call_self_name,
@@ -321,7 +326,7 @@ test "RED: finalization rejects inconsistent root script preparation" {
   )
   let malformed : BytecodeUnverifiedProgram = {
     script_preparation: mutated_preparation,
-    script_early_error_settlement: program.script_early_error_settlement,
+    root_provenance: program.root_provenance,
     main: program.main,
   }
   assert_preparation_rejected_for_wb(
@@ -350,7 +355,7 @@ test "finalization rejects tampered root early-error settlement" {
       function_names~,
       lexical_bindings~,
     ),
-    script_early_error_settlement: program.script_early_error_settlement,
+    root_provenance: program.root_provenance,
     main: program.main,
   }
   assert_preparation_rejected_for_wb(
@@ -365,7 +370,9 @@ test "finalization rejects a valid but wrong root early-error settlement" {
   let other = build_script_bytecode(@parser.parse("var unrelated;").stmts)
   let malformed : BytecodeUnverifiedProgram = {
     script_preparation: program.script_preparation,
-    script_early_error_settlement: other.script_early_error_settlement,
+    root_provenance: program.root_provenance.with_settlement(
+      other.root_provenance.settlement,
+    ),
     main: program.main,
   }
   assert_preparation_rejected_for_wb(
@@ -374,7 +381,7 @@ test "finalization rejects a valid but wrong root early-error settlement" {
 }
 
 ///|
-test "RED: finalization rejects coordinated root strictness mutation" {
+test "finalization rejects coordinated root strictness mutation" {
   let parsed = @parser.parse("\"use strict\"; x = 1; x;")
   let program = build_script_bytecode(parsed.stmts)
   let facts : BytecodeSignatureValidation = {
@@ -399,17 +406,32 @@ test "RED: finalization rejects coordinated root strictness mutation" {
     var_names=program.main.env_var_hoist_names,
     function_names=[],
     lexical_bindings=[],
-    settlement=program.script_early_error_settlement,
+    settlement=program.root_provenance.settlement,
   )
   let malformed : BytecodeUnverifiedProgram = {
     script_preparation: mutated_preparation,
-    script_early_error_settlement: program.script_early_error_settlement,
+    root_provenance: program.root_provenance,
     main: mutated_main,
   }
-  assert_true(
-    finalization_accepts_for_wb(malformed),
-    msg="coordinated root strictness mutation was unexpectedly rejected",
+  assert_preparation_rejected_for_wb(
+    malformed, "coordinated root strictness mutation was accepted",
   )
+}
+
+///|
+test "bytecode startup distinguishes root scripts from function activations" {
+  let program = build_script_bytecode(
+    @parser.parse("var root; function child() { var local; }").stmts,
+  )
+  guard program.main.activation_kind is ScriptRootActivation else {
+    fail("compiled root did not retain script startup kind")
+  }
+  guard program.main.children.length() == 1 else {
+    fail("expected one nested function")
+  }
+  guard program.main.children[0].activation_kind is FunctionActivation else {
+    fail("nested function did not retain function startup kind")
+  }
 }
 
 ///|
@@ -473,7 +495,7 @@ fn lexical_preparation_mutation_for_wb(
   let mutated = mutation(program.main.preparation.lexical_bindings.copy())
   {
     script_preparation: program.script_preparation,
-    script_early_error_settlement: program.script_early_error_settlement,
+    root_provenance: program.root_provenance,
     main: preparation_with_lexical_bindings_for_wb(program.main, mutated),
   }
 }
@@ -554,7 +576,7 @@ fn function_declaration_preparation_mutation_for_wb(
   let mutated = mutation(program.main.preparation.function_declarations.copy())
   {
     script_preparation: program.script_preparation,
-    script_early_error_settlement: program.script_early_error_settlement,
+    root_provenance: program.root_provenance,
     main: preparation_with_function_declarations_for_wb(program.main, mutated),
   }
 }
@@ -701,7 +723,7 @@ test "RED: finalization rejects duplicate function declaration identity swap" {
   assert_preparation_rejected_for_wb(
     {
       script_preparation: program.script_preparation,
-      script_early_error_settlement: program.script_early_error_settlement,
+      root_provenance: program.root_provenance,
       main: mutated_main,
     },
     "duplicate function declaration identity swap was accepted",
@@ -1127,6 +1149,7 @@ test "RED: VM execution does not traverse retained source bodies" {
     rest_param=child.rest_param,
     source_text=child.source_text,
     source_identity=Some(child.source_identity),
+    activation_kind=child.activation_kind,
     preparation=child.preparation,
     body_has_use_strict=child.body_has_use_strict,
     call_self_name=child.call_self_name,
@@ -1223,7 +1246,14 @@ test "bytecode verifier rejects an unprepared function before verification" {
       lexical_bindings=[],
       settlement~,
     ),
-    script_early_error_settlement: settlement,
+    root_provenance: BytecodeRootScriptProvenance::from_lowering(
+      pending,
+      false,
+      [],
+      [],
+      [],
+      settlement,
+    ),
     main: pending,
   }
   try {

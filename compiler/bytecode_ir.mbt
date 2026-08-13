@@ -756,6 +756,13 @@ fn BytecodePreparation::copy(self : BytecodePreparation) -> BytecodePreparation 
 
 ///|
 #warnings("-unused_field")
+priv enum BytecodeActivationKind {
+  ScriptRootActivation
+  FunctionActivation
+} derive(Eq)
+
+///|
+#warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
   signature_name : String?
@@ -766,6 +773,7 @@ priv struct BytecodeFunction {
   // never depends on a reserialized or retained source tree.
   source_text : String?
   source_identity : BytecodeSourceIdentity
+  activation_kind : BytecodeActivationKind
   preparation : BytecodePreparation
   body_has_use_strict : Bool
   call_self_name : Bool
@@ -806,6 +814,7 @@ fn BytecodeFunction::BytecodeFunction(
   rest_param~ : String?,
   source_text? : String? = None,
   source_identity? : BytecodeSourceIdentity? = None,
+  activation_kind? : BytecodeActivationKind = FunctionActivation,
   preparation~ : BytecodePreparation,
   body_has_use_strict~ : Bool,
   call_self_name~ : Bool,
@@ -835,6 +844,7 @@ fn BytecodeFunction::BytecodeFunction(
       Some(identity) => identity
       None => BytecodeSourceIdentity::root(source_unit, source_point_owner)
     },
+    activation_kind,
     preparation,
     body_has_use_strict,
     call_self_name,
@@ -944,6 +954,81 @@ priv struct BytecodeLocalPlan {
 }
 
 ///|
+// Immutable lowering snapshot for the root script. This is separate from the
+// mutable unverified function tree so coordinated edits to root signature or
+// preparation facts cannot rewrite the evidence used by finalization.
+priv struct BytecodeRootScriptProvenance {
+  strict : Bool
+  var_names : Array[String]
+  function_names : Array[String]
+  lexical_bindings : Array[@runtime.CompiledScriptLexicalBinding]
+  name : String?
+  signature_name : String?
+  enclosing_strict : Bool
+  params : Array[String]
+  rest_param : String?
+  body_has_use_strict : Bool
+  source_identity : BytecodeSourceIdentity
+  activation_kind : BytecodeActivationKind
+  preparation : BytecodePreparation
+  env_var_hoist_names : Array[String]
+  settlement : @runtime.CompiledScriptEarlyErrorSettlement
+}
+
+///|
+fn BytecodeRootScriptProvenance::from_lowering(
+  main : BytecodeFunction,
+  strict : Bool,
+  var_names : Array[String],
+  function_names : Array[String],
+  lexical_bindings : Array[@runtime.CompiledScriptLexicalBinding],
+  settlement : @runtime.CompiledScriptEarlyErrorSettlement,
+) -> BytecodeRootScriptProvenance {
+  {
+    strict,
+    var_names: var_names.copy(),
+    function_names: function_names.copy(),
+    lexical_bindings: lexical_bindings.copy(),
+    name: main.name,
+    signature_name: main.signature_name,
+    enclosing_strict: main.enclosing_strict,
+    params: main.params.copy(),
+    rest_param: main.rest_param,
+    body_has_use_strict: main.body_has_use_strict,
+    source_identity: main.source_identity,
+    activation_kind: main.activation_kind,
+    preparation: main.preparation.copy(),
+    env_var_hoist_names: main.env_var_hoist_names.copy(),
+    settlement,
+  }
+}
+
+///|
+#warnings("-unused_value")
+fn BytecodeRootScriptProvenance::with_settlement(
+  self : BytecodeRootScriptProvenance,
+  settlement : @runtime.CompiledScriptEarlyErrorSettlement,
+) -> BytecodeRootScriptProvenance {
+  {
+    strict: self.strict,
+    var_names: self.var_names.copy(),
+    function_names: self.function_names.copy(),
+    lexical_bindings: self.lexical_bindings.copy(),
+    name: self.name,
+    signature_name: self.signature_name,
+    enclosing_strict: self.enclosing_strict,
+    params: self.params.copy(),
+    rest_param: self.rest_param,
+    body_has_use_strict: self.body_has_use_strict,
+    source_identity: self.source_identity,
+    activation_kind: self.activation_kind,
+    preparation: self.preparation.copy(),
+    env_var_hoist_names: self.env_var_hoist_names.copy(),
+    settlement,
+  }
+}
+
+///|
 pub struct BytecodeProgram {
   priv script_preparation : @runtime.CompiledScriptPreparation
   priv verified_main : VerifiedBytecodeFunction
@@ -952,9 +1037,7 @@ pub struct BytecodeProgram {
 ///|
 priv struct BytecodeUnverifiedProgram {
   script_preparation : @runtime.CompiledScriptPreparation
-  // Independent root provenance: finalization accepts a preparation only when
-  // its opaque settlement is tied to this exact lowering operation.
-  script_early_error_settlement : @runtime.CompiledScriptEarlyErrorSettlement
+  root_provenance : BytecodeRootScriptProvenance
   main : BytecodeFunction
 }
 
