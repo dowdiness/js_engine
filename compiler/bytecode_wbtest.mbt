@@ -36,6 +36,38 @@ fn replace_preparation_for_wb(
 }
 
 ///|
+fn replace_signature_inputs_for_wb(
+  function : BytecodeFunction,
+  name : String?,
+  params : Array[String],
+  rest_param : String?,
+  body_has_use_strict : Bool,
+) -> BytecodeFunction {
+  BytecodeFunction(
+    name~,
+    params~,
+    rest_param~,
+    source_body=function.source_body,
+    preparation=function.preparation,
+    body_has_use_strict~,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    children=function.children,
+  )
+}
+
+///|
 fn run_tree_parent_with_bytecode_child_for_wb(
   retained_source_body : Array[@ast.Stmt],
 ) -> Bool raise Error {
@@ -431,6 +463,76 @@ test "RED: finalization rejects duplicate function declaration identity swap" {
   assert_preparation_rejected_for_wb(
     { source_stmts: program.source_stmts, main: mutated_main },
     "duplicate function declaration identity swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects signature rest-parameter mutation" {
+  let parsed = @parser.parse("function f(a) {}")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    child.params,
+    Some("a"),
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "signature rest-parameter mutation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects strict duplicate-parameter mutation" {
+  let parsed = @parser.parse("function f(a, b) { \"use strict\"; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    ["a", "a"],
+    child.rest_param,
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "strict duplicate-parameter mutation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects source strictness mutation" {
+  let parsed = @parser.parse("function f() { \"use strict\"; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    child.params,
+    child.rest_param,
+    false,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "source strictness mutation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects ordinary signature-name policy mutation" {
+  let parsed = @parser.parse(
+    "let holder = function ordinary() { \"use strict\"; };",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    Some("eval"),
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "ordinary signature-name policy mutation was accepted",
   )
 }
 
