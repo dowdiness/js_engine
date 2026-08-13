@@ -7,6 +7,1045 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn replace_preparation_for_wb(
+  function : BytecodeFunction,
+  preparation : BytecodePreparation,
+) -> BytecodeFunction {
+  BytecodeFunction(
+    name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
+    params=function.params,
+    rest_param=function.rest_param,
+    source_body=function.source_body,
+    preparation~,
+    body_has_use_strict=function.body_has_use_strict,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    children=function.children,
+    header_provenance=function.header_provenance,
+  )
+}
+
+///|
+fn replace_signature_inputs_for_wb(
+  function : BytecodeFunction,
+  name : String?,
+  signature_name : String?,
+  params : Array[String],
+  rest_param : String?,
+  body_has_use_strict : Bool,
+) -> BytecodeFunction {
+  BytecodeFunction(
+    name~,
+    signature_name~,
+    enclosing_strict=function.enclosing_strict,
+    params~,
+    rest_param~,
+    source_body=function.source_body,
+    preparation=function.preparation,
+    body_has_use_strict~,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    children=function.children,
+    header_provenance=function.header_provenance,
+  )
+}
+
+///|
+fn replace_signature_inputs_and_facts_for_wb(
+  function : BytecodeFunction,
+  name : String?,
+  signature_name : String?,
+  enclosing_strict : Bool,
+  params : Array[String],
+  rest_param : String?,
+  body_has_use_strict : Bool,
+  facts : BytecodeSignatureValidation,
+) -> BytecodeFunction {
+  let old_preparation = function.preparation
+  let preparation = BytecodePreparation(
+    lexical_bindings=old_preparation.lexical_bindings,
+    function_declarations=old_preparation.function_declarations,
+    signature_validation=Some(facts),
+    activation_capability=old_preparation.activation_capability,
+  )
+  BytecodeFunction(
+    name~,
+    signature_name~,
+    enclosing_strict~,
+    params~,
+    rest_param~,
+    source_body=function.source_body,
+    preparation~,
+    body_has_use_strict~,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    children=function.children,
+    header_provenance=function.header_provenance,
+  )
+}
+
+///|
+fn run_tree_parent_with_bytecode_child_for_wb(
+  retained_source_body : Array[@ast.Stmt],
+) -> Bool raise Error {
+  let bytecode = parse_bytecode_for_wb(
+    "function byteChild(n) { return n + 1; }",
+  )
+  let child = bytecode.main_for_wb().children[0]
+  bytecode.main_for_wb().children[0] = BytecodeFunction(
+    name=child.name,
+    signature_name=child.signature_name,
+    enclosing_strict=child.enclosing_strict,
+    params=child.params,
+    rest_param=child.rest_param,
+    source_body=retained_source_body,
+    preparation=child.preparation,
+    body_has_use_strict=child.body_has_use_strict,
+    call_self_name=child.call_self_name,
+    needs_arguments_object=child.needs_arguments_object,
+    needs_own_env=child.needs_own_env,
+    local_names=child.local_names,
+    local_indices=child.local_indices,
+    env_slot_names=child.env_slot_names,
+    env_var_hoist_names=child.env_var_hoist_names,
+    template_cache_key_prefix=child.template_cache_key_prefix,
+    code=child.code,
+    source_point_owner=child.source_point_owner,
+    source_unit=child.source_unit,
+    source_points=child.source_points,
+    instruction_sources=child.instruction_sources,
+    children=child.children,
+    header_provenance=child.header_provenance,
+  )
+  let interp = @interpreter.new_interpreter()
+  let byte_child = make_bytecode_func(
+    bytecode.verified_main.child(0),
+    interp.global,
+    { strict: false, current_generator: None },
+  )
+  interp.global.def_builtin("byteChild", byte_child)
+  let _ = interp.run(
+    @parser.parse("function treeParent(n) { return byteChild(n); }").stmts,
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(1000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(error) => fail(error.message())
+  }
+  let result = try {
+    let _ = interp.with_execution_policy(policy, () => {
+      interp.call_value(
+        interp.global.get("treeParent"),
+        @runtime.Undefined,
+        [@runtime.Number(1.0)],
+        @token.Loc::default(),
+      )
+    })
+    false
+  } catch {
+    error =>
+      @runtime.execution_control_failure_code(error)
+      is Some("stack-depth-limit")
+  }
+  result
+}
+
+///|
+test "RED: bytecode activation capability ignores retained source mutation" {
+  let admitted_body = @parser.parse("return n + 1;").stmts
+  let unadmitted_body = @parser.parse("let replacement;").stmts
+  let admitted_result = run_tree_parent_with_bytecode_child_for_wb(
+    admitted_body,
+  )
+  let mutated_result = run_tree_parent_with_bytecode_child_for_wb(
+    unadmitted_body,
+  )
+  assert_true(admitted_result)
+  assert_true(mutated_result)
+}
+
+///|
+test "RED: finalization rejects a swapped activation capability" {
+  let parsed = @parser.parse(
+    "function admitted(n) { return n + 1; } function unadmitted(n) { let replacement; }",
+  )
+  let malformed = build_script_bytecode(parsed.stmts)
+  let admitted = malformed.main.children[0]
+  let unadmitted = malformed.main.children[1]
+  let admitted_preparation = admitted.preparation
+  let unadmitted_preparation = unadmitted.preparation
+  malformed.main.children[0] = replace_preparation_for_wb(
+    admitted,
+    BytecodePreparation(
+      lexical_bindings=admitted_preparation.lexical_bindings,
+      function_declarations=admitted_preparation.function_declarations,
+      signature_validation=admitted_preparation.signature_validation,
+      activation_capability=unadmitted_preparation.activation_capability,
+    ),
+  )
+  malformed.main.children[1] = replace_preparation_for_wb(
+    unadmitted,
+    BytecodePreparation(
+      lexical_bindings=unadmitted_preparation.lexical_bindings,
+      function_declarations=unadmitted_preparation.function_declarations,
+      signature_validation=unadmitted_preparation.signature_validation,
+      activation_capability=admitted_preparation.activation_capability,
+    ),
+  )
+  try {
+    let _ = finalize_bytecode_program(malformed)
+    fail("expected swapped activation capability to be rejected")
+  } catch {
+    @errors.InternalError(message~) =>
+      assert_true(message.contains("activation capability"))
+    _ => fail("expected the typed activation-capability verifier guard")
+  }
+}
+
+///|
+fn preparation_with_lexical_bindings_for_wb(
+  function : BytecodeFunction,
+  lexical_bindings : Array[BytecodeLexicalBinding],
+) -> BytecodeFunction {
+  let preparation = function.preparation
+  replace_preparation_for_wb(
+    function,
+    BytecodePreparation(
+      lexical_bindings~,
+      function_declarations=preparation.function_declarations,
+      signature_validation=preparation.signature_validation,
+      activation_capability=preparation.activation_capability,
+    ),
+  )
+}
+
+///|
+fn preparation_with_function_declarations_for_wb(
+  function : BytecodeFunction,
+  function_declarations : Array[BytecodeFunctionDeclaration],
+) -> BytecodeFunction {
+  let preparation = function.preparation
+  replace_preparation_for_wb(
+    function,
+    BytecodePreparation(
+      lexical_bindings=preparation.lexical_bindings,
+      function_declarations~,
+      signature_validation=preparation.signature_validation,
+      activation_capability=preparation.activation_capability,
+    ),
+  )
+}
+
+///|
+fn finalization_accepts_for_wb(program : BytecodeUnverifiedProgram) -> Bool {
+  try {
+    let _ = finalize_bytecode_program(program)
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+fn assert_preparation_rejected_for_wb(
+  program : BytecodeUnverifiedProgram,
+  label : String,
+) -> Unit raise Error {
+  assert_false(finalization_accepts_for_wb(program), msg=label)
+}
+
+///|
+fn lexical_preparation_mutation_for_wb(
+  mutation : (Array[BytecodeLexicalBinding]) -> Array[BytecodeLexicalBinding],
+) -> BytecodeUnverifiedProgram raise Error {
+  let parsed = @parser.parse("let first; const second;")
+  let program = build_script_bytecode(parsed.stmts)
+  let mutated = mutation(program.main.preparation.lexical_bindings.copy())
+  {
+    source_stmts: program.source_stmts,
+    main: preparation_with_lexical_bindings_for_wb(program.main, mutated),
+  }
+}
+
+///|
+test "RED: finalization rejects lexical preparation name swap" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    bindings[0] = {
+      kind: bindings[0].kind,
+      name: "second",
+      loc: bindings[0].loc,
+    }
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation name swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation kind swap" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    bindings[0] = {
+      kind: BytecodeConst,
+      name: bindings[0].name,
+      loc: bindings[0].loc,
+    }
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation kind swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation deletion" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    let _ = bindings.pop()
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation deletion was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation addition" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    bindings.push({ kind: BytecodeLet, name: "extra", loc: bindings[0].loc })
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation addition was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects lexical preparation reordering" {
+  let program = lexical_preparation_mutation_for_wb(bindings => {
+    let first = bindings[0]
+    bindings[0] = bindings[1]
+    bindings[1] = first
+    bindings
+  })
+  assert_preparation_rejected_for_wb(
+    program, "lexical preparation reordering was accepted",
+  )
+}
+
+///|
+fn function_declaration_preparation_mutation_for_wb(
+  mutation : (Array[BytecodeFunctionDeclaration]) -> Array[
+    BytecodeFunctionDeclaration,
+  ],
+) -> BytecodeUnverifiedProgram raise Error {
+  let parsed = @parser.parse("function first() {} function second() {}")
+  let program = build_script_bytecode(parsed.stmts)
+  let mutated = mutation(program.main.preparation.function_declarations.copy())
+  {
+    source_stmts: program.source_stmts,
+    main: preparation_with_function_declarations_for_wb(program.main, mutated),
+  }
+}
+
+///|
+test "RED: finalization rejects function declaration name swap" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    declarations[0] = {
+      name: "second",
+      child_index: declarations[0].child_index,
+      loc: declarations[0].loc,
+    }
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration name swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration child-index swap" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let first = declarations[0]
+    declarations[0] = {
+      name: first.name,
+      child_index: declarations[1].child_index,
+      loc: first.loc,
+    }
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration child-index swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration deletion" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let _ = declarations.pop()
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration deletion was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration addition" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    declarations.push({
+      name: "extra",
+      child_index: 0,
+      loc: declarations[0].loc,
+    })
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration addition was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects function declaration reordering" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let first = declarations[0]
+    declarations[0] = declarations[1]
+    declarations[1] = first
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration reordering was accepted",
+  )
+}
+
+///|
+test "finalization rejects function declaration source location mismatch" {
+  let program = function_declaration_preparation_mutation_for_wb(declarations => {
+    let first = declarations[0]
+    declarations[0] = {
+      name: first.name,
+      child_index: first.child_index,
+      loc: declarations[1].loc,
+    }
+    declarations
+  })
+  assert_preparation_rejected_for_wb(
+    program, "function declaration location mismatch was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects duplicate function declaration identity swap" {
+  let parsed = @parser.parse(
+    "function f() { return 1; } function f() { return 2; }",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let declarations = program.main.preparation.function_declarations.copy()
+  let first = declarations[0]
+  let second = declarations[1]
+  declarations[0] = {
+    name: first.name,
+    child_index: second.child_index,
+    loc: first.loc,
+  }
+  declarations[1] = {
+    name: second.name,
+    child_index: first.child_index,
+    loc: second.loc,
+  }
+  let code_indices : Array[Int] = []
+  let code_names : Array[String] = []
+  let code_child_indices : Array[Int] = []
+  for index, instruction in program.main.code {
+    match instruction {
+      DeclareFunction(name, child_index) => {
+        code_indices.push(index)
+        code_names.push(name)
+        code_child_indices.push(child_index)
+      }
+      _ => ()
+    }
+  }
+  guard code_indices.length() == 2 else {
+    abort("expected two DeclareFunction instructions")
+  }
+  let mutated_main = preparation_with_function_declarations_for_wb(
+    program.main,
+    declarations,
+  )
+  mutated_main.code[code_indices[0]] = DeclareFunction(
+    code_names[0],
+    code_child_indices[1],
+  )
+  mutated_main.code[code_indices[1]] = DeclareFunction(
+    code_names[1],
+    code_child_indices[0],
+  )
+  assert_preparation_rejected_for_wb(
+    { source_stmts: program.source_stmts, main: mutated_main },
+    "duplicate function declaration identity swap was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects signature rest-parameter mutation" {
+  let parsed = @parser.parse("function f(a) {}")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.params,
+    Some("a"),
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "signature rest-parameter mutation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects strict duplicate-parameter mutation" {
+  let parsed = @parser.parse("function f(a, b) { \"use strict\"; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    ["a", "a"],
+    child.rest_param,
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "strict duplicate-parameter mutation was accepted",
+  )
+}
+
+///|
+test "signature preparation keeps an independent parameter copy" {
+  let parsed = @parser.parse("function f(a) {}")
+  let program = build_script_bytecode(parsed.stmts)
+  program.main.children[0].params[0] = "mutated"
+  assert_preparation_rejected_for_wb(
+    program, "shared signature parameter storage was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects source strictness mutation" {
+  let parsed = @parser.parse("function f() { \"use strict\"; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.params,
+    child.rest_param,
+    false,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "source strictness mutation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects ordinary signature-name policy mutation" {
+  let parsed = @parser.parse(
+    "let holder = function ordinary() { \"use strict\"; };",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    Some("eval"),
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "ordinary signature-name policy mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects method signature-name policy mutation" {
+  let parsed = @parser.parse("let holder = { eval() { \"use strict\"; } };")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  program.main.children[0] = replace_signature_inputs_for_wb(
+    child,
+    child.name,
+    Some("eval"),
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "method signature-name policy mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated signature params and facts mutation" {
+  let parsed = @parser.parse("function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated signature params and facts mutation was accepted",
+  )
+}
+
+///|
+test "RED: coordinated signature name policy and facts mutation" {
+  let parsed = @parser.parse("function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: Some("eval"),
+    enclosing_strict: facts.enclosing_strict,
+    params: facts.params,
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    Some("eval"),
+    child.enclosing_strict,
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated signature-name and facts mutation was accepted",
+  )
+}
+
+///|
+test "RED: coordinated enclosing strictness and facts mutation" {
+  let parsed = @parser.parse("\"use strict\"; function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: false,
+    params: facts.params,
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    false,
+    child.params,
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated enclosing strictness and facts mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated method signature params and facts mutation" {
+  let parsed = @parser.parse("let holder = { method(a) { return a; } };")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated method params and facts mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated arrow signature params and facts mutation" {
+  let parsed = @parser.parse("let holder = (a) => a;")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated arrow params and facts mutation was accepted",
+  )
+}
+
+///|
+test "finalization rejects coordinated rest signature params and facts mutation" {
+  let parsed = @parser.parse("function f(a, ...rest) { return rest[0]; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  program.main.children[0] = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated rest params and facts mutation was accepted",
+  )
+}
+
+///|
+test "RED: coordinated signature params facts and capability mutation" {
+  let parsed = @parser.parse("function f(a) { return a; }")
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let facts = match child.preparation.signature_validation {
+    Some(facts) => facts
+    None => abort("expected signature facts")
+  }
+  let mutated_facts = {
+    effective_name: facts.effective_name,
+    enclosing_strict: facts.enclosing_strict,
+    params: ["b"],
+    rest_param: facts.rest_param,
+    body_has_use_strict: facts.body_has_use_strict,
+  }
+  let mutated_child = replace_signature_inputs_and_facts_for_wb(
+    child,
+    child.name,
+    child.signature_name,
+    child.enclosing_strict,
+    ["b"],
+    child.rest_param,
+    child.body_has_use_strict,
+    mutated_facts,
+  )
+  let mutated_capability = match
+    @runtime.prepare_executor_activation_capability(["b"], child.source_body) {
+    Some(capability) => Some(capability)
+    None => None
+  }
+  let mutated_preparation = BytecodePreparation(
+    lexical_bindings=mutated_child.preparation.lexical_bindings,
+    function_declarations=mutated_child.preparation.function_declarations,
+    signature_validation=mutated_child.preparation.signature_validation,
+    activation_capability=mutated_capability,
+  )
+  program.main.children[0] = replace_preparation_for_wb(
+    mutated_child, mutated_preparation,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "coordinated signature params, facts, and capability mutation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects DeclareFunction preparation mismatch" {
+  let parsed = @parser.parse("function first() {} function second() {}")
+  let program = build_script_bytecode(parsed.stmts)
+  let mut found = false
+  for index, instruction in program.main.code {
+    match instruction {
+      DeclareFunction(_, child_index) => {
+        program.main.code[index] = DeclareFunction("mismatch", child_index)
+        found = true
+        break
+      }
+      _ => ()
+    }
+  }
+  guard found else { abort("expected DeclareFunction instruction") }
+  assert_preparation_rejected_for_wb(
+    program, "DeclareFunction preparation mismatch was accepted",
+  )
+}
+
+///|
+test "finalization recursively verifies nested preparation correspondence" {
+  let parsed = @parser.parse(
+    "function outer() { let child; function nested() {} }",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let child = program.main.children[0]
+  let bindings = child.preparation.lexical_bindings.copy()
+  bindings[0] = { kind: bindings[0].kind, name: "wrong", loc: bindings[0].loc }
+  program.main.children[0] = preparation_with_lexical_bindings_for_wb(
+    child, bindings,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "nested lexical preparation mismatch was accepted",
+  )
+}
+
+///|
+test "RED: bytecode validates nested function signatures before execution" {
+  let prog = @parser.parse("\"use strict\"; function f(a, a) {}")
+  try {
+    let _ = compile_script_to_bytecode(prog.stmts)
+    fail("expected strict duplicate parameters to fail during preparation")
+  } catch {
+    @errors.SyntaxError(_) => ()
+    _ => fail("expected a preparation-time SyntaxError")
+  }
+}
+
+///|
+test "bytecode preparation preserves parent-before-child signature errors" {
+  let prog = @parser.parse(
+    "\"use strict\"; function outer(eval) { function inner(a, a) {} }",
+  )
+  try {
+    let _ = compile_script_to_bytecode(prog.stmts)
+    fail("expected the outer signature to fail first")
+  } catch {
+    @errors.SyntaxError(message~) =>
+      assert_eq(message, "Unexpected eval or arguments in strict mode")
+    _ => fail("expected a preparation-time SyntaxError")
+  }
+}
+
+///|
+test "bytecode preserves method signature-name validation" {
+  let prog = @parser.parse(
+    "var object = { eval() { \"use strict\"; return 1; } }; object.eval();",
+  )
+  let bytecode = compile_script_to_bytecode(prog.stmts)
+  let result = bytecode.run(@interpreter.new_interpreter())
+  assert_eq(result.to_string(), "1")
+}
+
+///|
+test "RED: VM execution does not traverse retained source bodies" {
+  let prog = @parser.parse(
+    "var outer = 42; function f(a, a) { function nested() {} return outer; } f();",
+  )
+  let bytecode = compile_script_to_bytecode(prog.stmts)
+  let child = bytecode.main_for_wb().children[0]
+  let retained_source_body = @parser.parse("\"use strict\"; let outer;").stmts
+  bytecode.main_for_wb().children[0] = BytecodeFunction(
+    name=child.name,
+    signature_name=child.signature_name,
+    enclosing_strict=child.enclosing_strict,
+    params=child.params,
+    rest_param=child.rest_param,
+    source_body=retained_source_body,
+    preparation=child.preparation,
+    body_has_use_strict=child.body_has_use_strict,
+    call_self_name=child.call_self_name,
+    needs_arguments_object=child.needs_arguments_object,
+    needs_own_env=child.needs_own_env,
+    local_names=child.local_names,
+    local_indices=child.local_indices,
+    env_slot_names=child.env_slot_names,
+    env_var_hoist_names=child.env_var_hoist_names,
+    template_cache_key_prefix=child.template_cache_key_prefix,
+    code=child.code,
+    source_point_owner=child.source_point_owner,
+    source_unit=child.source_unit,
+    source_points=child.source_points,
+    instruction_sources=child.instruction_sources,
+    children=child.children,
+    header_provenance=child.header_provenance,
+  )
+  try {
+    let result = bytecode.run(@interpreter.new_interpreter())
+    assert_eq(result.to_string(), "42")
+  } catch {
+    @runtime.JsException(value) => fail(value.to_string())
+    error => fail(error.to_string())
+  }
+}
+
+///|
+test "bytecode preparation is owned independently by each function" {
+  let bytecode = parse_bytecode_for_wb(
+    "let first; const second; function f() { const child; let later; function nested() {} }",
+  )
+  let root = bytecode.main_for_wb()
+  guard root.children.length() == 1 else {
+    fail("expected one prepared child function")
+  }
+  guard root.preparation.lexical_bindings.length() == 2 else {
+    fail("root preparation must own only root lexical declarations")
+  }
+  assert_eq(root.preparation.lexical_bindings[0].name, "first")
+  assert_eq(root.preparation.lexical_bindings[1].name, "second")
+  assert_true(
+    root.preparation.lexical_bindings[0].loc.offset <
+    root.preparation.lexical_bindings[1].loc.offset,
+  )
+  guard root.preparation.function_declarations.length() == 1 else {
+    fail("root preparation must own only root function declarations")
+  }
+  assert_eq(root.preparation.function_declarations[0].name, "f")
+  let child = root.children[0]
+  guard child.preparation.lexical_bindings.length() == 2 else {
+    fail("child preparation must own child lexical declarations")
+  }
+  assert_eq(child.preparation.lexical_bindings[0].name, "child")
+  assert_eq(child.preparation.lexical_bindings[1].name, "later")
+  assert_true(
+    child.preparation.lexical_bindings[0].loc.offset <
+    child.preparation.lexical_bindings[1].loc.offset,
+  )
+  guard child.preparation.function_declarations.length() == 1 else {
+    fail("child preparation must own nested function declarations")
+  }
+  assert_eq(child.preparation.function_declarations[0].name, "nested")
+}
+
+///|
+test "bytecode verifier rejects an unprepared function before verification" {
+  let pending = BytecodeFunction(
+    name=None,
+    signature_name=None,
+    enclosing_strict=false,
+    params=[],
+    rest_param=None,
+    source_body=[],
+    preparation=BytecodePreparation(),
+    body_has_use_strict=false,
+    call_self_name=false,
+    needs_arguments_object=false,
+    needs_own_env=false,
+    local_names=[],
+    local_indices=Map([]),
+    env_slot_names=[],
+    env_var_hoist_names=[],
+    template_cache_key_prefix="pending",
+    code=[],
+    source_point_owner=SourcePointOwnerId(0),
+    children=[],
+  )
+  let program : BytecodeUnverifiedProgram = { source_stmts: [], main: pending }
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected pending preparation to be rejected")
+  } catch {
+    @errors.InternalError(message~) =>
+      assert_eq(
+        message, "bytecode function preparation was not verified at nested depth 0",
+      )
+    _ => fail("expected the typed preparation guard")
+  }
+}
+
+///|
 fn BytecodeProgram::main_for_wb(self : BytecodeProgram) -> BytecodeFunction {
   self.verified_main.function
 }

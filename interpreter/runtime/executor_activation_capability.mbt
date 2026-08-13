@@ -25,9 +25,9 @@ fn executor_activation_call_name(
 }
 
 ///|
-priv struct ExecutorActivationCapabilitySummary {
-  parameter_count : Int
-  direct_calls : Array[ExecutorActivationDirectCallRequirement]
+pub struct ExecutorActivationCapabilitySummary {
+  priv parameter_count : Int
+  priv direct_calls : Array[ExecutorActivationDirectCallRequirement]
 }
 
 ///|
@@ -337,4 +337,73 @@ fn executor_activation_capability_summary(
       direct_calls~,
     ),
   )
+}
+
+///|
+fn executor_activation_direct_call_requirement_matches(
+  left : ExecutorActivationDirectCallRequirement,
+  right : ExecutorActivationDirectCallRequirement,
+) -> Bool {
+  if left.argument_count != right.argument_count {
+    false
+  } else {
+    match (left.target, right.target) {
+      (
+        ExecutorActivationDirectBinding(left_name),
+        ExecutorActivationDirectBinding(right_name),
+      ) => left_name == right_name
+      (
+        ExecutorActivationStaticOwnDataMember(left_receiver, left_property),
+        ExecutorActivationStaticOwnDataMember(right_receiver, right_property),
+      ) => left_receiver == right_receiver && left_property == right_property
+      _ => false
+    }
+  }
+}
+
+///|
+fn executor_activation_capability_summary_matches(
+  left : ExecutorActivationCapabilitySummary,
+  right : ExecutorActivationCapabilitySummary,
+) -> Bool {
+  if left.parameter_count != right.parameter_count ||
+    left.direct_calls.length() != right.direct_calls.length() {
+    return false
+  }
+  for index in 0..<left.direct_calls.length() {
+    if !executor_activation_direct_call_requirement_matches(
+        left.direct_calls[index],
+        right.direct_calls[index],
+      ) {
+      return false
+    }
+  }
+  true
+}
+
+///|
+// Compiler preparation may retain this immutable proof so executor creation
+// never needs to inspect an executable source tree. The tree-walk path keeps
+// using the private helper above for its source-backed functions.
+pub fn prepare_executor_activation_capability(
+  params : Array[String],
+  body : Array[@ast.Stmt],
+) -> ExecutorActivationCapabilitySummary? {
+  executor_activation_capability_summary(params, body)
+}
+
+///|
+// Finalization uses this runtime-owned semantic check to ensure an opaque
+// proof was prepared from this function's own parameters and source body.
+pub fn verify_executor_activation_capability(
+  params : Array[String],
+  body : Array[@ast.Stmt],
+  summary : ExecutorActivationCapabilitySummary?,
+) -> Bool {
+  match (executor_activation_capability_summary(params, body), summary) {
+    (None, None) => true
+    (Some(expected), Some(actual)) =>
+      executor_activation_capability_summary_matches(expected, actual)
+    _ => false
+  }
 }

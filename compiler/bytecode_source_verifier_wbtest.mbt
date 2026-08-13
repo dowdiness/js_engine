@@ -161,9 +161,12 @@ fn bytecode_function_with_source_unit_for_wb(
 ) -> BytecodeFunction {
   BytecodeFunction(
     name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
     params=function.params,
     rest_param=function.rest_param,
     source_body=function.source_body,
+    preparation=function.preparation,
     body_has_use_strict=function.body_has_use_strict,
     call_self_name=function.call_self_name,
     needs_arguments_object=function.needs_arguments_object,
@@ -179,6 +182,7 @@ fn bytecode_function_with_source_unit_for_wb(
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     children=function.children,
+    header_provenance=function.header_provenance,
   )
 }
 
@@ -229,9 +233,12 @@ fn bytecode_function_with_source_point_owner_for_wb(
   })
   BytecodeFunction(
     name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
     params=function.params,
     rest_param=function.rest_param,
     source_body=function.source_body,
+    preparation=function.preparation,
     body_has_use_strict=function.body_has_use_strict,
     call_self_name=function.call_self_name,
     needs_arguments_object=function.needs_arguments_object,
@@ -247,6 +254,7 @@ fn bytecode_function_with_source_point_owner_for_wb(
     source_points=function.source_points,
     instruction_sources~,
     children~,
+    header_provenance=function.header_provenance,
   )
 }
 

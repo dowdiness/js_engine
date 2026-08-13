@@ -545,12 +545,137 @@ fn bytecode_unary_contract(op : @ast.UnaryOp) -> BytecodeInstructionContract {
 }
 
 ///|
+priv enum BytecodeLexicalKind {
+  BytecodeLet
+  BytecodeConst
+}
+
+///|
+// Immutable declaration facts prepared from a function's own body.  These
+// facts intentionally use compiler-owned tags and source locations rather
+// than runtime Binding values or executable AST nodes.
+priv struct BytecodeLexicalBinding {
+  kind : BytecodeLexicalKind
+  name : String
+  loc : @token.Loc
+}
+
+///|
+priv struct BytecodeFunctionDeclaration {
+  name : String
+  child_index : Int
+  loc : @token.Loc
+}
+
+///|
+// The closed bytecode consumer is the independent authority for a child's
+// effective signature policy.  Its payload is retained only for named forms.
+#warnings("-unused_constructor")
+priv enum BytecodeFunctionConsumerForm {
+  DeclareFunctionConsumer(String)
+  FunctionConsumer
+  NamedFunctionConsumer(String)
+  MethodFunctionConsumer
+  ComputedMethodFunctionConsumer
+  ArrowFunctionConsumer
+} derive(Eq)
+
+///|
+// Lowering provenance binds a child header to its original source body and
+// parent consumer.  It contains no executable AST beyond the temporary body
+// identity needed by the verifier.
+#warnings("-unused_field")
+priv struct BytecodeHeaderProvenance {
+  origin_body : Array[@ast.Stmt]
+  name : String?
+  signature_name : String?
+  params : Array[String]
+  rest_param : String?
+  enclosing_strict : Bool
+  parent_source_point_owner : SourcePointOwnerId
+  child_index : Int
+  consumer_form : BytecodeFunctionConsumerForm
+}
+
+///|
+#warnings("-unused_value")
+fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
+  origin_body : Array[@ast.Stmt],
+  name : String?,
+  params : Array[String],
+  rest_param : String?,
+  enclosing_strict : Bool,
+  parent_source_point_owner : SourcePointOwnerId,
+  child_index : Int,
+  consumer_form : BytecodeFunctionConsumerForm,
+) -> BytecodeHeaderProvenance {
+  {
+    origin_body,
+    name,
+    signature_name: match consumer_form {
+      MethodFunctionConsumer
+      | ComputedMethodFunctionConsumer
+      | ArrowFunctionConsumer => None
+      _ => name
+    },
+    params,
+    rest_param,
+    enclosing_strict,
+    parent_source_point_owner,
+    child_index,
+    consumer_form,
+  }
+}
+
+// Canonical signature inputs captured after the runtime-owned validator has
+// accepted a function. The parameter array is a private copy, so preparation
+// never shares the lowering/runtime input array.
+
+///|
+priv struct BytecodeSignatureValidation {
+  effective_name : String?
+  enclosing_strict : Bool
+  params : Array[String]
+  rest_param : String?
+  body_has_use_strict : Bool
+}
+
+///|
+priv struct BytecodePreparation {
+  lexical_bindings : Array[BytecodeLexicalBinding]
+  function_declarations : Array[BytecodeFunctionDeclaration]
+  signature_validation : BytecodeSignatureValidation?
+  activation_capability : @runtime.ExecutorActivationCapabilitySummary?
+}
+
+///|
+fn BytecodePreparation::BytecodePreparation(
+  lexical_bindings? : Array[BytecodeLexicalBinding] = [],
+  function_declarations? : Array[BytecodeFunctionDeclaration] = [],
+  signature_validation? : BytecodeSignatureValidation? = None,
+  activation_capability? : @runtime.ExecutorActivationCapabilitySummary? = None,
+) -> BytecodePreparation {
+  {
+    lexical_bindings,
+    function_declarations,
+    signature_validation,
+    activation_capability,
+  }
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
+  signature_name : String?
+  enclosing_strict : Bool
   params : Array[String]
   rest_param : String?
+  // Temporary source metadata retained until the remaining AST representation
+  // debt is removed. VM preparation and execution must use the verified facts
+  // below, never traverse this tree.
   source_body : Array[@ast.Stmt]
+  preparation : BytecodePreparation
   body_has_use_strict : Bool
   call_self_name : Bool
   // Direct eval can read `arguments` by string, so only skip arguments-object
@@ -580,14 +705,18 @@ priv struct BytecodeFunction {
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
+  header_provenance : BytecodeHeaderProvenance?
 }
 
 ///|
 fn BytecodeFunction::BytecodeFunction(
   name~ : String?,
+  signature_name~ : String?,
+  enclosing_strict~ : Bool,
   params~ : Array[String],
   rest_param~ : String?,
   source_body~ : Array[@ast.Stmt],
+  preparation~ : BytecodePreparation,
   body_has_use_strict~ : Bool,
   call_self_name~ : Bool,
   needs_arguments_object~ : Bool,
@@ -603,12 +732,16 @@ fn BytecodeFunction::BytecodeFunction(
   source_points? : Array[SourcePoint] = [],
   instruction_sources? : Array[Array[SourcePointId]] = [],
   children~ : Array[BytecodeFunction],
+  header_provenance? : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction {
   {
     name,
+    signature_name,
+    enclosing_strict,
     params,
     rest_param,
     source_body,
+    preparation,
     body_has_use_strict,
     call_self_name,
     needs_arguments_object,
@@ -624,6 +757,7 @@ fn BytecodeFunction::BytecodeFunction(
     source_points,
     instruction_sources,
     children,
+    header_provenance,
   }
 }
 
@@ -643,6 +777,7 @@ fn BytecodeFunction::resolve_source_point(
 // the verification provenance attached to every nested activation.
 priv struct VerifiedBytecodeFunction {
   function : BytecodeFunction
+  preparation : BytecodePreparation
 }
 
 ///|
@@ -650,7 +785,8 @@ fn VerifiedBytecodeFunction::child(
   self : VerifiedBytecodeFunction,
   index : Int,
 ) -> VerifiedBytecodeFunction {
-  { function: self.function.children[index] }
+  let function = self.function.children[index]
+  { function, preparation: function.preparation }
 }
 
 ///|
@@ -662,6 +798,8 @@ priv struct BytecodeBuilder {
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   children : Array[BytecodeFunction]
+  function_declarations : Array[BytecodeFunctionDeclaration]
+  enclosing_strict : Bool
   local_names : Array[String]
   local_indices : Map[String, Int]
   env_slot_names : Array[String]
@@ -769,6 +907,7 @@ fn BytecodeBuilder::BytecodeBuilder(
   source_point_owner : SourcePointOwnerId,
   owner_allocator : Ref[SourcePointOwnerAllocator],
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
+  enclosing_strict? : Bool = false,
 ) -> BytecodeBuilder {
   {
     code: [],
@@ -778,6 +917,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     source_points: [],
     instruction_sources: [],
     children: [],
+    function_declarations: [],
+    enclosing_strict,
     local_names: plan.names,
     local_indices: plan.indices,
     env_slot_names: plan.env_names,

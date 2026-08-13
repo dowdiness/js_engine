@@ -587,6 +587,7 @@ fn verify_bytecode_function_frame_shapes(
 fn finalize_bytecode_program(
   program : BytecodeUnverifiedProgram,
 ) -> BytecodeProgram raise Error {
+  verify_bytecode_preparation(program.main, [])
   verify_bytecode_source_metadata(program)
   verify_bytecode_control_flow(program)
   verify_bytecode_indexed_operands(program)
@@ -600,7 +601,7 @@ fn finalize_bytecode_program(
 fn make_verified_bytecode_function(
   function : BytecodeFunction,
 ) -> VerifiedBytecodeFunction {
-  { function, }
+  { function, preparation: function.preparation }
 }
 
 ///|

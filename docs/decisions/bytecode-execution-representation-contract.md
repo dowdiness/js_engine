@@ -174,13 +174,41 @@ Four current forms cross the intended boundary.
 - `AssignPattern(@ast.Pattern)` carries executable AST. It must become a private
   destructuring plan or explicit lowered operations. Small closed tags such as
   `@ast.BinOp` may remain temporarily as operation identifiers only; they must
-  never trigger AST evaluation.
+  never trigger AST evaluation. `AssignPattern(@ast.Pattern)` is intentionally
+  unchanged in #899; this slice does not broaden destructuring eligibility.
+  Issue #636 owns its next preparation/lowering migration.
 - `BytecodeFunction.source_body : Array[@ast.Stmt]` and
-  `BytecodeProgram.source_stmts : Array[@ast.Stmt]` retain source trees. They
-  feed lexical hoisting, function-signature validation, root-script strictness,
-  early errors, declaration setup, and TDZ setup during execution. Prepared
-  facts and verified metadata must preserve the timing, error order, and source
-  locations of that work while removing this Stage 4–6 debt.
+  `BytecodeProgram.source_stmts : Array[@ast.Stmt]` retain source trees. The
+  bytecode preparation product now owns lexical-binding order, function
+  declaration order, canonical function-signature inputs and validation, and
+  the immutable runtime activation-capability proof before verification; VM
+  startup applies those verified facts through runtime-owned binding, TDZ, and
+  executor-construction operations. Signature preparation retains the
+  effective name policy, enclosing strictness, copied parameter names, rest
+  parameter, and body-derived strictness without an AST payload. Before a
+  function becomes verified, the verifier independently
+  re-derives its lexical facts and function-declaration names/locations from
+  that function's retained source body. It compares those facts with the
+  preparation records and with the ordered `DeclareFunction` consumers in the
+  function's own code, including child indices, the referenced child name, and
+  the exact retained source-body identity for the selected child; it performs
+  the same check recursively for every child. It also compares the current
+  signature inputs with those canonical facts and re-runs the existing runtime
+  signature validator; any mismatch is a compiler provenance defect rather
+  than a newly selected JavaScript source diagnostic. `source_body`
+  remains only as temporary source metadata while the remaining AST
+  representation debt is tracked; bytecode VM function creation no longer
+  passes it to runtime or traverses it. Tree-walk's
+  source-backed classified-function factories still use `source_body` for
+  their existing capability admission; that is outside the bytecode VM
+  execution boundary. `source_stmts` remains the root script envelope's input
+  for strictness, early errors, and global declaration setup. These remaining
+  consumers are non-executable AST boundaries. The typed VM AST audit resolves
+  every executable identifier through MoonBit's inferred hover type, fails
+  closed on unresolved candidates, rejects inferred AST binders/expressions
+  and `source_body` access (including aliases), and permits only the
+  structurally identified `AssignPattern(pattern)` instruction payload retained
+  for #636.
 - `LoadConst(Value)` and `SetCompletionValue(Value)` embed runtime
   representation. The instruction stream must instead contain private literal
   descriptors or recipes. The verifier checks them, and execution materializes

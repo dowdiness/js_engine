@@ -297,6 +297,10 @@ pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, Pro
 
 pub fn make_plain_object() -> Value
 
+pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, rest_param? : String?) -> Value
+
+pub fn[T : ExecutorCode] make_prepared_executor_function(String?, Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
+
 pub fn make_tagged_template_object(Array[(String, String?)]) -> Value
 
 pub fn mark_as_method(Value) -> Value
@@ -330,6 +334,8 @@ pub fn ordinary_set_prototype(Interpreter, ObjectData, Value) -> Bool
 pub fn own_string_property_names(Interpreter, Value) -> Value raise
 
 pub fn own_symbol_properties(Interpreter, Value) -> Value raise
+
+pub fn prepare_executor_activation_capability(Array[String], Array[@ast.Stmt]) -> ExecutorActivationCapabilitySummary?
 
 pub fn proxy_define_property(Interpreter, ProxyData, Value, PartialDescriptor) -> Bool raise
 
@@ -450,6 +456,8 @@ pub fn validate_function_signature(Bool, String?, Array[String], Array[@ast.Stmt
 pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?, Array[@ast.Stmt]) -> Unit raise
 
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
+
+pub fn verify_executor_activation_capability(Array[String], Array[@ast.Stmt], ExecutorActivationCapabilitySummary?) -> Bool
 
 pub fn with_active_realm_state_unit(RealmState, () -> Unit) -> Unit
 
@@ -609,6 +617,10 @@ pub(all) struct ExecutionPolicyError {
 }
 pub fn ExecutionPolicyError::message(Self) -> String
 pub fn ExecutionPolicyError::parameter_code(Self) -> String
+
+pub struct ExecutorActivationCapabilitySummary {
+  // private fields
+}
 
 pub enum ExecutorActivationCompletion {
   ExecutorActivationCompletionNormal(Value)
