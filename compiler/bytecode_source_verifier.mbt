@@ -259,7 +259,7 @@ fn bytecode_instruction_transfer(
     | DeleteProperty(_)
     | SetFunctionName(_)
     | ToObjectLiteralPropertyKey
-    | AssignPattern(_) => Fallthrough(bytecode_stack_effect(1, 0))
+    | AssignDestructure(_) => Fallthrough(bytecode_stack_effect(1, 0))
     DefineBinding(_, _, _)
     | DefineLocal(_, _)
     | DefineEnvSlot(_, _)
@@ -788,7 +788,7 @@ fn bytecode_indexed_operand(
     | SetComputed(_)
     | SetForInProperty(_, _)
     | SetForInComputed(_)
-    | AssignPattern(_)
+    | AssignDestructure(_)
     | PreparePropertyCall(_, _)
     | PreparePlainPropertyCall(_, _)
     | PrepareComputedCall(_)

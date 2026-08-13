@@ -2086,7 +2086,7 @@ test "bytecode keeps destructuring assignment functions on environment bindings"
   let mut saw_assign_pattern = false
   for instr in child.code {
     match instr {
-      AssignPattern(_) => saw_assign_pattern = true
+      AssignDestructure(_) => saw_assign_pattern = true
       _ => ()
     }
   }
@@ -2096,14 +2096,14 @@ test "bytecode keeps destructuring assignment functions on environment bindings"
 ///|
 test "RED: bytecode destructuring execution has no AST pattern operand" {
   let bytecode = parse_bytecode_for_wb("var [x] = [1]; x;")
-  let mut saw_ast_pattern = false
+  let mut saw_destructure_plan = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      AssignPattern(_) => saw_ast_pattern = true
+      AssignDestructure(_) => saw_destructure_plan = true
       _ => ()
     }
   }
-  assert_false(saw_ast_pattern)
+  assert_true(saw_destructure_plan)
 }
 
 ///|
@@ -2123,7 +2123,7 @@ test "bytecode keeps var destructuring declaration functions on environment bind
   let mut saw_assign_pattern = false
   for instr in child.code {
     match instr {
-      AssignPattern(_) => saw_assign_pattern = true
+      AssignDestructure(_) => saw_assign_pattern = true
       _ => ()
     }
   }
@@ -3270,7 +3270,7 @@ test "bytecode lowers for-in destructuring assignment targets" {
   for instr in bytecode.main_for_wb().code {
     match instr {
       StartForIn => saw_start = true
-      AssignPattern(_) => saw_assign_pattern = true
+      AssignDestructure(_) => saw_assign_pattern = true
       _ => ()
     }
   }
