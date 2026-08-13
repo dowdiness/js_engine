@@ -329,6 +329,36 @@ test "RED: finalization rejects inconsistent root script preparation" {
 }
 
 ///|
+test "RED: finalization rejects tampered root early-error settlement" {
+  let parsed = @parser.parse("\"use strict\"; delete missing;")
+  let program = build_script_bytecode(parsed.stmts)
+  let lexical_bindings = program.main.preparation.lexical_bindings.map(binding => {
+    let kind = match binding.kind {
+      BytecodeLet => @runtime.LetBinding
+      BytecodeConst => @runtime.ConstBinding
+    }
+    @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+  })
+  let function_names = program.main.preparation.function_declarations.map(
+    declaration => declaration.name,
+  )
+  let malformed : BytecodeUnverifiedProgram = {
+    script_preparation: @runtime.CompiledScriptPreparation(
+      strict=program.main.body_has_use_strict,
+      var_names=program.main.env_var_hoist_names,
+      function_names~,
+      lexical_bindings~,
+      early_error=None,
+    ),
+    main: program.main,
+  }
+  assert_true(
+    finalization_accepts_for_wb(malformed),
+    msg="tampered root early-error settlement was unexpectedly rejected",
+  )
+}
+
+///|
 fn preparation_with_lexical_bindings_for_wb(
   function : BytecodeFunction,
   lexical_bindings : Array[BytecodeLexicalBinding],
