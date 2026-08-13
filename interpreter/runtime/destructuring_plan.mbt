@@ -3,11 +3,11 @@
 // bytecode. The fields are private and the constructors copy their input
 // arrays, so a verified plan cannot be mutated by its lowering caller.
 pub struct DestructurePlan {
-  node : DestructurePlanNode
+  priv node : DestructurePlanNode
 }
 
 ///|
-pub enum DestructurePlanNode {
+priv enum DestructurePlanNode {
   BindName(String)
   ArrayPattern(Array[DestructurePlan?], DestructurePlan?)
   ObjectPattern(Array[DestructurePropertyPlan], DestructurePlan?)
@@ -15,8 +15,8 @@ pub enum DestructurePlanNode {
 
 ///|
 pub struct DestructurePropertyPlan {
-  key : String
-  target : DestructurePlan
+  priv key : String
+  priv target : DestructurePlan
 }
 
 ///|

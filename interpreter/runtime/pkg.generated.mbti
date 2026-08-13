@@ -575,18 +575,11 @@ pub(all) struct ClassFieldInit {
 }
 
 pub struct DestructurePlan {
-  node : DestructurePlanNode
-}
-
-pub enum DestructurePlanNode {
-  BindName(String)
-  ArrayPattern(Array[DestructurePlan?], DestructurePlan?)
-  ObjectPattern(Array[DestructurePropertyPlan], DestructurePlan?)
+  // private fields
 }
 
 pub struct DestructurePropertyPlan {
-  key : String
-  target : DestructurePlan
+  // private fields
 }
 
 pub(all) struct Environment {

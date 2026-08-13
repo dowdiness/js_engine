@@ -1,4 +1,4 @@
-.PHONY: build test external-consumer-test diago-readiness stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test external-consumer-test diago-readiness stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
@@ -125,7 +125,7 @@ architecture-state-audit-mbt-test:
 	moon test --target native tooling/architecture_state_audit
 
 # Runs the Stage 0 architecture guardrails.
-architecture-audit: architecture-state-audit architecture-boundary-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit
+architecture-audit: architecture-state-audit architecture-boundary-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit
 
 # Guards the resolved compiler/runtime call graph for the bytecode activation lifecycle.
 architecture-bytecode-semantic-audit:
@@ -134,6 +134,10 @@ architecture-bytecode-semantic-audit:
 # Rejects typed executable AST access from the bytecode VM, including aliases.
 architecture-bytecode-ast-audit:
 	python3 scripts/audit_bytecode_vm_ast_boundary.py --root . --self-test
+
+# Keeps the verified destructuring plan opaque outside the runtime package.
+architecture-bytecode-plan-audit:
+	python3 scripts/audit_destructuring_plan_interface.py
 
 # Runs the MoonBit architecture import-boundary and representation-access audit.
 architecture-boundary-audit: architecture-boundary-audit-mbt
