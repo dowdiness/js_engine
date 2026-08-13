@@ -17,6 +17,25 @@
   --warning: #ffd166;
   --danger: #ffad9e;
   --ink: #0c1220;
+  --editor-text: #e8edf5;
+  --editor-active-line: rgb(141 226 255 / 8%);
+  --editor-selection: #264c68;
+  --editor-selection-text: #f8fbff;
+  --editor-syntax-comment: #8295aa;
+  --editor-syntax-keyword: #d6a7ff;
+  --editor-syntax-operator: #8de2ff;
+  --editor-syntax-string: #b8f28a;
+  --editor-syntax-number: #ffd166;
+  --editor-syntax-boolean: #ffb4a2;
+  --editor-syntax-null: #ffb4a2;
+  --editor-syntax-regexp: #f2b5d4;
+  --editor-syntax-function: #8de2ff;
+  --editor-syntax-definition: #d7f98a;
+  --editor-syntax-property: #a6e3ff;
+  --editor-syntax-type: #e9c46a;
+  --editor-syntax-punctuation: #aebbd0;
+  --editor-syntax-bracket: #c6d5e8;
+  --editor-syntax-invalid: #ff8f8f;
   --space-1: 0.35rem;
   --space-2: 0.55rem;
   --space-3: 0.75rem;
@@ -47,8 +66,7 @@ body {
 }
 
 button,
-select,
-textarea {
+select {
   font: inherit;
 }
 
@@ -84,8 +102,7 @@ button:active {
 }
 
 button:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+select:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
@@ -314,38 +331,134 @@ p {
   text-wrap: balance;
 }
 
-textarea,
+#editor,
 .output {
   flex: 1 1 auto;
   width: 100%;
   min-height: 0;
-  color: var(--text);
   border: 1px solid var(--line-strong);
   border-radius: 0.45rem;
   background: var(--editor);
+}
+
+#editor {
+  overflow: hidden;
+  color: var(--editor-text);
+  font-family: "SFMono-Regular", "Cascadia Code", "JetBrains Mono",
+    "Roboto Mono", "Liberation Mono", monospace;
+  font-size: 1rem;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
+}
+
+.editor-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 1.8rem;
+  padding: 0.45rem 0.25rem 0;
+  color: var(--muted);
+  font-family: "SFMono-Regular", "Cascadia Code", "JetBrains Mono",
+    "Roboto Mono", "Liberation Mono", monospace;
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.editor-status span {
+  white-space: nowrap;
+}
+
+.editor-status-separator {
+  color: var(--line-strong);
+}
+
+.output {
+  color: var(--text);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;
   line-height: 1.55;
 }
 
-textarea {
-  padding: var(--space-4);
-  resize: none;
+#editor .cm-editor {
+  height: 100%;
+  color: var(--editor-text);
+  border: 0;
+  background: var(--editor);
+  font-family: inherit;
+}
+
+#editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+  font-size: 1rem;
+  font-variant-ligatures: none;
+  line-height: 1.65;
+}
+
+#editor .cm-content {
+  min-height: 100%;
+  padding: 1.05rem 1.25rem;
+  caret-color: var(--accent);
+  font-weight: 500;
+  letter-spacing: 0.01em;
   tab-size: 2;
 }
 
-textarea:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -2px;
-  border-color: var(--line-strong);
-  box-shadow: none;
+#editor .cm-cursor {
+  border-left: 2px solid var(--accent);
+  margin-left: -1px;
 }
 
-textarea::selection,
-.output::selection {
-  color: var(--ink);
-  background: var(--accent);
+#editor .cm-dropCursor {
+  border-left: 2px solid var(--focus);
 }
+
+
+#editor .cm-gutters {
+  color: var(--editor-syntax-comment);
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--editor);
+  font-family: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0;
+  line-height: 1.65;
+  padding-inline: 0.4rem 0.15rem;
+}
+
+#editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 2.25rem;
+  padding: 0 0.4rem 0 0.15rem;
+  text-align: right;
+}
+
+#editor .cm-activeLine,
+#editor .cm-activeLineGutter {
+  background: var(--editor-active-line);
+}
+
+#editor:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+#editor .cm-editor.cm-focused,
+#editor .cm-content:focus {
+  outline: none;
+}
+
+#editor .cm-selectionBackground,
+#editor .cm-content ::selection {
+  color: var(--editor-selection-text);
+  background: var(--editor-selection);
+}
+
+
+/*
+ * CodeMirror's selection layer is positioned independently from the text
+ * selection, so keep the editor's content readable in both states.
+ */
 
 .output {
   margin: 0;
@@ -472,7 +585,7 @@ select {
     padding: var(--space-3);
   }
 
-  textarea {
+  #editor .cm-content {
     min-height: 20rem;
     padding: var(--space-3);
   }

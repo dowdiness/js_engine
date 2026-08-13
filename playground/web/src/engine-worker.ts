@@ -9,6 +9,8 @@ import {
   type WireLocation,
   type WirePosition,
 } from "./protocol";
+import { isSourceWithinLimit } from "./playground-contracts";
+
 const workerScope = self as DedicatedWorkerGlobalScope;
 const INVALID_REQUEST_ID = "invalid-request";
 
@@ -18,7 +20,7 @@ workerScope.onmessage = (event: MessageEvent<unknown>) => {
     const sourceTooLarge =
       isRecord(request) &&
       typeof request.source === "string" &&
-      request.source.length > MAX_SOURCE_LENGTH;
+      !isSourceWithinLimit(request.source, MAX_SOURCE_LENGTH);
     const requestId =
       isRecord(request) &&
       typeof request.requestId === "string" &&

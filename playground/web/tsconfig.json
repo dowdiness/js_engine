@@ -6,6 +6,7 @@
     "lib": ["ES2022", "DOM", "WebWorker"],
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
   "include": ["src", "vite.config.ts", "playwright.config.ts", "tests"]

@@ -1,5 +1,11 @@
 import "./style.css";
 import {
+  diagnosticSelection,
+  isCurrentResponse,
+  isCurrentWorker,
+  isSourceWithinLimit,
+} from "./playground-contracts";
+import {
   MAX_SOURCE_LENGTH,
   PROTOCOL_VERSION,
   type WorkerRequest,
@@ -17,7 +23,7 @@ import {
   writeSource,
 } from "./view";
 
-const HARD_TIMEOUT_MS = 2_000;
+const HARD_TIMEOUT_MS = 3_000;
 
 const runButton = document.querySelector<HTMLButtonElement>("#run");
 const stopButton = document.querySelector<HTMLButtonElement>("#stop");
@@ -53,9 +59,19 @@ function exampleLabel(name: string): string {
     .join(" ");
 }
 
-let worker = spawnWorker();
+type WorkerSlot = {
+  id: number;
+  instance: Worker;
+};
+
+let nextWorkerId = 0;
 let active:
-  | { requestId: string; timerId: number; worker: Worker; source: string }
+  | {
+      requestId: string;
+      timerId: number;
+      worker: WorkerSlot;
+      source: string;
+    }
   | undefined;
 
 runButton.addEventListener("click", () => run());
@@ -81,7 +97,7 @@ document.addEventListener("keydown", (event) => {
 function run(): void {
   stopActive("stopped");
   const source = readSource();
-  if (source.length > MAX_SOURCE_LENGTH) {
+  if (!isSourceWithinLimit(source, MAX_SOURCE_LENGTH)) {
     renderFailed({
       protocolVersion: PROTOCOL_VERSION,
       requestId: "source-too-large",
@@ -104,12 +120,11 @@ function run(): void {
   }
 
   const requestId = crypto.randomUUID();
-  const executingWorker = worker;
+  const executingWorker = spawnWorker();
   const timerId = window.setTimeout(() => {
     if (!active || active.requestId !== requestId) return;
-    executingWorker.terminate();
+    executingWorker.instance.terminate();
     active = undefined;
-    worker = spawnWorker();
     renderTerminated({
       protocolVersion: PROTOCOL_VERSION,
       requestId,
@@ -131,16 +146,15 @@ function run(): void {
     operation: "run",
     source,
   };
-  executingWorker.postMessage(request);
+  executingWorker.instance.postMessage(request);
 }
 
 function stopActive(reason: "stopped"): void {
   if (!active) return;
   window.clearTimeout(active.timerId);
-  active.worker.terminate();
+  active.worker.instance.terminate();
   const requestId = active.requestId;
   active = undefined;
-  worker = spawnWorker();
   renderTerminated({
     protocolVersion: PROTOCOL_VERSION,
     requestId,
@@ -149,7 +163,9 @@ function stopActive(reason: "stopped"): void {
   });
 }
 
-function spawnWorker(): Worker {
+function spawnWorker(): WorkerSlot {
+  const workerId = nextWorkerId;
+  nextWorkerId += 1;
   const createdWorker = new Worker(
     new URL("./engine-worker.ts", import.meta.url),
     { type: "module" },
@@ -162,31 +178,54 @@ function spawnWorker(): Worker {
       const response = event.data;
       if (
         !currentRun ||
-        currentRun.worker !== createdWorker ||
-        response.requestId !== currentRun.requestId
+        !isCurrentResponse(
+          {
+            requestId: currentRun.requestId,
+            workerId: currentRun.worker.id,
+          },
+          response,
+          workerId,
+        )
       ) {
         return;
       }
 
       window.clearTimeout(currentRun.timerId);
       active = undefined;
+      currentRun.worker.instance.terminate();
       if (response.kind === "completed") {
         renderCompleted(response.output, response.result);
       } else if (response.kind === "failed") {
-        renderFailed(response, readSource() === currentRun.source);
+        const selection = diagnosticSelection(
+          currentRun.source,
+          readSource(),
+          response.diagnostic.location,
+        );
+        renderFailed(response, selection);
       } else {
         renderTerminated(response);
       }
     },
   );
 
-  createdWorker.addEventListener("error", (event) => {
-    if (!active || active.worker !== createdWorker) return;
-    window.clearTimeout(active.timerId);
-    const requestId = active.requestId;
+  createdWorker.addEventListener("error", event => {
+    const currentRun = active;
+    if (
+      !currentRun ||
+      !isCurrentWorker(
+        {
+          requestId: currentRun.requestId,
+          workerId: currentRun.worker.id,
+        },
+        workerId,
+      )
+    ) {
+      return;
+    }
+    window.clearTimeout(currentRun.timerId);
+    const requestId = currentRun.requestId;
     active = undefined;
     createdWorker.terminate();
-    worker = spawnWorker();
     renderFailed({
       protocolVersion: PROTOCOL_VERSION,
       requestId,
@@ -207,7 +246,7 @@ function spawnWorker(): Worker {
     });
   });
 
-  return createdWorker;
+  return { id: workerId, instance: createdWorker };
 }
 
 writeSource(examples[examplePicker.value]);
