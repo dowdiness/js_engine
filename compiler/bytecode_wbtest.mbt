@@ -436,6 +436,31 @@ test "finalization rejects a valid but wrong root early-error settlement" {
 }
 
 ///|
+test "finalization rejects coordinated foreign root settlement replacement" {
+  let program = build_script_bytecode(
+    @parser.parse("\"use strict\"; delete missing;").stmts,
+  )
+  let other = build_script_bytecode(@parser.parse("var unrelated;").stmts)
+  let foreign_settlement = other.root_provenance.settlement
+  let malformed : BytecodeUnverifiedProgram = {
+    script_preparation: @runtime.CompiledScriptPreparation::with_early_error_settlement(
+      strict=program.root_provenance.strict,
+      var_names=program.root_provenance.var_names,
+      function_names=program.root_provenance.function_names,
+      lexical_bindings=program.root_provenance.lexical_bindings,
+      settlement=foreign_settlement,
+    ),
+    root_provenance: program.root_provenance.with_settlement(
+      foreign_settlement,
+    ),
+    main: program.main,
+  }
+  assert_preparation_rejected_for_wb(
+    malformed, "coordinated foreign root settlement was accepted",
+  )
+}
+
+///|
 test "finalization rejects coordinated root strictness mutation" {
   let parsed = @parser.parse("\"use strict\"; x = 1; x;")
   let program = build_script_bytecode(parsed.stmts)
