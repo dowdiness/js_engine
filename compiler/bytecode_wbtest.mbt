@@ -450,9 +450,7 @@ test "finalization rejects coordinated foreign root settlement replacement" {
       lexical_bindings=program.root_provenance.lexical_bindings,
       settlement=foreign_settlement,
     ),
-    root_provenance: program.root_provenance.with_settlement(
-      foreign_settlement,
-    ),
+    root_provenance: program.root_provenance.with_settlement(foreign_settlement),
     main: program.main,
   }
   assert_preparation_rejected_for_wb(

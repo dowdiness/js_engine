@@ -41,7 +41,7 @@ pub fn clear_array_length_override(ArrayData) -> Unit
 
 pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
 
-pub fn compiled_script_preparation_matches(CompiledScriptPreparation, Bool, Array[String], Array[String], Array[CompiledScriptLexicalBinding], CompiledScriptEarlyErrorSettlement) -> Bool
+pub fn compiled_script_preparation_matches(CompiledScriptPreparation, Bool, Array[String], Array[String], Array[CompiledScriptLexicalBinding], CompiledScriptEarlyErrorSettlement, provenance_token? : @ref.Ref[Unit]?) -> Bool
 
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
@@ -347,7 +347,7 @@ pub fn own_string_property_names(Interpreter, Value) -> Value raise
 
 pub fn own_symbol_properties(Interpreter, Value) -> Value raise
 
-pub fn prepare_compiled_script_early_error(Array[@ast.Stmt], Bool) -> CompiledScriptEarlyErrorSettlement
+pub fn prepare_compiled_script_early_error(Array[@ast.Stmt], Bool, provenance_token? : @ref.Ref[Unit]?) -> CompiledScriptEarlyErrorSettlement
 
 pub fn prepare_executor_activation_capability(Array[String], Array[@ast.Stmt]) -> ExecutorActivationCapabilitySummary?
 
