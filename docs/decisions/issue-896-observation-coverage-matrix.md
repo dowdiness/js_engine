@@ -29,9 +29,13 @@ instruction, but may not enter the middle of a deeper or different region.
 
 The existing `instruction_sources` table and exhaustive
 `bytecode_instruction_transfer` function provide source roles and successor
-shape, but neither records the active observation context at each instruction.
-The smallest missing fact is therefore a function-local, typed, immutable
-context fact emitted alongside each instruction and checked independently for
-every reachable edge. It must be derived by lowering, use source-point
-identity rather than locations or AST ranges, and be traversed separately from
-the resource-shape state even when both traversals share successor mechanics.
+shape, but neither records the active observation context at each instruction
+or the context after an abrupt edge. The smallest added fact is a pair of
+function-local typed tables emitted by lowering: an immutable context snapshot
+before each instruction, plus an edge fact carrying the expected target
+context for every non-fallthrough successor and every fallthrough whose scope
+pop changes context. The verifier independently checks each edge fact against
+the actual exhaustive transfer and target snapshot, then traverses reachable
+states separately from resource-shape states. Source-point identity anchors
+entries to actual `ObserveStatement`/`ObserveExpression` instructions; no
+locations, AST ranges, runtime state, or second opcode registry are involved.
