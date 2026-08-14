@@ -121,6 +121,133 @@ priv struct BytecodeObservationEdgeContext {
 }
 
 ///|
+// This is an immutable lowering-time witness for observation region membership
+// and successor topology.  The mutable snapshots above remain convenient
+// inputs for the CFG proof, but finalization also compares them with this
+// independently-owned linked fact sequence so coordinated edits cannot
+// rewrite the proof's authority.
+priv enum BytecodeObservationAuthorityContextEntries {
+  EmptyObservationAuthorityContext
+  MoreObservationAuthorityContext(
+    BytecodeObservationContextEntry,
+    BytecodeObservationAuthorityContextEntries
+  )
+}
+
+///|
+priv enum BytecodeObservationAuthoritySuccessors {
+  EmptyObservationAuthoritySuccessors
+  MoreObservationAuthoritySuccessors(
+    Int,
+    BytecodeObservationAuthoritySuccessors
+  )
+}
+
+///|
+priv struct BytecodeObservationAuthorityInstruction {
+  context : BytecodeObservationAuthorityContextEntries
+  successors : BytecodeObservationAuthoritySuccessors
+}
+
+///|
+priv enum BytecodeObservationAuthorityInstructions {
+  EmptyObservationAuthorityInstructions
+  MoreObservationAuthorityInstructions(
+    BytecodeObservationAuthorityInstruction,
+    BytecodeObservationAuthorityInstructions
+  )
+}
+
+///|
+priv struct BytecodeObservationAuthority {
+  program_identity : Ref[Unit]
+  source_point_owner : SourcePointOwnerId
+  code_length : Int
+  instructions : BytecodeObservationAuthorityInstructions
+}
+
+///|
+fn empty_bytecode_observation_authority() -> BytecodeObservationAuthority {
+  {
+    program_identity: { val: () },
+    source_point_owner: SourcePointOwnerId(-1),
+    code_length: -1,
+    instructions: EmptyObservationAuthorityInstructions,
+  }
+}
+
+///|
+fn bytecode_observation_authority_context_entries(
+  active : Array[BytecodeObservationContextEntry],
+) -> BytecodeObservationAuthorityContextEntries {
+  let mut entries = EmptyObservationAuthorityContext
+  for index = active.length() - 1; index >= 0; index = index - 1 {
+    entries = MoreObservationAuthorityContext(active[index], entries)
+  }
+  entries
+}
+
+///|
+fn bytecode_observation_authority_successors(
+  transfer : BytecodeInstructionTransfer,
+  instruction_index : Int,
+) -> BytecodeObservationAuthoritySuccessors {
+  match transfer {
+    Fallthrough(_) =>
+      MoreObservationAuthoritySuccessors(
+        instruction_index + 1,
+        EmptyObservationAuthoritySuccessors,
+      )
+    JumpTo(target, _) | BranchTo(target, _) | SplitTo(target, _, _) => {
+      let tail = match transfer {
+        BranchTo(_, _) | SplitTo(_, _, _) =>
+          MoreObservationAuthoritySuccessors(
+            instruction_index + 1,
+            EmptyObservationAuthoritySuccessors,
+          )
+        _ => EmptyObservationAuthoritySuccessors
+      }
+      MoreObservationAuthoritySuccessors(target, tail)
+    }
+    Terminate(_) => EmptyObservationAuthoritySuccessors
+  }
+}
+
+///|
+fn bytecode_observation_authority_from_lowering(
+  code : Array[BytecodeInstr],
+  observation_contexts : Array[BytecodeObservationContext],
+  source_identity : BytecodeSourceIdentity,
+) -> BytecodeObservationAuthority {
+  let mut instructions = EmptyObservationAuthorityInstructions
+  for index = code.length() - 1; index >= 0; index = index - 1 {
+    let context = if index < observation_contexts.length() {
+      bytecode_observation_authority_context_entries(
+        observation_contexts[index].active,
+      )
+    } else {
+      EmptyObservationAuthorityContext
+    }
+    instructions = MoreObservationAuthorityInstructions(
+      {
+        context,
+        successors: bytecode_observation_authority_successors(
+          bytecode_instruction_transfer(code[index]),
+          index,
+        ),
+      },
+      instructions,
+    )
+  }
+  {
+    program_identity: source_identity.program_identity,
+    source_point_owner: source_identity.source_point_owner,
+    code_length: code.length(),
+    instructions,
+  }
+}
+
+///|
 // Activation eligibility is intentionally a closed compiler-owned decision.
 // The runtime request remains the authority for managed execution; this
 // disposition only decides whether a verified function may start in bytecode.
@@ -861,6 +988,7 @@ priv struct BytecodeFunction {
   instruction_sources : Array[Array[SourcePointId]]
   observation_contexts : Array[BytecodeObservationContext]
   observation_edge_contexts : Array[Array[BytecodeObservationEdgeContext]]
+  observation_authority : BytecodeObservationAuthority
   children : Array[BytecodeFunction]
   header_provenance : BytecodeHeaderProvenance?
 }
@@ -892,6 +1020,7 @@ fn BytecodeFunction::BytecodeFunction(
   instruction_sources? : Array[Array[SourcePointId]] = [],
   observation_contexts? : Array[BytecodeObservationContext] = [],
   observation_edge_contexts? : Array[Array[BytecodeObservationEdgeContext]] = [],
+  observation_authority? : BytecodeObservationAuthority? = None,
   children~ : Array[BytecodeFunction],
   header_provenance? : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction {
@@ -924,6 +1053,10 @@ fn BytecodeFunction::BytecodeFunction(
     instruction_sources,
     observation_contexts,
     observation_edge_contexts,
+    observation_authority: match observation_authority {
+      Some(authority) => authority
+      None => empty_bytecode_observation_authority()
+    },
     children,
     header_provenance,
   }

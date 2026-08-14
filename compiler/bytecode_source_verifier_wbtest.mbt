@@ -185,6 +185,7 @@ fn bytecode_function_with_source_unit_for_wb(
     instruction_sources=function.instruction_sources,
     observation_contexts=function.observation_contexts,
     observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children=function.children,
     header_provenance=function.header_provenance,
   )
@@ -261,6 +262,7 @@ fn bytecode_function_with_source_point_owner_for_wb(
     instruction_sources~,
     observation_contexts=function.observation_contexts,
     observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children~,
     header_provenance=function.header_provenance,
   )
@@ -1643,7 +1645,7 @@ test "frame-shape verifier rejects terminal auxiliary-state residue" {
 }
 
 ///|
-test "frame-shape verifier rejects for-in iterator residue" {
+test "observation authority rejects a mutated ForInNext topology" {
   let program = unverified_source_program_for_wb(
     "var key; for (key in object) { value = key; }",
   )
@@ -1659,20 +1661,13 @@ test "frame-shape verifier rejects for-in iterator residue" {
     }
   }
   guard branch_index is Some(_) else { abort("expected ForInNext instruction") }
-  let mut defect : BytecodeFrameShapeDefect? = None
-  try {
-    let _ = finalize_bytecode_program(program)
-  } catch {
-    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
-    _ => fail("expected typed frame-shape defect")
-  }
-  let defect = defect.unwrap()
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "mutated ForInNext lost its fallthrough successor",
+  )
   match defect.invariant {
-    TerminalShape => ()
-    _ => fail("expected terminal-shape invariant")
+    AuthoritySuccessor => ()
+    _ => fail("expected independently anchored successor invariant")
   }
-  assert_eq(defect.expected.for_in_iterator_depth, 0)
-  assert_eq(defect.actual.for_in_iterator_depth, 1)
 }
 
 ///|
@@ -1857,6 +1852,38 @@ fn mutate_first_control_flow_target_for_wb(
     }
   }
   abort("expected destination-bearing opcode")
+}
+
+///|
+fn mutate_for_in_fallthrough_back_edge_for_wb(
+  function : BytecodeFunction,
+  target : Int,
+) -> Int {
+  let mut for_in_index : Int? = None
+  for instruction_index, instruction in function.code {
+    match instruction {
+      ForInNext(_) => {
+        for_in_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let for_in_index = for_in_index.unwrap()
+  // The loop-back Jump is reached only after the ForInNext fallthrough-side
+  // assignment/body path. Select it by its exact loop-entry target instead of
+  // mutating whichever Jump happens to appear first.
+  for instruction_index, instruction in function.code {
+    match instruction {
+      Jump(actual_target) if instruction_index > for_in_index &&
+        actual_target == for_in_index => {
+        function.code[instruction_index] = Jump(target)
+        return instruction_index
+      }
+      _ => ()
+    }
+  }
+  abort("expected ForInNext fallthrough-side back edge")
 }
 
 ///|
@@ -2087,7 +2114,7 @@ test "RED: finalization rejects contexts coordinated to empty" {
     program, "all reachable observation contexts were shortened",
   )
   match defect.invariant {
-    ContextFact | EdgeFact => ()
+    ContextFact | EdgeFact | AuthorityContext | AuthoritySuccessor => ()
     _ => fail("expected context anchoring invariant")
   }
 }
@@ -2103,8 +2130,63 @@ test "RED: finalization rejects a shortened reachable observation context" {
     program, "reachable statement expression context was shortened",
   )
   match defect.invariant {
-    ContextFact | EdgeFact | EdgePrefix => ()
+    ContextFact
+    | EdgeFact
+    | EdgePrefix
+    | AuthorityContext
+    | AuthoritySuccessor => ()
     _ => fail("expected context edge invariant")
+  }
+}
+
+///|
+test "RED: coordinated target and observation facts bypass a statement" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let mut jump_index : Int? = None
+  let mut original_target : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      JumpIfFalse(target) => {
+        jump_index = Some(instruction_index)
+        original_target = Some(target)
+        break
+      }
+      _ => ()
+    }
+  }
+  let jump_index = jump_index.unwrap()
+  let original_target = original_target.unwrap()
+  let target = load_name_index_for_wb(program.main, "second")
+  let outer_context = program.main.observation_contexts[jump_index]
+  program.main.code[jump_index] = JumpIfFalse(target)
+  program.main.observation_contexts[target] = {
+    active: outer_context.active.copy(),
+  }
+  for
+    instruction_index in (target + 1)..<program.main.observation_contexts.length() {
+    program.main.observation_contexts[instruction_index] = {
+      active: outer_context.active.copy(),
+    }
+  }
+  let mut edge_rewritten = false
+  program.main.observation_edge_contexts[jump_index] = program.main.observation_edge_contexts[jump_index].map(edge => {
+      if edge.successor == original_target {
+        edge_rewritten = true
+        { successor: target, context: { active: outer_context.active.copy() } }
+      } else {
+        edge
+      }
+    },
+  )
+  assert_true(edge_rewritten, msg="expected conditional edge fact")
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "coordinated target/context/edge mutation bypassed an observation region",
+  )
+  match defect.invariant {
+    AuthorityContext | AuthoritySuccessor => ()
+    _ => fail("expected independently anchored authority invariant")
   }
 }
 
@@ -2219,10 +2301,10 @@ test "RED: finalization rejects a ForInNext exit into a later expression middle"
 ///|
 test "RED: finalization rejects a ForIn fallthrough-side back-edge mutation" {
   let program = unverified_source_program_for_wb(
-    "var key; for (key in object) { body; }",
+    "var key; for (key in object) { if (condition) body; }",
   )
   let target = load_name_index_for_wb(program.main, "body")
-  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  let _ = mutate_for_in_fallthrough_back_edge_for_wb(program.main, target)
   assert_preparation_rejected_for_wb(
     program, "ForIn fallthrough-side edge entered the body after its observations",
   )
@@ -2272,7 +2354,11 @@ test "RED: finalization rejects malformed nested child observation entry" {
   )
   assert_eq(defect.function_path, [0])
   match defect.invariant {
-    EdgeFact | EdgePrefix | ContextFact => ()
+    EdgeFact
+    | EdgePrefix
+    | ContextFact
+    | AuthorityContext
+    | AuthoritySuccessor => ()
     _ => fail("expected nested observation edge invariant")
   }
 }
@@ -2282,8 +2368,9 @@ test "observation coverage controls retain normal lowering" {
   let sources = [
     "if (condition) first; else second;", "false && object.value;", "true || fallback;",
     "value ?? fallback;", "object?.[key].next;", "object?.value.next;", "while (condition) { body; }",
-    "do { body; } while (condition);", "for (var i = 0; i < 1; i++) { body; }", "var key; for (key in object) { body; }",
-    "function child() { return childValue; } child();",
+    "while (condition) { break; unreachableStmt; }", "do { body; } while (condition);",
+    "for (var i = 0; i < 1; i++) { body; }", "var key; for (key in object) { body; }",
+    "var key; for (key in object) { break; unreachableStmt; }", "function child() { return childValue; } child();",
   ]
   for source in sources {
     let program = unverified_source_program_for_wb(source)

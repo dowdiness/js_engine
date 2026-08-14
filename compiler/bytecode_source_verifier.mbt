@@ -18,6 +18,9 @@ priv enum BytecodeObservationCoverageInvariant {
   ContextFact
   EdgeFact
   EdgePrefix
+  AuthorityIdentity
+  AuthorityContext
+  AuthoritySuccessor
 }
 
 ///|
@@ -27,6 +30,8 @@ priv enum BytecodeObservationCoverageFact {
   ObservationContextsLength(Int)
   ObservationEdgeContextsLength(Int)
   ObservationContextDepth(Int)
+  ObservationAuthorityLength(Int)
+  ObservationAuthoritySuccessor(Int)
 }
 
 ///|
@@ -369,6 +374,161 @@ fn bytecode_instruction_transfer(
 ///|
 fn bytecode_observation_context_empty() -> BytecodeObservationContext {
   { active: [] }
+}
+
+///|
+fn bytecode_observation_authority_context_entries_equal(
+  actual : BytecodeObservationContext,
+  expected : BytecodeObservationAuthorityContextEntries,
+) -> Bool {
+  let mut index = 0
+  let mut remaining = expected
+  let mut equal = false
+  let mut done = false
+  while !done {
+    match remaining {
+      EmptyObservationAuthorityContext => {
+        equal = index == actual.active.length()
+        done = true
+      }
+      MoreObservationAuthorityContext(entry, tail) =>
+        if index >= actual.active.length() || actual.active[index] != entry {
+          done = true
+        } else {
+          index += 1
+          remaining = tail
+        }
+    }
+  }
+  equal
+}
+
+///|
+fn bytecode_observation_authority_successors_equal(
+  actual : BytecodeObservationAuthoritySuccessors,
+  expected : BytecodeObservationAuthoritySuccessors,
+) -> Bool {
+  let mut actual_remaining = actual
+  let mut expected_remaining = expected
+  let mut equal = false
+  let mut done = false
+  while !done {
+    match (actual_remaining, expected_remaining) {
+      (EmptyObservationAuthoritySuccessors, EmptyObservationAuthoritySuccessors) => {
+        equal = true
+        done = true
+      }
+      (
+        MoreObservationAuthoritySuccessors(actual_target, actual_tail),
+        MoreObservationAuthoritySuccessors(expected_target, expected_tail),
+      ) =>
+        if actual_target != expected_target {
+          done = true
+        } else {
+          actual_remaining = actual_tail
+          expected_remaining = expected_tail
+        }
+      _ => done = true
+    }
+  }
+  equal
+}
+
+///|
+fn verify_bytecode_observation_authority(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let authority = function.observation_authority
+  guard physical_equal(
+      authority.program_identity,
+      function.source_identity.program_identity,
+    ) &&
+    authority.source_point_owner == function.source_point_owner else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      None,
+      None,
+      None,
+      AuthorityIdentity,
+      ObservationAuthorityLength(function.code.length()),
+      ObservationAuthorityLength(authority.code_length),
+    )
+  }
+  guard authority.code_length == function.code.length() else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      None,
+      None,
+      None,
+      AuthorityIdentity,
+      ObservationAuthorityLength(function.code.length()),
+      ObservationAuthorityLength(authority.code_length),
+    )
+  }
+  let mut remaining = authority.instructions
+  for instruction_index, context in function.observation_contexts {
+    match remaining {
+      MoreObservationAuthorityInstructions(fact, tail) => {
+        guard bytecode_observation_authority_context_entries_equal(
+          context,
+          fact.context,
+        ) else {
+          raise bytecode_observation_coverage_defect(
+            function_path,
+            Some(instruction_index),
+            None,
+            None,
+            AuthorityContext,
+            ObservationContextDepth(context.active.length()),
+            ObservationContextDepth(context.active.length()),
+          )
+        }
+        let actual_successors = bytecode_observation_authority_successors(
+          bytecode_instruction_transfer(function.code[instruction_index]),
+          instruction_index,
+        )
+        guard bytecode_observation_authority_successors_equal(
+          actual_successors,
+          fact.successors,
+        ) else {
+          raise bytecode_observation_coverage_defect(
+            function_path,
+            Some(instruction_index),
+            Some(instruction_index),
+            None,
+            AuthoritySuccessor,
+            ObservationAuthoritySuccessor(instruction_index),
+            ObservationAuthoritySuccessor(instruction_index),
+          )
+        }
+        remaining = tail
+      }
+      EmptyObservationAuthorityInstructions =>
+        raise bytecode_observation_coverage_defect(
+          function_path,
+          Some(instruction_index),
+          None,
+          None,
+          AuthorityIdentity,
+          ObservationAuthorityLength(function.code.length()),
+          ObservationAuthorityLength(instruction_index),
+        )
+    }
+  }
+  match remaining {
+    EmptyObservationAuthorityInstructions => ()
+    MoreObservationAuthorityInstructions(_, _) =>
+      raise bytecode_observation_coverage_defect(
+        function_path,
+        None,
+        None,
+        None,
+        AuthorityIdentity,
+        ObservationAuthorityLength(function.code.length()),
+        ObservationAuthorityLength(function.observation_contexts.length()),
+      )
+  }
 }
 
 ///|
@@ -727,6 +887,7 @@ fn verify_bytecode_function_observation_coverage(
       ObservationEdgeContextsLength(function.observation_edge_contexts.length()),
     )
   }
+  verify_bytecode_observation_authority(function, function_path)
   for instruction_index, context in function.observation_contexts {
     for entry in context.active {
       verify_bytecode_observation_entry(

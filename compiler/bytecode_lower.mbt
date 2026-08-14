@@ -1733,6 +1733,11 @@ fn compile_bytecode_function(
   )
   let needs_arguments_obj = bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body)
+  let observation_authority = bytecode_observation_authority_from_lowering(
+    builder.code,
+    builder.observation_contexts,
+    source_identity,
+  )
   BytecodeFunction(
     name~,
     signature_name~,
@@ -1769,6 +1774,7 @@ fn compile_bytecode_function(
     instruction_sources=builder.instruction_sources,
     observation_contexts=builder.observation_contexts,
     observation_edge_contexts=builder.observation_edge_contexts,
+    observation_authority=Some(observation_authority),
     children=builder.children,
     header_provenance~,
   )
