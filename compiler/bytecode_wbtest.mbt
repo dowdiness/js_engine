@@ -380,6 +380,48 @@ test "RED: finalization rejects inconsistent root script preparation" {
 }
 
 ///|
+test "RED: coordinated root provenance and preparation facts cannot bypass main" {
+  let parsed = @parser.parse(
+    "var first; var second; function original() {}",
+  )
+  let program = build_script_bytecode(parsed.stmts)
+  let mutated_root_provenance : BytecodeRootScriptProvenance = {
+    program_identity: program.root_provenance.program_identity,
+    strict: program.root_provenance.strict,
+    var_names: ["second", "first"],
+    function_names: ["replacement"],
+    lexical_bindings: [],
+    name: program.root_provenance.name,
+    signature_name: program.root_provenance.signature_name,
+    enclosing_strict: program.root_provenance.enclosing_strict,
+    params: program.root_provenance.params,
+    rest_param: program.root_provenance.rest_param,
+    body_has_use_strict: program.root_provenance.body_has_use_strict,
+    source_identity: program.root_provenance.source_identity,
+    activation_kind: program.root_provenance.activation_kind,
+    preparation: program.root_provenance.preparation,
+    env_var_hoist_names: program.root_provenance.env_var_hoist_names,
+    settlement: program.root_provenance.settlement,
+  }
+  let mutated_preparation = @runtime.CompiledScriptPreparation::with_early_error_settlement(
+    strict=mutated_root_provenance.strict,
+    var_names=mutated_root_provenance.var_names,
+    function_names=mutated_root_provenance.function_names,
+    lexical_bindings=mutated_root_provenance.lexical_bindings,
+    settlement=mutated_root_provenance.settlement,
+  )
+  let malformed : BytecodeUnverifiedProgram = {
+    script_preparation: mutated_preparation,
+    root_provenance: mutated_root_provenance,
+    main: program.main,
+  }
+  assert_true(
+    finalization_accepts_for_wb(malformed),
+    msg="coordinated root facts bypassed unchanged main provenance",
+  )
+}
+
+///|
 test "finalization rejects tampered root early-error settlement" {
   let parsed = @parser.parse("\"use strict\"; delete missing;")
   let program = build_script_bytecode(parsed.stmts)
