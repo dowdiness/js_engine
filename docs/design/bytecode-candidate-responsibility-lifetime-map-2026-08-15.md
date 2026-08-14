@@ -47,15 +47,22 @@ The compiler must retain this ordering and exact consumer fact for every child;
 names alone are not an identity key. Nested children repeat the same relation
 recursively.
 
+Candidate collection computes effective strictness at each function boundary
+before visiting that function's parameters or body, then passes the result
+through every descendant. The walk records syntactic boundaries and consumer
+forms only; lowering-owned typed outcomes and the builder's logical slot
+counter remain authoritative for unsupported classification and bytecode
+ordering.
+
 ## New responsibility/lifetime map
 
 | Value | Owner | Contents | Lifetime / first effect |
 | --- | --- | --- | --- |
 | `CandidateProgram` | compiler preparation package | root candidate plus immutable compilation identity | returned to caller; no runtime state or callable is created |
-| `CandidateFunction` | compiler preparation core | stable source identity, tree body/consumer metadata, optional verified bytecode, typed `CandidateSelection`, child candidates | retained by the candidate program through later activation planning |
+| `CandidateFunction` | compiler preparation core | stable source identity, tree body/consumer metadata, optional candidate-local bytecode carrier, typed `CandidateSelection`, child candidates | retained by the candidate program through later activation planning |
 | `CandidateSelection` | compiler instruction/lowering core | `UseBytecode` with eligibility or `UseTreeWalker` with typed `LoweringUnsupported` or `ActivationUnsupported` | pure value; consumed only before frame/callable creation |
 | tree candidate payload | compiler core | copied AST body and immutable signature/consumer facts, not an `Environment` or `Value` | later materialization may create a tree callable; preparation itself has no effects |
-| verified bytecode payload | compiler core | existing `VerifiedBytecodeFunction` only when finalization succeeds | later materialization may create executor code; preparation itself creates no frame |
+| candidate bytecode payload | compiler core | function-local `CandidateVerifiedBytecodeFunction` facts plus ordered `CandidateBytecodeChildSlot` outcomes; never an ordinary `VerifiedBytecodeFunction` | later #885 materialization may create executor code; preparation itself creates no frame |
 | source identity | existing per-compilation `BytecodeSourceIdentity` | opaque `Ref[Unit]` compilation token, source unit/owner, parent owner, child index, consumer form | copied with the candidate; rejects foreign compilation and coordinated swaps |
 
 The first runtime-state boundary remains `ExecutorCode::start`/
@@ -64,22 +71,53 @@ preparation ends before `ExecutorCallableData`, `ExecutorCode`,
 `BytecodeFrame`, `Environment`, `Realm`, queue, output, or JavaScript `Value`
 creation.
 
+## Implemented candidate contract
+
+The preparation envelope is compiler-private and is represented by
+`CandidateProgram` → `CandidateFunction` trees. Each function carries a copied
+body and signature/consumer metadata, the existing `BytecodeSourceIdentity`, an
+optional candidate-local bytecode carrier, and one of these typed outcomes:
+
+- `CandidateLowering`: `CandidateLowered` or
+  `CandidateLoweringUnsupported(BytecodeUnsupported)`;
+- `CandidateSelection`: `UseBytecode(BytecodeActivationDisposition)` or
+  `UseTreeWalker(CandidateTreeWalkerReason)`;
+- `CandidateTreeWalkerReason`: lowering unsupported or activation unsupported.
+
+Candidate lowering uses the authoritative `BytecodeBuilder` slot counter while
+compiling an eligible parent. A lowering-unsupported child contributes a typed
+non-executable tree slot; it is never represented by an empty executable
+function. The candidate-local carrier is checked with the ordinary verifier's
+function-local invariants and is never passed to `VerifiedBytecodeFunction` or
+the ordinary execution path. Thus a child's lowering or activation result
+cannot downgrade its ancestor or sibling. The verifier validates the
+per-compilation canonical authority, owner/index/consumer pairing, and
+bytecode/tree identity before returning the envelope. Repeated preparation is
+deterministic apart from the intentionally fresh opaque compilation token.
+
+No preparation path constructs an executor callable, executor code, frame,
+environment, realm, queue, output, or JavaScript value. A parser, verifier,
+internal, or identity error is raised; only the explicitly typed lowering and
+activation unsupported outcomes select the tree walker.
+
 ## Identity proof and decision
 
-The current `BytecodeSourceIdentity` is already sufficient for candidate
-pairing. It combines a per-lowering opaque `program_identity` token with the
-shared source unit, function-local source-point owner, parent owner, child
-index, and consumer form. Existing verifier tests prove that:
+No `CandidateFunctionId` is introduced: the existing `BytecodeSourceIdentity`
+is not trusted as a mutable node field by itself. It combines a per-lowering
+opaque `program_identity` token with the shared source unit, function-local
+source-point owner, parent owner, child index, and consumer form, and is copied
+into an immutable `CandidateIdentityAuthority` before candidate nodes are
+materialized. Existing verifier tests prove that:
 
 - two equal-source compilations have distinct physical program tokens;
 - a child transplanted from another compilation is rejected;
 - same-name sibling source/identity swaps are rejected;
 - coordinated parent/index/consumer provenance mutations are rejected.
 
-Therefore #911 does **not** add `CandidateFunctionId`, a global registry, name
-map, source hash, AST physical equality, or source-text matching. The candidate
-envelope reuses and validates the existing identity facts rather than creating a
-second semantic registry.
+The implementation adds no global registry, name map, source hash, AST physical
+equality, or source-text matching as an identity key. The candidate
+envelope reuses existing identity facts under one canonical authority rather
+than creating a second semantic registry.
 
 ## Unsupported propagation characterization
 

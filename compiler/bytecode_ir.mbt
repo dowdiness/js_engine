@@ -1163,8 +1163,14 @@ priv struct BytecodeBuilder {
   // pairs tree and bytecode functions. Normal lowering leaves this absent.
   candidate_identity_plan : CandidateIdentityPlan?
   // Candidate lowering may retain a bytecode parent while replacing an
-  // unsupported child with a compiler-only placeholder.
+  // unsupported child with a non-executable candidate slot.
   candidate_mode : Bool
+  // Candidate child indices include lowering-unsupported slots even though
+  // those slots are intentionally absent from `children`.
+  mut candidate_child_slot_count : Int
+  // Extended-parameter rejection occurs before add_function receives the
+  // child body; carry that typed skip to the next candidate child boundary.
+  mut candidate_pending_unsupported_child : Bool
 }
 
 ///|
@@ -1311,12 +1317,12 @@ priv struct BytecodeActivationUnsupported {
 // only the function whose activation is being admitted; child functions are
 // selected when their own executor activation starts.
 #warnings("-unused_value")
-fn select_bytecode_function_activation(
-  function : VerifiedBytecodeFunction,
+fn select_bytecode_code_activation(
+  code : Array[BytecodeInstr],
   function_path : Array[Int],
 ) -> Result[BytecodeActivationDisposition, BytecodeActivationUnsupported] {
   let mut has_managed_suspension = false
-  for instruction_index, instruction in function.function.code {
+  for instruction_index, instruction in code {
     match bytecode_instruction_contract(instruction).activation_disposition {
       UnsupportedBeforeActivation(reason) =>
         return Err({
@@ -1329,6 +1335,18 @@ fn select_bytecode_function_activation(
     }
   }
   Ok(if has_managed_suspension { ManagedSuspension } else { SynchronousLeaf })
+}
+
+///|
+// Ordinary verified execution keeps its existing carrier.  Candidate
+// preparation reuses only this pure instruction scan and never constructs a
+// VerifiedBytecodeFunction from its sparse, candidate-local child facts.
+#warnings("-unused_value")
+fn select_bytecode_function_activation(
+  function : VerifiedBytecodeFunction,
+  function_path : Array[Int],
+) -> Result[BytecodeActivationDisposition, BytecodeActivationUnsupported] {
+  select_bytecode_code_activation(function.function.code, function_path)
 }
 
 ///|
@@ -1367,6 +1385,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     has_new_target: false,
     candidate_identity_plan,
     candidate_mode,
+    candidate_child_slot_count: 0,
+    candidate_pending_unsupported_child: false,
   }
 }
 

@@ -971,6 +971,7 @@ fn verify_bytecode_observation_coverage(
 fn verify_bytecode_function_observation_coverage(
   function : BytecodeFunction,
   function_path : Array[Int],
+  recurse? : Bool = true,
 ) -> Unit raise Error {
   let code_length = function.code.length()
   guard function.observation_contexts.length() == code_length else {
@@ -1113,10 +1114,12 @@ fn verify_bytecode_function_observation_coverage(
       Terminate(_) => ()
     }
   }
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_function_observation_coverage(child, child_path)
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      verify_bytecode_function_observation_coverage(child, child_path)
+    }
   }
 }
 
@@ -1271,6 +1274,7 @@ fn verify_bytecode_frame_shapes(
 fn verify_bytecode_function_frame_shapes(
   function : BytecodeFunction,
   function_path : Array[Int],
+  recurse? : Bool = true,
 ) -> Unit raise Error {
   let code_length = function.code.length()
   let states : Array[BytecodeAbstractFrameShape?] = Array::make(
@@ -1362,10 +1366,12 @@ fn verify_bytecode_function_frame_shapes(
       )
     None => ()
   }
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_function_frame_shapes(child, child_path)
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      verify_bytecode_function_frame_shapes(child, child_path)
+    }
   }
 }
 
@@ -1578,6 +1584,7 @@ fn verify_bytecode_shape_operands(
 fn verify_bytecode_function_shape_operands(
   function : BytecodeFunction,
   function_path : Array[Int],
+  recurse? : Bool = true,
 ) -> Unit raise Error {
   let maximum_shape_count = function.code.length()
   let shape_count_exclusive_upper_bound = maximum_shape_count + 1
@@ -1632,10 +1639,12 @@ fn verify_bytecode_function_shape_operands(
       _ => ()
     }
   }
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_function_shape_operands(child, child_path)
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      verify_bytecode_function_shape_operands(child, child_path)
+    }
   }
 }
 
@@ -1780,12 +1789,18 @@ fn verify_bytecode_indexed_operands(
 fn verify_bytecode_function_indexed_operands(
   function : BytecodeFunction,
   function_path : Array[Int],
+  child_count? : Int? = None,
+  recurse? : Bool = true,
 ) -> Unit raise Error {
   for instruction_index, instruction in function.code {
     match bytecode_indexed_operand(instruction) {
       Some((family, actual_operand)) => {
         let exclusive_upper_bound = match family {
-          ChildFunction => function.children.length()
+          ChildFunction =>
+            match child_count {
+              Some(count) => count
+              None => function.children.length()
+            }
           LocalSlot => function.local_names.length()
           EnvironmentSlot => function.env_slot_names.length()
         }
@@ -1798,10 +1813,12 @@ fn verify_bytecode_function_indexed_operands(
       None => ()
     }
   }
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_function_indexed_operands(child, child_path)
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      verify_bytecode_function_indexed_operands(child, child_path)
+    }
   }
 }
 
@@ -1846,6 +1863,7 @@ fn verify_bytecode_control_flow(
 fn verify_bytecode_function_control_flow(
   function : BytecodeFunction,
   function_path : Array[Int],
+  recurse? : Bool = true,
 ) -> Unit raise Error {
   let code_length = function.code.length()
   for instruction_index, instruction in function.code {
@@ -1860,10 +1878,12 @@ fn verify_bytecode_function_control_flow(
       None => ()
     }
   }
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_function_control_flow(child, child_path)
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      verify_bytecode_function_control_flow(child, child_path)
+    }
   }
 }
 
@@ -1873,6 +1893,7 @@ fn verify_bytecode_function_source_metadata(
   root_source_unit : SourceUnitHandle,
   function_path : Array[Int],
   expected_owner_id : Int,
+  recurse? : Bool = true,
 ) -> Int raise Error {
   guard expected_owner_id >= 0 && expected_owner_id < MAX_SOURCE_POINT_OWNER_ID else {
     raise BytecodeSourcePointOwnerAllocationDefect(expected_owner_id)
@@ -1949,12 +1970,14 @@ fn verify_bytecode_function_source_metadata(
     }
   }
   let mut next_owner_id = expected_owner_id + 1
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    next_owner_id = verify_bytecode_function_source_metadata(
-      child, root_source_unit, child_path, next_owner_id,
-    )
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      next_owner_id = verify_bytecode_function_source_metadata(
+        child, root_source_unit, child_path, next_owner_id,
+      )
+    }
   }
   next_owner_id
 }

@@ -42,7 +42,8 @@ test "candidate tree separates parent and child outcomes" {
   }
   match program.root.children[0].selection {
     UseBytecode(_) => ()
-    UseTreeWalker(_) => fail("eligible parent unexpectedly selected tree walker")
+    UseTreeWalker(_) =>
+      fail("eligible parent unexpectedly selected tree walker")
   }
   match program.root.children[1].selection {
     UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
@@ -51,7 +52,8 @@ test "candidate tree separates parent and child outcomes" {
       } else {
         fail("child fallback lost its lowering reason")
       }
-    UseTreeWalker(_) => fail("child fallback was not typed as lowering unsupported")
+    UseTreeWalker(_) =>
+      fail("child fallback was not typed as lowering unsupported")
     UseBytecode(_) => fail("unsupported child unexpectedly selected bytecode")
   }
 }
@@ -62,11 +64,11 @@ test "candidate selection keeps activation unsupported local to a function" {
     #|function parent() { return 1; }
     #|function child() { return 1 + 2; }
   let root = (prepare_candidate_program(@parser.parse(source).stmts) catch {
-    error => {
-      debug_inspect(error.to_string())
-      fail("candidate consumer preparation failed")
-    }
-  }).root
+      error => {
+        debug_inspect(error.to_string())
+        fail("candidate consumer preparation failed")
+      }
+    }).root
   match root.selection {
     UseBytecode(_) => ()
     UseTreeWalker(_) => fail("eligible script root should remain bytecode")
@@ -83,6 +85,35 @@ test "candidate selection keeps activation unsupported local to a function" {
       }
     UseTreeWalker(_) => fail("child fallback was not activation unsupported")
     UseBytecode(_) => fail("activation-unsupported child selected bytecode")
+  }
+}
+
+///|
+test "candidate nested eligible parent keeps activation fallback local" {
+  let source =
+    #|function outer() {
+    #|  function parent() { return 1; }
+    #|  function child() { return 1 + 2; }
+    #|}
+  let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
+  match outer.selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible outer should remain bytecode")
+  }
+  match outer.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible nested parent should remain bytecode")
+  }
+  match outer.children[1].selection {
+    UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("nested activation fallback lost its reason")
+      }
+    UseTreeWalker(_) =>
+      fail("nested child fallback was not activation unsupported")
+    UseBytecode(_) =>
+      fail("nested activation-unsupported child selected bytecode")
   }
 }
 
@@ -148,6 +179,95 @@ test "candidate tree retains eligible descendants of an unsupported parent" {
 }
 
 ///|
+test "candidate eligible nested parent keeps lowering fallback local" {
+  let source =
+    #|function outer() {
+    #|  function parent() { return 1; }
+    #|  function child() { for (var value of [1]) {} }
+    #|}
+  let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
+  match outer.selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible outer should remain bytecode")
+  }
+  match outer.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible nested parent should remain bytecode")
+  }
+  match outer.children[1].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("nested lowering fallback lost its reason")
+      }
+    UseTreeWalker(_) =>
+      fail("nested child fallback was not lowering unsupported")
+    UseBytecode(_) =>
+      fail("nested lowering-unsupported child selected bytecode")
+  }
+}
+
+///|
+test "RED: strictness lineage reaches bytecode below a tree-only ancestor" {
+  let source =
+    #|function outer() {
+    #|  "use strict";
+    #|  for (var value of [1]) {}
+    #|  function middle() {
+    #|    function leaf() { return 1; }
+    #|  }
+    #|}
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let outer = root.children[0]
+  match outer.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("outer fallback lost its lowering reason")
+      }
+    UseTreeWalker(_) => fail("outer fallback was not lowering unsupported")
+    UseBytecode(_) => fail("strict outer unexpectedly selected bytecode")
+  }
+  let middle = outer.children[0]
+  let leaf = middle.children[0]
+  guard middle.bytecode is Some(_) && leaf.bytecode is Some(_) else {
+    fail("nested strict lineage lost independently prepared bytecode")
+  }
+  guard middle.bytecode.unwrap().function.enclosing_strict else {
+    fail("middle function lost strictness inherited from outer")
+  }
+  guard leaf.bytecode.unwrap().function.enclosing_strict else {
+    fail("leaf function lost transitive strictness inherited from outer")
+  }
+}
+
+///|
+test "RED: lowering-unsupported children occupy non-executable candidate slots" {
+  let source =
+    #|function parent() { return 1; }
+    #|function child() { for (var value of [1]) {} }
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  let root_bytecode = program.root.bytecode.unwrap()
+  guard root_bytecode.function.children.length() == 1 else {
+    fail("candidate bytecode retained a fabricated executable child")
+  }
+  guard root_bytecode.child_slots.length() == 2 else {
+    fail("candidate bytecode lost a typed child slot")
+  }
+  match root_bytecode.child_slots[1] {
+    CandidateTreeChild(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("tree child slot lost its lowering reason")
+      }
+    CandidateTreeChild(_) =>
+      fail("tree child slot has the wrong fallback reason")
+    CandidateBytecodeChild(_) =>
+      fail("lowering-unsupported child became an executable candidate")
+  }
+}
+
+///|
 test "candidate extended signatures keep lowering fallback local" {
   let source =
     #|function parent() { return 1; }
@@ -155,7 +275,8 @@ test "candidate extended signatures keep lowering fallback local" {
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
   match root.children[0].selection {
     UseBytecode(_) => ()
-    UseTreeWalker(_) => fail("eligible parent unexpectedly selected tree walker")
+    UseTreeWalker(_) =>
+      fail("eligible parent unexpectedly selected tree walker")
   }
   match root.children[1].selection {
     UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
@@ -163,8 +284,88 @@ test "candidate extended signatures keep lowering fallback local" {
         DefaultParameter => ()
         _ => fail("extended parameter fallback lost its lowering reason")
       }
-    UseTreeWalker(_) => fail("extended parameter fallback was not lowering unsupported")
+    UseTreeWalker(_) =>
+      fail("extended parameter fallback was not lowering unsupported")
     UseBytecode(_) => fail("unsupported extended child selected bytecode")
+  }
+}
+
+///|
+test "candidate lowering owns unsupported nested function-form outcomes" {
+  let source =
+    #|function parent() {
+    #|  function* child() { yield 1; }
+    #|  var asyncChild = async function named() { return 1; };
+    #|}
+  let parent = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
+  guard parent.bytecode is Some(_) else {
+    fail("eligible parent lost bytecode around unsupported function forms")
+  }
+  guard parent.children.length() == 2 else {
+    fail("unsupported function forms were not retained as child slots")
+  }
+  match parent.children[0].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        GeneratorDeclaration => ()
+        _ => fail("generator declaration was classified outside lowering")
+      }
+    UseTreeWalker(_) => fail("generator declaration lost its typed fallback")
+    UseBytecode(_) => fail("generator declaration selected bytecode")
+  }
+  match parent.children[1].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        AsyncFunctionExpression => ()
+        _ => fail("async function expression was classified outside lowering")
+      }
+    UseTreeWalker(_) =>
+      fail("async function expression lost its typed fallback")
+    UseBytecode(_) => fail("async function expression selected bytecode")
+  }
+}
+
+///|
+test "candidate object method forms retain ordered typed slots" {
+  let source =
+    #|var holder = {
+    #|  *generator() { yield 1; },
+    #|  async method() { return 1; },
+    #|  async *combined() { yield 1; },
+    #|};
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  guard root.bytecode is Some(_) else {
+    fail("object method parent lost bytecode")
+  }
+  guard root.children.length() == 3 else {
+    fail("object method consumer order was not retained")
+  }
+  match root.children[0].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ObjectLiteralGeneratorMethodProperty => ()
+        _ => fail("generator method lost its lowering reason")
+      }
+    UseTreeWalker(_) => fail("generator method lost its typed fallback")
+    UseBytecode(_) => fail("generator method selected bytecode")
+  }
+  match root.children[1].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ObjectLiteralAsyncMethodProperty => ()
+        _ => fail("async method lost its lowering reason")
+      }
+    UseTreeWalker(_) => fail("async method lost its typed fallback")
+    UseBytecode(_) => fail("async method selected bytecode")
+  }
+  match root.children[2].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ObjectLiteralAsyncGeneratorMethodProperty => ()
+        _ => fail("async generator method lost its lowering reason")
+      }
+    UseTreeWalker(_) => fail("async generator method lost its typed fallback")
+    UseBytecode(_) => fail("async generator method selected bytecode")
   }
 }
 
@@ -221,6 +422,25 @@ test "candidate consumer forms and same-name siblings retain immutable identitie
 }
 
 ///|
+test "candidate verification rejects a same-name sibling swap" {
+  let source =
+    #|function same() { return 1; }
+    #|function same() { return 2; }
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  let swapped_root = {
+    ..program.root,
+    children: [program.root.children[1], program.root.children[0]],
+  }
+  let rejected = try {
+    verify_candidate_program({ ..program, root: swapped_root })
+    false
+  } catch {
+    _ => true
+  }
+  guard rejected else { fail("same-name sibling swap was accepted") }
+}
+
+///|
 test "candidate verification rejects stale cross-compilation and malformed parent identities" {
   let source = "function child() { return 1; }"
   let first = prepare_candidate_program(@parser.parse(source).stmts)
@@ -229,7 +449,7 @@ test "candidate verification rejects stale cross-compilation and malformed paren
     fail("separate preparations reused a program identity")
   }
   let stale = try {
-    verify_candidate_function(second.root, first.program_identity, None)
+    verify_candidate_program({ ..second, root: first.root })
     false
   } catch {
     _ => true
@@ -243,12 +463,9 @@ test "candidate verification rejects stale cross-compilation and malformed paren
       parent_source_point_owner: None,
     },
   }
-  let malformed_root = {
-    ..second.root,
-    children: [malformed_child],
-  }
+  let malformed_root = { ..second.root, children: [malformed_child] }
   let malformed = try {
-    verify_candidate_function(malformed_root, second.program_identity, None)
+    verify_candidate_program({ ..second, root: malformed_root })
     false
   } catch {
     _ => true
@@ -257,17 +474,14 @@ test "candidate verification rejects stale cross-compilation and malformed paren
 
   let malformed_index_child = {
     ..child,
-    source_identity: {
-      ..child.source_identity,
-      child_index: Some(99),
-    },
+    source_identity: { ..child.source_identity, child_index: Some(99) },
   }
   let malformed_index_root = {
     ..second.root,
     children: [malformed_index_child],
   }
   let malformed_index = try {
-    verify_candidate_function(malformed_index_root, second.program_identity, None)
+    verify_candidate_program({ ..second, root: malformed_index_root })
     false
   } catch {
     _ => true
@@ -286,7 +500,7 @@ test "candidate verification rejects stale cross-compilation and malformed paren
     children: [malformed_consumer_child],
   }
   let malformed_consumer = try {
-    verify_candidate_function(malformed_consumer_root, second.program_identity, None)
+    verify_candidate_program({ ..second, root: malformed_consumer_root })
     false
   } catch {
     _ => true
@@ -303,37 +517,80 @@ test "candidate preparation is deterministic across repeated calls" {
   let first = prepare_candidate_program(@parser.parse(source).stmts)
   let second = prepare_candidate_program(@parser.parse(source).stmts)
   let labels = fn(children : Array[CandidateFunction]) -> Array[String] {
-    children.map(child => match child.consumer_form {
-      Some(DeclareFunctionConsumer(name)) => "declare:" + name
-      Some(MethodFunctionConsumer) => "method"
-      Some(ArrowFunctionConsumer) => "arrow"
-      Some(FunctionConsumer) => "function"
-      Some(NamedFunctionConsumer(name)) => "named:" + name
-      Some(ComputedMethodFunctionConsumer) => "computed"
-      None => "root"
+    children.map(child => {
+      match child.consumer_form {
+        Some(DeclareFunctionConsumer(name)) => "declare:" + name
+        Some(MethodFunctionConsumer) => "method"
+        Some(ArrowFunctionConsumer) => "arrow"
+        Some(FunctionConsumer) => "function"
+        Some(NamedFunctionConsumer(name)) => "named:" + name
+        Some(ComputedMethodFunctionConsumer) => "computed"
+        None => "root"
+      }
     })
   }
   let selections = fn(children : Array[CandidateFunction]) -> Array[String] {
-    children.map(child => match child.selection {
-      UseBytecode(_) => "bytecode"
-      UseTreeWalker(CandidateLoweringUnsupported(_)) => "lowering"
-      UseTreeWalker(CandidateActivationUnsupported(_)) => "activation"
+    children.map(child => {
+      match child.selection {
+        UseBytecode(_) => "bytecode"
+        UseTreeWalker(CandidateLoweringUnsupported(_)) => "lowering"
+        UseTreeWalker(CandidateActivationUnsupported(_)) => "activation"
+      }
     })
   }
   json_inspect(labels(first.root.children), content=[
-    "declare:same",
-    "declare:same",
-    "method",
-    "arrow",
+    "declare:same", "declare:same", "method", "arrow",
   ])
   json_inspect(labels(second.root.children), content=[
-    "declare:same",
-    "declare:same",
-    "method",
-    "arrow",
+    "declare:same", "declare:same", "method", "arrow",
   ])
-  json_inspect(
-    selections(second.root.children),
-    content=["bytecode", "activation", "bytecode", "bytecode"],
-  )
+  json_inspect(selections(second.root.children), content=[
+    "bytecode", "activation", "bytecode", "bytecode",
+  ])
+}
+
+///|
+test "candidate verification rejects coordinated identity index and consumer mutation" {
+  let source =
+    #|var holder = {
+    #|  anonymous: function() { for (var value of [1]) {} },
+    #|  named: function named() { for (var value of [1]) {} },
+    #|};
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.children.length() == 2 else {
+    fail("expected two unsupported function-expression children")
+  }
+  let first = program.root.children[0]
+  let second = program.root.children[1]
+  let mutated_first = {
+    ..first,
+    consumer_form: second.consumer_form,
+    source_identity: {
+      ..second.source_identity,
+      child_index: Some(0),
+      consumer_form: second.consumer_form,
+    },
+  }
+  let mutated_second = {
+    ..second,
+    consumer_form: first.consumer_form,
+    source_identity: {
+      ..first.source_identity,
+      child_index: Some(1),
+      consumer_form: first.consumer_form,
+    },
+  }
+  let malformed_root = {
+    ..program.root,
+    children: [mutated_first, mutated_second],
+  }
+  let rejected = try {
+    verify_candidate_program({ ..program, root: malformed_root })
+    false
+  } catch {
+    _ => true
+  }
+  guard rejected else {
+    fail("coordinated candidate identity mutation was accepted")
+  }
 }
