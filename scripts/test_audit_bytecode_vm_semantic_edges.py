@@ -474,7 +474,10 @@ class MultigraphTests(unittest.TestCase):
         source = (
             "fn root() { interp |> helper; [] |> make_array; "
             "[] |> @runtime.make_array; value |> Type::method; "
-            "value |> @runtime.SomeType::method; value |> Trait::method }\n"
+            "value |> @runtime.SomeType::method; value |> Trait::method; "
+            "let callback = Type::method; "
+            "let callback2 = @runtime.SomeType::method; consume(Type::method); "
+            "let pair = (Trait::method, value); return Type::method }\n"
         )
         root_entry = {
             "kind": ["Sym", "root"],
@@ -532,7 +535,7 @@ class MultigraphTests(unittest.TestCase):
             sum(spelling.endswith("make_array") for spelling in resolved_spellings),
             2,
         )
-        self.assertEqual(resolved_spellings.count("method"), 3)
+        self.assertEqual(resolved_spellings.count("method"), 8)
         self.assertIn(
             ("root", "compiler", "wrapper"),
             {
@@ -678,6 +681,65 @@ class CandidateScannerTests(unittest.TestCase):
         self.assertEqual(len(candidates), 5)
         self.assertTrue(all(candidate.executable_hint for candidate in candidates))
         self.assertTrue(all(candidate.call_syntax for candidate in candidates))
+
+    def test_method_qualified_first_class_references_remain_executable(self) -> None:
+        source = (
+            "fn root() { let callback = Type::method; "
+            "let callback2 = @runtime.SomeType::method; consume(Type::method); "
+            "let pair = (Trait::method, value); return Type::method }\n"
+        )
+
+        candidates = [
+            outcome
+            for outcome in self.candidates_for(source, {"method"})
+            if isinstance(outcome, Candidate) and outcome.spelling == "method"
+        ]
+
+        self.assertEqual(len(candidates), 5)
+        self.assertTrue(all(candidate.executable_hint for candidate in candidates))
+        self.assertTrue(all(not candidate.call_syntax for candidate in candidates))
+
+    def test_method_declaration_name_range_remains_excluded(self) -> None:
+        source = "fn Type::method() { return Type::method }\n"
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "fixture.mbt").write_text(source)
+            entry = {
+                "kind": ["Sym", "Type::method"],
+                "pkg": "dowdiness/js_engine/compiler",
+                "path": "fixture.mbt",
+                "range": [1, 1, 1, len(source)],
+                "name_range": [1, 10, 1, 16],
+            }
+
+            outcomes = audit_script.candidate_locations(root, entry, {"method"})
+
+        methods = [
+            outcome
+            for outcome in outcomes
+            if isinstance(outcome, Candidate) and outcome.spelling == "method"
+        ]
+        self.assertEqual(len(methods), 1)
+        self.assertTrue(methods[0].executable_hint)
+
+    def test_named_argument_member_values_remain_non_callable(self) -> None:
+        source = (
+            "fn root() { consume(source_text=func_def.source_text, "
+            "rest_param=func_def.rest_param) }\n"
+        )
+
+        candidates = [
+            outcome
+            for outcome in self.candidates_for(
+                source,
+                {"source_text", "rest_param"},
+            )
+            if isinstance(outcome, Candidate)
+            and outcome.spelling in {"source_text", "rest_param"}
+        ]
+
+        self.assertEqual(len(candidates), 4)
+        self.assertTrue(all(not candidate.executable_hint for candidate in candidates))
 
     def test_token_local_binders_remain_non_executable(self) -> None:
         source = (

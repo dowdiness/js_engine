@@ -47,8 +47,12 @@ class CandidateCallSyntax(Enum):
     FORWARD_PIPELINE = "forward_pipeline"
 
 
+METHOD_QUALIFIER_SUFFIX = re.compile(
+    r"(?:@[A-Za-z0-9_./-]+\.)?[A-Za-z_][A-Za-z0-9_]*::\s*$"
+)
 CALLEE_QUALIFIER_SUFFIX = re.compile(
-    r"(?:(?:@[A-Za-z0-9_./-]+\.)?[A-Za-z_][A-Za-z0-9_]*::"
+    r"(?:"
+    r"(?:@[A-Za-z0-9_./-]+\.)?[A-Za-z_][A-Za-z0-9_]*::"
     r"|(?:@[A-Za-z0-9_./-]+|[A-Za-z_][A-Za-z0-9_]*)\.)\s*$"
 )
 
@@ -741,30 +745,35 @@ def _candidate_executable_hint(
     call_syntax: CandidateCallSyntax,
 ) -> bool:
     suffix = line[end:]
-    prefix = line[:start].rstrip()
+    raw_prefix = line[:start].rstrip()
     if call_syntax is not CandidateCallSyntax.NOT_CALL:
         return True
-    if re.search(r"(?:^|\b)(?:let|guard)\s*$", prefix):
+    if re.search(r"(?:^|\b)(?:let|guard)\s*$", raw_prefix):
         return False
     if re.match(r"\s*(?::[^=,)]*)?\s*\)?\s*=>", suffix):
         return False
-    if re.search(r"(?<![=!<>])=(?![=])", prefix) and re.search(
-        r"@[A-Za-z0-9_./-]+\.$", prefix
+    value_prefix = _callee_value_prefix(raw_prefix)
+    if re.search(r"(?<![=!<>])=(?![=])", raw_prefix) and re.search(
+        r"@[A-Za-z0-9_./-]+\.$", raw_prefix
     ):
         return True
-    if re.search(r"(?<![=!<>])=(?![=])\s*$", prefix):
+    if re.search(r"(?<![=!<>])=(?![=])\s*$", value_prefix):
         return True
     if token.startswith("@") and known_callable:
         return True
-    if known_callable and re.search(r"@[A-Za-z0-9_./-]+\.$", prefix):
+    if known_callable and re.search(r"@[A-Za-z0-9_./-]+\.$", raw_prefix):
         return True
-    previous = prefix[-1:] if prefix else ""
+    previous = value_prefix[-1:] if value_prefix else ""
     following = suffix.lstrip()[:1]
     if known_callable and previous in "([{," and following in ",)]};":
         return True
-    if known_callable and re.search(r"\b(?:raise|return)\s*$", prefix):
+    if known_callable and re.search(r"\b(?:raise|return)\s*$", value_prefix):
         return True
     return False
+
+
+def _callee_value_prefix(raw_prefix: str) -> str:
+    return METHOD_QUALIFIER_SUFFIX.sub("", raw_prefix).rstrip()
 
 
 def _candidate_call_syntax(
@@ -777,8 +786,7 @@ def _candidate_call_syntax(
         return CandidateCallSyntax.DIRECT
     if re.match(r"\s*<\|", suffix):
         return CandidateCallSyntax.REVERSE_PIPELINE
-    prefix = line[:start].rstrip()
-    prefix = CALLEE_QUALIFIER_SUFFIX.sub("", prefix).rstrip()
+    prefix = CALLEE_QUALIFIER_SUFFIX.sub("", line[:start].rstrip()).rstrip()
     if re.search(r"\|>\s*$", prefix):
         return CandidateCallSyntax.FORWARD_PIPELINE
     return CandidateCallSyntax.NOT_CALL
