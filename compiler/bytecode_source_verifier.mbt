@@ -670,17 +670,66 @@ fn verify_bytecode_root_provenance(
 }
 
 ///|
+fn compiled_script_lexical_bindings_from_main_for_verification(
+  main : BytecodeFunction,
+) -> Array[@runtime.CompiledScriptLexicalBinding] {
+  main.preparation.lexical_bindings.map(binding => {
+    let kind = match binding.kind {
+      BytecodeLet => @runtime.LetBinding
+      BytecodeConst => @runtime.ConstBinding
+    }
+    @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+  })
+}
+
+///|
+fn compiled_script_preparation_from_root_provenance_for_verification(
+  provenance : BytecodeRootScriptProvenance,
+) -> @runtime.CompiledScriptPreparation {
+  @runtime.CompiledScriptPreparation::with_early_error_settlement(
+    strict=provenance.strict,
+    var_names=provenance.var_names,
+    function_names=provenance.function_names,
+    lexical_bindings=provenance.lexical_bindings,
+    settlement=provenance.settlement,
+  )
+}
+
+///|
 fn verify_compiled_script_preparation(
   program : BytecodeUnverifiedProgram,
 ) -> Unit raise Error {
   verify_bytecode_root_provenance(program)
+  let main = program.main
   let provenance = program.root_provenance
+  let expected_strict = main.enclosing_strict || main.body_has_use_strict
+  let expected_var_names = main.env_var_hoist_names
+  let expected_function_names = main.preparation.function_declarations.map(declaration => {
+    declaration.name
+  })
+  let expected_lexical_bindings = compiled_script_lexical_bindings_from_main_for_verification(
+    main,
+  )
+  guard @runtime.compiled_script_preparation_matches(
+    compiled_script_preparation_from_root_provenance_for_verification(
+      provenance,
+    ),
+    expected_strict,
+    expected_var_names,
+    expected_function_names,
+    expected_lexical_bindings,
+    provenance.settlement,
+  ) else {
+    raise @errors.InternalError(
+      message="root script provenance does not match verified main facts",
+    )
+  }
   guard @runtime.compiled_script_preparation_matches(
     program.script_preparation,
-    provenance.strict,
-    provenance.var_names,
-    provenance.function_names,
-    provenance.lexical_bindings,
+    expected_strict,
+    expected_var_names,
+    expected_function_names,
+    expected_lexical_bindings,
     provenance.settlement,
   ) else {
     raise @errors.InternalError(

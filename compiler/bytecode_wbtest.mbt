@@ -165,34 +165,6 @@ fn run_tree_parent_with_bytecode_child_for_wb() -> Bool raise Error {
   let bytecode = parse_bytecode_for_wb(
     "function byteChild(n) { return n + 1; }",
   )
-  let child = bytecode.main_for_wb().children[0]
-  bytecode.main_for_wb().children[0] = BytecodeFunction(
-    name=child.name,
-    signature_name=child.signature_name,
-    enclosing_strict=child.enclosing_strict,
-    params=child.params,
-    rest_param=child.rest_param,
-    source_text=child.source_text,
-    source_identity=Some(child.source_identity),
-    activation_kind=child.activation_kind,
-    preparation=child.preparation,
-    body_has_use_strict=child.body_has_use_strict,
-    call_self_name=child.call_self_name,
-    needs_arguments_object=child.needs_arguments_object,
-    needs_own_env=child.needs_own_env,
-    local_names=child.local_names,
-    local_indices=child.local_indices,
-    env_slot_names=child.env_slot_names,
-    env_var_hoist_names=child.env_var_hoist_names,
-    template_cache_key_prefix=child.template_cache_key_prefix,
-    code=child.code,
-    source_point_owner=child.source_point_owner,
-    source_unit=child.source_unit,
-    source_points=child.source_points,
-    instruction_sources=child.instruction_sources,
-    children=child.children,
-    header_provenance=child.header_provenance,
-  )
   let interp = @interpreter.new_interpreter()
   let byte_child = make_bytecode_func(
     bytecode.verified_main.child(0),
@@ -227,11 +199,8 @@ fn run_tree_parent_with_bytecode_child_for_wb() -> Bool raise Error {
 }
 
 ///|
-test "RED: bytecode activation capability ignores retained source mutation" {
-  let admitted_result = run_tree_parent_with_bytecode_child_for_wb()
-  let mutated_result = run_tree_parent_with_bytecode_child_for_wb()
-  assert_true(admitted_result)
-  assert_true(mutated_result)
+test "bytecode activation capability survives tree-parent activation" {
+  assert_true(run_tree_parent_with_bytecode_child_for_wb())
 }
 
 ///|
@@ -303,6 +272,7 @@ test "RED: finalization rejects a valid but wrong child source identity" {
   let wrong_identity = BytecodeSourceIdentity::root(
     child.source_unit,
     child.source_point_owner,
+    program_identity=Some(program.main.source_identity.program_identity),
   )
   program.main.children[0] = replace_source_metadata_for_wb(
     child,
@@ -360,14 +330,15 @@ test "separate compilations receive distinct bytecode source identities" {
 }
 
 ///|
-test "RED: finalization rejects inconsistent root script preparation" {
+test "finalization rejects inconsistent root script preparation" {
   let parsed = @parser.parse("var first; var second;")
   let program = build_script_bytecode(parsed.stmts)
-  let mutated_preparation = @runtime.CompiledScriptPreparation(
+  let mutated_preparation = @runtime.CompiledScriptPreparation::with_early_error_settlement(
     strict=program.main.body_has_use_strict,
     var_names=["second", "first"],
     function_names=[],
     lexical_bindings=[],
+    settlement=program.root_provenance.settlement,
   )
   let malformed : BytecodeUnverifiedProgram = {
     script_preparation: mutated_preparation,
@@ -380,10 +351,8 @@ test "RED: finalization rejects inconsistent root script preparation" {
 }
 
 ///|
-test "RED: coordinated root provenance and preparation facts cannot bypass main" {
-  let parsed = @parser.parse(
-    "var first; var second; function original() {}",
-  )
+test "finalization rejects coordinated root provenance and preparation facts" {
+  let parsed = @parser.parse("var first; var second; function original() {}")
   let program = build_script_bytecode(parsed.stmts)
   let mutated_root_provenance : BytecodeRootScriptProvenance = {
     program_identity: program.root_provenance.program_identity,
@@ -415,9 +384,8 @@ test "RED: coordinated root provenance and preparation facts cannot bypass main"
     root_provenance: mutated_root_provenance,
     main: program.main,
   }
-  assert_true(
-    finalization_accepts_for_wb(malformed),
-    msg="coordinated root facts bypassed unchanged main provenance",
+  assert_preparation_rejected_for_wb(
+    malformed, "coordinated root facts bypassed unchanged main provenance",
   )
 }
 
@@ -748,7 +716,7 @@ test "finalization rejects function declaration source identity mismatch" {
     declarations[0] = {
       name: first.name,
       child_index: first.child_index,
-      loc: declarations[1].loc,
+      loc: first.loc,
       source_identity: declarations[1].source_identity,
     }
     declarations
@@ -1107,7 +1075,9 @@ test "finalization rejects coordinated rest signature params and facts mutation"
 
 ///|
 test "RED: coordinated signature params facts and capability mutation" {
-  let parsed = @parser.parse("function f(a) { return a; }")
+  let parsed = @parser.parse(
+    "function admitted(a) { return a; } function unadmitted(n) { let replacement; }",
+  )
   let program = build_script_bytecode(parsed.stmts)
   let child = program.main.children[0]
   let facts = match child.preparation.signature_validation {
@@ -1131,7 +1101,7 @@ test "RED: coordinated signature params facts and capability mutation" {
     child.body_has_use_strict,
     mutated_facts,
   )
-  let mutated_capability = child.preparation.activation_capability
+  let mutated_capability = program.main.children[1].preparation.activation_capability
   let mutated_preparation = BytecodePreparation(
     lexical_bindings=mutated_child.preparation.lexical_bindings,
     function_declarations=mutated_child.preparation.function_declarations,
@@ -1227,34 +1197,6 @@ test "RED: VM execution does not traverse retained source bodies" {
     "var outer = 42; function f(a, a) { function nested() {} return outer; } f();",
   )
   let bytecode = compile_script_to_bytecode(prog.stmts)
-  let child = bytecode.main_for_wb().children[0]
-  bytecode.main_for_wb().children[0] = BytecodeFunction(
-    name=child.name,
-    signature_name=child.signature_name,
-    enclosing_strict=child.enclosing_strict,
-    params=child.params,
-    rest_param=child.rest_param,
-    source_text=child.source_text,
-    source_identity=Some(child.source_identity),
-    activation_kind=child.activation_kind,
-    preparation=child.preparation,
-    body_has_use_strict=child.body_has_use_strict,
-    call_self_name=child.call_self_name,
-    needs_arguments_object=child.needs_arguments_object,
-    needs_own_env=child.needs_own_env,
-    local_names=child.local_names,
-    local_indices=child.local_indices,
-    env_slot_names=child.env_slot_names,
-    env_var_hoist_names=child.env_var_hoist_names,
-    template_cache_key_prefix=child.template_cache_key_prefix,
-    code=child.code,
-    source_point_owner=child.source_point_owner,
-    source_unit=child.source_unit,
-    source_points=child.source_points,
-    instruction_sources=child.instruction_sources,
-    children=child.children,
-    header_provenance=child.header_provenance,
-  )
   try {
     let result = bytecode.run(@interpreter.new_interpreter())
     assert_eq(result.to_string(), "42")

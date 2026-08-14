@@ -273,8 +273,8 @@ fn verify_function_declaration_preparation(
       function_path,
       "DeclareFunction source count",
       -1,
-      actual.length().to_string(),
       consumers.length().to_string(),
+      actual.length().to_string(),
     )
   }
   for index in 0..<actual.length() {
