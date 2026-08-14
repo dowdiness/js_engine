@@ -808,14 +808,19 @@ def candidate_names(
     }
 
 
-def contains_dollar_multiline(root: Path, entry: dict[str, Any]) -> bool:
+def _dollar_source_lines(root: Path, entry: dict[str, Any]) -> set[int]:
     lines = (root / entry["path"]).read_text().splitlines()
     start_line, _, end_line, _ = entry["range"]
     physical_end_line = min(end_line, len(lines))
-    return any(
-        lines[line_no - 1].lstrip().startswith("$|")
+    return {
+        line_no
         for line_no in range(start_line, physical_end_line + 1)
-    )
+        if lines[line_no - 1].lstrip().startswith("$|")
+    }
+
+
+def contains_dollar_multiline(root: Path, entry: dict[str, Any]) -> bool:
+    return bool(_dollar_source_lines(root, entry))
 
 
 FN_IDENTITY = re.compile(
@@ -926,13 +931,6 @@ def _reference_candidate(
     )
 
 
-def _local_alias_for_candidate(root: Path, candidate: Candidate) -> str | None:
-    line = (root / candidate.path).read_text().splitlines()[candidate.line - 1]
-    prefix = line[: candidate.column - 1]
-    match = re.search(r"\b(?:let|guard)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$", prefix)
-    return match.group(1) if match else None
-
-
 def _recorded_target(
     query: str,
     target_entry: dict[str, Any],
@@ -1005,27 +1003,28 @@ def collect_semantic_edges(
         entry = symbols[enclosing]
         path = entry["path"]
         has_dollar_multiline = contains_dollar_multiline(root, entry)
+        dollar_lines = _dollar_source_lines(root, entry) if has_dollar_multiline else set()
         candidate_outcomes = candidate_locations(root, entry, set(symbols_by_name))
-        local_aliases: dict[str, tuple[str, str]] = {}
-        if not has_dollar_multiline:
-            for candidate_outcome in candidate_outcomes:
-                if isinstance(candidate_outcome, IntentionallyIgnored):
-                    outcomes.append(candidate_outcome)
-                    continue
-                outcome = resolve_hover(
-                    root,
-                    candidate_outcome,
-                    symbols,
-                    symbols_by_name,
-                )
-                outcomes.append(outcome)
-                _add_resolved_edge(
-                    edges,
-                    pending,
-                    visited,
-                    enclosing,
-                    outcome,
-                )
+        for candidate_outcome in candidate_outcomes:
+            if isinstance(candidate_outcome, IntentionallyIgnored):
+                outcomes.append(candidate_outcome)
+                continue
+            if candidate_outcome.line in dollar_lines:
+                continue
+            outcome = resolve_hover(
+                root,
+                candidate_outcome,
+                symbols,
+                symbols_by_name,
+            )
+            outcomes.append(outcome)
+            _add_resolved_edge(
+                edges,
+                pending,
+                visited,
+                enclosing,
+                outcome,
+            )
         # `moon ide hover` currently uses physical source positions while its
         # symbol/reference index uses logical positions for `$|` strings. Use
         # semantic find-references as the fallback authority for every
@@ -1038,8 +1037,9 @@ def collect_semantic_edges(
                 for candidate_outcome in candidate_outcomes
                 if isinstance(candidate_outcome, Candidate)
                 and candidate_outcome.executable_hint
+                and candidate_outcome.line in dollar_lines
             ]
-            if has_dollar_multiline
+            if dollar_lines
             else []
         )
         for candidate in fallback_candidates:
@@ -1082,31 +1082,6 @@ def collect_semantic_edges(
                 )
                 continue
             if not unique_matches:
-                alias = local_aliases.get(spelling)
-                if alias is not None:
-                    alias_kind, alias_target = alias
-                    alias_candidate = Candidate(
-                        path=candidate.path,
-                        line=candidate.line,
-                        column=candidate.column,
-                        enclosing=candidate.enclosing,
-                        spelling=candidate.spelling,
-                        resolver_phase="find-references",
-                    )
-                    alias_outcome = (
-                        ResolvedCompiler(alias_candidate, alias_target)
-                        if alias_kind == "compiler"
-                        else ResolvedRuntime(alias_candidate, alias_target)
-                    )
-                    outcomes.append(alias_outcome)
-                    _add_resolved_edge(
-                        edges,
-                        pending,
-                        visited,
-                        enclosing,
-                        alias_outcome,
-                    )
-                    continue
                 outcomes.append(
                     UnresolvedCandidate(
                         _diagnostic(
@@ -1190,8 +1165,6 @@ def collect_semantic_edges(
                     )
                 )
                 continue
-            if (alias := _local_alias_for_candidate(root, candidate)) is not None:
-                local_aliases[alias] = (kind, target)
             for ref_path, ref_line, ref_col in matching_references:
                 ref_candidate = _reference_candidate(
                     ref_path,

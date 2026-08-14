@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sys
+from tempfile import TemporaryDirectory
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -228,6 +229,10 @@ class ResolverOutcomeTests(unittest.TestCase):
             return_value=True,
         ), patch.object(
             audit_script,
+            "_dollar_source_lines",
+            return_value={1},
+        ), patch.object(
+            audit_script,
             "semantic_references",
             side_effect=AssertionError("zero matches must fail before find-references"),
         ):
@@ -247,6 +252,80 @@ class ResolverOutcomeTests(unittest.TestCase):
         self.assertEqual(diagnostic.candidate.enclosing, "fixture_root")
         self.assertEqual(diagnostic.candidate.spelling, "missing_call")
         self.assertEqual(diagnostic.candidate.resolver_phase, "find-references")
+
+    def test_normal_line_in_dollar_function_uses_hover_without_shadowing_propagation(self) -> None:
+        entry = {
+            "kind": ["Sym", "fixture_root"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "fixture.mbt",
+            "range": [1, 1, 2, 30],
+            "name_range": [1, 1, 1, 12],
+        }
+        normal = Candidate(
+            path="fixture.mbt",
+            line=1,
+            column=1,
+            enclosing="fixture_root",
+            spelling="shadowed",
+            resolver_phase="hover",
+            executable_hint=True,
+        )
+        dollar = Candidate(
+            path="fixture.mbt",
+            line=2,
+            column=12,
+            enclosing="fixture_root",
+            spelling="shadowed",
+            resolver_phase="hover",
+            executable_hint=True,
+        )
+        hovered: list[Candidate] = []
+
+        def fake_hover(
+            _root: Path,
+            candidate: Candidate,
+            _symbols: dict[str, dict[str, object]],
+            _symbols_by_name: dict[str, list[tuple[str, dict[str, object]]]],
+        ) -> ResolvedRuntime:
+            hovered.append(candidate)
+            return ResolvedRuntime(candidate, "@runtime.shadowed")
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "fixture.mbt").write_text("shadowed()\n$|shadowed()\n")
+            with patch.object(
+                audit_script,
+                "load_symbols",
+                return_value=({"fixture_root": entry}, {}),
+            ), patch.object(
+                audit_script,
+                "candidate_locations",
+                return_value=[normal, dollar],
+            ), patch.object(
+                audit_script,
+                "contains_dollar_multiline",
+                return_value=True,
+            ), patch.object(
+                audit_script,
+                "resolve_hover",
+                side_effect=fake_hover,
+            ), patch.object(
+                audit_script,
+                "semantic_references",
+                side_effect=AssertionError("zero-match fallback must not call find-references"),
+            ):
+                _, outcomes = audit_script.collect_semantic_edges(
+                    root,
+                    ("fixture_root",),
+                )
+
+        self.assertEqual(hovered, [normal])
+        self.assertIsInstance(outcomes[0], ResolvedRuntime)
+        self.assertIsInstance(outcomes[1], UnresolvedCandidate)
+        self.assertEqual(
+            outcomes[1].diagnostic.candidate.resolver_phase,
+            "find-references",
+        )
 
     def test_update_with_root_override_rejects_before_index_and_preserves_baseline(self) -> None:
         baseline = Path("scripts/bytecode_vm_semantic_edges.json")
