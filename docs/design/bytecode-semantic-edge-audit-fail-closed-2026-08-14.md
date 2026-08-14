@@ -25,24 +25,35 @@ The checked-in baseline has SHA-256
 `b871d9699f89ebe673881a7a2d2d892bd5ac0ac0f0e383af100036f7b0d19054`, 238
 edges, and 100 runtime boundaries. Its JSON version is 2 and its roots are
 the four symbols above. Before implementation, the deterministic fixture
-self-test passed. A fresh canonical index found 239 edges and 101 runtime
-boundaries: the only difference was the executable
-`BytecodeFrame::step_bytecode` →
-`@dowdiness/js_engine/interpreter/runtime.raise_js_exception` edge at
-`compiler/bytecode_vm.mbt:1188:18`. This is the only baseline update candidate;
-it must be reproduced by the canonical command after the resolver is hardened.
+self-test passed. After the resolver was hardened, a fresh canonical index
+found 241 edges and 103 runtime boundaries. The intentional baseline delta is
+three direct runtime calls that were previously discarded by local mapping:
+
+```
+compiler/bytecode_vm.mbt:417  make_bytecode_arrow_func
+  -> @dowdiness/js_engine/interpreter/runtime.make_prepared_executor_arrow_function
+compiler/bytecode_vm.mbt:355  make_bytecode_func
+  -> @dowdiness/js_engine/interpreter/runtime.make_prepared_executor_function
+compiler/bytecode_vm.mbt:393  make_bytecode_method_func
+  -> @dowdiness/js_engine/interpreter/runtime.make_prepared_executor_function
+```
+
+Each identity is returned by Moon IDE for the executable call at that source
+location; no bytecode or runtime implementation changed. The updated baseline
+has SHA-256
+`d00b49683f937789596f3b5cc3c5eb6cf9a34c8cff82ca521af317db25a8edd5`.
 
 ## Affected callers and reachable values
 
 The audit has one resolver pipeline:
 
-| Caller | Reachable value | Current boundary |
+| Caller | Reachable value | Before #897 |
 | --- | --- | --- |
 | `main` → `ensure_semantic_index` | `CompletedProcess` from `moon check --deny-warn` | index failure raises a command error |
 | `semantic_edges_from_roots` → `load_symbols` | JSONL `dict` entries with `kind`, `pkg`, `path`, `range`, and `name_range` | compiler/runtime packages are retained |
 | `semantic_edges_from_roots` → `candidate_locations` | source path, line/column, and spelling candidates | text coordinates are sent to hover |
 | `resolve_hover` | subprocess return code, stdout/stderr, JSON object, `contents` strings, callable identity | failure, malformed JSON, missing identity, and non-unique mapping collapse to `None` |
-| `local_target` | compiler identity or simple-name matches | zero/multiple matches collapse to `None`; first unique match is selected |
+| `local_target` | compiler identity or simple-name matches | zero/multiple matches collapse to `None` |
 | `semantic_references` fallback | reference locations parsed from stdout | nonzero command and malformed/unmatched output collapse to an empty list |
 | `semantic_edges_from_roots` | edge tuples `(enclosing, path, line, column, kind, target)` | only resolved compiler/runtime tuples survive |
 | `render_payload` / baseline comparison | JSON payload and edge counts | unresolved candidates never reach the report |
@@ -52,6 +63,19 @@ resolved runtime, resolved out-of-scope, intentional ignore, unresolved
 candidate, and ambiguous candidate. A diagnostic retains the candidate path,
 line, column, enclosing symbol, spelling, resolver phase, command, and JSON or
 identity/candidate detail. Diagnostics are sorted before reporting.
+
+The command fails closed when any unresolved or ambiguous outcome remains. Its
+first diagnostic line reports both totals, followed by deterministic location
+records. For example, an ambiguous unqualified compiler lookup renders:
+
+```
+bytecode VM semantic edge resolution failed: unresolved=0 ambiguous=1
+  compiler/fixture.mbt:12:9 {"candidates":["Alpha::shared","Beta::shared"],"column":9,"enclosing":"fixture_root","identity":"shared","reason":"ambiguous_mapping","resolver_phase":"hover",...}
+```
+
+`--update` is accepted only with the built-in canonical roots. Combining it
+with any `--root-symbol` is rejected before `moon check`, semantic indexing,
+or opening the baseline, and returns exit status 2 without changing the file.
 
 ## Former silent discards
 
