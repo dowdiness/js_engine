@@ -368,7 +368,7 @@ fn bytecode_instruction_transfer(
 
 ///|
 fn bytecode_observation_context_empty() -> BytecodeObservationContext {
-  { entries: [] }
+  { active: [] }
 }
 
 ///|
@@ -376,9 +376,9 @@ fn bytecode_observation_contexts_equal(
   left : BytecodeObservationContext,
   right : BytecodeObservationContext,
 ) -> Bool {
-  guard left.entries.length() == right.entries.length() else { return false }
-  for index in 0..<left.entries.length() {
-    if left.entries[index] != right.entries[index] {
+  guard left.active.length() == right.active.length() else { return false }
+  for index in 0..<left.active.length() {
+    if left.active[index] != right.active[index] {
       return false
     }
   }
@@ -390,11 +390,9 @@ fn bytecode_observation_context_is_prefix(
   prefix : BytecodeObservationContext,
   context : BytecodeObservationContext,
 ) -> Bool {
-  guard prefix.entries.length() <= context.entries.length() else {
-    return false
-  }
-  for index in 0..<prefix.entries.length() {
-    if prefix.entries[index] != context.entries[index] {
+  guard prefix.active.length() <= context.active.length() else { return false }
+  for index in 0..<prefix.active.length() {
+    if prefix.active[index] != context.active[index] {
       return false
     }
   }
@@ -408,14 +406,14 @@ fn bytecode_observation_context_after(
 ) -> BytecodeObservationContext {
   match instruction {
     ObserveStatement(source_id) => {
-      let entries = context.entries.copy()
-      entries.push(StatementObservation(source_id))
-      { entries, }
+      let active = context.active.copy()
+      active.push(StatementObservation(source_id))
+      { active, }
     }
     ObserveExpression(source_id) => {
-      let entries = context.entries.copy()
-      entries.push(ExpressionObservation(source_id))
-      { entries, }
+      let active = context.active.copy()
+      active.push(ExpressionObservation(source_id))
+      { active, }
     }
     _ => context
   }
@@ -544,7 +542,7 @@ fn bytecode_observation_edge_context_for_target(
 ) -> BytecodeObservationContext? {
   let mut found : BytecodeObservationContext? = None
   for edge in function.observation_edge_contexts[instruction_index] {
-    if edge.target == target {
+    if edge.successor == target {
       match found {
         None => found = Some(edge.context)
         Some(_) => ()
@@ -562,11 +560,10 @@ fn require_bytecode_observation_edge_context(
   source_post_context : BytecodeObservationContext,
   function_path : Array[Int],
 ) -> BytecodeObservationContext raise Error {
-  match bytecode_observation_edge_context_for_target(
-    function,
-    instruction_index,
-    target,
-  ) {
+  match
+    bytecode_observation_edge_context_for_target(
+      function, instruction_index, target,
+    ) {
     Some(context) => context
     None =>
       raise bytecode_observation_coverage_defect(
@@ -575,7 +572,7 @@ fn require_bytecode_observation_edge_context(
         Some(instruction_index),
         Some(target),
         EdgeFact,
-        ObservationContextDepth(source_post_context.entries.length()),
+        ObservationContextDepth(source_post_context.active.length()),
         ObservationContextDepth(0),
       )
   }
@@ -591,45 +588,45 @@ fn verify_bytecode_observation_edge_facts(
       function.code[instruction_index],
     )
     for edge in edges {
-      guard edge.target >= 0 && edge.target <= function.code.length() else {
+      guard edge.successor >= 0 && edge.successor <= function.code.length() else {
         raise bytecode_observation_coverage_defect(
           function_path,
           Some(instruction_index),
           Some(instruction_index),
-          Some(edge.target),
+          Some(edge.successor),
           EdgeFact,
           CodeLength(function.code.length()),
-          ObservationContextDepth(edge.target),
+          ObservationContextDepth(edge.successor),
         )
       }
       guard bytecode_observation_transfer_has_successor(
         transfer,
         instruction_index,
-        edge.target,
+        edge.successor,
       ) else {
         raise bytecode_observation_coverage_defect(
           function_path,
           Some(instruction_index),
           Some(instruction_index),
-          Some(edge.target),
+          Some(edge.successor),
           EdgeFact,
           ObservationContextDepth(instruction_index + 1),
-          ObservationContextDepth(edge.target),
+          ObservationContextDepth(edge.successor),
         )
       }
       let target_context = bytecode_observation_context_for_target(
         function,
-        edge.target,
+        edge.successor,
       )
       guard bytecode_observation_contexts_equal(edge.context, target_context) else {
         raise bytecode_observation_coverage_defect(
           function_path,
           Some(instruction_index),
           Some(instruction_index),
-          Some(edge.target),
+          Some(edge.successor),
           EdgeFact,
-          ObservationContextDepth(target_context.entries.length()),
-          ObservationContextDepth(edge.context.entries.length()),
+          ObservationContextDepth(target_context.active.length()),
+          ObservationContextDepth(edge.context.active.length()),
         )
       }
     }
@@ -657,8 +654,8 @@ fn record_bytecode_observation_context(
       Some(predecessor_index),
       Some(target),
       EdgePrefix,
-      ObservationContextDepth(source_post_context.entries.length()),
-      ObservationContextDepth(target_context.entries.length()),
+      ObservationContextDepth(source_post_context.active.length()),
+      ObservationContextDepth(target_context.active.length()),
     )
   }
   guard bytecode_observation_contexts_equal(target_context, expected_context) else {
@@ -668,8 +665,8 @@ fn record_bytecode_observation_context(
       Some(predecessor_index),
       Some(target),
       ContextFact,
-      ObservationContextDepth(expected_context.entries.length()),
-      ObservationContextDepth(target_context.entries.length()),
+      ObservationContextDepth(expected_context.active.length()),
+      ObservationContextDepth(target_context.active.length()),
     )
   }
   match states[target] {
@@ -687,8 +684,8 @@ fn record_bytecode_observation_context(
           Some(predecessor_index),
           Some(target),
           ContextFact,
-          ObservationContextDepth(existing_context.entries.length()),
-          ObservationContextDepth(expected_context.entries.length()),
+          ObservationContextDepth(existing_context.active.length()),
+          ObservationContextDepth(expected_context.active.length()),
         )
       }
     }
@@ -731,7 +728,7 @@ fn verify_bytecode_function_observation_coverage(
     )
   }
   for instruction_index, context in function.observation_contexts {
-    for entry in context.entries {
+    for entry in context.active {
       verify_bytecode_observation_entry(
         function, entry, function_path, instruction_index,
       )
@@ -758,8 +755,8 @@ fn verify_bytecode_function_observation_coverage(
         None,
         None,
         ContextFact,
-        ObservationContextDepth(state.entries.length()),
-        ObservationContextDepth(recorded_context.entries.length()),
+        ObservationContextDepth(state.active.length()),
+        ObservationContextDepth(recorded_context.active.length()),
       )
     }
     let source_post_context = bytecode_observation_context_after(
@@ -794,40 +791,20 @@ fn verify_bytecode_function_observation_coverage(
       }
       JumpTo(target, _) => {
         let expected_context = require_bytecode_observation_edge_context(
-          function,
-          instruction_index,
-          target,
-          source_post_context,
-          function_path,
+          function, instruction_index, target, source_post_context, function_path,
         )
         record_bytecode_observation_context(
-          function,
-          states,
-          worklist,
-          target,
-          expected_context,
-          source_post_context,
-          function_path,
-          instruction_index,
+          function, states, worklist, target, expected_context, source_post_context,
+          function_path, instruction_index,
         )
       }
       BranchTo(target, _) => {
         let expected_context = require_bytecode_observation_edge_context(
-          function,
-          instruction_index,
-          target,
-          source_post_context,
-          function_path,
+          function, instruction_index, target, source_post_context, function_path,
         )
         record_bytecode_observation_context(
-          function,
-          states,
-          worklist,
-          target,
-          expected_context,
-          source_post_context,
-          function_path,
-          instruction_index,
+          function, states, worklist, target, expected_context, source_post_context,
+          function_path, instruction_index,
         )
         let fallthrough = instruction_index + 1
         record_bytecode_observation_context(
@@ -843,21 +820,11 @@ fn verify_bytecode_function_observation_coverage(
       }
       SplitTo(target, _, _) => {
         let expected_context = require_bytecode_observation_edge_context(
-          function,
-          instruction_index,
-          target,
-          source_post_context,
-          function_path,
+          function, instruction_index, target, source_post_context, function_path,
         )
         record_bytecode_observation_context(
-          function,
-          states,
-          worklist,
-          target,
-          expected_context,
-          source_post_context,
-          function_path,
-          instruction_index,
+          function, states, worklist, target, expected_context, source_post_context,
+          function_path, instruction_index,
         )
         let fallthrough = instruction_index + 1
         record_bytecode_observation_context(

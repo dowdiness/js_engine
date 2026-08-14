@@ -2081,7 +2081,7 @@ test "RED: finalization rejects contexts coordinated to empty" {
     "if (condition) first; else second;",
   )
   for index in 0..<program.main.observation_contexts.length() {
-    program.main.observation_contexts[index] = { entries: [] }
+    program.main.observation_contexts[index] = { active: [] }
   }
   let defect = expect_observation_coverage_defect_for_wb(
     program, "all reachable observation contexts were shortened",
@@ -2098,7 +2098,7 @@ test "RED: finalization rejects a shortened reachable observation context" {
     "if (condition) first; else second;",
   )
   let target = load_name_index_for_wb(program.main, "first")
-  program.main.observation_contexts[target] = { entries: [] }
+  program.main.observation_contexts[target] = { active: [] }
   let defect = expect_observation_coverage_defect_for_wb(
     program, "reachable statement expression context was shortened",
   )
@@ -2126,8 +2126,7 @@ test "RED: finalization rejects a missing jump edge context fact" {
   }
   guard cleared else { abort("expected conditional jump") }
   let defect = expect_observation_coverage_defect_for_wb(
-    program,
-    "conditional jump context fact was removed",
+    program, "conditional jump context fact was removed",
   )
   match defect.invariant {
     EdgeFact => ()

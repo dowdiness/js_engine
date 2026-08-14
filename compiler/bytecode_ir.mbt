@@ -107,7 +107,7 @@ priv enum BytecodeObservationContextEntry {
 
 ///|
 priv struct BytecodeObservationContext {
-  entries : Array[BytecodeObservationContextEntry]
+  active : Array[BytecodeObservationContextEntry]
 }
 
 ///|
@@ -116,7 +116,7 @@ priv struct BytecodeObservationContext {
 // checks these edge facts against the actual instruction transfer and target
 // context; snapshots alone cannot authorize a retargeted edge.
 priv struct BytecodeObservationEdgeContext {
-  target : Int
+  successor : Int
   context : BytecodeObservationContext
 }
 
@@ -1192,7 +1192,7 @@ fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
   self.code.push(instr)
   self.instruction_sources.push([])
   self.observation_contexts.push({
-    entries: self.active_observation_entries.copy(),
+    active: self.active_observation_entries.copy(),
   })
   self.observation_edge_contexts.push([])
   self.record_observation_edge_contexts(idx)
@@ -1214,12 +1214,12 @@ fn BytecodeBuilder::record_observation_edge_contexts(
     Some(target) =>
       if target >= 0 && target <= self.observation_contexts.length() {
         let context = if target == self.observation_contexts.length() {
-          { entries: self.active_observation_entries.copy() }
+          { active: self.active_observation_entries.copy() }
         } else {
           self.observation_contexts[target]
         }
         self.observation_edge_contexts[instruction_index].push({
-          target,
+          successor: target,
           context,
         })
       }
@@ -1310,20 +1310,20 @@ fn BytecodeBuilder::pop_observation(self : BytecodeBuilder) -> Unit {
       Fallthrough(_) | BranchTo(_, _) | SplitTo(_, _, _) => {
         let target = instruction_index + 1
         self.observation_edge_contexts[instruction_index].push({
-          target,
-          context: { entries: self.active_observation_entries.copy() },
+          successor: target,
+          context: { active: self.active_observation_entries.copy() },
         })
       }
       JumpTo(_, _) | Terminate(_) => ()
     }
   }
   let target = self.code.length()
-  let context = { entries: self.active_observation_entries.copy() }
+  let context = { active: self.active_observation_entries.copy() }
   for instruction_index, edges in self.observation_edge_contexts {
     for edge_index, edge in edges {
-      if edge.target == target {
+      if edge.successor == target {
         self.observation_edge_contexts[instruction_index][edge_index] = {
-          target: edge.target,
+          successor: edge.successor,
           context,
         }
       }
