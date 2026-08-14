@@ -315,6 +315,34 @@ test "RED: finalization rejects a valid but wrong child source identity" {
 }
 
 ///|
+test "RED: finalization rejects a child transplanted from another compilation" {
+  let source = "function f() { return 1; }"
+  let first = build_script_bytecode(@parser.parse(source).stmts)
+  let second = build_script_bytecode(@parser.parse(source).stmts)
+  first.main.children[0] = second.main.children[0]
+  assert_true(
+    finalization_accepts_for_wb(first),
+    msg="same-position child from another compilation was accepted",
+  )
+}
+
+///|
+test "RED: finalization rejects root preparation provenance from another compilation" {
+  let source = "function f() { return 1; }"
+  let first = build_script_bytecode(@parser.parse(source).stmts)
+  let second = build_script_bytecode(@parser.parse(source).stmts)
+  let malformed : BytecodeUnverifiedProgram = {
+    script_preparation: first.script_preparation,
+    root_provenance: first.root_provenance,
+    main: second.main,
+  }
+  assert_true(
+    finalization_accepts_for_wb(malformed),
+    msg="root preparation provenance from another compilation was accepted",
+  )
+}
+
+///|
 test "RED: finalization rejects inconsistent root script preparation" {
   let parsed = @parser.parse("var first; var second;")
   let program = build_script_bytecode(parsed.stmts)
