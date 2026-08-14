@@ -52,7 +52,7 @@ fn allocate_source_point_owner(
 // separate program identity remains the private facade boundary.
 
 ///|
-priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int)
+priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int) derive(Eq)
 
 ///|
 #warnings("-unused_value")
@@ -93,6 +93,201 @@ priv enum BytecodeObservationBarrierKind {
   NotObservationBarrier
   StatementObservationBarrier
   ExpressionObservationBarrier
+}
+
+///|
+// Lowering records the observations active before each instruction.  The
+// verifier uses this typed, source-linked context to distinguish a legal edge
+// that skips an unevaluated region from an edge that enters that region after
+// its mandatory observation barrier.
+priv enum BytecodeObservationContextEntry {
+  StatementObservation(SourcePointId)
+  ExpressionObservation(SourcePointId)
+} derive(Eq)
+
+///|
+priv struct BytecodeObservationContext {
+  active : Array[BytecodeObservationContextEntry]
+}
+
+///|
+// Lowering records the expected context for each non-fallthrough successor and
+// each fallthrough whose context changes after a scope pop.  The verifier
+// checks these edge facts against the actual instruction transfer and target
+// context; snapshots alone cannot authorize a retargeted edge.
+priv struct BytecodeObservationEdgeContext {
+  successor : Int
+  context : BytecodeObservationContext
+}
+
+///|
+// This is an immutable lowering-time witness for observation region membership
+// and successor topology.  The mutable snapshots above remain convenient
+// inputs for the CFG proof, but finalization also compares them with this
+// independently-owned linked fact sequence so coordinated edits cannot
+// rewrite the proof's authority.
+priv enum BytecodeObservationAuthorityContextEntries {
+  EmptyObservationAuthorityContext
+  MoreObservationAuthorityContext(
+    BytecodeObservationContextEntry,
+    BytecodeObservationAuthorityContextEntries
+  )
+}
+
+///|
+priv enum BytecodeObservationAuthoritySuccessors {
+  EmptyObservationAuthoritySuccessors
+  MoreObservationAuthoritySuccessors(
+    Int,
+    BytecodeObservationAuthoritySuccessors
+  )
+}
+
+///|
+priv struct BytecodeObservationAuthorityInstruction {
+  context : BytecodeObservationAuthorityContextEntries
+  successors : BytecodeObservationAuthoritySuccessors
+}
+
+///|
+priv enum BytecodeObservationAuthorityInstructions {
+  EmptyObservationAuthorityInstructions
+  MoreObservationAuthorityInstructions(
+    BytecodeObservationAuthorityInstruction,
+    BytecodeObservationAuthorityInstructions
+  )
+}
+
+///|
+priv struct BytecodeObservationAuthority {
+  program_identity : Ref[Unit]
+  source_point_owner : SourcePointOwnerId
+  code_length : Int
+  instructions : BytecodeObservationAuthorityInstructions
+}
+
+///|
+fn empty_bytecode_observation_authority() -> BytecodeObservationAuthority {
+  {
+    program_identity: { val: () },
+    source_point_owner: SourcePointOwnerId(-1),
+    code_length: -1,
+    instructions: EmptyObservationAuthorityInstructions,
+  }
+}
+
+///|
+fn bytecode_observation_authority_context_entries(
+  active : Array[BytecodeObservationContextEntry],
+) -> BytecodeObservationAuthorityContextEntries {
+  let mut entries = EmptyObservationAuthorityContext
+  for index = active.length() - 1; index >= 0; index = index - 1 {
+    entries = MoreObservationAuthorityContext(active[index], entries)
+  }
+  entries
+}
+
+///|
+fn bytecode_observation_authority_successors(
+  transfer : BytecodeInstructionTransfer,
+  instruction_index : Int,
+) -> BytecodeObservationAuthoritySuccessors {
+  match transfer {
+    Fallthrough(_) =>
+      MoreObservationAuthoritySuccessors(
+        instruction_index + 1,
+        EmptyObservationAuthoritySuccessors,
+      )
+    JumpTo(target, _) | BranchTo(target, _) | SplitTo(target, _, _) => {
+      let tail = match transfer {
+        BranchTo(_, _) | SplitTo(_, _, _) =>
+          MoreObservationAuthoritySuccessors(
+            instruction_index + 1,
+            EmptyObservationAuthoritySuccessors,
+          )
+        _ => EmptyObservationAuthoritySuccessors
+      }
+      MoreObservationAuthoritySuccessors(target, tail)
+    }
+    Terminate(_) => EmptyObservationAuthoritySuccessors
+  }
+}
+
+///|
+// Materialize edge contexts only after lowering has produced the final code.
+// Every successor is derived from the exhaustive instruction transfer; the
+// terminal successor uses the empty context because no instruction executes
+// at code.length().
+fn bytecode_observation_edge_contexts_from_lowering(
+  code : Array[BytecodeInstr],
+  observation_contexts : Array[BytecodeObservationContext],
+) -> Array[Array[BytecodeObservationEdgeContext]] {
+  let code_length = code.length()
+  let edge_contexts : Array[Array[BytecodeObservationEdgeContext]] = Array::makei(
+    code_length,
+    _ => [],
+  )
+  for instruction_index, instruction in code {
+    let transfer = bytecode_instruction_transfer(instruction)
+    let append_edge = target => {
+      if target >= 0 && target <= code_length {
+        let context = if target == code_length {
+          { active: [] }
+        } else {
+          observation_contexts[target]
+        }
+        edge_contexts[instruction_index].push({ successor: target, context })
+      }
+    }
+    match transfer {
+      Fallthrough(_) => append_edge(instruction_index + 1)
+      JumpTo(target, _) => append_edge(target)
+      BranchTo(target, _) => {
+        append_edge(target)
+        append_edge(instruction_index + 1)
+      }
+      SplitTo(target, _, _) => {
+        append_edge(target)
+        append_edge(instruction_index + 1)
+      }
+      Terminate(_) => ()
+    }
+  }
+  edge_contexts
+}
+
+///|
+fn bytecode_observation_authority_from_lowering(
+  code : Array[BytecodeInstr],
+  observation_contexts : Array[BytecodeObservationContext],
+  source_identity : BytecodeSourceIdentity,
+) -> BytecodeObservationAuthority {
+  let mut instructions = EmptyObservationAuthorityInstructions
+  for index = code.length() - 1; index >= 0; index = index - 1 {
+    let context = if index < observation_contexts.length() {
+      bytecode_observation_authority_context_entries(
+        observation_contexts[index].active,
+      )
+    } else {
+      EmptyObservationAuthorityContext
+    }
+    instructions = MoreObservationAuthorityInstructions(
+      {
+        context,
+        successors: bytecode_observation_authority_successors(
+          bytecode_instruction_transfer(code[index]),
+          index,
+        ),
+      },
+      instructions,
+    )
+  }
+  {
+    program_identity: source_identity.program_identity,
+    source_point_owner: source_identity.source_point_owner,
+    code_length: code.length(),
+    instructions,
+  }
 }
 
 ///|
@@ -834,6 +1029,9 @@ priv struct BytecodeFunction {
   source_point_owner : SourcePointOwnerId
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
+  observation_contexts : Array[BytecodeObservationContext]
+  observation_edge_contexts : Array[Array[BytecodeObservationEdgeContext]]
+  observation_authority : BytecodeObservationAuthority
   children : Array[BytecodeFunction]
   header_provenance : BytecodeHeaderProvenance?
 }
@@ -863,6 +1061,9 @@ fn BytecodeFunction::BytecodeFunction(
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   source_points? : Array[SourcePoint] = [],
   instruction_sources? : Array[Array[SourcePointId]] = [],
+  observation_contexts? : Array[BytecodeObservationContext] = [],
+  observation_edge_contexts? : Array[Array[BytecodeObservationEdgeContext]] = [],
+  observation_authority? : BytecodeObservationAuthority? = None,
   children~ : Array[BytecodeFunction],
   header_provenance? : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction {
@@ -893,6 +1094,12 @@ fn BytecodeFunction::BytecodeFunction(
     source_point_owner,
     source_points,
     instruction_sources,
+    observation_contexts,
+    observation_edge_contexts,
+    observation_authority: match observation_authority {
+      Some(authority) => authority
+      None => empty_bytecode_observation_authority()
+    },
     children,
     header_provenance,
   }
@@ -934,6 +1141,8 @@ priv struct BytecodeBuilder {
   owner_allocator : Ref[SourcePointOwnerAllocator]
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
+  observation_contexts : Array[BytecodeObservationContext]
+  active_observation_entries : Array[BytecodeObservationContextEntry]
   children : Array[BytecodeFunction]
   function_declarations : Array[BytecodeFunctionDeclaration]
   enclosing_strict : Bool
@@ -1132,6 +1341,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     owner_allocator,
     source_points: [],
     instruction_sources: [],
+    observation_contexts: [],
+    active_observation_entries: [],
     children: [],
     function_declarations: [],
     enclosing_strict,
@@ -1154,6 +1365,9 @@ fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
   let idx = self.code.length()
   self.code.push(instr)
   self.instruction_sources.push([])
+  self.observation_contexts.push({
+    active: self.active_observation_entries.copy(),
+  })
   idx
 }
 
@@ -1212,18 +1426,27 @@ fn BytecodeBuilder::emit_with_source_locations(
 fn BytecodeBuilder::emit_statement_observation(
   self : BytecodeBuilder,
   loc : @token.Loc,
-) -> Unit {
+) -> SourcePointId {
   let source_id = self.allocate_source_point(StatementEntry, loc)
   let _ = self.emit_with_sources(ObserveStatement(source_id), [source_id])
+  self.active_observation_entries.push(StatementObservation(source_id))
+  source_id
 }
 
 ///|
 fn BytecodeBuilder::emit_expression_observation(
   self : BytecodeBuilder,
   loc : @token.Loc,
-) -> Unit {
+) -> SourcePointId {
   let source_id = self.allocate_source_point(ExpressionEntry, loc)
   let _ = self.emit_with_sources(ObserveExpression(source_id), [source_id])
+  self.active_observation_entries.push(ExpressionObservation(source_id))
+  source_id
+}
+
+///|
+fn BytecodeBuilder::pop_observation(self : BytecodeBuilder) -> Unit {
+  let _ = self.active_observation_entries.pop()
 }
 
 ///|

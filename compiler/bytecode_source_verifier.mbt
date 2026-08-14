@@ -12,6 +12,47 @@ priv enum BytecodeSourceMetadataInvariant {
 
 ///|
 #warnings("-unused_constructor")
+priv enum BytecodeObservationCoverageInvariant {
+  ContextCount
+  EdgeCount
+  ContextFact
+  EdgeFact
+  EdgePrefix
+  AuthorityIdentity
+  AuthorityContext
+  AuthoritySuccessor
+}
+
+///|
+#warnings("-unused_constructor")
+priv enum BytecodeObservationCoverageFact {
+  CodeLength(Int)
+  ObservationContextsLength(Int)
+  ObservationEdgeContextsLength(Int)
+  ObservationContextDepth(Int)
+  ObservationAuthorityLength(Int)
+  ObservationAuthoritySuccessor(Int)
+}
+
+///|
+// Function-local, finalization-time index of the immutable observation
+// barriers emitted by lowering.  The source-point identity is retained in
+// each slot so a context entry must match both its typed barrier and its
+// owner/unit/index before it can be admitted.
+priv enum BytecodeObservationBarrierIndexEntry {
+  StatementObservationBarrierIndex(SourcePointId)
+  ExpressionObservationBarrierIndex(SourcePointId)
+}
+
+///|
+priv struct BytecodeObservationBarrierIndex {
+  source_unit : SourceUnitHandle
+  source_point_owner : SourcePointOwnerId
+  barriers : Array[BytecodeObservationBarrierIndexEntry?]
+}
+
+///|
+#warnings("-unused_constructor")
 priv enum BytecodeSourceMetadataFact {
   CodeLength(Int)
   InstructionSourcesLength(Int)
@@ -51,8 +92,21 @@ priv struct BytecodeSourceMetadataDefect {
 }
 
 ///|
+#warnings("-unused_field")
+priv struct BytecodeObservationCoverageDefect {
+  function_path : Array[Int]
+  instruction_index : Int?
+  predecessor_index : Int?
+  target_index : Int?
+  invariant : BytecodeObservationCoverageInvariant
+  expected : BytecodeObservationCoverageFact
+  actual : BytecodeObservationCoverageFact
+}
+
+///|
 priv suberror BytecodeVerifierDefect {
   BytecodeVerifierDefect(BytecodeSourceMetadataDefect)
+  BytecodeObservationCoverageDefect(BytecodeObservationCoverageDefect)
   BytecodeControlFlowDefect(BytecodeControlFlowTargetDefect)
   BytecodeIndexedOperandDefect(BytecodeIndexedOperandTargetDefect)
   BytecodeShapeOperandDefect(BytecodeShapeOperandTargetDefect)
@@ -331,6 +385,738 @@ fn bytecode_instruction_transfer(
     CallSpreadWithReceiver(_) =>
       Fallthrough(bytecode_argument_list_effect(2, -1, 1, -1))
     Return | Throw => Terminate(bytecode_stack_effect(1, -1))
+  }
+}
+
+///|
+fn bytecode_observation_context_empty() -> BytecodeObservationContext {
+  { active: [] }
+}
+
+///|
+fn bytecode_observation_authority_context_entries_equal(
+  actual : BytecodeObservationContext,
+  expected : BytecodeObservationAuthorityContextEntries,
+) -> Bool {
+  let mut index = 0
+  let mut remaining = expected
+  let mut equal = false
+  let mut done = false
+  while !done {
+    match remaining {
+      EmptyObservationAuthorityContext => {
+        equal = index == actual.active.length()
+        done = true
+      }
+      MoreObservationAuthorityContext(entry, tail) =>
+        if index >= actual.active.length() || actual.active[index] != entry {
+          done = true
+        } else {
+          index += 1
+          remaining = tail
+        }
+    }
+  }
+  equal
+}
+
+///|
+fn bytecode_observation_authority_successors_equal(
+  actual : BytecodeObservationAuthoritySuccessors,
+  expected : BytecodeObservationAuthoritySuccessors,
+) -> Bool {
+  let mut actual_remaining = actual
+  let mut expected_remaining = expected
+  let mut equal = false
+  let mut done = false
+  while !done {
+    match (actual_remaining, expected_remaining) {
+      (EmptyObservationAuthoritySuccessors, EmptyObservationAuthoritySuccessors) => {
+        equal = true
+        done = true
+      }
+      (
+        MoreObservationAuthoritySuccessors(actual_target, actual_tail),
+        MoreObservationAuthoritySuccessors(expected_target, expected_tail),
+      ) =>
+        if actual_target != expected_target {
+          done = true
+        } else {
+          actual_remaining = actual_tail
+          expected_remaining = expected_tail
+        }
+      _ => done = true
+    }
+  }
+  equal
+}
+
+///|
+fn verify_bytecode_observation_authority(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let authority = function.observation_authority
+  guard physical_equal(
+      authority.program_identity,
+      function.source_identity.program_identity,
+    ) &&
+    authority.source_point_owner == function.source_point_owner else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      None,
+      None,
+      None,
+      AuthorityIdentity,
+      ObservationAuthorityLength(function.code.length()),
+      ObservationAuthorityLength(authority.code_length),
+    )
+  }
+  guard authority.code_length == function.code.length() else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      None,
+      None,
+      None,
+      AuthorityIdentity,
+      ObservationAuthorityLength(function.code.length()),
+      ObservationAuthorityLength(authority.code_length),
+    )
+  }
+  let mut remaining = authority.instructions
+  for instruction_index, context in function.observation_contexts {
+    match remaining {
+      MoreObservationAuthorityInstructions(fact, tail) => {
+        guard bytecode_observation_authority_context_entries_equal(
+          context,
+          fact.context,
+        ) else {
+          raise bytecode_observation_coverage_defect(
+            function_path,
+            Some(instruction_index),
+            None,
+            None,
+            AuthorityContext,
+            ObservationContextDepth(context.active.length()),
+            ObservationContextDepth(context.active.length()),
+          )
+        }
+        let actual_successors = bytecode_observation_authority_successors(
+          bytecode_instruction_transfer(function.code[instruction_index]),
+          instruction_index,
+        )
+        guard bytecode_observation_authority_successors_equal(
+          actual_successors,
+          fact.successors,
+        ) else {
+          raise bytecode_observation_coverage_defect(
+            function_path,
+            Some(instruction_index),
+            Some(instruction_index),
+            None,
+            AuthoritySuccessor,
+            ObservationAuthoritySuccessor(instruction_index),
+            ObservationAuthoritySuccessor(instruction_index),
+          )
+        }
+        remaining = tail
+      }
+      EmptyObservationAuthorityInstructions =>
+        raise bytecode_observation_coverage_defect(
+          function_path,
+          Some(instruction_index),
+          None,
+          None,
+          AuthorityIdentity,
+          ObservationAuthorityLength(function.code.length()),
+          ObservationAuthorityLength(instruction_index),
+        )
+    }
+  }
+  match remaining {
+    EmptyObservationAuthorityInstructions => ()
+    MoreObservationAuthorityInstructions(_, _) =>
+      raise bytecode_observation_coverage_defect(
+        function_path,
+        None,
+        None,
+        None,
+        AuthorityIdentity,
+        ObservationAuthorityLength(function.code.length()),
+        ObservationAuthorityLength(function.observation_contexts.length()),
+      )
+  }
+}
+
+///|
+fn bytecode_observation_contexts_equal(
+  left : BytecodeObservationContext,
+  right : BytecodeObservationContext,
+) -> Bool {
+  guard left.active.length() == right.active.length() else { return false }
+  for index in 0..<left.active.length() {
+    if left.active[index] != right.active[index] {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn bytecode_observation_context_is_prefix(
+  prefix : BytecodeObservationContext,
+  context : BytecodeObservationContext,
+) -> Bool {
+  guard prefix.active.length() <= context.active.length() else { return false }
+  for index in 0..<prefix.active.length() {
+    if prefix.active[index] != context.active[index] {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn bytecode_observation_context_after(
+  context : BytecodeObservationContext,
+  instruction : BytecodeInstr,
+) -> BytecodeObservationContext {
+  match instruction {
+    ObserveStatement(source_id) => {
+      let active = context.active.copy()
+      active.push(StatementObservation(source_id))
+      { active, }
+    }
+    ObserveExpression(source_id) => {
+      let active = context.active.copy()
+      active.push(ExpressionObservation(source_id))
+      { active, }
+    }
+    _ => context
+  }
+}
+
+///|
+fn bytecode_observation_entry_source_id(
+  entry : BytecodeObservationContextEntry,
+) -> SourcePointId {
+  match entry {
+    StatementObservation(source_id) | ExpressionObservation(source_id) =>
+      source_id
+  }
+}
+
+///|
+fn bytecode_observation_entry_role(
+  entry : BytecodeObservationContextEntry,
+) -> SourcePointRole {
+  match entry {
+    StatementObservation(_) => StatementEntry
+    ExpressionObservation(_) => ExpressionEntry
+  }
+}
+
+///|
+fn bytecode_record_observation_barrier(
+  function : BytecodeFunction,
+  entries : Array[BytecodeObservationBarrierIndexEntry?],
+  source_id : SourcePointId,
+  expected_role : SourcePointRole,
+  barrier_kind : BytecodeObservationBarrierKind,
+  index_entry : BytecodeObservationBarrierIndexEntry,
+  function_path : Array[Int],
+  instruction_index : Int,
+) -> Unit raise Error {
+  let _ = verify_source_point_reference(
+    function,
+    source_id,
+    Some(expected_role),
+    function_path,
+    Some(instruction_index),
+  )
+  let SourcePointId(_, _, source_point_index) = source_id
+  match entries[source_point_index] {
+    None => entries[source_point_index] = Some(index_entry)
+    Some(existing) => {
+      let existing_kind = match existing {
+        StatementObservationBarrierIndex(_) => StatementObservationBarrier
+        ExpressionObservationBarrierIndex(_) => ExpressionObservationBarrier
+      }
+      raise bytecode_source_metadata_defect(
+        function_path,
+        Some(instruction_index),
+        ObservationBarrier,
+        ObservationBarrierKind(existing_kind),
+        ObservationBarrierKind(barrier_kind),
+      )
+    }
+  }
+}
+
+///|
+fn bytecode_build_observation_barrier_index(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> BytecodeObservationBarrierIndex raise Error {
+  let entries : Array[BytecodeObservationBarrierIndexEntry?] = Array::makei(
+    function.source_points.length(),
+    _ => None,
+  )
+  for instruction_index, instruction in function.code {
+    match instruction {
+      ObserveStatement(source_id) =>
+        bytecode_record_observation_barrier(
+          function,
+          entries,
+          source_id,
+          StatementEntry,
+          StatementObservationBarrier,
+          StatementObservationBarrierIndex(source_id),
+          function_path,
+          instruction_index,
+        )
+      ObserveExpression(source_id) =>
+        bytecode_record_observation_barrier(
+          function,
+          entries,
+          source_id,
+          ExpressionEntry,
+          ExpressionObservationBarrier,
+          ExpressionObservationBarrierIndex(source_id),
+          function_path,
+          instruction_index,
+        )
+      _ => ()
+    }
+  }
+  {
+    source_unit: function.source_unit,
+    source_point_owner: function.source_point_owner,
+    barriers: entries,
+  }
+}
+
+///|
+fn bytecode_observation_entry_matches_barrier(
+  barrier_index : BytecodeObservationBarrierIndex,
+  entry : BytecodeObservationContextEntry,
+) -> Bool {
+  let source_id = bytecode_observation_entry_source_id(entry)
+  let SourcePointId(source_unit, source_point_owner, source_point_index) = source_id
+  guard source_unit == barrier_index.source_unit &&
+    source_point_owner == barrier_index.source_point_owner &&
+    source_point_index >= 0 &&
+    source_point_index < barrier_index.barriers.length() else {
+    return false
+  }
+  match barrier_index.barriers[source_point_index] {
+    Some(StatementObservationBarrierIndex(actual)) =>
+      match entry {
+        StatementObservation(expected) => expected == actual
+        ExpressionObservation(_) => false
+      }
+    Some(ExpressionObservationBarrierIndex(actual)) =>
+      match entry {
+        ExpressionObservation(expected) => expected == actual
+        StatementObservation(_) => false
+      }
+    None => false
+  }
+}
+
+///|
+fn verify_bytecode_observation_entry(
+  function : BytecodeFunction,
+  barrier_index : BytecodeObservationBarrierIndex,
+  entry : BytecodeObservationContextEntry,
+  function_path : Array[Int],
+  instruction_index : Int,
+) -> Unit raise Error {
+  let source_id = bytecode_observation_entry_source_id(entry)
+  let expected_role = bytecode_observation_entry_role(entry)
+  let _ = verify_source_point_reference(
+    function,
+    source_id,
+    Some(expected_role),
+    function_path,
+    Some(instruction_index),
+  )
+  guard bytecode_observation_entry_matches_barrier(barrier_index, entry) else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      Some(instruction_index),
+      None,
+      None,
+      ContextFact,
+      ObservationContextDepth(1),
+      ObservationContextDepth(0),
+    )
+  }
+}
+
+///|
+fn bytecode_observation_coverage_defect(
+  function_path : Array[Int],
+  instruction_index : Int?,
+  predecessor_index : Int?,
+  target_index : Int?,
+  invariant : BytecodeObservationCoverageInvariant,
+  expected : BytecodeObservationCoverageFact,
+  actual : BytecodeObservationCoverageFact,
+) -> BytecodeVerifierDefect {
+  BytecodeObservationCoverageDefect({
+    function_path: function_path.copy(),
+    instruction_index,
+    predecessor_index,
+    target_index,
+    invariant,
+    expected,
+    actual,
+  })
+}
+
+///|
+fn bytecode_observation_context_for_target(
+  function : BytecodeFunction,
+  target : Int,
+) -> BytecodeObservationContext {
+  if target == function.code.length() {
+    bytecode_observation_context_empty()
+  } else {
+    function.observation_contexts[target]
+  }
+}
+
+///|
+fn bytecode_observation_transfer_has_successor(
+  transfer : BytecodeInstructionTransfer,
+  instruction_index : Int,
+  target : Int,
+) -> Bool {
+  match transfer {
+    Fallthrough(_) => target == instruction_index + 1
+    JumpTo(actual, _) => target == actual
+    BranchTo(actual, _) => target == actual || target == instruction_index + 1
+    SplitTo(actual, _, _) => target == actual || target == instruction_index + 1
+    Terminate(_) => false
+  }
+}
+
+///|
+fn bytecode_observation_edge_context_for_target(
+  function : BytecodeFunction,
+  instruction_index : Int,
+  target : Int,
+) -> BytecodeObservationContext? {
+  let mut found : BytecodeObservationContext? = None
+  for edge in function.observation_edge_contexts[instruction_index] {
+    if edge.successor == target {
+      match found {
+        None => found = Some(edge.context)
+        Some(_) => ()
+      }
+    }
+  }
+  found
+}
+
+///|
+fn require_bytecode_observation_edge_context(
+  function : BytecodeFunction,
+  instruction_index : Int,
+  target : Int,
+  source_post_context : BytecodeObservationContext,
+  function_path : Array[Int],
+) -> BytecodeObservationContext raise Error {
+  match
+    bytecode_observation_edge_context_for_target(
+      function, instruction_index, target,
+    ) {
+    Some(context) => context
+    None =>
+      raise bytecode_observation_coverage_defect(
+        function_path,
+        Some(instruction_index),
+        Some(instruction_index),
+        Some(target),
+        EdgeFact,
+        ObservationContextDepth(source_post_context.active.length()),
+        ObservationContextDepth(0),
+      )
+  }
+}
+
+///|
+fn verify_bytecode_observation_edge_facts(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  for instruction_index, edges in function.observation_edge_contexts {
+    let transfer = bytecode_instruction_transfer(
+      function.code[instruction_index],
+    )
+    for edge in edges {
+      guard edge.successor >= 0 && edge.successor <= function.code.length() else {
+        raise bytecode_observation_coverage_defect(
+          function_path,
+          Some(instruction_index),
+          Some(instruction_index),
+          Some(edge.successor),
+          EdgeFact,
+          CodeLength(function.code.length()),
+          ObservationContextDepth(edge.successor),
+        )
+      }
+      guard bytecode_observation_transfer_has_successor(
+        transfer,
+        instruction_index,
+        edge.successor,
+      ) else {
+        raise bytecode_observation_coverage_defect(
+          function_path,
+          Some(instruction_index),
+          Some(instruction_index),
+          Some(edge.successor),
+          EdgeFact,
+          ObservationContextDepth(instruction_index + 1),
+          ObservationContextDepth(edge.successor),
+        )
+      }
+      let target_context = bytecode_observation_context_for_target(
+        function,
+        edge.successor,
+      )
+      guard bytecode_observation_contexts_equal(edge.context, target_context) else {
+        raise bytecode_observation_coverage_defect(
+          function_path,
+          Some(instruction_index),
+          Some(instruction_index),
+          Some(edge.successor),
+          EdgeFact,
+          ObservationContextDepth(target_context.active.length()),
+          ObservationContextDepth(edge.context.active.length()),
+        )
+      }
+    }
+  }
+}
+
+///|
+fn record_bytecode_observation_context(
+  function : BytecodeFunction,
+  states : Array[BytecodeObservationContext?],
+  worklist : Array[Int],
+  target : Int,
+  expected_context : BytecodeObservationContext,
+  source_post_context : BytecodeObservationContext,
+  function_path : Array[Int],
+  predecessor_index : Int,
+) -> Unit raise Error {
+  let target_context = bytecode_observation_context_for_target(function, target)
+  guard bytecode_observation_context_is_prefix(
+    target_context, source_post_context,
+  ) else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      Some(target),
+      Some(predecessor_index),
+      Some(target),
+      EdgePrefix,
+      ObservationContextDepth(source_post_context.active.length()),
+      ObservationContextDepth(target_context.active.length()),
+    )
+  }
+  guard bytecode_observation_contexts_equal(target_context, expected_context) else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      Some(predecessor_index),
+      Some(predecessor_index),
+      Some(target),
+      ContextFact,
+      ObservationContextDepth(expected_context.active.length()),
+      ObservationContextDepth(target_context.active.length()),
+    )
+  }
+  match states[target] {
+    None => {
+      states[target] = Some(expected_context)
+      worklist.push(target)
+    }
+    Some(existing_context) => {
+      guard bytecode_observation_contexts_equal(
+        existing_context, expected_context,
+      ) else {
+        raise bytecode_observation_coverage_defect(
+          function_path,
+          Some(target),
+          Some(predecessor_index),
+          Some(target),
+          ContextFact,
+          ObservationContextDepth(existing_context.active.length()),
+          ObservationContextDepth(expected_context.active.length()),
+        )
+      }
+    }
+  }
+}
+
+///|
+fn verify_bytecode_observation_coverage(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  verify_bytecode_function_observation_coverage(program.main, [])
+}
+
+///|
+fn verify_bytecode_function_observation_coverage(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> Unit raise Error {
+  let code_length = function.code.length()
+  guard function.observation_contexts.length() == code_length else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      None,
+      None,
+      None,
+      ContextCount,
+      CodeLength(code_length),
+      ObservationContextsLength(function.observation_contexts.length()),
+    )
+  }
+  guard function.observation_edge_contexts.length() == code_length else {
+    raise bytecode_observation_coverage_defect(
+      function_path,
+      None,
+      None,
+      None,
+      EdgeCount,
+      CodeLength(code_length),
+      ObservationEdgeContextsLength(function.observation_edge_contexts.length()),
+    )
+  }
+  let barrier_index = bytecode_build_observation_barrier_index(
+    function, function_path,
+  )
+  verify_bytecode_observation_authority(function, function_path)
+  for instruction_index, context in function.observation_contexts {
+    for entry in context.active {
+      verify_bytecode_observation_entry(
+        function, barrier_index, entry, function_path, instruction_index,
+      )
+    }
+  }
+  verify_bytecode_observation_edge_facts(function, function_path)
+  let states : Array[BytecodeObservationContext?] = Array::make(
+    code_length + 1,
+    None,
+  )
+  states[0] = Some(bytecode_observation_context_empty())
+  let worklist = [0]
+  while worklist.length() > 0 {
+    let instruction_index = worklist.pop().unwrap()
+    let state = states[instruction_index].unwrap()
+    if instruction_index == code_length {
+      continue
+    }
+    let recorded_context = function.observation_contexts[instruction_index]
+    guard bytecode_observation_contexts_equal(state, recorded_context) else {
+      raise bytecode_observation_coverage_defect(
+        function_path,
+        Some(instruction_index),
+        None,
+        None,
+        ContextFact,
+        ObservationContextDepth(state.active.length()),
+        ObservationContextDepth(recorded_context.active.length()),
+      )
+    }
+    let source_post_context = bytecode_observation_context_after(
+      recorded_context,
+      function.code[instruction_index],
+    )
+    let transfer = bytecode_instruction_transfer(
+      function.code[instruction_index],
+    )
+    let expected_context_for = target => {
+      match
+        bytecode_observation_edge_context_for_target(
+          function, instruction_index, target,
+        ) {
+        Some(context) => context
+        None => source_post_context
+      }
+    }
+    match transfer {
+      Fallthrough(_) => {
+        let target = instruction_index + 1
+        record_bytecode_observation_context(
+          function,
+          states,
+          worklist,
+          target,
+          expected_context_for(target),
+          source_post_context,
+          function_path,
+          instruction_index,
+        )
+      }
+      JumpTo(target, _) => {
+        let expected_context = require_bytecode_observation_edge_context(
+          function, instruction_index, target, source_post_context, function_path,
+        )
+        record_bytecode_observation_context(
+          function, states, worklist, target, expected_context, source_post_context,
+          function_path, instruction_index,
+        )
+      }
+      BranchTo(target, _) => {
+        let expected_context = require_bytecode_observation_edge_context(
+          function, instruction_index, target, source_post_context, function_path,
+        )
+        record_bytecode_observation_context(
+          function, states, worklist, target, expected_context, source_post_context,
+          function_path, instruction_index,
+        )
+        let fallthrough = instruction_index + 1
+        record_bytecode_observation_context(
+          function,
+          states,
+          worklist,
+          fallthrough,
+          expected_context_for(fallthrough),
+          source_post_context,
+          function_path,
+          instruction_index,
+        )
+      }
+      SplitTo(target, _, _) => {
+        let expected_context = require_bytecode_observation_edge_context(
+          function, instruction_index, target, source_post_context, function_path,
+        )
+        record_bytecode_observation_context(
+          function, states, worklist, target, expected_context, source_post_context,
+          function_path, instruction_index,
+        )
+        let fallthrough = instruction_index + 1
+        record_bytecode_observation_context(
+          function,
+          states,
+          worklist,
+          fallthrough,
+          expected_context_for(fallthrough),
+          source_post_context,
+          function_path,
+          instruction_index,
+        )
+      }
+      Terminate(_) => ()
+    }
+  }
+  for child_index, child in function.children {
+    let child_path = function_path.copy()
+    child_path.push(child_index)
+    verify_bytecode_function_observation_coverage(child, child_path)
   }
 }
 
@@ -748,6 +1534,7 @@ fn finalize_bytecode_program(
   verify_bytecode_source_metadata(program)
   verify_bytecode_preparation(program.main, [])
   verify_bytecode_control_flow(program)
+  verify_bytecode_observation_coverage(program)
   verify_bytecode_indexed_operands(program)
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)

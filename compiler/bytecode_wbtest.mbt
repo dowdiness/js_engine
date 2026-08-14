@@ -35,6 +35,9 @@ fn replace_preparation_for_wb(
     source_unit=function.source_unit,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children=function.children,
     header_provenance=function.header_provenance,
   )
@@ -73,6 +76,9 @@ fn replace_signature_inputs_for_wb(
     source_unit=function.source_unit,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children=function.children,
     header_provenance=function.header_provenance,
   )
@@ -120,6 +126,9 @@ fn replace_signature_inputs_and_facts_for_wb(
     source_unit=function.source_unit,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children=function.children,
     header_provenance=function.header_provenance,
   )
@@ -155,6 +164,9 @@ fn replace_source_metadata_for_wb(
     source_unit=function.source_unit,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children=function.children,
     header_provenance=function.header_provenance,
   )

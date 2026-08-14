@@ -239,6 +239,6 @@
     {"column":15,"enclosing":"start_bytecode_frame","kind":"compiler","line":117,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::hoist_lexical_bindings"},
     {"column":17,"enclosing":"start_bytecode_frame","kind":"compiler","line":119,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::bind_env_slots"},
     {"column":15,"enclosing":"start_bytecode_frame","kind":"compiler","line":121,"path":"compiler/bytecode_vm.mbt","target":"BytecodeFrame::hoist_function_decls"},
-    {"column":3,"enclosing":"string_array_contains","kind":"compiler","line":1486,"path":"compiler/bytecode_ir.mbt","target":"local_index_from_names"}
+    {"column":3,"enclosing":"string_array_contains","kind":"compiler","line":1709,"path":"compiler/bytecode_ir.mbt","target":"local_index_from_names"}
   ]
 }

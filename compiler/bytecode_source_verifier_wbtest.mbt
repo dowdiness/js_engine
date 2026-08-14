@@ -183,6 +183,9 @@ fn bytecode_function_with_source_unit_for_wb(
     source_unit~,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children=function.children,
     header_provenance=function.header_provenance,
   )
@@ -257,6 +260,9 @@ fn bytecode_function_with_source_point_owner_for_wb(
     source_unit=function.source_unit,
     source_points=function.source_points,
     instruction_sources~,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
     children~,
     header_provenance=function.header_provenance,
   )
@@ -1639,7 +1645,7 @@ test "frame-shape verifier rejects terminal auxiliary-state residue" {
 }
 
 ///|
-test "frame-shape verifier rejects for-in iterator residue" {
+test "observation authority rejects a mutated ForInNext topology" {
   let program = unverified_source_program_for_wb(
     "var key; for (key in object) { value = key; }",
   )
@@ -1655,20 +1661,13 @@ test "frame-shape verifier rejects for-in iterator residue" {
     }
   }
   guard branch_index is Some(_) else { abort("expected ForInNext instruction") }
-  let mut defect : BytecodeFrameShapeDefect? = None
-  try {
-    let _ = finalize_bytecode_program(program)
-  } catch {
-    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
-    _ => fail("expected typed frame-shape defect")
-  }
-  let defect = defect.unwrap()
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "mutated ForInNext lost its fallthrough successor",
+  )
   match defect.invariant {
-    TerminalShape => ()
-    _ => fail("expected terminal-shape invariant")
+    AuthoritySuccessor => ()
+    _ => fail("expected independently anchored successor invariant")
   }
-  assert_eq(defect.expected.for_in_iterator_depth, 0)
-  assert_eq(defect.actual.for_in_iterator_depth, 1)
 }
 
 ///|
@@ -1856,6 +1855,38 @@ fn mutate_first_control_flow_target_for_wb(
 }
 
 ///|
+fn mutate_for_in_fallthrough_back_edge_for_wb(
+  function : BytecodeFunction,
+  target : Int,
+) -> Int {
+  let mut for_in_index : Int? = None
+  for instruction_index, instruction in function.code {
+    match instruction {
+      ForInNext(_) => {
+        for_in_index = Some(instruction_index)
+        break
+      }
+      _ => ()
+    }
+  }
+  let for_in_index = for_in_index.unwrap()
+  // The loop-back Jump is reached only after the ForInNext fallthrough-side
+  // assignment/body path. Select it by its exact loop-entry target instead of
+  // mutating whichever Jump happens to appear first.
+  for instruction_index, instruction in function.code {
+    match instruction {
+      Jump(actual_target) if instruction_index > for_in_index &&
+        actual_target == for_in_index => {
+        function.code[instruction_index] = Jump(target)
+        return instruction_index
+      }
+      _ => ()
+    }
+  }
+  abort("expected ForInNext fallthrough-side back edge")
+}
+
+///|
 test "control-flow verifier rejects invalid targets for every destination opcode" {
   let fixtures : Array[(ControlFlowOpcodeForWb, String)] = [
     (Jump, "if (true) 1; else 2;"),
@@ -1901,40 +1932,36 @@ test "control-flow verifier rejects targets above the terminal boundary" {
 }
 
 ///|
-test "control-flow verifier accepts the inclusive terminal boundary" {
+test "observation verifier rejects a terminal branch target" {
   let program = unverified_source_program_for_wb("if (true) 1; else 2;")
   let terminal = program.main.code.length()
-  let instruction_index = mutate_first_control_flow_target_for_wb(
+  let _ = mutate_first_control_flow_target_for_wb(
     program.main,
     JumpIfFalse,
     terminal,
   )
-  let finalized = finalize_bytecode_program(program)
-  match finalized.main_for_wb().code[instruction_index] {
-    JumpIfFalse(target) => assert_eq(target, terminal)
-    _ => fail("expected mutated conditional jump")
-  }
+  let _ = expect_observation_coverage_defect_for_wb(
+    program, "terminal target bypassed the branch observation region",
+  )
 }
 
 ///|
-test "control-flow verifier accepts zero and in-range targets" {
+test "observation verifier rejects zero and in-range bypass targets" {
   let zero_program = unverified_source_program_for_wb("if (true) 1; else 2;")
-  let zero_index = mutate_first_control_flow_target_for_wb(
+  let _ = mutate_first_control_flow_target_for_wb(
     zero_program.main,
     JumpIfFalse,
     0,
   )
-  let zero_finalized = finalize_bytecode_program(zero_program)
-  match zero_finalized.main_for_wb().code[zero_index] {
-    JumpIfFalse(target) => assert_eq(target, 0)
-    _ => fail("expected zero-target conditional jump")
-  }
+  let _ = expect_observation_coverage_defect_for_wb(
+    zero_program, "zero target bypassed the branch observation region",
+  )
 
   let in_range_program = unverified_source_program_for_wb(
     "if (true) 1; else 2;",
   )
   let in_range_target = 1
-  let in_range_index = mutate_first_control_flow_target_for_wb(
+  let _ = mutate_first_control_flow_target_for_wb(
     in_range_program.main,
     JumpIfFalse,
     in_range_target,
@@ -1942,11 +1969,9 @@ test "control-flow verifier accepts zero and in-range targets" {
   guard in_range_target < in_range_program.main.code.length() else {
     abort("expected an in-range instruction target")
   }
-  let in_range_finalized = finalize_bytecode_program(in_range_program)
-  match in_range_finalized.main_for_wb().code[in_range_index] {
-    JumpIfFalse(target) => assert_eq(target, in_range_target)
-    _ => fail("expected in-range conditional jump")
-  }
+  let _ = expect_observation_coverage_defect_for_wb(
+    in_range_program, "in-range target bypassed the branch observation region",
+  )
 }
 
 ///|
@@ -2018,7 +2043,7 @@ test "control-flow verifier accepts representative valid programs" {
 }
 
 ///|
-test "control-flow terminal target falls out with normal completion" {
+test "observation verifier rejects terminal target that skips a statement" {
   let program = unverified_source_program_for_wb("1; if (false) 2;")
   let code_length = program.main.code.length()
   let mut jump_index : Int? = None
@@ -2036,7 +2061,386 @@ test "control-flow terminal target falls out with normal completion" {
     Some(index) => index
     None => abort("expected conditional jump")
   }
-  let finalized = finalize_bytecode_program(program)
-  let value = finalized.run(@interpreter.new_interpreter())
-  assert_eq(value.to_string(), "1")
+  let _ = expect_observation_coverage_defect_for_wb(
+    program, "terminal target skipped the conditional statement observation",
+  )
+}
+
+///|
+fn load_name_index_for_wb(function : BytecodeFunction, name : String) -> Int {
+  for instruction_index, instruction in function.code {
+    match instruction {
+      LoadName(actual) if actual == name => return instruction_index
+      _ => ()
+    }
+  }
+  abort("expected named load")
+}
+
+///|
+fn get_property_index_for_wb(function : BytecodeFunction, name : String) -> Int {
+  for instruction_index, instruction in function.code {
+    match instruction {
+      GetProperty(actual, _) if actual == name => return instruction_index
+      _ => ()
+    }
+  }
+  abort("expected property load")
+}
+
+///|
+fn expect_observation_coverage_defect_for_wb(
+  program : BytecodeUnverifiedProgram,
+  label : String,
+) -> BytecodeObservationCoverageDefect raise Error {
+  try {
+    let _ = finalize_bytecode_program(program)
+    fail("expected observation coverage rejection: " + label)
+  } catch {
+    BytecodeObservationCoverageDefect(defect) => defect
+    _ => fail("expected typed observation coverage rejection: " + label)
+  }
+}
+
+///|
+test "lowering materializes branch split and terminal edge contexts" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { if (condition) body; }",
+  )
+  let code_length = program.main.code.length()
+  let mut branch_count = 0
+  let mut split_count = 0
+  let mut terminal_edge_count = 0
+  for instruction_index, instruction in program.main.code {
+    let transfer = bytecode_instruction_transfer(instruction)
+    match transfer {
+      BranchTo(_, _) => {
+        branch_count += 1
+        assert_eq(
+          program.main.observation_edge_contexts[instruction_index].length(),
+          2,
+        )
+      }
+      SplitTo(_, _, _) => {
+        split_count += 1
+        assert_eq(
+          program.main.observation_edge_contexts[instruction_index].length(),
+          2,
+        )
+      }
+      _ => ()
+    }
+    for edge in program.main.observation_edge_contexts[instruction_index] {
+      let expected = bytecode_observation_context_for_target(
+        program.main,
+        edge.successor,
+      )
+      assert_true(bytecode_observation_contexts_equal(edge.context, expected))
+      if edge.successor == code_length {
+        terminal_edge_count += 1
+        assert_true(edge.context.active.is_empty())
+      }
+    }
+  }
+  assert_true(branch_count > 0)
+  assert_true(split_count > 0)
+  assert_true(terminal_edge_count > 0)
+}
+
+///|
+test "RED: finalization rejects duplicate indexed observation barriers" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let statement_source_id = source_point_id_for_role_for_wb(
+    program.main,
+    StatementEntry,
+  )
+  let expression_index = observe_expression_index_for_wb(program.main)
+  program.main.code[expression_index] = ObserveStatement(statement_source_id)
+  program.main.instruction_sources[expression_index] = [statement_source_id]
+  let _ = expect_source_metadata_defect_for_wb(
+    program,
+    ObservationBarrier,
+    [],
+    Some(expression_index),
+  )
+}
+
+///|
+test "RED: finalization rejects contexts coordinated to empty" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  for index in 0..<program.main.observation_contexts.length() {
+    program.main.observation_contexts[index] = { active: [] }
+  }
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "all reachable observation contexts were shortened",
+  )
+  match defect.invariant {
+    ContextFact | EdgeFact | AuthorityContext | AuthoritySuccessor => ()
+    _ => fail("expected context anchoring invariant")
+  }
+}
+
+///|
+test "RED: finalization rejects a shortened reachable observation context" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let target = load_name_index_for_wb(program.main, "first")
+  program.main.observation_contexts[target] = { active: [] }
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "reachable statement expression context was shortened",
+  )
+  match defect.invariant {
+    ContextFact
+    | EdgeFact
+    | EdgePrefix
+    | AuthorityContext
+    | AuthoritySuccessor => ()
+    _ => fail("expected context edge invariant")
+  }
+}
+
+///|
+test "RED: coordinated target and observation facts bypass a statement" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let mut jump_index : Int? = None
+  let mut original_target : Int? = None
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      JumpIfFalse(target) => {
+        jump_index = Some(instruction_index)
+        original_target = Some(target)
+        break
+      }
+      _ => ()
+    }
+  }
+  let jump_index = jump_index.unwrap()
+  let original_target = original_target.unwrap()
+  let target = load_name_index_for_wb(program.main, "second")
+  let outer_context = program.main.observation_contexts[jump_index]
+  program.main.code[jump_index] = JumpIfFalse(target)
+  program.main.observation_contexts[target] = {
+    active: outer_context.active.copy(),
+  }
+  for
+    instruction_index in (target + 1)..<program.main.observation_contexts.length() {
+    program.main.observation_contexts[instruction_index] = {
+      active: outer_context.active.copy(),
+    }
+  }
+  let mut edge_rewritten = false
+  program.main.observation_edge_contexts[jump_index] = program.main.observation_edge_contexts[jump_index].map(edge => {
+      if edge.successor == original_target {
+        edge_rewritten = true
+        { successor: target, context: { active: outer_context.active.copy() } }
+      } else {
+        edge
+      }
+    },
+  )
+  assert_true(edge_rewritten, msg="expected conditional edge fact")
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "coordinated target/context/edge mutation bypassed an observation region",
+  )
+  match defect.invariant {
+    AuthorityContext | AuthoritySuccessor => ()
+    _ => fail("expected independently anchored authority invariant")
+  }
+}
+
+///|
+test "RED: finalization rejects a missing jump edge context fact" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let mut cleared = false
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      JumpIfFalse(_) => {
+        program.main.observation_edge_contexts[instruction_index] = []
+        cleared = true
+        break
+      }
+      _ => ()
+    }
+  }
+  guard cleared else { abort("expected conditional jump") }
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "conditional jump context fact was removed",
+  )
+  match defect.invariant {
+    EdgeFact => ()
+    _ => fail("expected missing edge fact invariant")
+  }
+}
+
+///|
+test "RED: finalization rejects an unconditional edge that bypasses a statement" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let target = load_name_index_for_wb(program.main, "second")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program, "unconditional edge entered the else expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a conditional edge that bypasses an expression" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let target = load_name_index_for_wb(program.main, "second")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalse,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "conditional edge entered the else expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a loop back-edge into a condition middle" {
+  let program = unverified_source_program_for_wb("while (condition) { body; }")
+  let target = load_name_index_for_wb(program.main, "condition")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program, "loop back-edge entered the condition after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects continue into a condition middle" {
+  let program = unverified_source_program_for_wb(
+    "while (condition) { continue; }",
+  )
+  let target = load_name_index_for_wb(program.main, "condition")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program, "continue edge entered the condition after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects a loop exit into a later expression middle" {
+  let program = unverified_source_program_for_wb(
+    "while (condition) { body; } after;",
+  )
+  let target = load_name_index_for_wb(program.main, "after")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalse,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "loop exit entered the later expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a ForInNext exit into a later expression middle" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { body; } after;",
+  )
+  let target = load_name_index_for_wb(program.main, "after")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    ForInNext,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "ForInNext exit entered the later expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a ForIn fallthrough-side back-edge mutation" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { if (condition) body; }",
+  )
+  let target = load_name_index_for_wb(program.main, "body")
+  let _ = mutate_for_in_fallthrough_back_edge_for_wb(program.main, target)
+  assert_preparation_rejected_for_wb(
+    program, "ForIn fallthrough-side edge entered the body after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a logical RHS middle entry" {
+  let program = unverified_source_program_for_wb("false && object.value;")
+  let target = get_property_index_for_wb(program.main, "value")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalseKeep,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "logical short-circuit edge entered the RHS after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects an optional continuation middle entry" {
+  let program = unverified_source_program_for_wb("object?.[key].next;")
+  let target = load_name_index_for_wb(program.main, "key")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfNotNullishKeep,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program, "optional continuation entered after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects malformed nested child observation entry" {
+  let program = unverified_source_program_for_wb(
+    "function child() { if (condition) first; else second; } child();",
+  )
+  guard program.main.children.length() == 1 else {
+    abort("expected one nested child")
+  }
+  let child = program.main.children[0]
+  let target = load_name_index_for_wb(child, "second")
+  let _ = mutate_first_control_flow_target_for_wb(child, JumpIfFalse, target)
+  let defect = expect_observation_coverage_defect_for_wb(
+    program, "nested child edge entered the else expression after its observations",
+  )
+  assert_eq(defect.function_path, [0])
+  match defect.invariant {
+    EdgeFact
+    | EdgePrefix
+    | ContextFact
+    | AuthorityContext
+    | AuthoritySuccessor => ()
+    _ => fail("expected nested observation edge invariant")
+  }
+}
+
+///|
+test "observation coverage controls retain normal lowering" {
+  let sources = [
+    "if (condition) first; else second;", "false && object.value;", "true || fallback;",
+    "value ?? fallback;", "object?.[key].next;", "object?.value.next;", "while (condition) { body; }",
+    "while (condition) { break; unreachableStmt; }", "do { body; } while (condition);",
+    "for (var i = 0; i < 1; i++) { body; }", "var key; for (key in object) { body; }",
+    "var key; for (key in object) { break; unreachableStmt; }", "function child() { return childValue; } child();",
+  ]
+  for source in sources {
+    let program = unverified_source_program_for_wb(source)
+    let _ = finalize_bytecode_program(program) catch {
+      _ => fail("observation coverage rejected control: " + source)
+    }
+  }
 }

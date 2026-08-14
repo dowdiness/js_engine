@@ -1733,6 +1733,15 @@ fn compile_bytecode_function(
   )
   let needs_arguments_obj = bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body)
+  let observation_edge_contexts = bytecode_observation_edge_contexts_from_lowering(
+    builder.code,
+    builder.observation_contexts,
+  )
+  let observation_authority = bytecode_observation_authority_from_lowering(
+    builder.code,
+    builder.observation_contexts,
+    source_identity,
+  )
   BytecodeFunction(
     name~,
     signature_name~,
@@ -1767,6 +1776,9 @@ fn compile_bytecode_function(
     source_point_owner~,
     source_points=builder.source_points,
     instruction_sources=builder.instruction_sources,
+    observation_contexts=builder.observation_contexts,
+    observation_edge_contexts~,
+    observation_authority=Some(observation_authority),
     children=builder.children,
     header_provenance~,
   )
@@ -2153,8 +2165,9 @@ fn BytecodeBuilder::compile_stmt(
   stmt : @ast.Stmt,
   declaration_updates_completion? : Bool = true,
 ) -> Unit raise Error {
-  self.emit_statement_observation(bytecode_stmt_loc(stmt))
+  let _ = self.emit_statement_observation(bytecode_stmt_loc(stmt))
   self.compile_stmt_body(stmt, declaration_updates_completion~)
+  self.pop_observation()
 }
 
 ///|
@@ -2496,8 +2509,9 @@ fn BytecodeBuilder::compile_for_init(
 ) -> Unit raise Error {
   match stmt {
     ExprStmt(expr, _) => {
-      self.emit_statement_observation(bytecode_stmt_loc(stmt))
+      let _ = self.emit_statement_observation(bytecode_stmt_loc(stmt))
       self.compile_expr_for_effect(expr)
+      self.pop_observation()
     }
     VarDecl(_, _, _, _) | StmtList(_, _) => self.compile_stmt(stmt)
     _ => {
@@ -4120,7 +4134,7 @@ fn BytecodeBuilder::compile_expr_for_effect(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {
-  self.emit_expression_observation(bytecode_expr_loc(expr))
+  let _ = self.emit_expression_observation(bytecode_expr_loc(expr))
   // Only elide expressions whose evaluation cannot throw or trigger user code.
   // Identifier references, calls, member expressions, and object/array/function
   // literals still use the value path and discard the result.
@@ -4140,6 +4154,7 @@ fn BytecodeBuilder::compile_expr_for_effect(
       let _ = self.emit(Pop)
     }
   }
+  self.pop_observation()
 }
 
 ///|
@@ -4147,7 +4162,7 @@ fn BytecodeBuilder::compile_expr_for_completion(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {
-  self.emit_expression_observation(bytecode_expr_loc(expr))
+  let _ = self.emit_expression_observation(bytecode_expr_loc(expr))
   match expr {
     NumberLit(n, _, _) => self.emit_completion_value(Value::Number(n))
     StringLit(s, _, _, _) => self.emit_completion_value(Value::String_(s))
@@ -4164,6 +4179,7 @@ fn BytecodeBuilder::compile_expr_for_completion(
       let _ = self.emit(SetCompletion)
     }
   }
+  self.pop_observation()
 }
 
 ///|
@@ -4171,8 +4187,9 @@ fn BytecodeBuilder::compile_expr(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {
-  self.emit_expression_observation(bytecode_expr_loc(expr))
+  let _ = self.emit_expression_observation(bytecode_expr_loc(expr))
   self.compile_expr_body(expr)
+  self.pop_observation()
 }
 
 ///|
@@ -4627,10 +4644,11 @@ fn BytecodeBuilder::compile_expr_body(
       self.compile_expr(obj)
       match bytecode_literal_computed_read_key(key) {
         Some(prop) => {
-          self.emit_expression_observation(bytecode_expr_loc(key))
+          let _ = self.emit_expression_observation(bytecode_expr_loc(key))
           let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
             (MemberAccess, loc),
           ])
+          self.pop_observation()
         }
         None => {
           self.compile_expr(key)
@@ -4802,8 +4820,9 @@ fn BytecodeBuilder::compile_expr_body(
       self.compile_expr(obj)
       match bytecode_literal_computed_read_key(key) {
         Some(prop) => {
-          self.emit_expression_observation(bytecode_expr_loc(key))
+          let _ = self.emit_expression_observation(bytecode_expr_loc(key))
           self.emit_property_call_prepare(prop, member_loc, suspended=true)
+          self.pop_observation()
         }
         None => {
           self.compile_expr(key)
