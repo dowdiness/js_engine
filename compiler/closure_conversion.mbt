@@ -1285,7 +1285,7 @@ fn compile_stmt(
     }
     FuncDecl(name, params, body, _, _) => {
       let compiled_body = compile_body(body)
-      fn(_interp, ctx, env) raise {
+      fn(interp, ctx, env) raise {
         @runtime.validate_function_signature(
           ctx.strict,
           Some(name),
@@ -1299,11 +1299,7 @@ fn compile_stmt(
           ctx.strict || @static_semantics.has_use_strict(body),
           body=Some(compiled_body),
         )
-        if env.bindings.contains(name) || env.has_var(name) {
-          env.assign_var(name, func)
-        } else {
-          env.def(name, func, BindingKind::VarBinding)
-        }
+        interp.define_compiled_binding(env, VarKind, name, func, true)
         Signal::Normal(Value::Undefined)
       }
     }

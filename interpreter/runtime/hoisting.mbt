@@ -897,7 +897,7 @@ fn check_global_function_declarations(
           }
           if !definable {
             raise @errors.TypeError(
-              message="Cannot declare global function '\\{name}': property is non-configurable",
+              message="Cannot declare global function '\{name}': property is non-configurable",
             )
           }
           declared.add(name) |> ignore
@@ -930,7 +930,7 @@ fn check_global_var_declarations(
             data.extensible
           if !definable {
             raise @errors.TypeError(
-              message="Cannot declare global var '\\{name}': global object is non-extensible",
+              message="Cannot declare global var '\{name}': global object is non-extensible",
             )
           }
         }

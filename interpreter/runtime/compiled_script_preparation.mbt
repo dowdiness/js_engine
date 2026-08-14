@@ -132,7 +132,10 @@ fn Interpreter::apply_compiled_script_preparation(
         Some(error) => raise error
         None => ()
       }
-    None => ()
+    None =>
+      raise @errors.InternalError(
+        message="unsettled CompiledScriptPreparation cannot be applied",
+      )
   }
   check_global_function_declarations(self, preparation.function_names)
   check_global_var_declarations(
