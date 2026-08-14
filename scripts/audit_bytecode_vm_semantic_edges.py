@@ -926,6 +926,13 @@ def _reference_candidate(
     )
 
 
+def _local_alias_for_candidate(root: Path, candidate: Candidate) -> str | None:
+    line = (root / candidate.path).read_text().splitlines()[candidate.line - 1]
+    prefix = line[: candidate.column - 1]
+    match = re.search(r"\b(?:let|guard)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*$", prefix)
+    return match.group(1) if match else None
+
+
 def _recorded_target(
     query: str,
     target_entry: dict[str, Any],
@@ -999,6 +1006,7 @@ def collect_semantic_edges(
         path = entry["path"]
         has_dollar_multiline = contains_dollar_multiline(root, entry)
         candidate_outcomes = candidate_locations(root, entry, set(symbols_by_name))
+        local_aliases: dict[str, tuple[str, str]] = {}
         if not has_dollar_multiline:
             for candidate_outcome in candidate_outcomes:
                 if isinstance(candidate_outcome, IntentionallyIgnored):
@@ -1073,6 +1081,53 @@ def collect_semantic_edges(
                     )
                 )
                 continue
+            if not unique_matches:
+                alias = local_aliases.get(spelling)
+                if alias is not None:
+                    alias_kind, alias_target = alias
+                    alias_candidate = Candidate(
+                        path=candidate.path,
+                        line=candidate.line,
+                        column=candidate.column,
+                        enclosing=candidate.enclosing,
+                        spelling=candidate.spelling,
+                        resolver_phase="find-references",
+                    )
+                    alias_outcome = (
+                        ResolvedCompiler(alias_candidate, alias_target)
+                        if alias_kind == "compiler"
+                        else ResolvedRuntime(alias_candidate, alias_target)
+                    )
+                    outcomes.append(alias_outcome)
+                    _add_resolved_edge(
+                        edges,
+                        pending,
+                        visited,
+                        enclosing,
+                        alias_outcome,
+                    )
+                    continue
+                outcomes.append(
+                    UnresolvedCandidate(
+                        _diagnostic(
+                            Candidate(
+                                path=candidate.path,
+                                line=candidate.line,
+                                column=candidate.column,
+                                enclosing=candidate.enclosing,
+                                spelling=candidate.spelling,
+                                resolver_phase="find-references",
+                            ),
+                            "find_references_no_symbol_match",
+                            detail=(
+                                "no compiler/runtime symbol-table identity matched "
+                                "executable fallback candidate"
+                            ),
+                            identity=spelling,
+                        )
+                    )
+                )
+                continue
             if len(unique_matches) != 1:
                 continue
             query, target_entry = next(iter(unique_matches.items()))
@@ -1135,6 +1190,8 @@ def collect_semantic_edges(
                     )
                 )
                 continue
+            if (alias := _local_alias_for_candidate(root, candidate)) is not None:
+                local_aliases[alias] = (kind, target)
             for ref_path, ref_line, ref_col in matching_references:
                 ref_candidate = _reference_candidate(
                     ref_path,

@@ -197,6 +197,57 @@ class ResolverOutcomeTests(unittest.TestCase):
         self.assertIn("unresolved=1 ambiguous=1", rendered)
         self.assertLess(rendered.index("compiler/a.mbt:3:2"), rendered.index("compiler/fixture.mbt:12:9"))
 
+    def test_dollar_fallback_without_symbol_match_is_unresolved(self) -> None:
+        entry = {
+            "kind": ["Sym", "fixture_root"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "compiler/fixture.mbt",
+            "range": [1, 1, 1, 30],
+            "name_range": [1, 4, 1, 16],
+        }
+        fallback = Candidate(
+            path="compiler/fixture.mbt",
+            line=1,
+            column=25,
+            enclosing="fixture_root",
+            spelling="missing_call",
+            resolver_phase="hover",
+            executable_hint=True,
+        )
+        with patch.object(
+            audit_script,
+            "load_symbols",
+            return_value=({"fixture_root": entry}, {}),
+        ), patch.object(
+            audit_script,
+            "candidate_locations",
+            return_value=[fallback],
+        ), patch.object(
+            audit_script,
+            "contains_dollar_multiline",
+            return_value=True,
+        ), patch.object(
+            audit_script,
+            "semantic_references",
+            side_effect=AssertionError("zero matches must fail before find-references"),
+        ):
+            _, outcomes = audit_script.collect_semantic_edges(
+                Path("."),
+                ("fixture_root",),
+            )
+
+        self.assertEqual(len(outcomes), 1)
+        self.assertIsInstance(outcomes[0], UnresolvedCandidate)
+        diagnostic = outcomes[0].diagnostic
+        self.assertEqual(diagnostic.reason, "find_references_no_symbol_match")
+        self.assertEqual(diagnostic.detail, "no compiler/runtime symbol-table identity matched executable fallback candidate")
+        self.assertEqual(diagnostic.candidate.path, "compiler/fixture.mbt")
+        self.assertEqual(diagnostic.candidate.line, 1)
+        self.assertEqual(diagnostic.candidate.column, 25)
+        self.assertEqual(diagnostic.candidate.enclosing, "fixture_root")
+        self.assertEqual(diagnostic.candidate.spelling, "missing_call")
+        self.assertEqual(diagnostic.candidate.resolver_phase, "find-references")
+
     def test_update_with_root_override_rejects_before_index_and_preserves_baseline(self) -> None:
         baseline = Path("scripts/bytecode_vm_semantic_edges.json")
         before = baseline.read_bytes()
