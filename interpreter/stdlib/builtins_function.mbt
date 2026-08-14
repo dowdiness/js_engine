@@ -95,6 +95,7 @@ fn callable_source_text(data : @runtime.ObjectData) -> String? {
         Some(String_(text)) => Some(text)
         _ => None
       }
+    Some(ExecutorCallable(executable)) => executable.source_text()
     _ => None
   }
 }

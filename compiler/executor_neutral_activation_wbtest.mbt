@@ -101,6 +101,51 @@ test "Function.prototype.call preserves name length and source identity" {
 }
 
 ///|
+test "RED: bytecode functions preserve exact source text" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "function f(a) { /* keep */ return a; } f.toString();",
+  )
+  inspect(result.to_string(), content="function f(a) { /* keep */ return a; }")
+}
+
+///|
+test "bytecode expression arrow and method source metadata stay exact" {
+  let expression = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let f = function named(a) { /* expression */ return a; }; f.toString();",
+  )
+  inspect(
+    expression.to_string(),
+    content="function named(a) { /* expression */ return a; }",
+  )
+  let arrow = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let f = (a) => /* arrow */ a; f.toString();",
+  )
+  inspect(arrow.to_string(), content="(a) => /* arrow */ a")
+  let method_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let o = { m(a) { /* method */ return a; } }; o.m.toString();",
+  )
+  inspect(method_result.to_string(), content="m(a) { /* method */ return a; }")
+}
+
+///|
+test "compiled script preparation preserves global setup and reuse" {
+  let interp = @interpreter.new_interpreter()
+  let first = run_executor_neutral_bytecode(
+    interp,
+    "var value; function add() { return 2; } let lexical = 3; " +
+    "value = add() + lexical; value;",
+  )
+  inspect(first.to_string(), content="5")
+  let second = run_executor_neutral_bytecode(interp, "value + 1;")
+  inspect(second.to_string(), content="6")
+  inspect(interp.global.get("value").to_string(), content="5")
+}
+
+///|
 fn assert_plain_member_call_lowering(
   code : Array[BytecodeInstr],
   context : String,

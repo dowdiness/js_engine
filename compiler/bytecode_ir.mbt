@@ -15,6 +15,10 @@ priv struct SourcePointOwnerId(Int) derive(Eq, Debug)
 ///|
 priv struct SourcePointOwnerAllocator {
   next_id : Int
+  // A single opaque token marks one lowering run. Every root/child identity
+  // copied from this allocator shares it, while a separate compilation does
+  // not accidentally reuse the numeric source handles.
+  program_identity : Ref[Unit]
 }
 
 ///|
@@ -24,7 +28,7 @@ priv suberror BytecodeSourcePointOwnerAllocationDefect {
 
 ///|
 fn new_source_point_owner_allocator() -> Ref[SourcePointOwnerAllocator] {
-  { val: { next_id: 0 } }
+  { val: { next_id: 0, program_identity: { val: () } } }
 }
 
 ///|
@@ -35,7 +39,10 @@ fn allocate_source_point_owner(
   guard next_id >= 0 && next_id < MAX_SOURCE_POINT_OWNER_ID else {
     raise BytecodeSourcePointOwnerAllocationDefect(next_id)
   }
-  allocator.val = { next_id: next_id + 1 }
+  allocator.val = {
+    next_id: next_id + 1,
+    program_identity: allocator.val.program_identity,
+  }
   SourcePointOwnerId(next_id)
 }
 
@@ -565,6 +572,7 @@ priv struct BytecodeFunctionDeclaration {
   name : String
   child_index : Int
   loc : @token.Loc
+  source_identity : BytecodeSourceIdentity
 }
 
 ///|
@@ -581,12 +589,78 @@ priv enum BytecodeFunctionConsumerForm {
 } derive(Eq)
 
 ///|
-// Lowering provenance binds a child header to its original source body and
-// parent consumer.  It contains no executable AST beyond the temporary body
-// identity needed by the verifier.
+// A function's source identity is composed from an opaque per-compilation
+// token, the existing source-unit and function-local owner handles, and its
+// parent consumer position. Separate compilations therefore do not share this
+// private identity even when their numeric handles coincide.
+priv struct BytecodeSourceIdentity {
+  program_identity : Ref[Unit]
+  source_unit : SourceUnitHandle
+  source_point_owner : SourcePointOwnerId
+  parent_source_point_owner : SourcePointOwnerId?
+  child_index : Int?
+  consumer_form : BytecodeFunctionConsumerForm?
+}
+
+///|
+fn bytecode_source_identity_equal(
+  left : BytecodeSourceIdentity,
+  right : BytecodeSourceIdentity,
+) -> Bool {
+  physical_equal(left.program_identity, right.program_identity) &&
+  left.source_unit == right.source_unit &&
+  left.source_point_owner == right.source_point_owner &&
+  left.parent_source_point_owner == right.parent_source_point_owner &&
+  left.child_index == right.child_index &&
+  left.consumer_form == right.consumer_form
+}
+
+///|
+fn BytecodeSourceIdentity::root(
+  source_unit : SourceUnitHandle,
+  source_point_owner : SourcePointOwnerId,
+  program_identity? : Ref[Unit]? = None,
+) -> BytecodeSourceIdentity {
+  let program_identity = match program_identity {
+    Some(identity) => identity
+    None => { val: () }
+  }
+  {
+    program_identity,
+    source_unit,
+    source_point_owner,
+    parent_source_point_owner: None,
+    child_index: None,
+    consumer_form: None,
+  }
+}
+
+///|
+fn BytecodeSourceIdentity::child(
+  program_identity : Ref[Unit],
+  source_unit : SourceUnitHandle,
+  source_point_owner : SourcePointOwnerId,
+  parent_source_point_owner : SourcePointOwnerId,
+  child_index : Int,
+  consumer_form : BytecodeFunctionConsumerForm,
+) -> BytecodeSourceIdentity {
+  {
+    program_identity,
+    source_unit,
+    source_point_owner,
+    parent_source_point_owner: Some(parent_source_point_owner),
+    child_index: Some(child_index),
+    consumer_form: Some(consumer_form),
+  }
+}
+
+///|
+// Lowering provenance binds a child header to its parent consumer and the
+// immutable facts captured for the selected child.  It never retains source
+// AST; exact source text is copied separately at the lowering boundary.
 #warnings("-unused_field")
 priv struct BytecodeHeaderProvenance {
-  origin_body : Array[@ast.Stmt]
+  program_identity : Ref[Unit]
   name : String?
   signature_name : String?
   params : Array[String]
@@ -595,12 +669,15 @@ priv struct BytecodeHeaderProvenance {
   parent_source_point_owner : SourcePointOwnerId
   child_index : Int
   consumer_form : BytecodeFunctionConsumerForm
+  exact_source_text : String?
+  child_source_identity : BytecodeSourceIdentity?
+  expected_preparation : BytecodePreparation?
 }
 
 ///|
 #warnings("-unused_value")
 fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
-  origin_body : Array[@ast.Stmt],
+  program_identity : Ref[Unit],
   name : String?,
   params : Array[String],
   rest_param : String?,
@@ -608,9 +685,10 @@ fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
   parent_source_point_owner : SourcePointOwnerId,
   child_index : Int,
   consumer_form : BytecodeFunctionConsumerForm,
+  exact_source_text : String?,
 ) -> BytecodeHeaderProvenance {
   {
-    origin_body,
+    program_identity,
     name,
     signature_name: match consumer_form {
       MethodFunctionConsumer
@@ -624,6 +702,31 @@ fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
     parent_source_point_owner,
     child_index,
     consumer_form,
+    exact_source_text,
+    child_source_identity: None,
+    expected_preparation: None,
+  }
+}
+
+///|
+fn BytecodeHeaderProvenance::with_child_facts(
+  self : BytecodeHeaderProvenance,
+  child_source_identity : BytecodeSourceIdentity,
+  preparation : BytecodePreparation,
+) -> BytecodeHeaderProvenance {
+  {
+    program_identity: self.program_identity,
+    name: self.name,
+    signature_name: self.signature_name,
+    params: self.params.copy(),
+    rest_param: self.rest_param,
+    enclosing_strict: self.enclosing_strict,
+    parent_source_point_owner: self.parent_source_point_owner,
+    child_index: self.child_index,
+    consumer_form: self.consumer_form,
+    exact_source_text: self.exact_source_text,
+    child_source_identity: Some(child_source_identity),
+    expected_preparation: Some(preparation.copy()),
   }
 }
 
@@ -664,6 +767,34 @@ fn BytecodePreparation::BytecodePreparation(
 }
 
 ///|
+fn BytecodePreparation::copy(self : BytecodePreparation) -> BytecodePreparation {
+  let signature_validation = match self.signature_validation {
+    Some(facts) =>
+      Some({
+        effective_name: facts.effective_name,
+        enclosing_strict: facts.enclosing_strict,
+        params: facts.params.copy(),
+        rest_param: facts.rest_param,
+        body_has_use_strict: facts.body_has_use_strict,
+      })
+    None => None
+  }
+  {
+    lexical_bindings: self.lexical_bindings.copy(),
+    function_declarations: self.function_declarations.copy(),
+    signature_validation,
+    activation_capability: self.activation_capability,
+  }
+}
+
+///|
+#warnings("-unused_field")
+priv enum BytecodeActivationKind {
+  ScriptRootActivation
+  FunctionActivation
+} derive(Eq)
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeFunction {
   name : String?
@@ -671,10 +802,11 @@ priv struct BytecodeFunction {
   enclosing_strict : Bool
   params : Array[String]
   rest_param : String?
-  // Temporary source metadata retained until the remaining AST representation
-  // debt is removed. VM preparation and execution must use the verified facts
-  // below, never traverse this tree.
-  source_body : Array[@ast.Stmt]
+  // Exact parser text is source metadata only; executable preparation below
+  // never depends on a reserialized or retained source tree.
+  source_text : String?
+  source_identity : BytecodeSourceIdentity
+  activation_kind : BytecodeActivationKind
   preparation : BytecodePreparation
   body_has_use_strict : Bool
   call_self_name : Bool
@@ -694,9 +826,7 @@ priv struct BytecodeFunction {
   env_slot_names : Array[String]
   // Var-declared names that are NOT local slots, in source order with duplicates
   // preserved — precomputed at lowering so the VM hoists them without re-walking
-  // source_body on every call (issue #325). Equals, by construction,
-  // collect_var_declared_names(source_body) filtered to names absent from
-  // local_names; the VM's old runtime filter agreed with this exactly.
+  // source input on every call (issue #325).
   env_var_hoist_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
@@ -715,7 +845,9 @@ fn BytecodeFunction::BytecodeFunction(
   enclosing_strict~ : Bool,
   params~ : Array[String],
   rest_param~ : String?,
-  source_body~ : Array[@ast.Stmt],
+  source_text? : String? = None,
+  source_identity? : BytecodeSourceIdentity? = None,
+  activation_kind? : BytecodeActivationKind = FunctionActivation,
   preparation~ : BytecodePreparation,
   body_has_use_strict~ : Bool,
   call_self_name~ : Bool,
@@ -740,7 +872,12 @@ fn BytecodeFunction::BytecodeFunction(
     enclosing_strict,
     params,
     rest_param,
-    source_body,
+    source_text,
+    source_identity: match source_identity {
+      Some(identity) => identity
+      None => BytecodeSourceIdentity::root(source_unit, source_point_owner)
+    },
+    activation_kind,
     preparation,
     body_has_use_strict,
     call_self_name,
@@ -850,14 +987,93 @@ priv struct BytecodeLocalPlan {
 }
 
 ///|
+// Immutable lowering snapshot for the root script. This is separate from the
+// mutable unverified function tree so coordinated edits to root signature or
+// preparation facts cannot rewrite the evidence used by finalization.
+priv struct BytecodeRootScriptProvenance {
+  program_identity : Ref[Unit]
+  strict : Bool
+  var_names : Array[String]
+  function_names : Array[String]
+  lexical_bindings : Array[@runtime.CompiledScriptLexicalBinding]
+  name : String?
+  signature_name : String?
+  enclosing_strict : Bool
+  params : Array[String]
+  rest_param : String?
+  body_has_use_strict : Bool
+  source_identity : BytecodeSourceIdentity
+  activation_kind : BytecodeActivationKind
+  preparation : BytecodePreparation
+  env_var_hoist_names : Array[String]
+  settlement : @runtime.CompiledScriptEarlyErrorSettlement
+}
+
+///|
+fn BytecodeRootScriptProvenance::from_lowering(
+  main : BytecodeFunction,
+  strict : Bool,
+  var_names : Array[String],
+  function_names : Array[String],
+  lexical_bindings : Array[@runtime.CompiledScriptLexicalBinding],
+  settlement : @runtime.CompiledScriptEarlyErrorSettlement,
+) -> BytecodeRootScriptProvenance {
+  {
+    program_identity: main.source_identity.program_identity,
+    strict,
+    var_names: var_names.copy(),
+    function_names: function_names.copy(),
+    lexical_bindings: lexical_bindings.copy(),
+    name: main.name,
+    signature_name: main.signature_name,
+    enclosing_strict: main.enclosing_strict,
+    params: main.params.copy(),
+    rest_param: main.rest_param,
+    body_has_use_strict: main.body_has_use_strict,
+    source_identity: main.source_identity,
+    activation_kind: main.activation_kind,
+    preparation: main.preparation.copy(),
+    env_var_hoist_names: main.env_var_hoist_names.copy(),
+    settlement,
+  }
+}
+
+///|
+#warnings("-unused_value")
+fn BytecodeRootScriptProvenance::with_settlement(
+  self : BytecodeRootScriptProvenance,
+  settlement : @runtime.CompiledScriptEarlyErrorSettlement,
+) -> BytecodeRootScriptProvenance {
+  {
+    program_identity: self.program_identity,
+    strict: self.strict,
+    var_names: self.var_names.copy(),
+    function_names: self.function_names.copy(),
+    lexical_bindings: self.lexical_bindings.copy(),
+    name: self.name,
+    signature_name: self.signature_name,
+    enclosing_strict: self.enclosing_strict,
+    params: self.params.copy(),
+    rest_param: self.rest_param,
+    body_has_use_strict: self.body_has_use_strict,
+    source_identity: self.source_identity,
+    activation_kind: self.activation_kind,
+    preparation: self.preparation.copy(),
+    env_var_hoist_names: self.env_var_hoist_names.copy(),
+    settlement,
+  }
+}
+
+///|
 pub struct BytecodeProgram {
-  priv source_stmts : Array[@ast.Stmt]
+  priv script_preparation : @runtime.CompiledScriptPreparation
   priv verified_main : VerifiedBytecodeFunction
 }
 
 ///|
 priv struct BytecodeUnverifiedProgram {
-  source_stmts : Array[@ast.Stmt]
+  script_preparation : @runtime.CompiledScriptPreparation
+  root_provenance : BytecodeRootScriptProvenance
   main : BytecodeFunction
 }
 

@@ -102,13 +102,24 @@ fn start_bytecode_frame(
 ) -> BytecodeFrame raise Error {
   let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
   // needs_own_env=false implies all four hoist calls are provably no-ops.
-  if frame.func_def.needs_own_env {
-    frame.hoist_env_var_bindings(interp)
-    frame.hoist_lexical_bindings()
-    if frame.func_def.env_slot_names.length() > 0 {
-      frame.bind_env_slots()
+  match frame.func_def.activation_kind {
+    ScriptRootActivation => {
+      // Runtime preparation owns root var/lexical setup. The VM still
+      // materializes verified function declarations and binds captured slots.
+      if frame.func_def.env_slot_names.length() > 0 {
+        frame.bind_env_slots()
+      }
+      frame.hoist_function_decls(interp)
     }
-    frame.hoist_function_decls(interp)
+    FunctionActivation =>
+      if frame.func_def.needs_own_env {
+        frame.hoist_env_var_bindings(interp)
+        frame.hoist_lexical_bindings()
+        if frame.func_def.env_slot_names.length() > 0 {
+          frame.bind_env_slots()
+        }
+        frame.hoist_function_decls(interp)
+      }
   }
   frame
 }
@@ -348,6 +359,7 @@ fn make_bytecode_func(
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
     verified_func_def.preparation.activation_capability,
+    source_text=func_def.source_text,
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
   )
@@ -385,6 +397,7 @@ fn make_bytecode_method_func(
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
     verified_func_def.preparation.activation_capability,
+    source_text=func_def.source_text,
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
@@ -407,6 +420,7 @@ fn make_bytecode_arrow_func(
     strict,
     BytecodeExecutorCode(func_def=verified_func_def),
     verified_func_def.preparation.activation_capability,
+    source_text=func_def.source_text,
     rest_param=func_def.rest_param,
   )
 }

@@ -109,6 +109,87 @@ test "Task 4C: var preflight preserves shallow order and first error" {
 }
 
 ///|
+test "global declaration diagnostics interpolate the rejected function name" {
+  let interp = Interpreter::new()
+  match interp.global_this {
+    Object(data) => {
+      data.bag.properties["blocked"] = Undefined
+      data.bag.descriptors["blocked"] = {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
+    }
+    _ => fail("expected global object")
+  }
+  let caught : Error? = try {
+    check_global_function_declarations(interp, ["blocked"])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(message~)) =>
+      assert_eq(
+        message, "Cannot declare global function 'blocked': property is non-configurable",
+      )
+    Some(error) => fail("expected TypeError, got " + error.to_string())
+    None => fail("expected global function declaration rejection")
+  }
+}
+
+///|
+test "global declaration diagnostics interpolate the rejected var name" {
+  let interp = Interpreter::new()
+  match interp.global_this {
+    Object(data) => data.extensible = false
+    _ => fail("expected global object")
+  }
+  let caught : Error? = try {
+    check_global_var_declarations(interp, [], ["blocked"])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(message~)) =>
+      assert_eq(
+        message, "Cannot declare global var 'blocked': global object is non-extensible",
+      )
+    Some(error) => fail("expected TypeError, got " + error.to_string())
+    None => fail("expected global var declaration rejection")
+  }
+}
+
+///|
+test "compiled script preparation rejects an unsettled early-error boundary" {
+  let interp = Interpreter::new()
+  let preparation = CompiledScriptPreparation(
+    strict=false,
+    var_names=[],
+    function_names=[],
+    lexical_bindings=[],
+  )
+  let caught : Error? = try {
+    interp.apply_compiled_script_preparation(preparation)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.InternalError(message~)) =>
+      assert_eq(
+        message, "unsettled CompiledScriptPreparation cannot be applied",
+      )
+    Some(error) => fail("expected InternalError, got " + error.to_string())
+    None => fail("expected unsettled preparation rejection")
+  }
+}
+
+///|
 fn annex_b_tagged_names(
   source : String,
   names : Array[String],

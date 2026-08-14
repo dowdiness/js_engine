@@ -584,17 +584,175 @@ fn verify_bytecode_function_frame_shapes(
 }
 
 ///|
+// The runtime entry receives only this immutable setup envelope.  Rebuild the
+// lowering facts at the compiler boundary so a mutation of the root plan
+// cannot diverge from the verified main function.
+fn bytecode_root_signature_facts_equal(
+  left : BytecodeSignatureValidation?,
+  right : BytecodeSignatureValidation?,
+) -> Bool {
+  match (left, right) {
+    (None, None) => true
+    (Some(left), Some(right)) => bytecode_signature_facts_equal(left, right)
+    _ => false
+  }
+}
+
+///|
+fn bytecode_root_preparation_equal(
+  left : BytecodePreparation,
+  right : BytecodePreparation,
+) -> Bool {
+  if left.lexical_bindings.length() != right.lexical_bindings.length() ||
+    left.function_declarations.length() != right.function_declarations.length() ||
+    !bytecode_root_signature_facts_equal(
+      left.signature_validation,
+      right.signature_validation,
+    ) ||
+    !@runtime.executor_activation_capability_summary_equal(
+      left.activation_capability,
+      right.activation_capability,
+    ) {
+    return false
+  }
+  for index in 0..<left.lexical_bindings.length() {
+    let actual = left.lexical_bindings[index]
+    let expected = right.lexical_bindings[index]
+    if !bytecode_lexical_kind_equal_for_verification(actual.kind, expected.kind) ||
+      actual.name != expected.name ||
+      actual.loc != expected.loc {
+      return false
+    }
+  }
+  for index in 0..<left.function_declarations.length() {
+    let actual = left.function_declarations[index]
+    let expected = right.function_declarations[index]
+    if actual.name != expected.name ||
+      actual.child_index != expected.child_index ||
+      actual.loc != expected.loc ||
+      !bytecode_source_identity_equal(
+        actual.source_identity,
+        expected.source_identity,
+      ) {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn verify_bytecode_root_provenance(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  let main = program.main
+  let provenance = program.root_provenance
+  guard main.name == provenance.name &&
+    main.signature_name == provenance.signature_name &&
+    main.enclosing_strict == provenance.enclosing_strict &&
+    Array::equal(main.params, provenance.params) &&
+    main.rest_param == provenance.rest_param &&
+    main.body_has_use_strict == provenance.body_has_use_strict &&
+    physical_equal(
+      main.source_identity.program_identity,
+      provenance.program_identity,
+    ) &&
+    bytecode_source_identity_equal(
+      main.source_identity,
+      provenance.source_identity,
+    ) &&
+    main.activation_kind == provenance.activation_kind &&
+    Array::equal(main.env_var_hoist_names, provenance.env_var_hoist_names) &&
+    bytecode_root_preparation_equal(main.preparation, provenance.preparation) else {
+    raise @errors.InternalError(
+      message="bytecode root lowering provenance does not match current facts",
+    )
+  }
+}
+
+///|
+fn compiled_script_lexical_bindings_from_main_for_verification(
+  main : BytecodeFunction,
+) -> Array[@runtime.CompiledScriptLexicalBinding] {
+  main.preparation.lexical_bindings.map(binding => {
+    let kind = match binding.kind {
+      BytecodeLet => @runtime.LetBinding
+      BytecodeConst => @runtime.ConstBinding
+    }
+    @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+  })
+}
+
+///|
+fn compiled_script_preparation_from_root_provenance_for_verification(
+  provenance : BytecodeRootScriptProvenance,
+) -> @runtime.CompiledScriptPreparation {
+  @runtime.CompiledScriptPreparation::with_early_error_settlement(
+    strict=provenance.strict,
+    var_names=provenance.var_names,
+    function_names=provenance.function_names,
+    lexical_bindings=provenance.lexical_bindings,
+    settlement=provenance.settlement,
+  )
+}
+
+///|
+fn verify_compiled_script_preparation(
+  program : BytecodeUnverifiedProgram,
+) -> Unit raise Error {
+  verify_bytecode_root_provenance(program)
+  let main = program.main
+  let provenance = program.root_provenance
+  let expected_strict = main.enclosing_strict || main.body_has_use_strict
+  let expected_var_names = main.env_var_hoist_names
+  let expected_function_names = main.preparation.function_declarations.map(declaration => {
+    declaration.name
+  })
+  let expected_lexical_bindings = compiled_script_lexical_bindings_from_main_for_verification(
+    main,
+  )
+  guard @runtime.compiled_script_preparation_matches(
+    compiled_script_preparation_from_root_provenance_for_verification(
+      provenance,
+    ),
+    expected_strict,
+    expected_var_names,
+    expected_function_names,
+    expected_lexical_bindings,
+    provenance.settlement,
+    provenance_token=Some(main.source_identity.program_identity),
+  ) else {
+    raise @errors.InternalError(
+      message="root script provenance does not match verified main facts",
+    )
+  }
+  guard @runtime.compiled_script_preparation_matches(
+    program.script_preparation,
+    expected_strict,
+    expected_var_names,
+    expected_function_names,
+    expected_lexical_bindings,
+    provenance.settlement,
+    provenance_token=Some(main.source_identity.program_identity),
+  ) else {
+    raise @errors.InternalError(
+      message="compiled script preparation does not match verified root facts",
+    )
+  }
+}
+
+///|
 fn finalize_bytecode_program(
   program : BytecodeUnverifiedProgram,
 ) -> BytecodeProgram raise Error {
-  verify_bytecode_preparation(program.main, [])
+  verify_compiled_script_preparation(program)
   verify_bytecode_source_metadata(program)
+  verify_bytecode_preparation(program.main, [])
   verify_bytecode_control_flow(program)
   verify_bytecode_indexed_operands(program)
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)
   let verified_main = make_verified_bytecode_function(program.main)
-  { source_stmts: program.source_stmts, verified_main }
+  { script_preparation: program.script_preparation, verified_main }
 }
 
 ///|

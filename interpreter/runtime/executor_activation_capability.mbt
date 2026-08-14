@@ -382,6 +382,22 @@ fn executor_activation_capability_summary_matches(
 }
 
 ///|
+// Finalized bytecode carries this opaque summary instead of the source body.
+// Keep comparison inside runtime so compiler verification cannot depend on
+// the private proof representation or reconstruct the classifier.
+pub fn executor_activation_capability_summary_equal(
+  left : ExecutorActivationCapabilitySummary?,
+  right : ExecutorActivationCapabilitySummary?,
+) -> Bool {
+  match (left, right) {
+    (None, None) => true
+    (Some(left), Some(right)) =>
+      executor_activation_capability_summary_matches(left, right)
+    _ => false
+  }
+}
+
+///|
 // Compiler preparation may retain this immutable proof so executor creation
 // never needs to inspect an executable source tree. The tree-walk path keeps
 // using the private helper above for its source-backed functions.

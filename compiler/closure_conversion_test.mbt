@@ -622,6 +622,16 @@ test "closure conversion constructs function declarations" {
 }
 
 ///|
+test "closure conversion mirrors top-level function declarations to globalThis" {
+  let src = "function f() { return 42; } globalThis.f();"
+  expect_string(
+    run_script_outcome(src),
+    run_interpreter_outcome(src),
+    "top-level function declaration global mirror",
+  )
+}
+
+///|
 test "closure conversion constructs function expressions" {
   expect_script_value(
     "var o = new (function C(x) { this.x = x; })(41); o.x + 1;", "42", "function expression construct",

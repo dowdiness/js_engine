@@ -4,10 +4,10 @@
 The source scanner below only supplies candidate coordinates. MoonBit's IDE
 resolves every executable identifier at those coordinates, so inferred local
 binders and expression results are checked without relying on receiver names.
-An unresolved executable candidate is a failure, not an ignored edge. The VM
-must contain no executable ``@ast.Stmt``/``@ast.Expr``/``@ast.Pattern`` values;
-``source_body`` accesses fail too. The root ``source_stmts`` script envelope is
-outside this VM-only scope.
+An unresolved executable candidate is a failure, not an ignored edge. No
+finalized bytecode carrier or VM entry may contain executable
+``@ast.Stmt``/``@ast.Expr``/``@ast.Pattern`` values. Source text and typed
+preparation are permitted; source-body/source-statement AST aliases must fail.
 """
 
 from __future__ import annotations
@@ -22,7 +22,10 @@ import subprocess
 import sys
 
 
-VM_PATHS = (Path("compiler/bytecode_vm.mbt"),)
+VM_PATHS = (
+    Path("compiler/bytecode_ir.mbt"),
+    Path("compiler/bytecode_vm.mbt"),
+)
 FORBIDDEN_MARKERS = ("@ast.Stmt", "@ast.Pattern", "@ast.Expr")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 FIXTURE_PREFIX = "compiler/bytecode_vm_ast_boundary_fixture_"
@@ -62,6 +65,7 @@ MOONBIT_KEYWORDS = frozenset(
         "raise",
         "return",
         "struct",
+        "suberror",
         "test",
         "trait",
         "true",
@@ -105,10 +109,10 @@ fn bytecode_vm_ast_boundary_fixture_loop(stmts : Array[@ast.Stmt]) -> Unit {
     "source_body_alias": r'''///|
 #warnings("-unused_value")
 fn bytecode_vm_ast_boundary_fixture_source_body_alias(
-  function : BytecodeFunction,
+  stmts : Array[@ast.Stmt],
 ) -> Unit {
-  let retained = function
-  for candidate in retained.source_body {
+  let retained = stmts
+  for candidate in retained {
     ignore(candidate)
   }
 }
@@ -292,7 +296,7 @@ def semantic_ast_accesses(
         if token == "BytecodeFunction" and "struct BytecodeFunction" in contents:
             # The frame carries the function metadata as a whole. A struct
             # hover enumerates its retained source metadata, but this token is
-            # not a field read; direct `source_body` candidates remain checked.
+            # not a field read; direct AST-valued candidates remain checked.
             return None
         if token == "BytecodeInstr" and "enum BytecodeInstr" in contents:
             # A type reference is not an executable AST traversal.
@@ -306,7 +310,16 @@ def semantic_ast_accesses(
         return {**base, "type": marker}
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        violations = [item for item in executor.map(inspect, requests) if item is not None]
+        inspected = list(executor.map(inspect, requests))
+    # `moon ide hover` shares compiler state within the workspace. Concurrent
+    # requests can transiently return no JSON, so retry only those transport
+    # failures serially. A candidate that remains unresolved still fails closed.
+    violations = []
+    for request, item in zip(requests, inspected):
+        if item is not None and item["type"] == "unresolved-executable-candidate":
+            item = inspect(request)
+        if item is not None:
+            violations.append(item)
     return sorted(
         violations,
         key=lambda item: (str(item["path"]), int(item["line"]), int(item["column"])),
@@ -366,7 +379,7 @@ def main() -> int:
             "helper_return": "inferred",
             "direct_match": "renamed",
             "loop": "item",
-            "source_body_alias": "source_body",
+            "source_body_alias": "retained",
             "direct_pattern": "pattern",
             "direct_expr": "expr",
         }

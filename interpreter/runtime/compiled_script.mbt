@@ -160,6 +160,37 @@ pub fn Interpreter::define_compiled_binding(
 /// errors, declaration hoisting, and conversion of engine errors into JS
 /// exceptions. Keeping that envelope here lets compiled execution share the
 /// same boundary without exposing those internals.
+pub fn Interpreter::run_prepared_compiled_script(
+  self : Interpreter,
+  preparation : CompiledScriptPreparation,
+  eval : (ExecContext, Environment) -> Value raise Error,
+) -> Value raise Error {
+  let strict = preparation.strict
+  let ctx : ExecContext = { strict, current_generator: None }
+  try {
+    let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
+      self.apply_compiled_script_preparation(preparation)
+      eval(ctx, self.global)
+    })
+    result
+  } catch {
+    e =>
+      if is_js_catchable_error(e) {
+        let translated = JsException(
+          js_error_to_value_with_env(e, Some(self.global)),
+        )
+        remap_observed_source_failure(self.realm_state, e, translated)
+        raise translated
+      } else {
+        raise e
+      }
+  }
+}
+
+///|
+// Compatibility adapter for direct dependents of the historical AST entry.
+// This path remains AST-consuming and runtime-owned; finalized bytecode uses
+// run_prepared_compiled_script instead.
 pub fn Interpreter::run_compiled_script(
   self : Interpreter,
   stmts : Array[@ast.Stmt],

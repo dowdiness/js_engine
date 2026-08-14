@@ -198,12 +198,81 @@ pub fn compile_program_to_closure(
 pub fn compile_script_to_closure(
   stmts : Array[@ast.Stmt],
 ) -> (Interpreter) -> Value raise Error {
-  let program = compile_program_to_closure(stmts)
+  let (function_prelude, body) = compile_script_parts(stmts)
+  let preparation = prepare_closure_script(stmts)
   fn(interp) raise {
-    interp.run_compiled_script(stmts, fn(ctx, env) raise {
-      program(interp, ctx, env)
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
+      let _ = (function_prelude.0)(interp, ctx, env)
+      reduce_program_signal((body.0)(interp, ctx, env))
     })
   }
+}
+
+///|
+/// Closure conversion executes top-level function declarations in a prelude,
+/// matching the runtime's hoisting order without handing source AST to the
+/// compiled-script entry. The ordinary body excludes those declarations so a
+/// function is not recreated at its source position after the prelude.
+fn compile_script_parts(
+  stmts : Array[@ast.Stmt],
+) -> (CompiledBody, CompiledBody) {
+  let function_stmts : Array[@ast.Stmt] = []
+  let body_stmts : Array[@ast.Stmt] = []
+  for stmt in stmts {
+    match stmt {
+      FuncDecl(_, _, _, _, _) => function_stmts.push(stmt)
+      _ => body_stmts.push(stmt)
+    }
+  }
+  (compile_body(function_stmts), compile_body(body_stmts))
+}
+
+///|
+// Closure compilation is an AST-consuming adapter rather than a finalized
+// bytecode carrier. Convert its source input to the same immutable runtime
+// setup envelope before entering the shared script boundary.
+fn prepare_closure_script(
+  stmts : Array[@ast.Stmt],
+) -> @runtime.CompiledScriptPreparation {
+  let strict = @static_semantics.has_use_strict(stmts)
+  let var_names = @static_semantics.collect_var_declared_names(stmts)
+  let function_names : Array[String] = []
+  let lexical_bindings : Array[@runtime.CompiledScriptLexicalBinding] = []
+  fn visit(stmts : Array[@ast.Stmt]) {
+    for stmt in stmts {
+      match stmt {
+        FuncDecl(name, _, _, _, _)
+        | FuncDeclExt(name, _, _, _, _, _)
+        | GeneratorDecl(name, _, _, _, _)
+        | GeneratorDeclExt(name, _, _, _, _, _)
+        | AsyncFuncDecl(name, _, _, _, _)
+        | AsyncFuncDeclExt(name, _, _, _, _, _)
+        | AsyncGeneratorDecl(name, _, _, _, _)
+        | AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
+          function_names.push(name)
+        VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) => {
+          let kind = match stmt {
+            VarDecl(LetKind, _, _, _) => @runtime.LetBinding
+            _ => @runtime.ConstBinding
+          }
+          lexical_bindings.push(
+            @runtime.CompiledScriptLexicalBinding(kind~, name~),
+          )
+        }
+        StmtList(inner, _) => visit(inner)
+        _ => ()
+      }
+    }
+  }
+  visit(stmts)
+  let settlement = @runtime.prepare_compiled_script_early_error(stmts, strict)
+  @runtime.CompiledScriptPreparation::with_early_error_settlement(
+    strict~,
+    var_names~,
+    function_names~,
+    lexical_bindings~,
+    settlement~,
+  )
 }
 
 ///|
@@ -1216,7 +1285,7 @@ fn compile_stmt(
     }
     FuncDecl(name, params, body, _, _) => {
       let compiled_body = compile_body(body)
-      fn(_interp, ctx, env) raise {
+      fn(interp, ctx, env) raise {
         @runtime.validate_function_signature(
           ctx.strict,
           Some(name),
@@ -1230,11 +1299,7 @@ fn compile_stmt(
           ctx.strict || @static_semantics.has_use_strict(body),
           body=Some(compiled_body),
         )
-        if env.bindings.contains(name) || env.has_var(name) {
-          env.assign_var(name, func)
-        } else {
-          env.def(name, func, BindingKind::VarBinding)
-        }
+        interp.define_compiled_binding(env, VarKind, name, func, true)
         Signal::Normal(Value::Undefined)
       }
     }

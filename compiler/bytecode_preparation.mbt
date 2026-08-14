@@ -96,30 +96,6 @@ fn prepare_bytecode_function(
 }
 
 ///|
-// Re-derive lexical facts independently at the verification boundary. This
-// intentionally does not reuse the lowering accumulator: source_body is the
-// authority, so a swapped/deleted/reordered preparation entry cannot verify.
-fn derive_lexical_bindings_for_verification(
-  stmts : Array[@ast.Stmt],
-) -> Array[BytecodeLexicalBinding] {
-  let bindings : Array[BytecodeLexicalBinding] = []
-  for stmt in stmts {
-    match stmt {
-      VarDecl(LetKind, name, _, loc) =>
-        bindings.push({ kind: BytecodeLet, name, loc })
-      VarDecl(ConstKind, name, _, loc) =>
-        bindings.push({ kind: BytecodeConst, name, loc })
-      StmtList(children, _) => {
-        let nested = derive_lexical_bindings_for_verification(children)
-        bindings.append(nested)
-      }
-      _ => ()
-    }
-  }
-  bindings
-}
-
-///|
 fn bytecode_lexical_kind_name_for_verification(
   kind : BytecodeLexicalKind,
 ) -> String {
@@ -138,28 +114,6 @@ fn bytecode_lexical_kind_equal_for_verification(
     (BytecodeLet, BytecodeLet) | (BytecodeConst, BytecodeConst) => true
     _ => false
   }
-}
-
-///|
-fn derive_function_declarations_for_verification(
-  stmts : Array[@ast.Stmt],
-) -> Array[(String, Array[@ast.Stmt], @token.Loc)] {
-  // Keep the source body with its declaration location. Names alone are not
-  // an identity: duplicate declarations must bind to their exact child.
-  let declarations : Array[(String, Array[@ast.Stmt], @token.Loc)] = []
-  for stmt in stmts {
-    match stmt {
-      FuncDecl(name, _, body, loc, _) => declarations.push((name, body, loc))
-      FuncDeclExt(name, _, _, body, loc, _) =>
-        declarations.push((name, body, loc))
-      StmtList(children, _) =>
-        declarations.append(
-          derive_function_declarations_for_verification(children),
-        )
-      _ => ()
-    }
-  }
-  declarations
 }
 
 ///|
@@ -247,48 +201,62 @@ fn verify_lexical_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
-  let expected = derive_lexical_bindings_for_verification(function.source_body)
-  let actual = function.preparation.lexical_bindings
-  if expected.length() != actual.length() {
-    bytecode_preparation_mismatch_for_verification(
-      function_path,
-      "lexical binding count",
-      -1,
-      expected.length().to_string(),
-      actual.length().to_string(),
-    )
-  }
-  for index in 0..<expected.length() {
-    let (expected_binding, actual_binding) = (expected[index], actual[index])
-    if !bytecode_lexical_kind_equal_for_verification(
-        expected_binding.kind,
-        actual_binding.kind,
-      ) {
-      bytecode_preparation_mismatch_for_verification(
-        function_path,
-        "lexical binding kind",
-        index,
-        bytecode_lexical_kind_name_for_verification(expected_binding.kind),
-        bytecode_lexical_kind_name_for_verification(actual_binding.kind),
-      )
-    }
-    if expected_binding.name != actual_binding.name {
-      bytecode_preparation_mismatch_for_verification(
-        function_path,
-        "lexical binding name",
-        index,
-        expected_binding.name,
-        actual_binding.name,
-      )
-    }
-    if expected_binding.loc != actual_binding.loc {
-      bytecode_preparation_mismatch_for_verification(
-        function_path,
-        "lexical binding location",
-        index,
-        expected_binding.loc.to_string(),
-        actual_binding.loc.to_string(),
-      )
+  match function.header_provenance {
+    None => ()
+    Some(provenance) => {
+      let expected = match provenance.expected_preparation {
+        Some(preparation) => preparation.lexical_bindings
+        None =>
+          raise @errors.InternalError(
+            message="bytecode child preparation snapshot is missing lexical facts",
+          )
+      }
+      let actual = function.preparation.lexical_bindings
+      if expected.length() != actual.length() {
+        bytecode_preparation_mismatch_for_verification(
+          function_path,
+          "lexical binding count",
+          -1,
+          expected.length().to_string(),
+          actual.length().to_string(),
+        )
+      }
+      for index in 0..<expected.length() {
+        let (expected_binding, actual_binding) = (
+          expected[index],
+          actual[index],
+        )
+        if !bytecode_lexical_kind_equal_for_verification(
+            expected_binding.kind,
+            actual_binding.kind,
+          ) {
+          bytecode_preparation_mismatch_for_verification(
+            function_path,
+            "lexical binding kind",
+            index,
+            bytecode_lexical_kind_name_for_verification(expected_binding.kind),
+            bytecode_lexical_kind_name_for_verification(actual_binding.kind),
+          )
+        }
+        if expected_binding.name != actual_binding.name {
+          bytecode_preparation_mismatch_for_verification(
+            function_path,
+            "lexical binding name",
+            index,
+            expected_binding.name,
+            actual_binding.name,
+          )
+        }
+        if expected_binding.loc != actual_binding.loc {
+          bytecode_preparation_mismatch_for_verification(
+            function_path,
+            "lexical binding location",
+            index,
+            expected_binding.loc.to_string(),
+            actual_binding.loc.to_string(),
+          )
+        }
+      }
     }
   }
 }
@@ -299,53 +267,26 @@ fn verify_function_declaration_preparation(
   function_path : Array[Int],
   consumers : Array[(String, Int)],
 ) -> Unit raise Error {
-  let expected = derive_function_declarations_for_verification(
-    function.source_body,
-  )
   let actual = function.preparation.function_declarations
-  if expected.length() != actual.length() {
-    bytecode_preparation_mismatch_for_verification(
-      function_path,
-      "function declaration preparation count",
-      -1,
-      expected.length().to_string(),
-      actual.length().to_string(),
-    )
-  }
-  if expected.length() != consumers.length() {
+  if actual.length() != consumers.length() {
     bytecode_preparation_mismatch_for_verification(
       function_path,
       "DeclareFunction source count",
       -1,
-      expected.length().to_string(),
       consumers.length().to_string(),
+      actual.length().to_string(),
     )
   }
-  for index in 0..<expected.length() {
-    let (expected_name, expected_body, expected_loc) = expected[index]
+  for index in 0..<actual.length() {
     let actual_declaration = actual[index]
     let (consumer_name, consumer_child_index) = consumers[index]
-    if expected_name != actual_declaration.name {
+    if consumer_name != actual_declaration.name {
       bytecode_preparation_mismatch_for_verification(
         function_path,
         "function declaration name",
         index,
-        expected_name,
+        consumer_name,
         actual_declaration.name,
-      )
-    }
-    if expected_name != consumer_name {
-      bytecode_preparation_mismatch_for_verification(
-        function_path, "DeclareFunction name", index, expected_name, consumer_name,
-      )
-    }
-    if expected_loc != actual_declaration.loc {
-      bytecode_preparation_mismatch_for_verification(
-        function_path,
-        "function declaration location",
-        index,
-        expected_loc.to_string(),
-        actual_declaration.loc.to_string(),
       )
     }
     if actual_declaration.child_index != consumer_child_index {
@@ -368,25 +309,25 @@ fn verify_function_declaration_preparation(
       )
     }
     let child = function.children[actual_declaration.child_index]
-    guard physical_equal(child.source_body, expected_body) else {
+    guard bytecode_source_identity_equal(
+      actual_declaration.source_identity,
+      child.source_identity,
+    ) else {
       bytecode_preparation_mismatch_for_verification(
-        function_path,
-        "function declaration child source body",
-        index,
-        "source body at " + expected_loc.to_string(),
-        "child " + actual_declaration.child_index.to_string(),
+        function_path, "function declaration source identity", index, "child source identity",
+        "mismatch",
       )
     }
     match child.name {
-      Some(child_name) if child_name == expected_name => ()
+      Some(child_name) if child_name == consumer_name => ()
       Some(child_name) =>
         bytecode_preparation_mismatch_for_verification(
-          function_path, "function declaration child name", index, expected_name,
+          function_path, "function declaration child name", index, consumer_name,
           child_name,
         )
       None =>
         bytecode_preparation_mismatch_for_verification(
-          function_path, "function declaration child name", index, expected_name,
+          function_path, "function declaration child name", index, consumer_name,
           "<anonymous>",
         )
     }
@@ -411,35 +352,15 @@ fn bytecode_bool_for_verification(value : Bool) -> String {
 }
 
 ///|
-fn validate_current_signature_for_verification(
-  function : BytecodeFunction,
-  function_path : Array[Int],
-) -> Unit raise Error {
-  try {
-    match function.rest_param {
-      Some(rest_param) =>
-        @runtime.validate_function_signature_ext(
-          function.enclosing_strict,
-          function.signature_name,
-          bytecode_ext_params_from_names_for_preparation(function.params),
-          Some(rest_param),
-          function.source_body,
-        )
-      None =>
-        @runtime.validate_function_signature(
-          function.enclosing_strict,
-          function.signature_name,
-          function.params,
-          function.source_body,
-        )
-    }
-  } catch {
-    _ =>
-      raise @errors.InternalError(
-        message="bytecode signature validation failed at nested depth " +
-          function_path.length().to_string(),
-      )
-  }
+fn bytecode_signature_facts_equal(
+  left : BytecodeSignatureValidation,
+  right : BytecodeSignatureValidation,
+) -> Bool {
+  left.effective_name == right.effective_name &&
+  left.enclosing_strict == right.enclosing_strict &&
+  Array::equal(left.params, right.params) &&
+  left.rest_param == right.rest_param &&
+  left.body_has_use_strict == right.body_has_use_strict
 }
 
 ///|
@@ -456,23 +377,33 @@ fn verify_signature_preparation(
           function_path.length().to_string(),
       )
   }
-  let source_body = match provenance {
-    Some(provenance) => provenance.origin_body
-    None => function.source_body
-  }
-  let source_body_has_use_strict = @static_semantics.has_use_strict(source_body)
   match provenance {
-    Some(provenance) =>
+    Some(provenance) => {
+      let expected_preparation = match provenance.expected_preparation {
+        Some(preparation) => preparation
+        None =>
+          raise @errors.InternalError(
+            message="bytecode child preparation snapshot is missing signature facts",
+          )
+      }
+      let expected_facts = match expected_preparation.signature_validation {
+        Some(facts) => facts
+        None =>
+          raise @errors.InternalError(
+            message="bytecode child preparation snapshot has no signature facts",
+          )
+      }
       if facts.effective_name != provenance.signature_name ||
         facts.enclosing_strict != provenance.enclosing_strict ||
         !Array::equal(facts.params, provenance.params) ||
         facts.rest_param != provenance.rest_param ||
-        facts.body_has_use_strict != source_body_has_use_strict {
+        !bytecode_signature_facts_equal(facts, expected_facts) {
         raise @errors.InternalError(
           message="bytecode signature provenance mismatch at nested depth " +
             function_path.length().to_string(),
         )
       }
+    }
     None => ()
   }
   if facts.effective_name != function.signature_name {
@@ -522,25 +453,15 @@ fn verify_signature_preparation(
       bytecode_signature_name_for_verification(function.rest_param),
     )
   }
-  if facts.body_has_use_strict != source_body_has_use_strict {
+  if facts.body_has_use_strict != function.body_has_use_strict {
     bytecode_preparation_mismatch_for_verification(
       function_path,
       "signature source strictness",
       -1,
       bytecode_bool_for_verification(facts.body_has_use_strict),
-      bytecode_bool_for_verification(source_body_has_use_strict),
-    )
-  }
-  if function.body_has_use_strict != source_body_has_use_strict {
-    bytecode_preparation_mismatch_for_verification(
-      function_path,
-      "function source strictness",
-      -1,
-      bytecode_bool_for_verification(source_body_has_use_strict),
       bytecode_bool_for_verification(function.body_has_use_strict),
     )
   }
-  validate_current_signature_for_verification(function, function_path)
 }
 
 ///|
@@ -564,9 +485,40 @@ fn verify_bytecode_child_provenance(
     Some(expected) => expected == provenance.consumer_form
     None => false
   }
-  guard provenance.parent_source_point_owner == parent.source_point_owner &&
+  let expected_identity = match expected_consumer {
+    Some(consumer) =>
+      BytecodeSourceIdentity::child(
+        parent.source_identity.program_identity,
+        child.source_unit,
+        child.source_point_owner,
+        parent.source_point_owner,
+        child_index,
+        consumer,
+      )
+    None =>
+      raise @errors.InternalError(
+        message="bytecode child consumer form is missing",
+      )
+  }
+  let child_identity_matches = bytecode_source_identity_equal(
+    child.source_identity,
+    expected_identity,
+  )
+  let provenance_identity_matches = match provenance.child_source_identity {
+    Some(identity) =>
+      bytecode_source_identity_equal(identity, expected_identity)
+    None => false
+  }
+  let source_text_matches = provenance.exact_source_text == child.source_text
+  guard physical_equal(
+      provenance.program_identity,
+      parent.source_identity.program_identity,
+    ) &&
+    provenance.parent_source_point_owner == parent.source_point_owner &&
     provenance.child_index == child_index &&
-    physical_equal(provenance.origin_body, child.source_body) &&
+    child_identity_matches &&
+    provenance_identity_matches &&
+    source_text_matches &&
     provenance.enclosing_strict == parent_strict &&
     provenance.name == child.name &&
     consumer_matches else {
@@ -596,16 +548,27 @@ fn verify_bytecode_preparation(
     function_path,
     function.header_provenance,
   )
-  guard @runtime.verify_executor_activation_capability(
-    function.params,
-    function.source_body,
-    function.preparation.activation_capability,
-  ) else {
-    raise @errors.InternalError(
-      message="bytecode activation capability was not prepared from its own " +
-        "source at nested depth " +
-        function_path.length().to_string(),
-    )
+  match function.header_provenance {
+    Some(provenance) => {
+      let expected_preparation = match provenance.expected_preparation {
+        Some(preparation) => preparation
+        None =>
+          raise @errors.InternalError(
+            message="bytecode child preparation snapshot is missing capability facts",
+          )
+      }
+      let expected_capability = expected_preparation.activation_capability
+      let actual_capability = function.preparation.activation_capability
+      guard @runtime.executor_activation_capability_summary_equal(
+        expected_capability, actual_capability,
+      ) else {
+        raise @errors.InternalError(
+          message="bytecode activation capability provenance mismatch at nested depth " +
+            function_path.length().to_string(),
+        )
+      }
+    }
+    None => ()
   }
   for declaration in function.preparation.function_declarations {
     guard declaration.child_index >= 0 &&

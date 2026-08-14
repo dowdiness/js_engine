@@ -2554,6 +2554,7 @@ test "tree admission seals the receiver of a static own-data member call" {
     Some(
       ExecutorActivationCapabilitySummary(parameter_count=1, direct_calls=[]),
     ),
+    None,
   )
   match holder {
     Object(data) => data.bag.properties["outer"] = outer
