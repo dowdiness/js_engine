@@ -2,7 +2,7 @@
 // Observation coverage finalization microbenchmark (issue #896)
 //
 // Run with:
-//   moon bench -p compiler -f bytecode_observation_performance_benchmark.mbt \
+//   moon bench -p compiler -f bytecode_observation_performance_benchmark_wbtest.mbt \
 //     --target native --release
 //
 // Parsing is deliberately outside every timed closure.  The two benchmark
