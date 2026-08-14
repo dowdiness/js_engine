@@ -473,7 +473,8 @@ class MultigraphTests(unittest.TestCase):
     def test_forward_pipeline_candidates_reach_semantic_resolution(self) -> None:
         source = (
             "fn root() { interp |> helper; [] |> make_array; "
-            "[] |> @runtime.make_array }\n"
+            "[] |> @runtime.make_array; value |> Type::method; "
+            "value |> @runtime.SomeType::method; value |> Trait::method }\n"
         )
         root_entry = {
             "kind": ["Sym", "root"],
@@ -495,6 +496,7 @@ class MultigraphTests(unittest.TestCase):
             "make_array": [
                 ("@runtime.make_array", runtime_entry("make_array"))
             ],
+            "method": [("@runtime.Type::method", runtime_entry("method"))],
         }
         resolved_spellings: list[str] = []
         with TemporaryDirectory() as directory:
@@ -514,6 +516,8 @@ class MultigraphTests(unittest.TestCase):
                     return ResolvedCompiler(candidate, "wrapper")
                 if spelling.endswith("make_array"):
                     return ResolvedRuntime(candidate, "@runtime.make_array")
+                if spelling == "method":
+                    return ResolvedRuntime(candidate, "@runtime.Type::method")
                 return IntentionallyIgnored(candidate, "test_non_callable")
 
             with patch.object(
@@ -528,6 +532,7 @@ class MultigraphTests(unittest.TestCase):
             sum(spelling.endswith("make_array") for spelling in resolved_spellings),
             2,
         )
+        self.assertEqual(resolved_spellings.count("method"), 3)
         self.assertIn(
             ("root", "compiler", "wrapper"),
             {
@@ -654,6 +659,23 @@ class CandidateScannerTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(candidates), 3)
+        self.assertTrue(all(candidate.executable_hint for candidate in candidates))
+        self.assertTrue(all(candidate.call_syntax for candidate in candidates))
+
+    def test_method_qualified_pipeline_references_remain_executable_calls(self) -> None:
+        source = (
+            "fn root() { value |> Type::method; "
+            "value |> @runtime.SomeType::method; value |> Trait::method; "
+            "Type::method(extra_arg); Type::method <| value }\n"
+        )
+
+        candidates = [
+            outcome
+            for outcome in self.candidates_for(source, {"method"})
+            if isinstance(outcome, Candidate) and outcome.spelling == "method"
+        ]
+
+        self.assertEqual(len(candidates), 5)
         self.assertTrue(all(candidate.executable_hint for candidate in candidates))
         self.assertTrue(all(candidate.call_syntax for candidate in candidates))
 

@@ -47,6 +47,12 @@ class CandidateCallSyntax(Enum):
     FORWARD_PIPELINE = "forward_pipeline"
 
 
+CALLEE_QUALIFIER_SUFFIX = re.compile(
+    r"(?:(?:@[A-Za-z0-9_./-]+\.)?[A-Za-z_][A-Za-z0-9_]*::"
+    r"|(?:@[A-Za-z0-9_./-]+|[A-Za-z_][A-Za-z0-9_]*)\.)\s*$"
+)
+
+
 @dataclass(frozen=True)
 class Candidate:
     path: str
@@ -772,11 +778,7 @@ def _candidate_call_syntax(
     if re.match(r"\s*<\|", suffix):
         return CandidateCallSyntax.REVERSE_PIPELINE
     prefix = line[:start].rstrip()
-    prefix = re.sub(
-        r"(?:@[A-Za-z0-9_./-]+|[A-Za-z_][A-Za-z0-9_]*)\.\s*$",
-        "",
-        prefix,
-    ).rstrip()
+    prefix = CALLEE_QUALIFIER_SUFFIX.sub("", prefix).rstrip()
     if re.search(r"\|>\s*$", prefix):
         return CandidateCallSyntax.FORWARD_PIPELINE
     return CandidateCallSyntax.NOT_CALL
