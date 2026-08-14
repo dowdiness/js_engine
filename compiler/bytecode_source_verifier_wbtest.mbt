@@ -2040,3 +2040,194 @@ test "control-flow terminal target falls out with normal completion" {
   let value = finalized.run(@interpreter.new_interpreter())
   assert_eq(value.to_string(), "1")
 }
+
+///|
+fn load_name_index_for_wb(function : BytecodeFunction, name : String) -> Int {
+  for instruction_index, instruction in function.code {
+    match instruction {
+      LoadName(actual) if actual == name => return instruction_index
+      _ => ()
+    }
+  }
+  abort("expected named load")
+}
+
+///|
+fn get_property_index_for_wb(function : BytecodeFunction, name : String) -> Int {
+  for instruction_index, instruction in function.code {
+    match instruction {
+      GetProperty(actual, _) if actual == name => return instruction_index
+      _ => ()
+    }
+  }
+  abort("expected property load")
+}
+
+///|
+test "RED: finalization rejects an unconditional edge that bypasses a statement" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let target = load_name_index_for_wb(program.main, "second")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program,
+    "unconditional edge entered the else expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a conditional edge that bypasses an expression" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let target = load_name_index_for_wb(program.main, "second")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalse,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program,
+    "conditional edge entered the else expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a loop back-edge into a condition middle" {
+  let program = unverified_source_program_for_wb(
+    "while (condition) { body; }",
+  )
+  let target = load_name_index_for_wb(program.main, "condition")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program,
+    "loop back-edge entered the condition after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects continue into a condition middle" {
+  let program = unverified_source_program_for_wb(
+    "while (condition) { continue; }",
+  )
+  let target = load_name_index_for_wb(program.main, "condition")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program,
+    "continue edge entered the condition after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects a loop exit into a later expression middle" {
+  let program = unverified_source_program_for_wb(
+    "while (condition) { body; } after;",
+  )
+  let target = load_name_index_for_wb(program.main, "after")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalse,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program,
+    "loop exit entered the later expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a ForInNext exit into a later expression middle" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { body; } after;",
+  )
+  let target = load_name_index_for_wb(program.main, "after")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    ForInNext,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program,
+    "ForInNext exit entered the later expression after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a ForIn fallthrough-side back-edge mutation" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { body; }",
+  )
+  let target = load_name_index_for_wb(program.main, "body")
+  let _ = mutate_first_control_flow_target_for_wb(program.main, Jump, target)
+  assert_preparation_rejected_for_wb(
+    program,
+    "ForIn fallthrough-side edge entered the body after its observations",
+  )
+}
+
+///|
+test "RED: finalization rejects a logical RHS middle entry" {
+  let program = unverified_source_program_for_wb("false && object.value;")
+  let target = get_property_index_for_wb(program.main, "value")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfFalseKeep,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program,
+    "logical short-circuit edge entered the RHS after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects an optional continuation middle entry" {
+  let program = unverified_source_program_for_wb("object?.[key].next;")
+  let target = load_name_index_for_wb(program.main, "key")
+  let _ = mutate_first_control_flow_target_for_wb(
+    program.main,
+    JumpIfNotNullishKeep,
+    target,
+  )
+  assert_preparation_rejected_for_wb(
+    program,
+    "optional continuation entered after its observation",
+  )
+}
+
+///|
+test "RED: finalization rejects malformed nested child observation entry" {
+  let program = unverified_source_program_for_wb(
+    "function child() { if (condition) first; else second; } child();",
+  )
+  guard program.main.children.length() == 1 else {
+    abort("expected one nested child")
+  }
+  let child = program.main.children[0]
+  let target = load_name_index_for_wb(child, "second")
+  let _ = mutate_first_control_flow_target_for_wb(child, JumpIfFalse, target)
+  assert_preparation_rejected_for_wb(
+    program,
+    "nested child edge entered the else expression after its observations",
+  )
+}
+
+///|
+test "observation coverage controls retain normal lowering" {
+  let sources = [
+    "if (condition) first; else second;",
+    "false && object.value;",
+    "value ?? fallback;",
+    "object?.[key].next;",
+    "while (condition) { body; }",
+    "do { body; } while (condition);",
+    "for (var i = 0; i < 1; i++) { body; }",
+    "var key; for (key in object) { body; }",
+    "function child() { return childValue; } child();",
+  ]
+  for source in sources {
+    let program = unverified_source_program_for_wb(source)
+    let _ = finalize_bytecode_program(program)
+  }
+}
