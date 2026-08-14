@@ -705,10 +705,10 @@ def _candidate_executable_hint(
 ) -> bool:
     suffix = line[end:]
     prefix = line[:start].rstrip()
-    if prefix.strip().endswith(("let", "guard")) or "=>" in suffix:
-        return False
     if re.match(r"\s*\(", suffix):
         return True
+    if prefix.strip().endswith(("let", "guard")) or "=>" in suffix:
+        return False
     if re.search(r"(?<![=!<>])=(?![=])", prefix) and re.search(
         r"@[A-Za-z0-9_./-]+\.$", prefix
     ):

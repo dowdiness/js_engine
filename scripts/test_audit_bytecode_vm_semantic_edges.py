@@ -388,6 +388,65 @@ class MultigraphTests(unittest.TestCase):
         self.assertEqual(graph[0]["count"], 1)
         self.assertEqual(graph[0]["reachable_from"], ["OtherRoot", "Root"])
 
+    def test_arrow_callback_keeps_wrapper_and_downstream_runtime_edges(self) -> None:
+        root_entry = {
+            "kind": ["Sym", "root"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "root.mbt",
+            "range": [1, 1, 1, 31],
+            "name_range": [1, 4, 1, 8],
+        }
+        wrapper_entry = {
+            "kind": ["Sym", "wrapper"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "wrapper.mbt",
+            "range": [1, 1, 1, 100],
+            "name_range": [1, 4, 1, 11],
+        }
+        symbols = {"root": root_entry, "wrapper": wrapper_entry}
+        symbols_by_name = {
+            "helper": [("wrapper", wrapper_entry)],
+            "observe_execution_step": [
+                ("@runtime.Interpreter::observe_execution_step", runtime_entry("observe_execution_step"))
+            ],
+        }
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "root.mbt").write_text("fn root() { helper(x => x) }\n")
+            (root / "wrapper.mbt").write_text(
+                "fn wrapper(interp : Interpreter) { interp.observe_execution_step() }\n"
+            )
+
+            def fake_hover(
+                _root: Path,
+                candidate: Candidate,
+                _symbols: dict[str, dict[str, object]],
+                _symbols_by_name: dict[str, list[tuple[str, dict[str, object]]]],
+            ) -> audit_script.ResolutionOutcome:
+                if candidate.spelling == "helper":
+                    return ResolvedCompiler(candidate, "wrapper")
+                if candidate.spelling == "observe_execution_step":
+                    return ResolvedRuntime(
+                        candidate,
+                        "@runtime.Interpreter::observe_execution_step",
+                    )
+                return IntentionallyIgnored(candidate, "test_non_callable")
+
+            with patch.object(audit_script, "load_symbols", return_value=(symbols, symbols_by_name)), patch.object(
+                audit_script, "resolve_hover", side_effect=fake_hover
+            ):
+                edges = audit_script.semantic_edges_from_roots(root, ("root",))
+
+        observed = {
+            (edge["enclosing"], edge["kind"], edge["target"])
+            for edge in edges
+        }
+        self.assertIn(("root", "compiler", "wrapper"), observed)
+        self.assertIn(
+            ("wrapper", "runtime", "@runtime.Interpreter::observe_execution_step"),
+            observed,
+        )
+
 
 class MigrationTests(unittest.TestCase):
     def test_v2_callsite_aggregation_is_complete_and_conserves_multiplicity(self) -> None:
