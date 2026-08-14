@@ -48,7 +48,7 @@ priv enum BytecodeObservationBarrierIndexEntry {
 priv struct BytecodeObservationBarrierIndex {
   source_unit : SourceUnitHandle
   source_point_owner : SourcePointOwnerId
-  entries : Array[BytecodeObservationBarrierIndexEntry?]
+  barriers : Array[BytecodeObservationBarrierIndexEntry?]
 }
 
 ///|
@@ -692,7 +692,7 @@ fn bytecode_build_observation_barrier_index(
   {
     source_unit: function.source_unit,
     source_point_owner: function.source_point_owner,
-    entries,
+    barriers: entries,
   }
 }
 
@@ -706,10 +706,10 @@ fn bytecode_observation_entry_matches_barrier(
   guard source_unit == barrier_index.source_unit &&
     source_point_owner == barrier_index.source_point_owner &&
     source_point_index >= 0 &&
-    source_point_index < barrier_index.entries.length() else {
+    source_point_index < barrier_index.barriers.length() else {
     return false
   }
-  match barrier_index.entries[source_point_index] {
+  match barrier_index.barriers[source_point_index] {
     Some(StatementObservationBarrierIndex(actual)) =>
       match entry {
         StatementObservation(expected) => expected == actual
