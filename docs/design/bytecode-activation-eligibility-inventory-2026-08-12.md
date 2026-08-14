@@ -95,6 +95,9 @@ calls in ordinary or `$|` interpolation therefore remain executable semantic
 edges; comments, escaped interpolation text, and raw `#|` content do not
 resolve as calls. The checked baseline is generated evidence from MoonBit's
 typed symbol graph, not a hand-maintained list of guest-capable helper names.
+Its v3 identity is the enclosing symbol, compiler/runtime kind, target,
+callsite multiplicity, and sorted canonical-root reachability; source
+coordinates remain live diagnostics only.
 
 A new instruction must update both the exhaustive compiler contract and VM
 dispatch before the project type-checks. A new or relocated synchronous call
