@@ -703,6 +703,10 @@ def _candidate_executable_hint(
         return False
     if re.match(r"\s*\(", suffix):
         return True
+    if re.search(r"(?<![=!<>])=(?![=])", prefix) and re.search(
+        r"@[A-Za-z0-9_./-]+\.$", prefix
+    ):
+        return True
     if re.search(r"(?<![=!<>])=(?![=])\s*$", prefix):
         return True
     if token.startswith("@"):
@@ -1008,6 +1012,11 @@ def collect_semantic_edges(
         for candidate_outcome in candidate_outcomes:
             if isinstance(candidate_outcome, IntentionallyIgnored):
                 outcomes.append(candidate_outcome)
+                continue
+            if not candidate_outcome.executable_hint:
+                outcomes.append(
+                    IntentionallyIgnored(candidate_outcome, "non_callable_reference")
+                )
                 continue
             if candidate_outcome.line in dollar_lines:
                 continue

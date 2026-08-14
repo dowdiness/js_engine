@@ -18,6 +18,7 @@ import audit_bytecode_vm_semantic_edges as audit_script  # noqa: E402
 from audit_bytecode_vm_semantic_edges import (  # noqa: E402
     AmbiguousCandidate,
     Candidate,
+    IntentionallyIgnored,
     ResolvedCompiler,
     ResolvedOutOfScope,
     ResolvedRuntime,
@@ -325,6 +326,50 @@ class ResolverOutcomeTests(unittest.TestCase):
         self.assertEqual(
             outcomes[1].diagnostic.candidate.resolver_phase,
             "find-references",
+        )
+
+    def test_non_executable_normal_candidate_does_not_call_hover(self) -> None:
+        entry = {
+            "kind": ["Sym", "fixture_root"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "compiler/fixture.mbt",
+            "range": [1, 1, 1, 30],
+            "name_range": [1, 1, 1, 12],
+        }
+        non_executable = Candidate(
+            path="compiler/fixture.mbt",
+            line=1,
+            column=20,
+            enclosing="fixture_root",
+            spelling="Return",
+            resolver_phase="hover",
+            executable_hint=False,
+        )
+        with patch.object(
+            audit_script,
+            "load_symbols",
+            return_value=({"fixture_root": entry}, {}),
+        ), patch.object(
+            audit_script,
+            "candidate_locations",
+            return_value=[non_executable],
+        ), patch.object(
+            audit_script,
+            "contains_dollar_multiline",
+            return_value=False,
+        ), patch.object(
+            audit_script,
+            "resolve_hover",
+            side_effect=AssertionError("non-executable candidates must not call hover"),
+        ):
+            _, outcomes = audit_script.collect_semantic_edges(
+                Path("."),
+                ("fixture_root",),
+            )
+
+        self.assertEqual(
+            outcomes,
+            [IntentionallyIgnored(non_executable, "non_callable_reference")],
         )
 
     def test_update_with_root_override_rejects_before_index_and_preserves_baseline(self) -> None:
