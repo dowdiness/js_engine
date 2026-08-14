@@ -719,6 +719,7 @@ fn verify_compiled_script_preparation(
     expected_function_names,
     expected_lexical_bindings,
     provenance.settlement,
+    provenance_token=Some(main.source_identity.program_identity),
   ) else {
     raise @errors.InternalError(
       message="root script provenance does not match verified main facts",
@@ -731,6 +732,7 @@ fn verify_compiled_script_preparation(
     expected_function_names,
     expected_lexical_bindings,
     provenance.settlement,
+    provenance_token=Some(main.source_identity.program_identity),
   ) else {
     raise @errors.InternalError(
       message="compiled script preparation does not match verified root facts",

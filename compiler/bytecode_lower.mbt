@@ -1780,7 +1780,9 @@ fn build_script_bytecode(
   let owner_allocator = new_source_point_owner_allocator()
   let script_strict = @static_semantics.has_use_strict(stmts)
   let early_error_settlement = @runtime.prepare_compiled_script_early_error(
-    stmts, script_strict,
+    stmts,
+    script_strict,
+    provenance_token=Some(owner_allocator.val.program_identity),
   )
   let main = compile_bytecode_function(
     None,

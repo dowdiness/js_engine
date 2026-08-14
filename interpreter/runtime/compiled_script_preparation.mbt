@@ -23,6 +23,7 @@ pub fn CompiledScriptLexicalBinding::CompiledScriptLexicalBinding(
 // a matching token by supplying an arbitrary Error value.
 pub struct CompiledScriptEarlyErrorSettlement {
   priv token : Ref[Unit]
+  priv provenance_token : Ref[Unit]
   priv error : Error?
 }
 
@@ -82,9 +83,17 @@ pub fn compiled_script_preparation_matches(
   function_names : Array[String],
   lexical_bindings : Array[CompiledScriptLexicalBinding],
   expected_settlement : CompiledScriptEarlyErrorSettlement,
+  provenance_token? : Ref[Unit]? = None,
 ) -> Bool {
   let settlement_matches = match preparation.early_error_settlement {
-    Some(actual) => physical_equal(actual.token, expected_settlement.token)
+    Some(actual) => {
+      let provenance_matches = match provenance_token {
+        Some(expected) => physical_equal(actual.provenance_token, expected)
+        None => true
+      }
+      physical_equal(actual.token, expected_settlement.token) &&
+      provenance_matches
+    }
     None => false
   }
   if preparation.strict != strict ||
@@ -111,6 +120,7 @@ pub fn compiled_script_preparation_matches(
 pub fn prepare_compiled_script_early_error(
   stmts : Array[@ast.Stmt],
   strict : Bool,
+  provenance_token? : Ref[Unit]? = None,
 ) -> CompiledScriptEarlyErrorSettlement {
   let error : Error? = try {
     validate_compiled_script_early_errors(stmts, strict)
@@ -118,7 +128,14 @@ pub fn prepare_compiled_script_early_error(
   } catch {
     error => Some(error)
   }
-  { token: { val: () }, error }
+  {
+    token: { val: () },
+    provenance_token: match provenance_token {
+      Some(token) => token
+      None => { val: () }
+    },
+    error,
+  }
 }
 
 ///|

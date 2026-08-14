@@ -1291,7 +1291,11 @@ test "bytecode verifier rejects an unprepared function before verification" {
     source_point_owner=SourcePointOwnerId(0),
     children=[],
   )
-  let settlement = @runtime.prepare_compiled_script_early_error([], false)
+  let settlement = @runtime.prepare_compiled_script_early_error(
+    [],
+    false,
+    provenance_token=Some(pending.source_identity.program_identity),
+  )
   let program : BytecodeUnverifiedProgram = {
     script_preparation: @runtime.CompiledScriptPreparation::with_early_error_settlement(
       strict=false,
