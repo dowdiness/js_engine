@@ -211,8 +211,8 @@
     {
       "path": "compiler/closure_conversion.mbt",
       "pattern_id": "runtime-environment-bindings-field",
-      "allowed_count": 4,
-      "fingerprint": "4:211:860660:179594",
+      "allowed_count": 3,
+      "fingerprint": "3:148:888172:819151",
       "owner": "closure conversion freeze and representation retirement",
       "retire_by_stage": "Stage 1 / Stage 12",
       "reason": "legacy closure conversion still reaches Environment.bindings as an evidence-bearing comparison path"
@@ -222,8 +222,8 @@
     {
       "path": "compiler/closure_conversion.mbt",
       "pattern_id": "runtime-binding-kind-type",
-      "allowed_count": 11,
-      "fingerprint": "11:567:537292:26631",
+      "allowed_count": 10,
+      "fingerprint": "10:511:318157:613022",
       "owner": "closure conversion freeze and representation retirement",
       "retire_by_stage": "Stage 1 / Stage 12",
       "reason": "legacy closure conversion still carries runtime binding-kind decisions as an evidence-bearing comparison path"
