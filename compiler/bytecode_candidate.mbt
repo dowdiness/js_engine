@@ -409,29 +409,41 @@ fn candidate_collect_method_expr(
   plans : Array[CandidateFunctionPlan],
 ) -> Unit raise Error {
   match expr {
-    FuncExpr(name, params, body, loc, source_text) =>
-      candidate_collect_function_expr(
+    FuncExpr(name, params, body, _, source_text) => {
+      let children : Array[CandidateFunctionPlan] = []
+      candidate_collect_function_body(body, enclosing_strict, children)
+      plans.push(candidate_prepare_plan(
         name,
-        params,
+        CandidateSimpleSignature(params.copy()),
+        Ok((params.copy(), None)),
         body,
-        loc,
         source_text,
-        consumer_form,
+        true,
+        Some(consumer_form),
         enclosing_strict,
-        plans,
-      )
-    FuncExprExt(name, params, rest_param, body, loc, source_text) =>
-      candidate_collect_function_expr_ext(
+        FunctionActivation,
+        children,
+        None,
+      ))
+    }
+    FuncExprExt(name, params, rest_param, body, loc, source_text) => {
+      let children : Array[CandidateFunctionPlan] = []
+      candidate_collect_params(params, enclosing_strict, children)
+      candidate_collect_function_body(body, enclosing_strict, children)
+      plans.push(candidate_prepare_plan(
         name,
-        params,
-        rest_param,
+        CandidateExtendedSignature(params.copy(), rest_param),
+        candidate_normalize_ext_params(params, rest_param, loc),
         body,
-        loc,
         source_text,
-        consumer_form,
+        true,
+        Some(consumer_form),
         enclosing_strict,
-        plans,
-      )
+        FunctionActivation,
+        children,
+        None,
+      ))
+    }
     GeneratorExpr(name, params, body, loc, source_text) =>
       candidate_collect_unsupported_function(
         name,
@@ -1129,6 +1141,7 @@ fn candidate_compile_function(
   allocator : Ref[SourcePointOwnerAllocator],
   identity_plan : CandidateIdentityPlan,
   header_provenance : BytecodeHeaderProvenance?,
+  enclosing_strict : Bool,
 ) -> VerifiedBytecodeFunction raise Error {
   let function = compile_bytecode_function(
     plan.name,
@@ -1139,7 +1152,7 @@ fn candidate_compile_function(
     source_text=plan.source_text,
     use_local_slots=true,
     source_unit=SourceUnitHandle(0),
-    enclosing_strict=plan.enclosing_strict,
+    enclosing_strict~,
     is_method=plan.is_method,
     header_provenance~,
     activation_kind=plan.activation_kind,
@@ -1154,10 +1167,10 @@ fn candidate_compile_function(
 fn candidate_source_identity(
   identity_plan : CandidateIdentityPlan,
   allocator : Ref[SourcePointOwnerAllocator],
-  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm)?,
+  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm, Bool)?,
 ) -> BytecodeSourceIdentity {
   match parent {
-    Some((parent_owner, child_index, consumer_form)) => BytecodeSourceIdentity::child(
+    Some((parent_owner, child_index, consumer_form, _)) => BytecodeSourceIdentity::child(
       allocator.val.program_identity,
       SourceUnitHandle(0),
       identity_plan.source_point_owner,
@@ -1177,7 +1190,7 @@ fn candidate_source_identity(
 fn candidate_materialize_function(
   plan : CandidateFunctionPlan,
   allocator : Ref[SourcePointOwnerAllocator],
-  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm)?,
+  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm, Bool)?,
 ) -> CandidateFunction raise Error {
   let identity_plan = plan.identity_plan.unwrap()
   let source_identity = candidate_source_identity(identity_plan, allocator, parent)
@@ -1186,13 +1199,13 @@ fn candidate_materialize_function(
     CandidateLowered => {
       let bytecode_identity_plan = candidate_bytecode_identity_plan(plan)
       let header_provenance = match parent {
-        Some((parent_owner, child_index, consumer_form)) => Some(
+        Some((parent_owner, child_index, consumer_form, parent_strict)) => Some(
           BytecodeHeaderProvenance(
             allocator.val.program_identity,
             plan.name,
             plan.params.copy(),
             plan.rest_param,
-            plan.enclosing_strict,
+            parent_strict,
             parent_owner,
             child_index,
             consumer_form,
@@ -1206,6 +1219,10 @@ fn candidate_materialize_function(
         allocator,
         bytecode_identity_plan,
         header_provenance,
+        match parent {
+          Some((_, _, _, parent_strict)) => parent_strict
+          None => false
+        },
       ))
     }
   }
@@ -1236,7 +1253,12 @@ fn candidate_materialize_function(
     children.push(candidate_materialize_function(
       child_plan,
       allocator,
-      Some((identity_plan.source_point_owner, child_index, child_consumer)),
+      Some((
+        identity_plan.source_point_owner,
+        child_index,
+        child_consumer,
+        plan.enclosing_strict,
+      )),
     ))
   }
   {
@@ -1268,10 +1290,22 @@ fn verify_candidate_function(
         Some(parent.source_point_owner) else {
         raise @errors.InternalError(message="candidate child has stale parent identity")
       }
+      guard function.source_identity.child_index is Some(_) else {
+        raise @errors.InternalError(message="candidate child is missing source index")
+      }
+      guard function.source_identity.consumer_form is Some(_) else {
+        raise @errors.InternalError(message="candidate child is missing consumer form")
+      }
     }
     None => {
       if function.source_identity.parent_source_point_owner is Some(_) {
         raise @errors.InternalError(message="candidate root has child identity")
+      }
+      if function.source_identity.child_index is Some(_) {
+        raise @errors.InternalError(message="candidate root has child index")
+      }
+      if function.source_identity.consumer_form is Some(_) {
+        raise @errors.InternalError(message="candidate root has consumer form")
       }
     }
   }
@@ -1286,7 +1320,19 @@ fn verify_candidate_function(
     }
     None => ()
   }
-  for child in function.children {
+  for child_index, child in function.children {
+    let consumer_form = match child.consumer_form {
+      Some(consumer_form) => consumer_form
+      None => raise @errors.InternalError(
+        message="candidate child is missing consumer form metadata",
+      )
+    }
+    guard child.source_identity.child_index == Some(child_index) else {
+      raise @errors.InternalError(message="candidate child has stale source index")
+    }
+    guard child.source_identity.consumer_form == Some(consumer_form) else {
+      raise @errors.InternalError(message="candidate child has stale consumer form")
+    }
     verify_candidate_function(child, program_identity, Some(function.source_identity))
   }
 }
