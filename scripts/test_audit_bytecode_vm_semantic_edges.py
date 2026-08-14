@@ -470,6 +470,72 @@ class MultigraphTests(unittest.TestCase):
             observed,
         )
 
+    def test_forward_pipeline_candidates_reach_semantic_resolution(self) -> None:
+        source = (
+            "fn root() { interp |> helper; [] |> make_array; "
+            "[] |> @runtime.make_array }\n"
+        )
+        root_entry = {
+            "kind": ["Sym", "root"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "root.mbt",
+            "range": [1, 1, 1, len(source)],
+            "name_range": [1, 4, 1, 8],
+        }
+        wrapper_entry = {
+            "kind": ["Sym", "wrapper"],
+            "pkg": "dowdiness/js_engine/compiler",
+            "path": "wrapper.mbt",
+            "range": [1, 1, 1, 26],
+            "name_range": [1, 4, 1, 11],
+        }
+        symbols = {"root": root_entry, "wrapper": wrapper_entry}
+        symbols_by_name = {
+            "helper": [("wrapper", wrapper_entry)],
+            "make_array": [
+                ("@runtime.make_array", runtime_entry("make_array"))
+            ],
+        }
+        resolved_spellings: list[str] = []
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "root.mbt").write_text(source)
+            (root / "wrapper.mbt").write_text("fn wrapper() { () }\n")
+
+            def fake_hover(
+                _root: Path,
+                candidate: Candidate,
+                _symbols: dict[str, dict[str, object]],
+                _symbols_by_name: dict[str, list[tuple[str, dict[str, object]]]],
+            ) -> audit_script.ResolutionOutcome:
+                spelling = candidate.spelling or ""
+                resolved_spellings.append(spelling)
+                if spelling == "helper":
+                    return ResolvedCompiler(candidate, "wrapper")
+                if spelling.endswith("make_array"):
+                    return ResolvedRuntime(candidate, "@runtime.make_array")
+                return IntentionallyIgnored(candidate, "test_non_callable")
+
+            with patch.object(
+                audit_script,
+                "load_symbols",
+                return_value=(symbols, symbols_by_name),
+            ), patch.object(audit_script, "resolve_hover", side_effect=fake_hover):
+                edges = audit_script.semantic_edges_from_roots(root, ("root",))
+
+        self.assertIn("helper", resolved_spellings)
+        self.assertEqual(
+            sum(spelling.endswith("make_array") for spelling in resolved_spellings),
+            2,
+        )
+        self.assertIn(
+            ("root", "compiler", "wrapper"),
+            {
+                (edge["enclosing"], edge["kind"], edge["target"])
+                for edge in edges
+            },
+        )
+
 
 class CandidateScannerTests(unittest.TestCase):
     def test_moon_ide_callable_tags_exclude_type_field_and_variant_tags(self) -> None:
@@ -569,6 +635,27 @@ class CandidateScannerTests(unittest.TestCase):
 
         self.assertIn("semantic_edge_audit_cross_file_wrapper", spellings)
         self.assertIn("make_array", spellings)
+
+    def test_forward_pipeline_references_remain_executable_calls(self) -> None:
+        source = (
+            "fn root() { interp |> semantic_edge_audit_cross_file_wrapper; "
+            "[] |> make_array; [] |> @runtime.make_array }\n"
+        )
+
+        candidates = [
+            outcome
+            for outcome in self.candidates_for(
+                source,
+                {"semantic_edge_audit_cross_file_wrapper", "make_array"},
+            )
+            if isinstance(outcome, Candidate)
+            and outcome.spelling
+            in {"semantic_edge_audit_cross_file_wrapper", "make_array"}
+        ]
+
+        self.assertEqual(len(candidates), 3)
+        self.assertTrue(all(candidate.executable_hint for candidate in candidates))
+        self.assertTrue(all(candidate.call_syntax for candidate in candidates))
 
     def test_token_local_binders_remain_non_executable(self) -> None:
         source = (

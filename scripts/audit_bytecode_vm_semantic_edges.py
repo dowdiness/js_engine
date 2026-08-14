@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 import json
 import os
 from pathlib import Path
@@ -37,6 +38,13 @@ BASELINE = Path("scripts/bytecode_vm_semantic_edges.json")
 
 RUNTIME_PACKAGE = "dowdiness/js_engine/interpreter/runtime"
 MOON_IDE_CALLABLE_TAGS = {"0x1000", "0x1001", "0x4000", "0x4001"}
+
+
+class CandidateCallSyntax(Enum):
+    NOT_CALL = "not_call"
+    DIRECT = "direct"
+    REVERSE_PIPELINE = "reverse_pipeline"
+    FORWARD_PIPELINE = "forward_pipeline"
 
 
 @dataclass(frozen=True)
@@ -724,12 +732,11 @@ def _candidate_executable_hint(
     end: int,
     token: str,
     known_callable: bool,
+    call_syntax: CandidateCallSyntax,
 ) -> bool:
     suffix = line[end:]
     prefix = line[:start].rstrip()
-    if re.match(r"\s*\(", suffix):
-        return True
-    if re.match(r"\s*<\|", suffix):
+    if call_syntax is not CandidateCallSyntax.NOT_CALL:
         return True
     if re.search(r"(?:^|\b)(?:let|guard)\s*$", prefix):
         return False
@@ -752,6 +759,27 @@ def _candidate_executable_hint(
     if known_callable and re.search(r"\b(?:raise|return)\s*$", prefix):
         return True
     return False
+
+
+def _candidate_call_syntax(
+    line: str,
+    start: int,
+    end: int,
+) -> CandidateCallSyntax:
+    suffix = line[end:]
+    if re.match(r"\s*\(", suffix):
+        return CandidateCallSyntax.DIRECT
+    if re.match(r"\s*<\|", suffix):
+        return CandidateCallSyntax.REVERSE_PIPELINE
+    prefix = line[:start].rstrip()
+    prefix = re.sub(
+        r"(?:@[A-Za-z0-9_./-]+|[A-Za-z_][A-Za-z0-9_]*)\.\s*$",
+        "",
+        prefix,
+    ).rstrip()
+    if re.search(r"\|>\s*$", prefix):
+        return CandidateCallSyntax.FORWARD_PIPELINE
+    return CandidateCallSyntax.NOT_CALL
 
 
 def candidate_locations(
@@ -810,6 +838,12 @@ def candidate_locations(
                     and executable_mask[absolute_start]
                 )
                 known_callable = token.rsplit(".", 1)[-1] in bare_names
+                token_end = absolute_start + len(token.rsplit(".", 1)[-1])
+                call_syntax = _candidate_call_syntax(
+                    line,
+                    absolute_start,
+                    token_end,
+                )
                 candidate = Candidate(
                     path=entry["path"],
                     line=line_no,
@@ -821,15 +855,12 @@ def candidate_locations(
                     and _candidate_executable_hint(
                         line,
                         absolute_start,
-                        absolute_start + len(token.rsplit(".", 1)[-1]),
+                        token_end,
                         token,
                         known_callable,
+                        call_syntax,
                     ),
-                    call_syntax=re.match(
-                        r"\s*(?:\(|<\|)",
-                        line[absolute_start + len(token.rsplit(".", 1)[-1]) :],
-                    )
-                    is not None,
+                    call_syntax=call_syntax is not CandidateCallSyntax.NOT_CALL,
                     known_callable=known_callable,
                 )
                 outcome: Candidate | IntentionallyIgnored = (
