@@ -52,7 +52,7 @@ fn allocate_source_point_owner(
 // separate program identity remains the private facade boundary.
 
 ///|
-priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int)
+priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int) derive(Eq)
 
 ///|
 #warnings("-unused_value")
@@ -93,6 +93,31 @@ priv enum BytecodeObservationBarrierKind {
   NotObservationBarrier
   StatementObservationBarrier
   ExpressionObservationBarrier
+}
+
+///|
+// Lowering records the observations active before each instruction.  The
+// verifier uses this typed, source-linked context to distinguish a legal edge
+// that skips an unevaluated region from an edge that enters that region after
+// its mandatory observation barrier.
+priv enum BytecodeObservationContextEntry {
+  StatementObservation(SourcePointId)
+  ExpressionObservation(SourcePointId)
+} derive(Eq)
+
+///|
+priv struct BytecodeObservationContext {
+  entries : Array[BytecodeObservationContextEntry]
+}
+
+///|
+// Lowering records the expected context for each non-fallthrough successor and
+// each fallthrough whose context changes after a scope pop.  The verifier
+// checks these edge facts against the actual instruction transfer and target
+// context; snapshots alone cannot authorize a retargeted edge.
+priv struct BytecodeObservationEdgeContext {
+  target : Int
+  context : BytecodeObservationContext
 }
 
 ///|
@@ -834,6 +859,8 @@ priv struct BytecodeFunction {
   source_point_owner : SourcePointOwnerId
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
+  observation_contexts : Array[BytecodeObservationContext]
+  observation_edge_contexts : Array[Array[BytecodeObservationEdgeContext]]
   children : Array[BytecodeFunction]
   header_provenance : BytecodeHeaderProvenance?
 }
@@ -863,6 +890,8 @@ fn BytecodeFunction::BytecodeFunction(
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   source_points? : Array[SourcePoint] = [],
   instruction_sources? : Array[Array[SourcePointId]] = [],
+  observation_contexts? : Array[BytecodeObservationContext] = [],
+  observation_edge_contexts? : Array[Array[BytecodeObservationEdgeContext]] = [],
   children~ : Array[BytecodeFunction],
   header_provenance? : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction {
@@ -893,6 +922,8 @@ fn BytecodeFunction::BytecodeFunction(
     source_point_owner,
     source_points,
     instruction_sources,
+    observation_contexts,
+    observation_edge_contexts,
     children,
     header_provenance,
   }
@@ -934,6 +965,9 @@ priv struct BytecodeBuilder {
   owner_allocator : Ref[SourcePointOwnerAllocator]
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
+  observation_contexts : Array[BytecodeObservationContext]
+  observation_edge_contexts : Array[Array[BytecodeObservationEdgeContext]]
+  active_observation_entries : Array[BytecodeObservationContextEntry]
   children : Array[BytecodeFunction]
   function_declarations : Array[BytecodeFunctionDeclaration]
   enclosing_strict : Bool
@@ -1132,6 +1166,9 @@ fn BytecodeBuilder::BytecodeBuilder(
     owner_allocator,
     source_points: [],
     instruction_sources: [],
+    observation_contexts: [],
+    observation_edge_contexts: [],
+    active_observation_entries: [],
     children: [],
     function_declarations: [],
     enclosing_strict,
@@ -1154,7 +1191,40 @@ fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
   let idx = self.code.length()
   self.code.push(instr)
   self.instruction_sources.push([])
+  self.observation_contexts.push({
+    entries: self.active_observation_entries.copy(),
+  })
+  self.observation_edge_contexts.push([])
+  self.record_observation_edge_contexts(idx)
   idx
+}
+
+///|
+fn BytecodeBuilder::record_observation_edge_contexts(
+  self : BytecodeBuilder,
+  instruction_index : Int,
+) -> Unit {
+  let transfer = bytecode_instruction_transfer(self.code[instruction_index])
+  let target : Int? = match transfer {
+    JumpTo(target, _) | BranchTo(target, _) | SplitTo(target, _, _) =>
+      Some(target)
+    Fallthrough(_) | Terminate(_) => None
+  }
+  match target {
+    Some(target) =>
+      if target >= 0 && target <= self.observation_contexts.length() {
+        let context = if target == self.observation_contexts.length() {
+          { entries: self.active_observation_entries.copy() }
+        } else {
+          self.observation_contexts[target]
+        }
+        self.observation_edge_contexts[instruction_index].push({
+          target,
+          context,
+        })
+      }
+    None => ()
+  }
 }
 
 ///|
@@ -1212,18 +1282,53 @@ fn BytecodeBuilder::emit_with_source_locations(
 fn BytecodeBuilder::emit_statement_observation(
   self : BytecodeBuilder,
   loc : @token.Loc,
-) -> Unit {
+) -> SourcePointId {
   let source_id = self.allocate_source_point(StatementEntry, loc)
   let _ = self.emit_with_sources(ObserveStatement(source_id), [source_id])
+  self.active_observation_entries.push(StatementObservation(source_id))
+  source_id
 }
 
 ///|
 fn BytecodeBuilder::emit_expression_observation(
   self : BytecodeBuilder,
   loc : @token.Loc,
-) -> Unit {
+) -> SourcePointId {
   let source_id = self.allocate_source_point(ExpressionEntry, loc)
   let _ = self.emit_with_sources(ObserveExpression(source_id), [source_id])
+  self.active_observation_entries.push(ExpressionObservation(source_id))
+  source_id
+}
+
+///|
+fn BytecodeBuilder::pop_observation(self : BytecodeBuilder) -> Unit {
+  let _ = self.active_observation_entries.pop()
+  if self.code.length() > 0 {
+    let instruction_index = self.code.length() - 1
+    let transfer = bytecode_instruction_transfer(self.code[instruction_index])
+    match transfer {
+      Fallthrough(_) | BranchTo(_, _) | SplitTo(_, _, _) => {
+        let target = instruction_index + 1
+        self.observation_edge_contexts[instruction_index].push({
+          target,
+          context: { entries: self.active_observation_entries.copy() },
+        })
+      }
+      JumpTo(_, _) | Terminate(_) => ()
+    }
+  }
+  let target = self.code.length()
+  let context = { entries: self.active_observation_entries.copy() }
+  for instruction_index, edges in self.observation_edge_contexts {
+    for edge_index, edge in edges {
+      if edge.target == target {
+        self.observation_edge_contexts[instruction_index][edge_index] = {
+          target: edge.target,
+          context,
+        }
+      }
+    }
+  }
 }
 
 ///|
@@ -1233,6 +1338,7 @@ fn BytecodeBuilder::patch(
   instr : BytecodeInstr,
 ) -> Unit {
   self.code[idx] = instr
+  self.record_observation_edge_contexts(idx)
 }
 
 ///|
