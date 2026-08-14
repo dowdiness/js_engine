@@ -30,12 +30,14 @@ instruction, but may not enter the middle of a deeper or different region.
 The existing `instruction_sources` table and exhaustive
 `bytecode_instruction_transfer` function provide source roles and successor
 shape, but neither records the active observation context at each instruction
-or the context after an abrupt edge. The smallest added fact is a pair of
-function-local typed tables emitted by lowering: an immutable context snapshot
-before each instruction, plus an edge fact carrying the expected target
-context for every non-fallthrough successor and every fallthrough whose scope
-pop changes context. The verifier independently checks each edge fact against
-the actual exhaustive transfer and target snapshot, then traverses reachable
-states separately from resource-shape states. Source-point identity anchors
-entries to actual `ObserveStatement`/`ObserveExpression` instructions; no
-locations, AST ranges, runtime state, or second opcode registry are involved.
+or the context after an abrupt edge. Lowering therefore emits the mutable
+context/edge snapshots used by the CFG proof and one separate immutable,
+function-local typed authority containing the context membership and complete
+successor topology for each instruction. The authority is built from the same
+exhaustive transfer function; it is not an opcode registry or a second IR.
+Finalization checks the authority against the current code and context
+snapshots before checking edge facts and traversing reachable states. The
+resource-shape proof remains a separate state/join analysis. Source-point
+identity anchors entries to actual `ObserveStatement`/`ObserveExpression`
+instructions; no locations, AST ranges, runtime state, or retained AST are
+involved.
