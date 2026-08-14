@@ -214,6 +214,49 @@ fn bytecode_observation_authority_successors(
 }
 
 ///|
+// Materialize edge contexts only after lowering has produced the final code.
+// Every successor is derived from the exhaustive instruction transfer; the
+// terminal successor uses the empty context because no instruction executes
+// at code.length().
+fn bytecode_observation_edge_contexts_from_lowering(
+  code : Array[BytecodeInstr],
+  observation_contexts : Array[BytecodeObservationContext],
+) -> Array[Array[BytecodeObservationEdgeContext]] {
+  let code_length = code.length()
+  let edge_contexts : Array[Array[BytecodeObservationEdgeContext]] = Array::makei(
+    code_length,
+    _ => [],
+  )
+  for instruction_index, instruction in code {
+    let transfer = bytecode_instruction_transfer(instruction)
+    let append_edge = target => {
+      if target >= 0 && target <= code_length {
+        let context = if target == code_length {
+          { active: [] }
+        } else {
+          observation_contexts[target]
+        }
+        edge_contexts[instruction_index].push({ successor: target, context })
+      }
+    }
+    match transfer {
+      Fallthrough(_) => append_edge(instruction_index + 1)
+      JumpTo(target, _) => append_edge(target)
+      BranchTo(target, _) => {
+        append_edge(target)
+        append_edge(instruction_index + 1)
+      }
+      SplitTo(target, _, _) => {
+        append_edge(target)
+        append_edge(instruction_index + 1)
+      }
+      Terminate(_) => ()
+    }
+  }
+  edge_contexts
+}
+
+///|
 fn bytecode_observation_authority_from_lowering(
   code : Array[BytecodeInstr],
   observation_contexts : Array[BytecodeObservationContext],
@@ -1099,7 +1142,6 @@ priv struct BytecodeBuilder {
   source_points : Array[SourcePoint]
   instruction_sources : Array[Array[SourcePointId]]
   observation_contexts : Array[BytecodeObservationContext]
-  observation_edge_contexts : Array[Array[BytecodeObservationEdgeContext]]
   active_observation_entries : Array[BytecodeObservationContextEntry]
   children : Array[BytecodeFunction]
   function_declarations : Array[BytecodeFunctionDeclaration]
@@ -1300,7 +1342,6 @@ fn BytecodeBuilder::BytecodeBuilder(
     source_points: [],
     instruction_sources: [],
     observation_contexts: [],
-    observation_edge_contexts: [],
     active_observation_entries: [],
     children: [],
     function_declarations: [],
@@ -1327,37 +1368,7 @@ fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
   self.observation_contexts.push({
     active: self.active_observation_entries.copy(),
   })
-  self.observation_edge_contexts.push([])
-  self.record_observation_edge_contexts(idx)
   idx
-}
-
-///|
-fn BytecodeBuilder::record_observation_edge_contexts(
-  self : BytecodeBuilder,
-  instruction_index : Int,
-) -> Unit {
-  let transfer = bytecode_instruction_transfer(self.code[instruction_index])
-  let target : Int? = match transfer {
-    JumpTo(target, _) | BranchTo(target, _) | SplitTo(target, _, _) =>
-      Some(target)
-    Fallthrough(_) | Terminate(_) => None
-  }
-  match target {
-    Some(target) =>
-      if target >= 0 && target <= self.observation_contexts.length() {
-        let context = if target == self.observation_contexts.length() {
-          { active: self.active_observation_entries.copy() }
-        } else {
-          self.observation_contexts[target]
-        }
-        self.observation_edge_contexts[instruction_index].push({
-          successor: target,
-          context,
-        })
-      }
-    None => ()
-  }
 }
 
 ///|
@@ -1436,32 +1447,6 @@ fn BytecodeBuilder::emit_expression_observation(
 ///|
 fn BytecodeBuilder::pop_observation(self : BytecodeBuilder) -> Unit {
   let _ = self.active_observation_entries.pop()
-  if self.code.length() > 0 {
-    let instruction_index = self.code.length() - 1
-    let transfer = bytecode_instruction_transfer(self.code[instruction_index])
-    match transfer {
-      Fallthrough(_) | BranchTo(_, _) | SplitTo(_, _, _) => {
-        let target = instruction_index + 1
-        self.observation_edge_contexts[instruction_index].push({
-          successor: target,
-          context: { active: self.active_observation_entries.copy() },
-        })
-      }
-      JumpTo(_, _) | Terminate(_) => ()
-    }
-  }
-  let target = self.code.length()
-  let context = { active: self.active_observation_entries.copy() }
-  for instruction_index, edges in self.observation_edge_contexts {
-    for edge_index, edge in edges {
-      if edge.successor == target {
-        self.observation_edge_contexts[instruction_index][edge_index] = {
-          successor: edge.successor,
-          context,
-        }
-      }
-    }
-  }
 }
 
 ///|
@@ -1471,7 +1456,6 @@ fn BytecodeBuilder::patch(
   instr : BytecodeInstr,
 ) -> Unit {
   self.code[idx] = instr
-  self.record_observation_edge_contexts(idx)
 }
 
 ///|

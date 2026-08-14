@@ -35,6 +35,23 @@ priv enum BytecodeObservationCoverageFact {
 }
 
 ///|
+// Function-local, finalization-time index of the immutable observation
+// barriers emitted by lowering.  The source-point identity is retained in
+// each slot so a context entry must match both its typed barrier and its
+// owner/unit/index before it can be admitted.
+priv enum BytecodeObservationBarrierIndexEntry {
+  StatementObservationBarrierIndex(SourcePointId)
+  ExpressionObservationBarrierIndex(SourcePointId)
+}
+
+///|
+priv struct BytecodeObservationBarrierIndex {
+  source_unit : SourceUnitHandle
+  source_point_owner : SourcePointOwnerId
+  entries : Array[BytecodeObservationBarrierIndexEntry?]
+}
+
+///|
 #warnings("-unused_constructor")
 priv enum BytecodeSourceMetadataFact {
   CodeLength(Int)
@@ -600,26 +617,117 @@ fn bytecode_observation_entry_role(
 }
 
 ///|
-fn bytecode_observation_entry_matches_barrier(
+fn bytecode_record_observation_barrier(
   function : BytecodeFunction,
-  entry : BytecodeObservationContextEntry,
-) -> Bool {
-  for instruction in function.code {
-    match (entry, instruction) {
-      (StatementObservation(expected), ObserveStatement(actual))
-      | (ExpressionObservation(expected), ObserveExpression(actual)) =>
-        if expected == actual {
-          return true
-        }
+  entries : Array[BytecodeObservationBarrierIndexEntry?],
+  source_id : SourcePointId,
+  expected_role : SourcePointRole,
+  barrier_kind : BytecodeObservationBarrierKind,
+  index_entry : BytecodeObservationBarrierIndexEntry,
+  function_path : Array[Int],
+  instruction_index : Int,
+) -> Unit raise Error {
+  let _ = verify_source_point_reference(
+    function,
+    source_id,
+    Some(expected_role),
+    function_path,
+    Some(instruction_index),
+  )
+  let SourcePointId(_, _, source_point_index) = source_id
+  match entries[source_point_index] {
+    None => entries[source_point_index] = Some(index_entry)
+    Some(existing) => {
+      let existing_kind = match existing {
+        StatementObservationBarrierIndex(_) => StatementObservationBarrier
+        ExpressionObservationBarrierIndex(_) => ExpressionObservationBarrier
+      }
+      raise bytecode_source_metadata_defect(
+        function_path,
+        Some(instruction_index),
+        ObservationBarrier,
+        ObservationBarrierKind(existing_kind),
+        ObservationBarrierKind(barrier_kind),
+      )
+    }
+  }
+}
+
+///|
+fn bytecode_build_observation_barrier_index(
+  function : BytecodeFunction,
+  function_path : Array[Int],
+) -> BytecodeObservationBarrierIndex raise Error {
+  let entries : Array[BytecodeObservationBarrierIndexEntry?] = Array::makei(
+    function.source_points.length(),
+    _ => None,
+  )
+  for instruction_index, instruction in function.code {
+    match instruction {
+      ObserveStatement(source_id) =>
+        bytecode_record_observation_barrier(
+          function,
+          entries,
+          source_id,
+          StatementEntry,
+          StatementObservationBarrier,
+          StatementObservationBarrierIndex(source_id),
+          function_path,
+          instruction_index,
+        )
+      ObserveExpression(source_id) =>
+        bytecode_record_observation_barrier(
+          function,
+          entries,
+          source_id,
+          ExpressionEntry,
+          ExpressionObservationBarrier,
+          ExpressionObservationBarrierIndex(source_id),
+          function_path,
+          instruction_index,
+        )
       _ => ()
     }
   }
-  false
+  {
+    source_unit: function.source_unit,
+    source_point_owner: function.source_point_owner,
+    entries,
+  }
+}
+
+///|
+fn bytecode_observation_entry_matches_barrier(
+  barrier_index : BytecodeObservationBarrierIndex,
+  entry : BytecodeObservationContextEntry,
+) -> Bool {
+  let source_id = bytecode_observation_entry_source_id(entry)
+  let SourcePointId(source_unit, source_point_owner, source_point_index) = source_id
+  guard source_unit == barrier_index.source_unit &&
+    source_point_owner == barrier_index.source_point_owner &&
+    source_point_index >= 0 &&
+    source_point_index < barrier_index.entries.length() else {
+    return false
+  }
+  match barrier_index.entries[source_point_index] {
+    Some(StatementObservationBarrierIndex(actual)) =>
+      match entry {
+        StatementObservation(expected) => expected == actual
+        ExpressionObservation(_) => false
+      }
+    Some(ExpressionObservationBarrierIndex(actual)) =>
+      match entry {
+        ExpressionObservation(expected) => expected == actual
+        StatementObservation(_) => false
+      }
+    None => false
+  }
 }
 
 ///|
 fn verify_bytecode_observation_entry(
   function : BytecodeFunction,
+  barrier_index : BytecodeObservationBarrierIndex,
   entry : BytecodeObservationContextEntry,
   function_path : Array[Int],
   instruction_index : Int,
@@ -633,7 +741,7 @@ fn verify_bytecode_observation_entry(
     function_path,
     Some(instruction_index),
   )
-  guard bytecode_observation_entry_matches_barrier(function, entry) else {
+  guard bytecode_observation_entry_matches_barrier(barrier_index, entry) else {
     raise bytecode_observation_coverage_defect(
       function_path,
       Some(instruction_index),
@@ -887,11 +995,14 @@ fn verify_bytecode_function_observation_coverage(
       ObservationEdgeContextsLength(function.observation_edge_contexts.length()),
     )
   }
+  let barrier_index = bytecode_build_observation_barrier_index(
+    function, function_path,
+  )
   verify_bytecode_observation_authority(function, function_path)
   for instruction_index, context in function.observation_contexts {
     for entry in context.active {
       verify_bytecode_observation_entry(
-        function, entry, function_path, instruction_index,
+        function, barrier_index, entry, function_path, instruction_index,
       )
     }
   }

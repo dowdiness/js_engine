@@ -2103,6 +2103,71 @@ fn expect_observation_coverage_defect_for_wb(
 }
 
 ///|
+test "lowering materializes branch split and terminal edge contexts" {
+  let program = unverified_source_program_for_wb(
+    "var key; for (key in object) { if (condition) body; }",
+  )
+  let code_length = program.main.code.length()
+  let mut branch_count = 0
+  let mut split_count = 0
+  let mut terminal_edge_count = 0
+  for instruction_index, instruction in program.main.code {
+    let transfer = bytecode_instruction_transfer(instruction)
+    match transfer {
+      BranchTo(_, _) => {
+        branch_count += 1
+        assert_eq(
+          program.main.observation_edge_contexts[instruction_index].length(),
+          2,
+        )
+      }
+      SplitTo(_, _, _) => {
+        split_count += 1
+        assert_eq(
+          program.main.observation_edge_contexts[instruction_index].length(),
+          2,
+        )
+      }
+      _ => ()
+    }
+    for edge in program.main.observation_edge_contexts[instruction_index] {
+      let expected = bytecode_observation_context_for_target(
+        program.main,
+        edge.successor,
+      )
+      assert_true(bytecode_observation_contexts_equal(edge.context, expected))
+      if edge.successor == code_length {
+        terminal_edge_count += 1
+        assert_true(edge.context.active.is_empty())
+      }
+    }
+  }
+  assert_true(branch_count > 0)
+  assert_true(split_count > 0)
+  assert_true(terminal_edge_count > 0)
+}
+
+///|
+test "RED: finalization rejects duplicate indexed observation barriers" {
+  let program = unverified_source_program_for_wb(
+    "if (condition) first; else second;",
+  )
+  let statement_source_id = source_point_id_for_role_for_wb(
+    program.main,
+    StatementEntry,
+  )
+  let expression_index = observe_expression_index_for_wb(program.main)
+  program.main.code[expression_index] = ObserveStatement(statement_source_id)
+  program.main.instruction_sources[expression_index] = [statement_source_id]
+  let _ = expect_source_metadata_defect_for_wb(
+    program,
+    ObservationBarrier,
+    [],
+    Some(expression_index),
+  )
+}
+
+///|
 test "RED: finalization rejects contexts coordinated to empty" {
   let program = unverified_source_program_for_wb(
     "if (condition) first; else second;",
