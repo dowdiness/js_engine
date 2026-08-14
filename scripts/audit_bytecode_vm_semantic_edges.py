@@ -405,11 +405,21 @@ def _hover_is_value_type(contents: list[str]) -> bool:
     first = contents[0].strip() if contents else ""
     if first.startswith("```moonbit"):
         first = first[len("```moonbit") :].lstrip("\n ")
-        first = first.splitlines()[0] if first else ""
+        first = next(
+            (
+                line.strip()
+                for line in first.splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            ),
+            "",
+        )
     return bool(
         re.match(r"^(?:\([^\n]*\)|[A-Za-z_@][^\n]*)\s*->", first)
         or re.match(r"^(?:enum|struct|trait|type)\b", first)
-        or re.fullmatch(r"[A-Za-z_@][A-Za-z0-9_@./]*(?:\[[^\n]+\])?", first)
+        or re.fullmatch(
+            r"[A-Za-z_@][A-Za-z0-9_@./]*(?:\[[^\n]+\])?\??",
+            first,
+        )
     )
 
 
@@ -740,7 +750,6 @@ def _candidate_executable_hint(
     line: str,
     start: int,
     end: int,
-    token: str,
     known_callable: bool,
     call_syntax: CandidateCallSyntax,
 ) -> bool:
@@ -752,22 +761,14 @@ def _candidate_executable_hint(
         return False
     if re.match(r"\s*(?::[^=,)]*)?\s*\)?\s*=>", suffix):
         return False
+    if known_callable:
+        return True
     value_prefix = _callee_value_prefix(raw_prefix)
     if re.search(r"(?<![=!<>])=(?![=])", raw_prefix) and re.search(
         r"@[A-Za-z0-9_./-]+\.$", raw_prefix
     ):
         return True
     if re.search(r"(?<![=!<>])=(?![=])\s*$", value_prefix):
-        return True
-    if token.startswith("@") and known_callable:
-        return True
-    if known_callable and re.search(r"@[A-Za-z0-9_./-]+\.$", raw_prefix):
-        return True
-    previous = value_prefix[-1:] if value_prefix else ""
-    following = suffix.lstrip()[:1]
-    if known_callable and previous in "([{," and following in ",)]};":
-        return True
-    if known_callable and re.search(r"\b(?:raise|return)\s*$", value_prefix):
         return True
     return False
 
@@ -866,7 +867,6 @@ def candidate_locations(
                         line,
                         absolute_start,
                         token_end,
-                        token,
                         known_callable,
                         call_syntax,
                     ),

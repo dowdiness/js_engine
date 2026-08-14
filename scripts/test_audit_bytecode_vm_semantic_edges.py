@@ -210,6 +210,45 @@ class ResolverOutcomeTests(unittest.TestCase):
             IntentionallyIgnored(outcome.candidate, "non_callable_reference"),
         )
 
+    def test_optional_local_value_hover_is_intentionally_ignored(self) -> None:
+        outcome = classify_hover_result(
+            candidate("name", call_syntax=False),
+            returncode=0,
+            stdout=json.dumps({"contents": ["```moonbit\nString?\n```"]}),
+            stderr="",
+            command=("moon", "ide", "hover"),
+            symbols={},
+            symbols_by_name={},
+        )
+
+        self.assertEqual(
+            outcome,
+            IntentionallyIgnored(outcome.candidate, "non_callable_reference"),
+        )
+
+    def test_annotated_type_hover_is_intentionally_ignored(self) -> None:
+        outcome = classify_hover_result(
+            candidate("BytecodeFunction", call_syntax=False),
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "contents": [
+                        '```moonbit\n#warnings("-unused_field")\n'
+                        "struct BytecodeFunction {\n  name : String?\n}\n```"
+                    ]
+                }
+            ),
+            stderr="",
+            command=("moon", "ide", "hover"),
+            symbols={},
+            symbols_by_name={},
+        )
+
+        self.assertEqual(
+            outcome,
+            IntentionallyIgnored(outcome.candidate, "non_callable_reference"),
+        )
+
     def test_diagnostics_are_sorted_and_counted(self) -> None:
         symbols = {
             "Alpha::shared": compiler_entry("Alpha::shared"),
@@ -544,6 +583,79 @@ class MultigraphTests(unittest.TestCase):
             },
         )
 
+    def test_implicit_result_callables_reach_semantic_resolution(self) -> None:
+        sources = {
+            "root_method": "fn root_method() {\n  Type::method\n}\n",
+            "root_package_method": (
+                "fn root_package_method() {\n  @runtime.SomeType::method\n}\n"
+            ),
+            "root_wrapper": (
+                "fn root_wrapper() {\n  semantic_edge_audit_cross_file_wrapper\n}\n"
+            ),
+            "wrapper": "fn wrapper() { () }\n",
+        }
+        symbols = {
+            name: {
+                "kind": ["Sym", name],
+                "pkg": "dowdiness/js_engine/compiler",
+                "path": f"{name}.mbt",
+                "range": [
+                    1,
+                    1,
+                    len(source.splitlines()),
+                    len(source.splitlines()[-1]) + 1,
+                ],
+                "name_range": [1, 4, 1, 4 + len(name)],
+            }
+            for name, source in sources.items()
+        }
+        symbols_by_name = {
+            "method": [("@runtime.Type::method", runtime_entry("method"))],
+            "semantic_edge_audit_cross_file_wrapper": [
+                ("wrapper", symbols["wrapper"])
+            ],
+        }
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, source in sources.items():
+                (root / f"{name}.mbt").write_text(source)
+
+            def fake_hover(
+                _root: Path,
+                candidate: Candidate,
+                _symbols: dict[str, dict[str, object]],
+                _symbols_by_name: dict[str, list[tuple[str, dict[str, object]]]],
+            ) -> audit_script.ResolutionOutcome:
+                if candidate.spelling == "method":
+                    return ResolvedRuntime(candidate, "@runtime.Type::method")
+                if candidate.spelling == "semantic_edge_audit_cross_file_wrapper":
+                    return ResolvedCompiler(candidate, "wrapper")
+                return IntentionallyIgnored(candidate, "test_non_callable")
+
+            with patch.object(
+                audit_script,
+                "load_symbols",
+                return_value=(symbols, symbols_by_name),
+            ), patch.object(audit_script, "resolve_hover", side_effect=fake_hover):
+                edges = audit_script.semantic_edges_from_roots(
+                    root,
+                    ("root_method", "root_package_method", "root_wrapper"),
+                )
+
+        observed = {
+            (edge["enclosing"], edge["kind"], edge["target"])
+            for edge in edges
+        }
+        self.assertIn(
+            ("root_method", "runtime", "@runtime.Type::method"),
+            observed,
+        )
+        self.assertIn(
+            ("root_package_method", "runtime", "@runtime.Type::method"),
+            observed,
+        )
+        self.assertIn(("root_wrapper", "compiler", "wrapper"), observed)
+
 
 class CandidateScannerTests(unittest.TestCase):
     def test_moon_ide_callable_tags_exclude_type_field_and_variant_tags(self) -> None:
@@ -699,6 +811,42 @@ class CandidateScannerTests(unittest.TestCase):
         self.assertTrue(all(candidate.executable_hint for candidate in candidates))
         self.assertTrue(all(not candidate.call_syntax for candidate in candidates))
 
+    def test_implicit_result_callable_references_remain_executable(self) -> None:
+        sources = (
+            "fn root() {\n  Type::method\n}\n",
+            "fn root() {\n  @runtime.SomeType::method\n}\n",
+            "fn root() {\n  semantic_edge_audit_cross_file_wrapper\n}\n",
+        )
+
+        candidates = [
+            outcome
+            for source in sources
+            for outcome in self.candidates_for(
+                source,
+                {"method", "semantic_edge_audit_cross_file_wrapper"},
+            )
+            if isinstance(outcome, Candidate)
+            and outcome.spelling
+            in {"method", "semantic_edge_audit_cross_file_wrapper"}
+        ]
+
+        self.assertEqual(len(candidates), 3)
+        self.assertTrue(all(candidate.executable_hint for candidate in candidates))
+        self.assertTrue(all(not candidate.call_syntax for candidate in candidates))
+
+    def test_known_callable_match_result_reaches_resolution(self) -> None:
+        source = "fn root(value) { match value { _ => Type::method } }\n"
+
+        candidates = [
+            outcome
+            for outcome in self.candidates_for(source, {"method"})
+            if isinstance(outcome, Candidate) and outcome.spelling == "method"
+        ]
+
+        self.assertEqual(len(candidates), 1)
+        self.assertTrue(candidates[0].executable_hint)
+        self.assertFalse(candidates[0].call_syntax)
+
     def test_method_declaration_name_range_remains_excluded(self) -> None:
         source = "fn Type::method() { return Type::method }\n"
         with TemporaryDirectory() as directory:
@@ -722,7 +870,7 @@ class CandidateScannerTests(unittest.TestCase):
         self.assertEqual(len(methods), 1)
         self.assertTrue(methods[0].executable_hint)
 
-    def test_named_argument_member_values_remain_non_callable(self) -> None:
+    def test_known_named_argument_values_reach_resolution(self) -> None:
         source = (
             "fn root() { consume(source_text=func_def.source_text, "
             "rest_param=func_def.rest_param) }\n"
@@ -739,7 +887,7 @@ class CandidateScannerTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(candidates), 4)
-        self.assertTrue(all(not candidate.executable_hint for candidate in candidates))
+        self.assertTrue(all(candidate.executable_hint for candidate in candidates))
 
     def test_token_local_binders_remain_non_executable(self) -> None:
         source = (
