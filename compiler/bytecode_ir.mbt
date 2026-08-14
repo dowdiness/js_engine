@@ -15,6 +15,10 @@ priv struct SourcePointOwnerId(Int) derive(Eq, Debug)
 ///|
 priv struct SourcePointOwnerAllocator {
   next_id : Int
+  // A single opaque token marks one lowering run. Every root/child identity
+  // copied from this allocator shares it, while a separate compilation does
+  // not accidentally reuse the numeric source handles.
+  program_identity : Ref[Unit]
 }
 
 ///|
@@ -24,7 +28,7 @@ priv suberror BytecodeSourcePointOwnerAllocationDefect {
 
 ///|
 fn new_source_point_owner_allocator() -> Ref[SourcePointOwnerAllocator] {
-  { val: { next_id: 0 } }
+  { val: { next_id: 0, program_identity: { val: () } } }
 }
 
 ///|
@@ -35,7 +39,10 @@ fn allocate_source_point_owner(
   guard next_id >= 0 && next_id < MAX_SOURCE_POINT_OWNER_ID else {
     raise BytecodeSourcePointOwnerAllocationDefect(next_id)
   }
-  allocator.val = { next_id: next_id + 1 }
+  allocator.val = {
+    next_id: next_id + 1,
+    program_identity: allocator.val.program_identity,
+  }
   SourcePointOwnerId(next_id)
 }
 
@@ -582,24 +589,44 @@ priv enum BytecodeFunctionConsumerForm {
 } derive(Eq)
 
 ///|
-// A function's source identity is composed from the existing source-unit and
-// function-local owner handles plus its parent consumer position.  The
-// program facade is the compilation boundary, so separate compilations do
-// not share this private identity even when their numeric handles coincide.
+// A function's source identity is composed from an opaque per-compilation
+// token, the existing source-unit and function-local owner handles, and its
+// parent consumer position. Separate compilations therefore do not share this
+// private identity even when their numeric handles coincide.
 priv struct BytecodeSourceIdentity {
+  program_identity : Ref[Unit]
   source_unit : SourceUnitHandle
   source_point_owner : SourcePointOwnerId
   parent_source_point_owner : SourcePointOwnerId?
   child_index : Int?
   consumer_form : BytecodeFunctionConsumerForm?
-} derive(Eq)
+}
+
+///|
+fn bytecode_source_identity_equal(
+  left : BytecodeSourceIdentity,
+  right : BytecodeSourceIdentity,
+) -> Bool {
+  physical_equal(left.program_identity, right.program_identity) &&
+  left.source_unit == right.source_unit &&
+  left.source_point_owner == right.source_point_owner &&
+  left.parent_source_point_owner == right.parent_source_point_owner &&
+  left.child_index == right.child_index &&
+  left.consumer_form == right.consumer_form
+}
 
 ///|
 fn BytecodeSourceIdentity::root(
   source_unit : SourceUnitHandle,
   source_point_owner : SourcePointOwnerId,
+  program_identity? : Ref[Unit]? = None,
 ) -> BytecodeSourceIdentity {
+  let program_identity = match program_identity {
+    Some(identity) => identity
+    None => { val: () }
+  }
   {
+    program_identity,
     source_unit,
     source_point_owner,
     parent_source_point_owner: None,
@@ -610,6 +637,7 @@ fn BytecodeSourceIdentity::root(
 
 ///|
 fn BytecodeSourceIdentity::child(
+  program_identity : Ref[Unit],
   source_unit : SourceUnitHandle,
   source_point_owner : SourcePointOwnerId,
   parent_source_point_owner : SourcePointOwnerId,
@@ -617,6 +645,7 @@ fn BytecodeSourceIdentity::child(
   consumer_form : BytecodeFunctionConsumerForm,
 ) -> BytecodeSourceIdentity {
   {
+    program_identity,
     source_unit,
     source_point_owner,
     parent_source_point_owner: Some(parent_source_point_owner),
@@ -631,6 +660,7 @@ fn BytecodeSourceIdentity::child(
 // AST; exact source text is copied separately at the lowering boundary.
 #warnings("-unused_field")
 priv struct BytecodeHeaderProvenance {
+  program_identity : Ref[Unit]
   name : String?
   signature_name : String?
   params : Array[String]
@@ -647,6 +677,7 @@ priv struct BytecodeHeaderProvenance {
 ///|
 #warnings("-unused_value")
 fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
+  program_identity : Ref[Unit],
   name : String?,
   params : Array[String],
   rest_param : String?,
@@ -657,6 +688,7 @@ fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
   exact_source_text : String?,
 ) -> BytecodeHeaderProvenance {
   {
+    program_identity,
     name,
     signature_name: match consumer_form {
       MethodFunctionConsumer
@@ -683,6 +715,7 @@ fn BytecodeHeaderProvenance::with_child_facts(
   preparation : BytecodePreparation,
 ) -> BytecodeHeaderProvenance {
   {
+    program_identity: self.program_identity,
     name: self.name,
     signature_name: self.signature_name,
     params: self.params.copy(),
@@ -958,6 +991,7 @@ priv struct BytecodeLocalPlan {
 // mutable unverified function tree so coordinated edits to root signature or
 // preparation facts cannot rewrite the evidence used by finalization.
 priv struct BytecodeRootScriptProvenance {
+  program_identity : Ref[Unit]
   strict : Bool
   var_names : Array[String]
   function_names : Array[String]
@@ -985,6 +1019,7 @@ fn BytecodeRootScriptProvenance::from_lowering(
   settlement : @runtime.CompiledScriptEarlyErrorSettlement,
 ) -> BytecodeRootScriptProvenance {
   {
+    program_identity: main.source_identity.program_identity,
     strict,
     var_names: var_names.copy(),
     function_names: function_names.copy(),
@@ -1010,6 +1045,7 @@ fn BytecodeRootScriptProvenance::with_settlement(
   settlement : @runtime.CompiledScriptEarlyErrorSettlement,
 ) -> BytecodeRootScriptProvenance {
   {
+    program_identity: self.program_identity,
     strict: self.strict,
     var_names: self.var_names.copy(),
     function_names: self.function_names.copy(),

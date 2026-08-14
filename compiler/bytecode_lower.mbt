@@ -1701,13 +1701,19 @@ fn compile_bytecode_function(
   let source_identity = match header_provenance {
     Some(header) =>
       BytecodeSourceIdentity::child(
+        owner_allocator.val.program_identity,
         source_unit,
         source_point_owner,
         header.parent_source_point_owner,
         header.child_index,
         header.consumer_form,
       )
-    None => BytecodeSourceIdentity::root(source_unit, source_point_owner)
+    None =>
+      BytecodeSourceIdentity::root(
+        source_unit,
+        source_point_owner,
+        program_identity=Some(owner_allocator.val.program_identity),
+      )
   }
   let header_provenance = match header_provenance {
     Some(header) => Some(header.with_child_facts(source_identity, preparation))
@@ -1899,6 +1905,7 @@ fn BytecodeBuilder::add_function(
       is_method~,
       header_provenance=Some(
         BytecodeHeaderProvenance(
+          self.owner_allocator.val.program_identity,
           name,
           params.copy(),
           rest_param,

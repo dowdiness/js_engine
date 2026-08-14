@@ -309,7 +309,10 @@ fn verify_function_declaration_preparation(
       )
     }
     let child = function.children[actual_declaration.child_index]
-    guard actual_declaration.source_identity == child.source_identity else {
+    guard bytecode_source_identity_equal(
+      actual_declaration.source_identity,
+      child.source_identity,
+    ) else {
       bytecode_preparation_mismatch_for_verification(
         function_path, "function declaration source identity", index, "child source identity",
         "mismatch",
@@ -485,6 +488,7 @@ fn verify_bytecode_child_provenance(
   let expected_identity = match expected_consumer {
     Some(consumer) =>
       BytecodeSourceIdentity::child(
+        parent.source_identity.program_identity,
         child.source_unit,
         child.source_point_owner,
         parent.source_point_owner,
@@ -496,13 +500,21 @@ fn verify_bytecode_child_provenance(
         message="bytecode child consumer form is missing",
       )
   }
-  let child_identity_matches = child.source_identity == expected_identity
+  let child_identity_matches = bytecode_source_identity_equal(
+    child.source_identity,
+    expected_identity,
+  )
   let provenance_identity_matches = match provenance.child_source_identity {
-    Some(identity) => identity == expected_identity
+    Some(identity) =>
+      bytecode_source_identity_equal(identity, expected_identity)
     None => false
   }
   let source_text_matches = provenance.exact_source_text == child.source_text
-  guard provenance.parent_source_point_owner == parent.source_point_owner &&
+  guard physical_equal(
+      provenance.program_identity,
+      parent.source_identity.program_identity,
+    ) &&
+    provenance.parent_source_point_owner == parent.source_point_owner &&
     provenance.child_index == child_index &&
     child_identity_matches &&
     provenance_identity_matches &&

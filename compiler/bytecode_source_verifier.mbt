@@ -630,7 +630,10 @@ fn bytecode_root_preparation_equal(
     if actual.name != expected.name ||
       actual.child_index != expected.child_index ||
       actual.loc != expected.loc ||
-      actual.source_identity != expected.source_identity {
+      !bytecode_source_identity_equal(
+        actual.source_identity,
+        expected.source_identity,
+      ) {
       return false
     }
   }
@@ -649,7 +652,14 @@ fn verify_bytecode_root_provenance(
     Array::equal(main.params, provenance.params) &&
     main.rest_param == provenance.rest_param &&
     main.body_has_use_strict == provenance.body_has_use_strict &&
-    main.source_identity == provenance.source_identity &&
+    physical_equal(
+      main.source_identity.program_identity,
+      provenance.program_identity,
+    ) &&
+    bytecode_source_identity_equal(
+      main.source_identity,
+      provenance.source_identity,
+    ) &&
     main.activation_kind == provenance.activation_kind &&
     Array::equal(main.env_var_hoist_names, provenance.env_var_hoist_names) &&
     bytecode_root_preparation_equal(main.preparation, provenance.preparation) else {

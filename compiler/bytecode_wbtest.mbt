@@ -315,19 +315,18 @@ test "RED: finalization rejects a valid but wrong child source identity" {
 }
 
 ///|
-test "RED: finalization rejects a child transplanted from another compilation" {
+test "finalization rejects a child transplanted from another compilation" {
   let source = "function f() { return 1; }"
   let first = build_script_bytecode(@parser.parse(source).stmts)
   let second = build_script_bytecode(@parser.parse(source).stmts)
   first.main.children[0] = second.main.children[0]
-  assert_true(
-    finalization_accepts_for_wb(first),
-    msg="same-position child from another compilation was accepted",
+  assert_preparation_rejected_for_wb(
+    first, "same-position child from another compilation was accepted",
   )
 }
 
 ///|
-test "RED: finalization rejects root preparation provenance from another compilation" {
+test "finalization rejects root preparation provenance from another compilation" {
   let source = "function f() { return 1; }"
   let first = build_script_bytecode(@parser.parse(source).stmts)
   let second = build_script_bytecode(@parser.parse(source).stmts)
@@ -336,9 +335,27 @@ test "RED: finalization rejects root preparation provenance from another compila
     root_provenance: first.root_provenance,
     main: second.main,
   }
-  assert_true(
-    finalization_accepts_for_wb(malformed),
-    msg="root preparation provenance from another compilation was accepted",
+  assert_preparation_rejected_for_wb(
+    malformed, "root preparation provenance from another compilation was accepted",
+  )
+}
+
+///|
+test "separate compilations receive distinct bytecode source identities" {
+  let source = "function f() { return 1; }"
+  let first = build_script_bytecode(@parser.parse(source).stmts)
+  let second = build_script_bytecode(@parser.parse(source).stmts)
+  assert_false(
+    physical_equal(
+      first.main.source_identity.program_identity,
+      second.main.source_identity.program_identity,
+    ),
+  )
+  assert_false(
+    bytecode_source_identity_equal(
+      first.main.children[0].source_identity,
+      second.main.children[0].source_identity,
+    ),
   )
 }
 

@@ -755,7 +755,10 @@ test "RED: observation opcode payload identity is verified" {
 ///|
 test "RED: source owner allocator refuses exhaustion without wrap-around" {
   let allocator : Ref[SourcePointOwnerAllocator] = {
-    val: { next_id: MAX_SOURCE_POINT_OWNER_ID - 1 },
+    val: {
+      next_id: MAX_SOURCE_POINT_OWNER_ID - 1,
+      program_identity: { val: () },
+    },
   }
   let last_owner = allocate_source_point_owner(allocator)
   match last_owner {
@@ -774,7 +777,7 @@ test "RED: source owner allocator refuses exhaustion without wrap-around" {
   }
   assert_eq(allocator.val.next_id, MAX_SOURCE_POINT_OWNER_ID)
   let negative_allocator : Ref[SourcePointOwnerAllocator] = {
-    val: { next_id: -1 },
+    val: { next_id: -1, program_identity: { val: () } },
   }
   let negative_attempt : Result[
     SourcePointOwnerId,
