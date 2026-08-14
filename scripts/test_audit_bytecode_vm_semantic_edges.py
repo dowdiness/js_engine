@@ -7,10 +7,12 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_ROOT))
+import audit_bytecode_vm_semantic_edges as audit_script  # noqa: E402
 
 from audit_bytecode_vm_semantic_edges import (  # noqa: E402
     AmbiguousCandidate,
@@ -22,6 +24,7 @@ from audit_bytecode_vm_semantic_edges import (  # noqa: E402
     classify_hover_identity,
     classify_hover_result,
     render_resolution_diagnostics,
+    update_root_override_error,
 )
 
 
@@ -135,9 +138,9 @@ class ResolverOutcomeTests(unittest.TestCase):
     def test_hover_failures_keep_the_failure_phase_and_detail(self) -> None:
         command = ("moon", "ide", "hover", "--output-json")
         cases = [
-            ("nonzero", 1, "", "index unavailable"),
+            ("moon_ide_nonzero", 1, "", "index unavailable"),
             ("invalid_json", 0, "{", ""),
-            ("missing_field", 0, json.dumps({"range": "1:1-1:2"}), ""),
+            ("missing_json_field", 0, json.dumps({"range": "1:1-1:2"}), ""),
             (
                 "no_callable_identity",
                 0,
@@ -193,6 +196,25 @@ class ResolverOutcomeTests(unittest.TestCase):
 
         self.assertIn("unresolved=1 ambiguous=1", rendered)
         self.assertLess(rendered.index("compiler/a.mbt:3:2"), rendered.index("compiler/fixture.mbt:12:9"))
+
+    def test_update_with_root_override_rejects_before_index_and_preserves_baseline(self) -> None:
+        baseline = Path("scripts/bytecode_vm_semantic_edges.json")
+        before = baseline.read_bytes()
+        self.assertEqual(
+            update_root_override_error(True, ("custom_root",)),
+            "--update cannot be combined with --root-symbol; use canonical roots",
+        )
+        with patch.object(
+            audit_script,
+            "ensure_semantic_index",
+            side_effect=AssertionError("guard must run before semantic indexing"),
+        ), patch.object(
+            sys,
+            "argv",
+            ["audit_bytecode_vm_semantic_edges.py", "--update", "--root-symbol", "custom_root"],
+        ):
+            self.assertEqual(audit_script.main(), 2)
+        self.assertEqual(baseline.read_bytes(), before)
 
 
 if __name__ == "__main__":
