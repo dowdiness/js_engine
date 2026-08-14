@@ -134,8 +134,7 @@ test "global declaration diagnostics interpolate the rejected function name" {
   match caught {
     Some(@errors.TypeError(message~)) =>
       assert_eq(
-        message,
-        "Cannot declare global function 'blocked': property is non-configurable",
+        message, "Cannot declare global function 'blocked': property is non-configurable",
       )
     Some(error) => fail("expected TypeError, got " + error.to_string())
     None => fail("expected global function declaration rejection")
@@ -158,8 +157,7 @@ test "global declaration diagnostics interpolate the rejected var name" {
   match caught {
     Some(@errors.TypeError(message~)) =>
       assert_eq(
-        message,
-        "Cannot declare global var 'blocked': global object is non-extensible",
+        message, "Cannot declare global var 'blocked': global object is non-extensible",
       )
     Some(error) => fail("expected TypeError, got " + error.to_string())
     None => fail("expected global var declaration rejection")
@@ -184,8 +182,7 @@ test "compiled script preparation rejects an unsettled early-error boundary" {
   match caught {
     Some(@errors.InternalError(message~)) =>
       assert_eq(
-        message,
-        "unsettled CompiledScriptPreparation cannot be applied",
+        message, "unsettled CompiledScriptPreparation cannot be applied",
       )
     Some(error) => fail("expected InternalError, got " + error.to_string())
     None => fail("expected unsettled preparation rejection")
