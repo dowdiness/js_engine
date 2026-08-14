@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext, redirect_stderr
+import io
 import json
 import sys
 from pathlib import Path
@@ -30,7 +32,11 @@ from audit_bytecode_vm_semantic_edges import (  # noqa: E402
 )
 
 
-def candidate(spelling: str = "shared") -> Candidate:
+def candidate(
+    spelling: str = "shared",
+    *,
+    call_syntax: bool = True,
+) -> Candidate:
     return Candidate(
         path="compiler/fixture.mbt",
         line=12,
@@ -38,6 +44,7 @@ def candidate(spelling: str = "shared") -> Candidate:
         enclosing="fixture_root",
         spelling=spelling,
         resolver_phase="hover",
+        call_syntax=call_syntax,
     )
 
 
@@ -171,11 +178,27 @@ class ResolverOutcomeTests(unittest.TestCase):
 
     def test_value_hover_is_intentionally_ignored(self) -> None:
         outcome = classify_hover_result(
-            candidate("BytecodeFrameSuspended"),
+            candidate("BytecodeFrameSuspended", call_syntax=False),
             returncode=0,
             stdout=json.dumps(
                 {"contents": ["```moonbit\n(@runtime.Step) -> BytecodeFrameStep\n```"]}
             ),
+            stderr="",
+            command=("moon", "ide", "hover"),
+            symbols={},
+            symbols_by_name={},
+        )
+
+        self.assertEqual(
+            outcome,
+            IntentionallyIgnored(outcome.candidate, "non_callable_reference"),
+        )
+
+    def test_first_class_local_value_hover_is_intentionally_ignored(self) -> None:
+        outcome = classify_hover_result(
+            candidate("name", call_syntax=False),
+            returncode=0,
+            stdout=json.dumps({"contents": ["```moonbit\nString\n```"]}),
             stderr="",
             command=("moon", "ide", "hover"),
             symbols={},
@@ -448,6 +471,123 @@ class MultigraphTests(unittest.TestCase):
         )
 
 
+class CandidateScannerTests(unittest.TestCase):
+    def test_moon_ide_callable_tags_exclude_type_field_and_variant_tags(self) -> None:
+        for tag in ("0x1000", "0x1001", "0x4000", "0x4001"):
+            with self.subTest(tag=tag):
+                self.assertTrue(audit_script._symbol_entry_is_callable({"tag": tag}))
+        for tag in ("0x10", "0x53", "0xd3", "0xd8"):
+            with self.subTest(tag=tag):
+                self.assertFalse(audit_script._symbol_entry_is_callable({"tag": tag}))
+
+    def candidates_for(
+        self,
+        source: str,
+        known_names: set[str],
+    ) -> list[Candidate | IntentionallyIgnored]:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "fixture.mbt"
+            path.write_text(source)
+            lines = source.splitlines()
+            entry = {
+                "kind": ["Sym", "root"],
+                "pkg": "dowdiness/js_engine/compiler",
+                "path": "fixture.mbt",
+                "range": [1, 1, len(lines), len(lines[-1]) + 1],
+                "name_range": [1, 4, 1, 8],
+            }
+            return audit_script.candidate_locations(root, entry, known_names)
+
+    def executable_spellings(
+        self,
+        source: str,
+        known_names: set[str],
+    ) -> list[str]:
+        return [
+            outcome.spelling or ""
+            for outcome in self.candidates_for(source, known_names)
+            if isinstance(outcome, Candidate) and outcome.executable_hint
+        ]
+
+    def test_same_line_calls_after_quoted_interpolation_remain_executable(self) -> None:
+        source = (
+            'fn root() { let pair = ("first \\{interp.observe_execution_step()} '
+            '\\{interp.observe_execution_step()}", @runtime.make_array([])); '
+            "semantic_edge_audit_cross_file_wrapper(interp) }\n"
+        )
+
+        spellings = self.executable_spellings(
+            source,
+            {
+                "observe_execution_step",
+                "make_array",
+                "semantic_edge_audit_cross_file_wrapper",
+            },
+        )
+
+        self.assertIn("@runtime.make_array", spellings)
+        self.assertIn("semantic_edge_audit_cross_file_wrapper", spellings)
+
+    def test_escaped_interpolation_and_raw_text_remain_ignored(self) -> None:
+        escaped = self.executable_spellings(
+            'fn root() { let text = "escaped \\\\{@runtime.make_array([])}" }\n',
+            {"make_array"},
+        )
+        raw = self.executable_spellings(
+            'fn root() { let text = #|raw \\{@runtime.make_array([])}\n }\n',
+            {"make_array"},
+        )
+
+        self.assertEqual(escaped, [])
+        self.assertEqual(raw, [])
+
+    def test_first_class_references_before_arrow_expression_remain_executable(self) -> None:
+        source = (
+            "fn root() { let pair = (@runtime.make_array, "
+            "semantic_edge_audit_cross_file_wrapper, (x : Int) => x) }\n"
+        )
+
+        spellings = self.executable_spellings(
+            source,
+            {"make_array", "semantic_edge_audit_cross_file_wrapper"},
+        )
+
+        self.assertIn("make_array", spellings)
+        self.assertIn("semantic_edge_audit_cross_file_wrapper", spellings)
+
+    def test_reverse_pipeline_references_remain_executable(self) -> None:
+        source = (
+            "fn root() { semantic_edge_audit_cross_file_wrapper <| interp; "
+            "make_array <| [] }\n"
+        )
+
+        spellings = self.executable_spellings(
+            source,
+            {"semantic_edge_audit_cross_file_wrapper", "make_array"},
+        )
+
+        self.assertIn("semantic_edge_audit_cross_file_wrapper", spellings)
+        self.assertIn("make_array", spellings)
+
+    def test_token_local_binders_remain_non_executable(self) -> None:
+        source = (
+            "fn root() { let semantic_edge_audit_cross_file_wrapper = "
+            "(make_array : Int) => make_array }\n"
+        )
+
+        outcomes = self.candidates_for(
+            source,
+            {"semantic_edge_audit_cross_file_wrapper", "make_array"},
+        )
+        candidates = [
+            outcome for outcome in outcomes if isinstance(outcome, Candidate)
+        ]
+
+        self.assertFalse(candidates[0].executable_hint)
+        self.assertFalse(candidates[1].executable_hint)
+
+
 class MigrationTests(unittest.TestCase):
     def test_v2_callsite_aggregation_is_complete_and_conserves_multiplicity(self) -> None:
         v2 = [
@@ -490,7 +630,7 @@ class MigrationTests(unittest.TestCase):
 
 class UpdateGuardTests(unittest.TestCase):
     def test_update_with_root_override_rejects_before_index_and_preserves_baseline(self) -> None:
-        baseline = Path("scripts/bytecode_vm_semantic_edges.json")
+        baseline = SCRIPT_ROOT / "bytecode_vm_semantic_edges.json"
         before = baseline.read_bytes()
         with patch.object(
             audit_script,
@@ -508,6 +648,34 @@ class UpdateGuardTests(unittest.TestCase):
         ):
             self.assertEqual(audit_script.main(), 2)
         self.assertEqual(baseline.read_bytes(), before)
+
+    def test_self_test_resolution_failure_uses_deterministic_diagnostic(self) -> None:
+        error = audit_script.SemanticResolutionError(
+            [
+                audit_script.ResolutionDiagnostic(
+                    candidate("lost"),
+                    "moon_ide_nonzero",
+                    detail="fixture index unavailable",
+                )
+            ]
+        )
+        stderr = io.StringIO()
+        with patch.object(audit_script, "ensure_semantic_index"), patch.object(
+            audit_script, "semantic_edges_from_roots", return_value=[]
+        ), patch.object(
+            audit_script, "semantic_fixture_sources", return_value=nullcontext()
+        ), patch.object(
+            audit_script, "semantic_edges", side_effect=error
+        ), patch.object(
+            sys,
+            "argv",
+            ["audit_bytecode_vm_semantic_edges.py", "--self-test"],
+        ), redirect_stderr(stderr):
+            self.assertEqual(audit_script.main(), 1)
+
+        rendered = stderr.getvalue()
+        self.assertIn("unresolved=1 ambiguous=0", rendered)
+        self.assertNotIn("Traceback", rendered)
 
     def test_rendered_v3_payload_is_deterministic(self) -> None:
         edges = [raw_edge(reachable_from=["Root"])]

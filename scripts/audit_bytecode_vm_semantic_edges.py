@@ -36,6 +36,7 @@ RUNTIME_PREFIXES = (
 BASELINE = Path("scripts/bytecode_vm_semantic_edges.json")
 
 RUNTIME_PACKAGE = "dowdiness/js_engine/interpreter/runtime"
+MOON_IDE_CALLABLE_TAGS = {"0x1000", "0x1001", "0x4000", "0x4001"}
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,8 @@ class Candidate:
     spelling: str | None
     resolver_phase: str
     executable_hint: bool = True
+    call_syntax: bool = True
+    known_callable: bool = True
 
 
 @dataclass(frozen=True)
@@ -385,7 +388,11 @@ def _hover_is_value_type(contents: list[str]) -> bool:
     if first.startswith("```moonbit"):
         first = first[len("```moonbit") :].lstrip("\n ")
         first = first.splitlines()[0] if first else ""
-    return bool(re.match(r"^(?:\([^\n]*\)|[A-Za-z_@][^\n]*)\s*->", first))
+    return bool(
+        re.match(r"^(?:\([^\n]*\)|[A-Za-z_@][^\n]*)\s*->", first)
+        or re.match(r"^(?:enum|struct|trait|type)\b", first)
+        or re.fullmatch(r"[A-Za-z_@][A-Za-z0-9_@./]*(?:\[[^\n]+\])?", first)
+    )
 
 
 def classify_hover_result(
@@ -449,7 +456,13 @@ def classify_hover_result(
         )
     identity = _callable_identity(contents)
     if identity is None:
-        if not candidate.executable_hint or _hover_is_value_type(contents):
+        if (
+            not candidate.executable_hint
+            or (
+                _hover_is_value_type(contents)
+                and (not candidate.call_syntax or not candidate.known_callable)
+            )
+        ):
             return IntentionallyIgnored(candidate, "non_callable_reference")
         return UnresolvedCandidate(
             _diagnostic(
@@ -556,6 +569,11 @@ def _imported_runtime_alias(
     return "@runtime." + identity
 
 
+def _symbol_entry_is_callable(entry: dict[str, Any]) -> bool:
+    """Use Moon IDE's function tags to exclude fields, types, and variants."""
+    return entry.get("tag") in MOON_IDE_CALLABLE_TAGS
+
+
 def load_symbols(
     root: Path,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, list[tuple[str, dict[str, Any]]]]]:
@@ -570,6 +588,8 @@ def load_symbols(
             if identity is None:
                 continue
             package = entry.get("pkg")
+            if not _symbol_entry_is_callable(entry):
+                continue
             imported_runtime_alias = _imported_runtime_alias(root, entry, identity)
             if imported_runtime_alias is not None:
                 query = imported_runtime_alias
@@ -678,7 +698,8 @@ def _executable_mask_with_state(
             while cursor < len(line):
                 if line[cursor] == "\\":
                     if line[cursor : cursor + 2] == r"\{":
-                        cursor = _mark_interpolation(mask, line, cursor)
+                        cursor = _mark_interpolation(mask, line, cursor) + 1
+                        continue
                     cursor += 2
                     continue
                 if line[cursor] == '"':
@@ -702,12 +723,17 @@ def _candidate_executable_hint(
     start: int,
     end: int,
     token: str,
+    known_callable: bool,
 ) -> bool:
     suffix = line[end:]
     prefix = line[:start].rstrip()
     if re.match(r"\s*\(", suffix):
         return True
-    if prefix.strip().endswith(("let", "guard")) or "=>" in suffix:
+    if re.match(r"\s*<\|", suffix):
+        return True
+    if re.search(r"(?:^|\b)(?:let|guard)\s*$", prefix):
+        return False
+    if re.match(r"\s*(?::[^=,)]*)?\s*\)?\s*=>", suffix):
         return False
     if re.search(r"(?<![=!<>])=(?![=])", prefix) and re.search(
         r"@[A-Za-z0-9_./-]+\.$", prefix
@@ -715,7 +741,15 @@ def _candidate_executable_hint(
         return True
     if re.search(r"(?<![=!<>])=(?![=])\s*$", prefix):
         return True
-    if token.startswith("@"):
+    if token.startswith("@") and known_callable:
+        return True
+    if known_callable and re.search(r"@[A-Za-z0-9_./-]+\.$", prefix):
+        return True
+    previous = prefix[-1:] if prefix else ""
+    following = suffix.lstrip()[:1]
+    if known_callable and previous in "([{," and following in ",)]};":
+        return True
+    if known_callable and re.search(r"\b(?:raise|return)\s*$", prefix):
         return True
     return False
 
@@ -775,6 +809,7 @@ def candidate_locations(
                     absolute_start < len(executable_mask)
                     and executable_mask[absolute_start]
                 )
+                known_callable = token.rsplit(".", 1)[-1] in bare_names
                 candidate = Candidate(
                     path=entry["path"],
                     line=line_no,
@@ -788,7 +823,14 @@ def candidate_locations(
                         absolute_start,
                         absolute_start + len(token.rsplit(".", 1)[-1]),
                         token,
+                        known_callable,
                     ),
+                    call_syntax=re.match(
+                        r"\s*(?:\(|<\|)",
+                        line[absolute_start + len(token.rsplit(".", 1)[-1]) :],
+                    )
+                    is not None,
+                    known_callable=known_callable,
                 )
                 outcome: Candidate | IntentionallyIgnored = (
                     candidate
@@ -1413,7 +1455,7 @@ def render_payload(payload: dict[str, Any]) -> str:
     )
 
 
-def main() -> int:
+def _main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--update", action="store_true")
@@ -1608,6 +1650,14 @@ def main() -> int:
         f"({len(payload['edges'])} semantic edges, {runtime_count} runtime boundaries)"
     )
     return 0
+
+
+def main() -> int:
+    try:
+        return _main()
+    except SemanticResolutionError as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
