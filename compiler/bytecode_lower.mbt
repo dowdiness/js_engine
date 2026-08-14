@@ -1666,6 +1666,8 @@ fn compile_bytecode_function(
   is_method? : Bool = false,
   header_provenance? : BytecodeHeaderProvenance? = None,
   activation_kind? : BytecodeActivationKind = FunctionActivation,
+  candidate_identity_plan? : CandidateIdentityPlan? = None,
+  candidate_mode? : Bool = false,
 ) -> BytecodeFunction raise Error {
   let body_has_use_strict = @static_semantics.has_use_strict(body)
   let function_strict = enclosing_strict || body_has_use_strict
@@ -1680,7 +1682,10 @@ fn compile_bytecode_function(
     body,
     use_local_slots=use_local_slots && rest_param is None,
   )
-  let source_point_owner = allocate_source_point_owner(owner_allocator)
+  let source_point_owner = match candidate_identity_plan {
+    Some(identity_plan) => identity_plan.source_point_owner
+    None => allocate_source_point_owner(owner_allocator)
+  }
   let builder = BytecodeBuilder::BytecodeBuilder(
     plan,
     template_cache_key_prefix,
@@ -1688,6 +1693,8 @@ fn compile_bytecode_function(
     owner_allocator,
     source_unit~,
     enclosing_strict=function_strict,
+    candidate_identity_plan~,
+    candidate_mode~,
   )
   for stmt in body {
     builder.compile_stmt(stmt)
@@ -1904,7 +1911,29 @@ fn BytecodeBuilder::add_function(
   let template_cache_key_prefix = self.template_cache_key_prefix +
     "/" +
     idx.to_string()
-  self.children.push(
+  let candidate_identity_plan = match self.candidate_identity_plan {
+    Some(identity_plan) => {
+      guard idx < identity_plan.children.length() else {
+        raise @errors.InternalError(
+          message="candidate identity plan is missing a child entry",
+        )
+      }
+      Some(identity_plan.children[idx])
+    }
+    None => None
+  }
+  let header = BytecodeHeaderProvenance(
+    self.owner_allocator.val.program_identity,
+    name,
+    params.copy(),
+    rest_param,
+    self.enclosing_strict,
+    self.source_point_owner,
+    idx,
+    consumer_form,
+    source_text,
+  )
+  let child = try {
     compile_bytecode_function(
       name,
       params,
@@ -1917,21 +1946,53 @@ fn BytecodeBuilder::add_function(
       source_unit=self.source_unit,
       enclosing_strict=self.enclosing_strict,
       is_method~,
-      header_provenance=Some(
-        BytecodeHeaderProvenance(
-          self.owner_allocator.val.program_identity,
-          name,
-          params.copy(),
-          rest_param,
-          self.enclosing_strict,
-          self.source_point_owner,
-          idx,
-          consumer_form,
-          source_text,
-        ),
-      ),
-    ),
-  )
+      header_provenance=Some(header),
+      candidate_identity_plan~,
+      candidate_mode=self.candidate_mode,
+    )
+  } catch {
+    BytecodeUnsupportedSignal(unsupported) => {
+      guard self.candidate_mode else {
+        raise BytecodeUnsupportedSignal(unsupported)
+      }
+      let fallback_identity_plan = match candidate_identity_plan {
+        Some(identity_plan) => Some({
+          source_point_owner: identity_plan.source_point_owner,
+          children: [],
+        })
+        None => None
+      }
+      let fallback_header = BytecodeHeaderProvenance(
+        self.owner_allocator.val.program_identity,
+        name,
+        [],
+        None,
+        self.enclosing_strict,
+        self.source_point_owner,
+        idx,
+        consumer_form,
+        source_text,
+      )
+      compile_bytecode_function(
+        name,
+        [],
+        [],
+        None,
+        self.owner_allocator,
+        source_text~,
+        use_local_slots=true,
+        template_cache_key_prefix~,
+        source_unit=self.source_unit,
+        enclosing_strict=self.enclosing_strict,
+        is_method~,
+        header_provenance=Some(fallback_header),
+        candidate_identity_plan=fallback_identity_plan,
+        candidate_mode=false,
+      )
+    }
+    error => raise error
+  }
+  self.children.push(child)
   idx
 }
 
@@ -2416,7 +2477,7 @@ fn BytecodeBuilder::compile_stmt_body(
       self.emit_undefined_completion()
     }
     FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -3806,7 +3867,7 @@ fn BytecodeBuilder::compile_object_method(
         is_method=true,
       )
     FuncExprExt(Some(name), params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       self.add_function(
@@ -3820,7 +3881,7 @@ fn BytecodeBuilder::compile_object_method(
       )
     }
     FuncExprExt(None, params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       self.add_function(
@@ -4521,7 +4582,7 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     FuncExprExt(Some(name), params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -4537,7 +4598,7 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     FuncExprExt(None, params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -4566,7 +4627,7 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     ArrowFuncExt(params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -4903,4 +4964,29 @@ fn simple_ext_param_names_with_rest(
     }
   }
   (names, rest_param)
+}
+
+///|
+// Candidate parents retain their own lowering result when a child parameter
+// shape is unsupported.  The child is represented by the compiler-only
+// placeholder path in add_function; ordinary lowering keeps the original
+// rejection and diagnostics.
+fn BytecodeBuilder::candidate_ext_param_names_with_rest(
+  self : BytecodeBuilder,
+  params : Array[@ast.Param],
+  rest_param : String?,
+  owner_loc : @token.Loc,
+) -> (Array[String], String?) raise Error {
+  try {
+    simple_ext_param_names_with_rest(params, rest_param, owner_loc)
+  } catch {
+    BytecodeUnsupportedSignal(unsupported) => {
+      if self.candidate_mode {
+        ([], None)
+      } else {
+        raise BytecodeUnsupportedSignal(unsupported)
+      }
+    }
+    error => raise error
+  }
 }

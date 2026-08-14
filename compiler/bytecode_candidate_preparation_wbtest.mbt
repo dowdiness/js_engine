@@ -27,3 +27,31 @@ test "RED: candidate preparation keeps eligible parent with lowering-unsupported
   let _candidates = prepare_candidate_program(parsed.stmts)
   ()
 }
+
+///|
+test "candidate tree separates parent and child outcomes" {
+  let source =
+    #|function parent() { return 1; }
+    #|function child() { for (var value of [1]) {} }
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.bytecode is Some(_) else {
+    fail("candidate root should retain bytecode")
+  }
+  guard program.root.children.length() == 2 else {
+    fail("candidate root should retain both declarations")
+  }
+  match program.root.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible parent unexpectedly selected tree walker")
+  }
+  match program.root.children[1].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      if unsupported.reason is ForOfStatement {
+        ()
+      } else {
+        fail("child fallback lost its lowering reason")
+      }
+    UseTreeWalker(_) => fail("child fallback was not typed as lowering unsupported")
+    UseBytecode(_) => fail("unsupported child unexpectedly selected bytecode")
+  }
+}

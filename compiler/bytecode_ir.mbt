@@ -1159,6 +1159,12 @@ priv struct BytecodeBuilder {
   // compute needs_own_env at the end of compile_bytecode_function.
   mut has_this : Bool
   mut has_new_target : Bool
+  // Candidate preparation may provide the immutable source-owner plan that
+  // pairs tree and bytecode functions. Normal lowering leaves this absent.
+  candidate_identity_plan : CandidateIdentityPlan?
+  // Candidate lowering may retain a bytecode parent while replacing an
+  // unsupported child with a compiler-only placeholder.
+  candidate_mode : Bool
 }
 
 ///|
@@ -1333,6 +1339,8 @@ fn BytecodeBuilder::BytecodeBuilder(
   owner_allocator : Ref[SourcePointOwnerAllocator],
   source_unit? : SourceUnitHandle = SourceUnitHandle(0),
   enclosing_strict? : Bool = false,
+  candidate_identity_plan? : CandidateIdentityPlan? = None,
+  candidate_mode? : Bool = false,
 ) -> BytecodeBuilder {
   {
     code: [],
@@ -1357,6 +1365,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     pending_loop_labels: [],
     has_this: false,
     has_new_target: false,
+    candidate_identity_plan,
+    candidate_mode,
   }
 }
 
