@@ -1,0 +1,3 @@
+package "dowdiness/js_engine/internal/engine_candidate_mode"
+
+fn candidate_mode_enabled() -> Bool
