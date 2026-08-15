@@ -122,6 +122,24 @@ priv struct ExecutorActivationValueFrame {
 }
 
 ///|
+priv struct ExecutorActivationCoercingAdditionRootFrame {
+  left : Value
+  right : Value
+  loc : @token.Loc
+  mut requested : Bool
+  mut result : Value?
+}
+
+///|
+fn ExecutorActivationCoercingAdditionRootFrame::ExecutorActivationCoercingAdditionRootFrame(
+  left~ : Value,
+  right~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorActivationCoercingAdditionRootFrame {
+  { left, right, loc, requested: false, result: None }
+}
+
+///|
 priv struct ExecutorActivationCallCode {
   callee : Value
   this_value : Value
@@ -381,6 +399,36 @@ fn ExecutorActivationValueFrame::ExecutorActivationValueFrame(
 }
 
 ///|
+impl ExecutorActivationFrame for ExecutorActivationCoercingAdditionRootFrame with fn step(
+  self,
+  _interp,
+) {
+  if !self.requested {
+    self.requested = true
+    executor_activation_coercing_addition(self.left, self.right, self.loc)
+  } else {
+    match self.result {
+      Some(value) => ExecutorActivationReturn(value)
+      None =>
+        raise @errors.InternalError(
+          message="coercing addition root resumed without a result",
+        )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationCoercingAdditionRootFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionNormal(value) => self.result = Some(value)
+    ExecutorActivationCompletionAbrupt(error) => raise error
+  }
+}
+
+///|
 fn ExecutorActivationTestFrame::ExecutorActivationTestFrame(
   steps : Ref[Int],
 ) -> ExecutorActivationTestFrame {
@@ -474,6 +522,24 @@ fn run_executor_property_set_root_for_wb(
   match interp.run_executor_activation_coordinator(root) {
     ExecutorActivationReturn(result) => result
     _ => fail("property-set root must return its assignment result")
+  }
+}
+
+///|
+fn run_executor_coercing_addition_root_for_wb(
+  interp : Interpreter,
+  left : Value,
+  right : Value,
+) -> Value raise Error {
+  let root = ExecutorActivationCoercingAdditionRootFrame(
+      left~,
+      right~,
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
+  match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(result) => result
+    _ => fail("coercing-addition root must return its result")
   }
 }
 
@@ -4133,6 +4199,293 @@ test "property update core plans results and reduces completions deterministical
     ExecutorPropertyUpdateHaveCurrent(Number(value)) =>
       inspect(value, content="7")
     _ => fail("get completion must become the current update value")
+  }
+}
+
+///|
+test "coercing addition frame completes primitive operands" {
+  let interp = Interpreter::new()
+  let number_result = run_executor_coercing_addition_root_for_wb(
+    interp,
+    Number(2.0),
+    Number(3.0),
+  )
+  match number_result {
+    Number(value) => inspect(value, content="5")
+    _ => fail("primitive numeric addition must return a number")
+  }
+  let string_result = run_executor_coercing_addition_root_for_wb(
+    interp,
+    String_("left"),
+    Number(3.0),
+  )
+  match string_result {
+    String_(value) => inspect(value, content="left3")
+    _ => fail("a primitive string must select string addition")
+  }
+}
+
+///|
+test "coercing addition uses default hint and original receiver" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let receiver : Ref[Value] = { val: Undefined }
+  let hook = make_method_func(
+    name="@@toPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(this_value, args) raise {
+      assert_true(physical_equal(this_value, receiver.val))
+      match args {
+        [String_(hint)] => events.push(hint)
+        _ => events.push("wrong-args")
+      }
+      Number(4.0)
+    },
+  )
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  receiver.val = object
+  match object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+    _ => fail("expected an object fixture")
+  }
+  let result = run_executor_coercing_addition_root_for_wb(
+    interp,
+    object,
+    Number(2.0),
+  )
+  match result {
+    Number(value) => inspect(value, content="6")
+    _ => fail("toPrimitive result must feed numeric addition")
+  }
+  json_inspect(events, content=["default"])
+}
+
+///|
+test "coercing addition uses valueOf then toString fallback" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let fallback = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let value_of = make_method_func(
+    name="valueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      events.push("valueOf")
+      fallback
+    },
+  )
+  let to_string = make_method_func(
+    name="toString",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      events.push("toString")
+      String_("fallback")
+    },
+  )
+  let object = make_object(
+    { "valueOf": value_of, "toString": to_string },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let result = run_executor_coercing_addition_root_for_wb(
+    interp,
+    object,
+    Number(2.0),
+  )
+  match result {
+    String_(value) => inspect(value, content="fallback2")
+    _ => fail("toString fallback must select string addition")
+  }
+  json_inspect(events, content=["valueOf", "toString"])
+}
+
+///|
+test "coercing addition stops on left abrupt completion" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let left_hook = make_method_func(
+    name="leftToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) raise {
+      raise @errors.TypeError(message="left conversion failed")
+    },
+  )
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let left = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let right = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match left {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
+    _ => fail("expected left object fixture")
+  }
+  match right {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object fixture")
+  }
+  let caught : Error? = try {
+    let _ = run_executor_coercing_addition_root_for_wb(interp, left, right)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected left TypeError, got " + error.to_string())
+    None => fail("left conversion must throw")
+  }
+  inspect(right_calls.val, content="0")
+}
+
+///|
+test "coercing addition keeps left effects when right throws" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let left_hook = make_method_func(
+    name="leftToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      events.push("left")
+      Number(1.0)
+    },
+  )
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) raise {
+      events.push("right")
+      raise @errors.TypeError(message="right conversion failed")
+    },
+  )
+  let left = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let right = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match left {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
+    _ => fail("expected left object fixture")
+  }
+  match right {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object fixture")
+  }
+  let caught : Error? = try {
+    let _ = run_executor_coercing_addition_root_for_wb(interp, left, right)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected right TypeError, got " + error.to_string())
+    None => fail("right conversion must throw")
+  }
+  json_inspect(events, content=["left", "right"])
+}
+
+///|
+test "coercing addition converts both operands before Symbol TypeError" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let right = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match right {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object fixture")
+  }
+  let caught : Error? = try {
+    let _ = run_executor_coercing_addition_root_for_wb(
+      interp,
+      Symbol({ id: 9001, description: None }),
+      right,
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected Symbol TypeError, got " + error.to_string())
+    None => fail("Symbol numeric conversion must throw")
+  }
+  inspect(right_calls.val, content="1")
+}
+
+///|
+test "coercing addition rejects an object ToPrimitive result" {
+  let interp = Interpreter::new()
+  let result_object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let hook = make_method_func(
+    name="objectToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { result_object },
+  )
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+    _ => fail("expected object fixture")
+  }
+  let caught : Error? = try {
+    let _ = run_executor_coercing_addition_root_for_wb(
+      interp,
+      object,
+      Number(1.0),
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) =>
+      fail("expected object-result TypeError, got " + error.to_string())
+    None => fail("object ToPrimitive result must throw")
+  }
+}
+
+///|
+test "coercing addition frame rejects post-completion stepping" {
+  let interp = Interpreter::new()
+  let request = ExecutorCoercingAdditionRequest(
+    left=Number(1.0),
+    right=Number(2.0),
+    loc=@token.Loc::default(),
+  )
+  let frame = ExecutorCoercingAdditionFrame(request)
+  match frame.step_frame(interp) {
+    ExecutorActivationNormal(Number(value)) => inspect(value, content="3")
+    _ => fail("primitive frame must complete synchronously")
+  }
+  let caught : Error? = try {
+    let _ = frame.step_frame(interp)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@errors.InternalError(_)) => ()
+    Some(error) =>
+      fail("expected post-completion InternalError, got " + error.to_string())
+    None => fail("post-completion step must be rejected")
   }
 }
 

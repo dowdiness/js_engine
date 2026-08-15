@@ -2375,15 +2375,28 @@ pub fn eval_binary_op(
   fn s(v : Value) -> String raise Error {
     to_js_string(v, interp~)
   }
-  fn p_default(v : Value, data : ObjectData) -> Value raise Error {
-    to_primitive_default(v, data, interp~)
+  fn p_default(v : Value) -> Value raise Error {
+    match interp {
+      Some(ip) =>
+        match v {
+          // Preserve the existing array stringification path used by the
+          // synchronous tree walker; managed executor coercion uses the
+          // canonical property dispatcher for arrays.
+          Array(arr_data) =>
+            String_(arr_data.elements.map(value => value.to_string()).join(","))
+          _ => ip.to_primitive_value(v, "default")
+        }
+      None =>
+        match v {
+          Object(data) => to_primitive_default(v, data, interp~)
+          Array(_) => to_primitive_default_array(v, interp~)
+          Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            to_primitive_via_dispatch(v, "default", interp~)
+          _ => v
+        }
+    }
   }
   match (op, left, right) {
-    // Symbol cannot be converted to string implicitly
-    (Add, Symbol(_), _) | (Add, _, Symbol(_)) =>
-      raise @errors.TypeError(
-        message="Cannot convert a Symbol value to a string",
-      )
     // String concatenation (only for primitive operands)
     (Add, String_(a), String_(b)) => String_(a + b)
     (Add, String_(a), Number(b)) => String_(a + Number(b).to_string())
@@ -2420,32 +2433,11 @@ pub fn eval_binary_op(
     (Exp, l, r) => Number(@math.pow(n(l), n(r)))
     // Add fallback: ToPrimitive, then check for strings
     (Add, l, r) => {
-      // ToPrimitive with hint "default" per spec (+ operator uses no preferred type)
-      let lp = match l {
-        Object(data) => p_default(l, data)
-        Proxy(_) => to_primitive_via_dispatch(l, "default", interp~)
-        Array(arr_data) => {
-          let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
-          String_(s)
-        }
-        _ => l
-      }
-      let rp = match r {
-        Object(data) => p_default(r, data)
-        Proxy(_) => to_primitive_via_dispatch(r, "default", interp~)
-        Array(arr_data) => {
-          let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
-          String_(s)
-        }
-        _ => r
-      }
-      // If either is a string after ToPrimitive, do string concatenation
-      match (lp, rp) {
-        (String_(a), String_(b)) => String_(a + b)
-        (String_(a), b) => String_(a + s(b))
-        (a, String_(b)) => String_(s(a) + b)
-        (a, b) => Number(n(a) + n(b))
-      }
+      // ToPrimitive with hint "default" per spec (+ operator uses no
+      // preferred type). Both operands finish before ToString/ToNumeric.
+      let lp = p_default(l)
+      let rp = p_default(r)
+      finish_primitive_addition(interp, lp, rp, _loc)
     }
     (Sub, l, r) => Number(n(l) - n(r))
     (Mul, l, r) => Number(n(l) * n(r))

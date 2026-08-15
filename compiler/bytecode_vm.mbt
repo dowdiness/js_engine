@@ -613,6 +613,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property update",
       )
+    @runtime.ExecutorActivationCoercingAddition(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending coercing addition",
+      )
   }
 }
 
