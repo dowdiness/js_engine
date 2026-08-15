@@ -100,10 +100,9 @@ test "candidate Engine Array Symbol.toPrimitive keeps hint and receiver" {
     "seen = hint + (this === a); return 40; }; " +
     "function arraySymbolAdd() { return [a + 1, seen]; }",
   )
-  json_inspect(
-    engine.call_json("arraySymbolAdd", []),
-    content=[41, "defaulttrue"],
-  )
+  json_inspect(engine.call_json("arraySymbolAdd", []), content=[
+    41, "defaulttrue",
+  ])
 }
 
 ///|
@@ -149,15 +148,12 @@ test "candidate Engine Array coercion hook matrix preserves parity" {
     "var typeError = false; try { objectResultArray + 1; } catch (error) { typeError = error instanceof TypeError; } " +
     "return { results: [symbolArray + 1, valueOfArray + 1, toStringArray + 1, accessorArray + 1], thrown: thrown, typeError: typeError, events: events }; }",
   )
-  json_inspect(
-    engine.call_json("arrayCoercionMatrix", []),
-    content={
-      "results": [5, 6, "string1", 7],
-      "thrown": "guest",
-      "typeError": true,
-      "events": "throw;object;objectString;symbol:default:true;valueOf:true;toString:true;getter;accessor:default:true;",
-    },
-  )
+  json_inspect(engine.call_json("arrayCoercionMatrix", []), content={
+    "results": [5, 6, "string1", 7],
+    "thrown": "guest",
+    "typeError": true,
+    "events": "throw;object;objectString;symbol:default:true;valueOf:true;toString:true;getter;accessor:default:true;",
+  })
 }
 
 ///|

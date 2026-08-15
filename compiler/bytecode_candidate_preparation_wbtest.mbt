@@ -255,6 +255,64 @@ test "candidate plain addition selects bytecode before frame construction" {
 }
 
 ///|
+test "candidate benchmark fixed-unroll shape selects managed bytecode" {
+  let source =
+    #|function issue886NumberAdd(left, right) {
+    #|  var value = 0;
+    #|  value = left + right;
+    #|  value = left + right;
+    #|  value = left + right;
+    #|  return value;
+    #|}
+    #|issue886NumberAdd(1, 2);
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.children.length() == 1 else {
+    fail("benchmark shape must contain one hot function")
+  }
+  let addition_count = match program.root.children[0].bytecode {
+    Some(bytecode) =>
+      bytecode.function.code
+      .filter(instruction => {
+        match instruction {
+          BinaryOp(Add, BinaryExpression, _) => true
+          _ => false
+        }
+      })
+      .length()
+    None => 0
+  }
+  match program.root.children[0].selection {
+    UseBytecode(ManagedSuspension) => ()
+    _ => fail("benchmark hot function was not UseBytecode(ManagedSuspension)")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "3")
+  assert_eq(addition_count, 3)
+  let bytecode_starts = evidence.val.summary.bytecode_starts
+  let tree_starts = evidence.val.summary.tree_starts
+  let fallback_violations = evidence.val.summary.fallback_violations
+  let replay_violations = evidence.val.summary.replay_violations
+  guard addition_count == 3 &&
+    bytecode_starts == 2 &&
+    tree_starts == 0 &&
+    fallback_violations == 0 &&
+    replay_violations == 0 else {
+    fail(
+      "benchmark route mismatch: additions=" +
+      addition_count.to_string() +
+      ", bytecode=" +
+      bytecode_starts.to_string() +
+      ", tree=" +
+      tree_starts.to_string() +
+      ", fallback=" +
+      fallback_violations.to_string() +
+      ", replay=" +
+      replay_violations.to_string(),
+    )
+  }
+}
+
+///|
 test "candidate plain addition resumes through guest ToPrimitive" {
   let source =
     #|var events = "";
