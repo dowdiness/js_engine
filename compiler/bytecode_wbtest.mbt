@@ -1587,6 +1587,36 @@ test "managed disposition corresponds to a typed VM suspension" {
 }
 
 ///|
+test "bytecode primitive addition bypasses child activation" {
+  let interp = @interpreter.new_interpreter()
+  let primitive = parse_bytecode_for_wb("1 + 2;")
+  let primitive_frame = BytecodeFrame(primitive.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match primitive_frame.step_bytecode(interp) {
+    BytecodeFrameNormal(Number(value)) => inspect(value, content="3")
+    BytecodeFrameReturn(Number(value)) => inspect(value, content="3")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("primitive addition must complete with a number")
+    BytecodeFrameSuspended(_) =>
+      fail("primitive addition must not create a child activation")
+  }
+  let object = parse_bytecode_for_wb("({}) + 1;")
+  let object_frame = BytecodeFrame(object.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match object_frame.step_bytecode(interp) {
+    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingAddition(_)) => ()
+    BytecodeFrameSuspended(_) =>
+      fail("object addition must request coercing addition")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("object addition must suspend for guest conversion")
+  }
+}
+
+///|
 test "activation selection is per function and precedes frame construction" {
   let src =
     #|function child() { return 1 - 2; }

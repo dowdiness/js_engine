@@ -249,6 +249,13 @@ pub fn executor_activation_coercing_addition(
 }
 
 ///|
+pub fn executor_activation_coercing_addition_request(
+  request : ExecutorCoercingAdditionRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingAddition(request)
+}
+
+///|
 // A closed static property-update request. Runtime owns the resumable
 // get/convert/set pipeline and prefix/postfix result selection; executors only
 // provide the already-evaluated target and update syntax.

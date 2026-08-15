@@ -714,10 +714,15 @@ fn BytecodeFrame::step_bytecode(
       BinaryOp(Add, BinaryExpression, loc) => {
         let right = frame.pop()
         let left = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_coercing_addition(left, right, loc),
-        )
+        match @runtime.begin_executor_coercing_addition(left, right, loc) {
+          @runtime.ExecutorCoercingAdditionCompleted(value) => stack.push(value)
+          @runtime.ExecutorCoercingAdditionSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_addition_request(request),
+            )
+          }
+        }
       }
       BinaryOp(op, _, loc) => {
         let right = match stack.pop() {

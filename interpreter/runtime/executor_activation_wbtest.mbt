@@ -4383,6 +4383,53 @@ test "coercing addition frame completes primitive operands" {
 }
 
 ///|
+test "coercing addition start selects completion or suspension" {
+  let loc = @token.Loc::default()
+  match begin_executor_coercing_addition(Number(1.0), Number(2.0), loc) {
+    ExecutorCoercingAdditionCompleted(Number(value)) =>
+      inspect(value, content="3")
+    ExecutorCoercingAdditionCompleted(_) =>
+      fail("number addition must complete with a number")
+    ExecutorCoercingAdditionSuspended(_) =>
+      fail("primitive number addition must not create a child frame")
+  }
+  match begin_executor_coercing_addition(String_("x"), String_("y"), loc) {
+    ExecutorCoercingAdditionCompleted(String_(value)) =>
+      inspect(value, content="xy")
+    ExecutorCoercingAdditionCompleted(_) =>
+      fail("string addition must complete with a string")
+    ExecutorCoercingAdditionSuspended(_) =>
+      fail("primitive string addition must not create a child frame")
+  }
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match begin_executor_coercing_addition(object, Number(2.0), loc) {
+    ExecutorCoercingAdditionSuspended(_) => ()
+    ExecutorCoercingAdditionCompleted(_) =>
+      fail("object + primitive must request a child frame")
+  }
+  match begin_executor_coercing_addition(Number(2.0), object, loc) {
+    ExecutorCoercingAdditionSuspended(_) => ()
+    ExecutorCoercingAdditionCompleted(_) =>
+      fail("primitive + object must request a child frame")
+  }
+  let symbol_error : Error? = try {
+    let _ = begin_executor_coercing_addition(
+      Symbol({ id: 9002, description: None }),
+      Number(1.0),
+      loc,
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match symbol_error {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected Symbol TypeError, got " + error.to_string())
+    None => fail("Symbol numeric addition must throw synchronously")
+  }
+}
+
+///|
 test "coercing addition routes Proxy conversion lookups through guest activation" {
   let interp = Interpreter::new()
   let events : Array[String] = []

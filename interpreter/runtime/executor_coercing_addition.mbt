@@ -205,6 +205,33 @@ fn ExecutorToPrimitiveOperation::deliver_activation_completion(
 }
 
 ///|
+// The synchronous boundary is decided by runtime-owned value semantics. A
+// primitive pair can finish without entering the activation coordinator;
+// object-like operands still use the resumable request below so every
+// conversion hook follows the managed guest-entry path.
+pub enum ExecutorCoercingAdditionStart {
+  ExecutorCoercingAdditionCompleted(Value)
+  ExecutorCoercingAdditionSuspended(ExecutorCoercingAdditionRequest)
+}
+
+///|
+pub fn begin_executor_coercing_addition(
+  left : Value,
+  right : Value,
+  loc : @token.Loc,
+) -> ExecutorCoercingAdditionStart raise Error {
+  if is_js_object(left) || is_js_object(right) {
+    ExecutorCoercingAdditionSuspended(
+      ExecutorCoercingAdditionRequest(left~, right~, loc~),
+    )
+  } else {
+    ExecutorCoercingAdditionCompleted(
+      finish_primitive_addition(None, left, right, loc),
+    )
+  }
+}
+
+///|
 fn finish_primitive_addition(
   interp : Interpreter?,
   left : Value,
