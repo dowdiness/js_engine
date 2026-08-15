@@ -1,8 +1,0 @@
-import {
-  "dowdiness/js_engine",
-  "moonbitlang/core/bench",
-}
-
-options(
-  overrides: [ "dowdiness/js_engine/internal/engine_candidate_mode_enabled" ],
-)

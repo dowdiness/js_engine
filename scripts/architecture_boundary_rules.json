@@ -128,8 +128,8 @@
     {
       "from": "integration/external_consumer_candidate",
       "to": ".",
-      "scope": "test",
-      "reason": "candidate-mode external-consumer fixture exercises the same stable root facade under a virtual override"
+      "scope": "prod",
+      "reason": "candidate-mode external-consumer tests and benchmarks exercise the stable root facade under a virtual override"
     },
     {
       "from": "integration/diago_readiness",
