@@ -20,10 +20,10 @@ test "characterization: unsupported nested lowering rejects whole script" {
 // transition test beside candidate preparation makes an accidental fallback
 // or second start a compiler defect rather than an observable log convention.
 test "candidate route evidence permits exactly one typed start and completion" {
-  let program = prepare_candidate_program(@parser.parse("function child() {}").stmts)
-  let evidence : Ref[CandidateRouteEvidence] = {
-    val: CandidateRouteEvidence(),
-  }
+  let program = prepare_candidate_program(
+    @parser.parse("function child() {}").stmts,
+  )
+  let evidence : Ref[CandidateRouteEvidence] = { val: CandidateRouteEvidence() }
   let activation = candidate_route_prepare(
     evidence,
     program.root.source_identity,
@@ -35,11 +35,10 @@ test "candidate route evidence permits exactly one typed start and completion" {
     fail("candidate route evidence did not record prepare/start/complete")
   }
   match evidence.val.events[0] {
-    CandidateRoutePreparedEvent(prepared) => {
+    CandidateRoutePreparedEvent(prepared) =>
       if prepared.activation_id != 0 {
         fail("first candidate activation did not start at zero")
       }
-    }
     _ => fail("candidate route evidence did not begin with preparation")
   }
 }
@@ -215,9 +214,7 @@ fn candidate_run_with_evidence_for_wb(
   source : String,
 ) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
   let interp = @interpreter.new_interpreter()
-  try {
-    run_candidate_program_with_evidence(interp, @parser.parse(source).stmts)
-  } catch {
+  run_candidate_program_with_evidence(interp, @parser.parse(source).stmts) catch {
     @runtime.JsException(value) =>
       fail("candidate execution threw: " + value.to_string())
     error => fail("candidate execution failed: " + error.to_string())
@@ -228,10 +225,28 @@ fn candidate_run_with_evidence_for_wb(
 fn candidate_started_executors_for_wb(
   evidence : Ref[CandidateRouteEvidence],
 ) -> Array[CandidateRouteExecutor] {
-  evidence.val.events.map(event => match event {
-    CandidateRouteStartedEvent(started) => Some(started.executor)
-    _ => None
-  }).filter_map(x => x)
+  evidence.val.events
+  .map(event => {
+    match event {
+      CandidateRouteStartedEvent(started) => Some(started.executor)
+      _ => None
+    }
+  })
+  .filter_map(x => x)
+}
+
+///|
+fn candidate_started_executor_labels_for_wb(
+  evidence : Ref[CandidateRouteEvidence],
+) -> String {
+  candidate_started_executors_for_wb(evidence)
+  .map(executor => {
+    match executor {
+      CandidateBytecodeExecutor => "bytecode"
+      CandidateTreeWalkerExecutor => "tree"
+    }
+  })
+  .join(",")
 }
 
 ///|
@@ -270,10 +285,11 @@ test "candidate runner starts unsupported root through tree before effects" {
     fail("unsupported root did not start through tree walker")
   }
   match evidence.val.events[0] {
-    CandidateRoutePreparedEvent(prepared) => match prepared.decision {
-      UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
-      _ => fail("unsupported root was not decided before tree start")
-    }
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+        _ => fail("unsupported root was not decided before tree start")
+      }
     _ => fail("candidate root did not prepare before starting")
   }
 }
@@ -311,14 +327,14 @@ test "candidate runner materializes bytecode parent with tree child" {
 
 ///|
 test "candidate runner materializes tree parent with bytecode child" {
-  let (value, evidence) = candidate_run_with_evidence_for_wb(
+  let source =
     #|function parent() {
     #|  for (var value of [1]) {}
     #|  function child() { return 7; }
     #|  return child();
     #|}
     #|parent();
-  )
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   if value.to_string() != "7" {
     fail("mixed tree-parent result was unexpected")
   }
@@ -330,6 +346,221 @@ test "candidate runner materializes tree parent with bytecode child" {
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor {
     fail("tree parent did not retain an independent bytecode child route")
+  }
+}
+
+///|
+// RED: a skipped expression must not consume the later expression's
+// candidate.  Both anonymous functions have the same consumer form and
+// signature, but the earlier branch is never entered and is tree-only due to
+// its unsupported body.
+test "RED: tree materialization resolves an executed anonymous site" {
+  let source =
+    #|function parent(value) {
+    #|  for (var guard of [1]) {}
+    #|  if (value) {
+    #|    let skipped = function(x) {
+    #|      for (var inner of [1]) {}
+    #|      return 10;
+    #|    };
+    #|  }
+    #|  let later = function(x) { return 20; };
+    #|  return later(0);
+    #|}
+    #|parent(false);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "20" {
+    fail("tree materialization consumed a skipped anonymous child")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("tree anonymous site did not start root, parent, and child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor {
+    fail("executed anonymous site did not retain its bytecode selection")
+  }
+}
+
+///|
+test "candidate tree routes hoisted declarations by syntax site" {
+  let source =
+    #|function parent() {
+    #|  for (var guard of [1]) {}
+    #|  let first = function(x) { return 10; };
+    #|  function hoisted() { return 20; }
+    #|  return first(0) + hoisted();
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "30" {
+    fail("hoisted declaration route returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 4 else {
+    fail("hoisted declaration route did not start both children")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor ||
+    starts[3] != CandidateBytecodeExecutor {
+    fail("hoisted declaration did not retain its site selection")
+  }
+}
+
+///|
+test "candidate tree repeats one materialization site without consumption" {
+  let source =
+    #|function parent() {
+    #|  for (var guard of [1]) {}
+    #|  let total = 0;
+    #|  for (var value of [1, 2]) {
+    #|    let increment = function(x) { return 2; };
+    #|    total += increment(value);
+    #|  }
+    #|  return total;
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "4" {
+    fail("repeated materialization site returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 4 else {
+    fail("repeated materialization site did not start both iterations")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor ||
+    starts[3] != CandidateBytecodeExecutor {
+    fail(
+      "repeated materialization site changed executor selection: " +
+      candidate_started_executor_labels_for_wb(evidence),
+    )
+  }
+}
+
+///|
+test "candidate tree separates same-name same-signature siblings" {
+  let source =
+    #|function parent(value) {
+    #|  for (var guard of [1]) {}
+    #|  if (value) {
+    #|    let same = function same(x) {
+    #|      for (var inner of [1]) {}
+    #|      return 10;
+    #|    };
+    #|    return same(0);
+    #|  }
+    #|  let same = function same(x) { return 20; };
+    #|  return same(0);
+    #|}
+    #|parent(false) + parent(true);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "30" {
+    fail("same-name sibling route returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 5 else {
+    fail("same-name sibling route did not start both activations")
+  }
+  if starts[0] != CandidateTreeWalkerExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor ||
+    starts[3] != CandidateTreeWalkerExecutor ||
+    starts[4] != CandidateTreeWalkerExecutor {
+    fail(
+      "same-name siblings were paired by runtime order: " +
+      candidate_started_executor_labels_for_wb(evidence),
+    )
+  }
+}
+
+///|
+test "candidate tree restores site routing after abrupt activation" {
+  let source =
+    #|function parent(shouldThrow) {
+    #|  for (var guard of [1]) {}
+    #|  if (shouldThrow) {
+    #|    try {
+    #|      throw "stop";
+    #|      let skipped = function(x) {
+    #|        for (var inner of [1]) {}
+    #|        return 10;
+    #|      };
+    #|    } catch (error) {}
+    #|    throw "stop";
+    #|  }
+    #|  let later = function() { return 9; };
+    #|  return later();
+    #|}
+    #|try { parent(true); } catch (error) {}
+    #|parent(false);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "9" {
+    fail("post-abrupt activation returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 4 else {
+    fail("post-abrupt activation did not restart the parent route")
+  }
+  if starts[0] != CandidateTreeWalkerExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateTreeWalkerExecutor ||
+    starts[3] != CandidateBytecodeExecutor {
+    fail(
+      "post-abrupt activation reused stale routing state: " +
+      candidate_started_executor_labels_for_wb(evidence),
+    )
+  }
+}
+
+///|
+test "candidate tree excludes fresh direct eval definitions from its plan" {
+  let source =
+    #|function parent() {
+    #|  for (var guard of [1]) {}
+    #|  eval("var dynamic = function(x) { return 99; };");
+    #|  let later = function(x) { return 20; };
+    #|  return later(0);
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "20" {
+    fail("direct eval consumed the enclosing candidate plan")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("direct eval route did not retain the later candidate child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor {
+    fail("direct eval changed the enclosing child route")
+  }
+}
+
+///|
+test "candidate verification rejects duplicate materialization sites" {
+  let program = prepare_candidate_program(
+    @parser.parse("function first() {}; function second() {};").stmts,
+  )
+  let first = program.root.children[0]
+  let second = {
+    ..program.root.children[1],
+    materialization_site: first.materialization_site,
+  }
+  let duplicate_root = { ..program.root, children: [first, second] }
+  let duplicate_program = { ..program, root: duplicate_root }
+  let rejected = try {
+    verify_candidate_program(duplicate_program)
+    false
+  } catch {
+    _ => true
+  }
+  if !rejected {
+    fail("candidate verification accepted duplicate materialization sites")
   }
 }
 

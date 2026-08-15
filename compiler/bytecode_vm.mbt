@@ -17,8 +17,7 @@ priv enum BytecodeActivationResultDestination {
 priv struct BytecodeFrame {
   func_def : BytecodeFunction
   verified_func_def : VerifiedBytecodeFunction?
-  candidate_func : CandidateFunction?
-  candidate_bytecode : CandidateVerifiedBytecodeFunction?
+  candidate_child_materializer : CandidateChildMaterializer?
   preparation : BytecodePreparation
   stack : Array[Value]
   arg_lists : Array[Array[Value]]
@@ -71,8 +70,7 @@ fn BytecodeFrame::BytecodeFrame(
   {
     func_def,
     verified_func_def: Some(verified_func_def),
-    candidate_func: None,
-    candidate_bytecode: None,
+    candidate_child_materializer: None,
     preparation: verified_func_def.preparation,
     stack: [],
     arg_lists: [],
@@ -92,14 +90,13 @@ fn BytecodeFrame::BytecodeFrame(
 
 ///|
 fn BytecodeFrame::candidate(
-  candidate : CandidateFunction,
-  bytecode : CandidateVerifiedBytecodeFunction,
+  execution : CandidateBytecodeExecution,
   env : Environment,
   ctx : ExecContext,
   route_activation : CandidateRouteActivation,
   direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
-  let func_def = bytecode.function
+  let func_def = execution.bytecode.function
   let locals = Array::make(func_def.local_names.length(), Value::Undefined)
   match direct_args {
     Some(args) =>
@@ -119,8 +116,7 @@ fn BytecodeFrame::candidate(
   {
     func_def,
     verified_func_def: None,
-    candidate_func: Some(candidate),
-    candidate_bytecode: Some(bytecode),
+    candidate_child_materializer: Some(execution.child_materializer),
     preparation: func_def.preparation,
     stack: [],
     arg_lists: [],
@@ -294,7 +290,11 @@ fn BytecodeFrame::complete_candidate_route(
       self.candidate_route_completed = true
       candidate_route_complete(
         activation,
-        if normal { CandidateRouteNormal } else { CandidateRouteAbrupt },
+        if normal {
+          CandidateRouteNormal
+        } else {
+          CandidateRouteAbrupt
+        },
       )
     }
     _ => ()
@@ -429,12 +429,8 @@ fn BytecodeFrame::define_function_decl(
   name : String,
   child_index : Int,
 ) -> Unit raise Error {
-  let func = match self.candidate_func {
-    Some(parent) => {
-      let child = parent.children[child_index]
-      let request = candidate_function_request(child, self.env)
-      self.candidate_child_value(interp, child_index, request)
-    }
+  let func = match self.candidate_child_materializer {
+    Some(_) => self.candidate_child_value(interp, child_index, self.env)
     None => {
       let child = self.verified_func_def.unwrap().child(child_index)
       make_bytecode_func(child, self.env, self.ctx)
@@ -451,38 +447,16 @@ fn BytecodeFrame::candidate_child_value(
   self : BytecodeFrame,
   interp : Interpreter,
   child_index : Int,
-  request : @runtime.FunctionMaterializationRequest,
+  closure : Environment,
 ) -> Value raise Error {
-  let parent = match self.candidate_func {
-    Some(parent) => parent
+  let child_materializer = match self.candidate_child_materializer {
+    Some(child_materializer) => child_materializer
     None =>
       raise @errors.InternalError(
-        message="candidate child requested from an ordinary frame",
+        message="candidate child requested without a materializer",
       )
   }
-  let carrier = match self.candidate_bytecode {
-    Some(carrier) => carrier
-    None =>
-      raise @errors.InternalError(
-        message="candidate frame has no checked bytecode carrier",
-      )
-  }
-  let child = parent.children[child_index]
-  match (child.bytecode, carrier.child_slots[child_index]) {
-    (Some(_), CandidateBytecodeChild(_)) | (None, CandidateTreeChild(_)) => ()
-    _ =>
-      raise @errors.InternalError(
-        message="candidate child slot disagrees with selected child",
-      )
-  }
-  let activation = match self.candidate_route_activation {
-    Some(activation) => activation
-    None =>
-      raise @errors.InternalError(
-        message="candidate frame has no route evidence authority",
-      )
-  }
-  candidate_make_callable(interp, child, activation.evidence, request)
+  (child_materializer.materialize)(interp, child_index, closure)
 }
 
 ///|
@@ -1081,60 +1055,29 @@ fn BytecodeFrame::step_bytecode(
         let value = frame.pop()
         @runtime.apply_object_literal_proto_property(frame.peek(), value)
       }
-      MakeFunction(index) => {
-        match frame.candidate_func {
-          Some(_) =>
-            stack.push(
-              frame.candidate_child_value(
-                interp,
-                index,
-                candidate_function_request(
-                  frame.candidate_func.unwrap().children[index],
-                  env,
-                ),
-              ),
-            )
+      MakeFunction(index) =>
+        match frame.candidate_child_materializer {
+          Some(_) => stack.push(frame.candidate_child_value(interp, index, env))
           None => {
             let child = frame.verified_func_def.unwrap().child(index)
             stack.push(make_bytecode_func(child, env, ctx))
           }
         }
-      }
-      MakeNamedFunction(index, name) => {
-        match frame.candidate_func {
-          Some(_) =>
-            stack.push(
-              frame.candidate_child_value(
-                interp,
-                index,
-                candidate_function_request(
-                  frame.candidate_func.unwrap().children[index],
-                  env,
-                ),
-              ),
-            )
+      MakeNamedFunction(index, name) =>
+        match frame.candidate_child_materializer {
+          Some(_) => stack.push(frame.candidate_child_value(interp, index, env))
           None => {
             let child = frame.verified_func_def.unwrap().child(index)
             stack.push(make_named_bytecode_func(child, env, ctx, name))
           }
         }
-      }
       MakeMethodFunction(index) => {
         let home_object = frame.peek()
-        match frame.candidate_func {
+        match frame.candidate_child_materializer {
           Some(_) => {
             let method_env = Environment::new(parent=Some(env))
             method_env.def_builtin("[[HomeObject]]", home_object)
-            stack.push(
-              frame.candidate_child_value(
-                interp,
-                index,
-                candidate_function_request(
-                  frame.candidate_func.unwrap().children[index],
-                  method_env,
-                ),
-              ),
-            )
+            stack.push(frame.candidate_child_value(interp, index, method_env))
           }
           None => {
             let child = frame.verified_func_def.unwrap().child(index)
@@ -1149,20 +1092,11 @@ fn BytecodeFrame::step_bytecode(
           )
         }
         let home_object = stack[stack.length() - 2]
-        match frame.candidate_func {
+        match frame.candidate_child_materializer {
           Some(_) => {
             let method_env = Environment::new(parent=Some(env))
             method_env.def_builtin("[[HomeObject]]", home_object)
-            stack.push(
-              frame.candidate_child_value(
-                interp,
-                index,
-                candidate_function_request(
-                  frame.candidate_func.unwrap().children[index],
-                  method_env,
-                ),
-              ),
-            )
+            stack.push(frame.candidate_child_value(interp, index, method_env))
           }
           None => {
             let child = frame.verified_func_def.unwrap().child(index)
@@ -1170,25 +1104,14 @@ fn BytecodeFrame::step_bytecode(
           }
         }
       }
-      MakeArrowFunction(index) => {
-        match frame.candidate_func {
-          Some(_) =>
-            stack.push(
-              frame.candidate_child_value(
-                interp,
-                index,
-                candidate_function_request(
-                  frame.candidate_func.unwrap().children[index],
-                  env,
-                ),
-              ),
-            )
+      MakeArrowFunction(index) =>
+        match frame.candidate_child_materializer {
+          Some(_) => stack.push(frame.candidate_child_value(interp, index, env))
           None => {
             let child = frame.verified_func_def.unwrap().child(index)
             stack.push(make_bytecode_arrow_func(child, env, ctx))
           }
         }
-      }
       DeclareFunction(name, _) => ignore(name)
       GetProperty(prop, loc) => {
         let obj = frame.pop()

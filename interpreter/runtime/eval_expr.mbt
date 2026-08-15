@@ -278,21 +278,26 @@ fn Interpreter::eval_prop_value(
 ) -> Value raise Error {
   if prop.is_method {
     match prop.value {
-      FuncExpr(name, params, body, _, source_text) => {
+      FuncExpr(name, params, body, loc, source_text) => {
         validate_function_signature(ctx.strict, None, params, body)
         return self.materialize_function(
           FunctionMaterializationRequest(
-            form=MethodFunction,
-            name=name,
+            form=if prop.computed {
+              ComputedMethodFunction
+            } else {
+              MethodFunction
+            },
+            site=loc,
+            name~,
             parameters=SimpleFunctionParameters(params),
-            body=body,
+            body~,
             closure=method_env,
             strict=is_function_strict(ctx.strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
       }
-      FuncExprExt(name, params, rest_param, body, _, source_text) => {
+      FuncExprExt(name, params, rest_param, body, loc, source_text) => {
         validate_function_signature_ext(
           ctx.strict,
           None,
@@ -302,13 +307,18 @@ fn Interpreter::eval_prop_value(
         )
         return self.materialize_function(
           FunctionMaterializationRequest(
-            form=MethodFunction,
-            name=name,
+            form=if prop.computed {
+              ComputedMethodFunction
+            } else {
+              MethodFunction
+            },
+            site=loc,
+            name~,
             parameters=ExtendedFunctionParameters(params, rest_param),
-            body=body,
+            body~,
             closure=method_env,
             strict=is_function_strict(ctx.strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
       }
@@ -1284,7 +1294,7 @@ fn Interpreter::eval_expr(
     Call(callee, args, loc) => self.eval_call(ctx, callee, args, env, loc)
     Member(obj_expr, prop, loc) =>
       self.eval_member(ctx, obj_expr, prop, env, loc)
-    FuncExpr(name, params, body, _, source_text) => {
+    FuncExpr(name, params, body, loc, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
       self.materialize_function(
         FunctionMaterializationRequest(
@@ -1293,12 +1303,13 @@ fn Interpreter::eval_expr(
           } else {
             FunctionExpression
           },
-          name=name,
+          site=loc,
+          name~,
           parameters=SimpleFunctionParameters(params),
-          body=body,
+          body~,
           closure=env,
           strict=is_function_strict(ctx.strict, body),
-          source_text=source_text,
+          source_text~,
         ),
       )
     }
@@ -1733,21 +1744,22 @@ fn Interpreter::eval_expr(
       }
       self.call_value(tag, this_val, args, loc)
     }
-    ArrowFunc(params, body, _, source_text) => {
+    ArrowFunc(params, body, loc, source_text) => {
       validate_function_signature(ctx.strict, None, params, body)
       self.materialize_function(
         FunctionMaterializationRequest(
           form=ArrowFunction,
+          site=loc,
           name=None,
           parameters=SimpleFunctionParameters(params),
-          body=body,
+          body~,
           closure=env,
           strict=is_function_strict(ctx.strict, body),
-          source_text=source_text,
+          source_text~,
         ),
       )
     }
-    ArrowFuncExt(params, rest_param, body, _, source_text) => {
+    ArrowFuncExt(params, rest_param, body, loc, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         None,
@@ -1758,16 +1770,17 @@ fn Interpreter::eval_expr(
       self.materialize_function(
         FunctionMaterializationRequest(
           form=ArrowFunction,
+          site=loc,
           name=None,
           parameters=ExtendedFunctionParameters(params, rest_param),
-          body=body,
+          body~,
           closure=env,
           strict=is_function_strict(ctx.strict, body),
-          source_text=source_text,
+          source_text~,
         ),
       )
     }
-    FuncExprExt(name, params, rest_param, body, _, source_text) => {
+    FuncExprExt(name, params, rest_param, body, loc, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         name,
@@ -1782,12 +1795,13 @@ fn Interpreter::eval_expr(
           } else {
             FunctionExpression
           },
-          name=name,
+          site=loc,
+          name~,
           parameters=ExtendedFunctionParameters(params, rest_param),
-          body=body,
+          body~,
           closure=env,
           strict=is_function_strict(ctx.strict, body),
-          source_text=source_text,
+          source_text~,
         ),
       )
     }

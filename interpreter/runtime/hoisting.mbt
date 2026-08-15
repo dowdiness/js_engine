@@ -1304,17 +1304,18 @@ fn Interpreter::hoist_declarations(
             _self.mirror_to_global(name, Undefined)
           }
         }
-      FuncDecl(name, params, body, _, source_text) => {
+      FuncDecl(name, params, body, loc, source_text) => {
         validate_function_signature(strict, Some(name), params, body)
         let func_val = _self.materialize_function(
           FunctionMaterializationRequest(
             form=FunctionDeclaration,
+            site=loc,
             name=Some(name),
             parameters=SimpleFunctionParameters(params),
-            body=body,
+            body~,
             closure=env,
             strict=is_function_strict(strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
         if env.bindings.contains(name) {
@@ -1327,7 +1328,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, func_val)
         }
       }
-      FuncDeclExt(name, params, rest_param, body, _, source_text) => {
+      FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1338,12 +1339,13 @@ fn Interpreter::hoist_declarations(
         let func_val = _self.materialize_function(
           FunctionMaterializationRequest(
             form=FunctionDeclaration,
+            site=loc,
             name=Some(name),
             parameters=ExtendedFunctionParameters(params, rest_param),
-            body=body,
+            body~,
             closure=env,
             strict=is_function_strict(strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
         if env.bindings.contains(name) {
@@ -1504,17 +1506,18 @@ fn Interpreter::hoist_declarations(
         _self.hoist_declarations(inner_stmts, env, strict~)
       }
       // export default function name() {} - hoist the named function
-      ExportDefaultDecl(FuncExpr(Some(name), params, body, _, source_text), _) => {
+      ExportDefaultDecl(FuncExpr(Some(name), params, body, loc, source_text), _) => {
         validate_function_signature(strict, Some(name), params, body)
         let func_val = _self.materialize_function(
           FunctionMaterializationRequest(
             form=FunctionDeclaration,
+            site=loc,
             name=Some(name),
             parameters=SimpleFunctionParameters(params),
-            body=body,
+            body~,
             closure=env,
             strict=is_function_strict(strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
         if env.bindings.contains(name) {
@@ -1524,7 +1527,7 @@ fn Interpreter::hoist_declarations(
         }
       }
       ExportDefaultDecl(
-        FuncExprExt(Some(name), params, rest_param, body, _, source_text),
+        FuncExprExt(Some(name), params, rest_param, body, loc, source_text),
         _
       ) => {
         validate_function_signature_ext(
@@ -1537,12 +1540,13 @@ fn Interpreter::hoist_declarations(
         let func_val = _self.materialize_function(
           FunctionMaterializationRequest(
             form=FunctionDeclaration,
+            site=loc,
             name=Some(name),
             parameters=ExtendedFunctionParameters(params, rest_param),
-            body=body,
+            body~,
             closure=env,
             strict=is_function_strict(strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
         if env.bindings.contains(name) {
@@ -1682,23 +1686,24 @@ fn Interpreter::instantiate_block_declarations(
   hoist_block_tdz(stmts, env)
   for stmt in stmts {
     match stmt {
-      FuncDecl(name, params, body, _, source_text) => {
+      FuncDecl(name, params, body, loc, source_text) => {
         ensure_block_function_binding(env, name)
         validate_function_signature(strict, Some(name), params, body)
         let func_val = self.materialize_function(
           FunctionMaterializationRequest(
             form=FunctionDeclaration,
+            site=loc,
             name=Some(name),
             parameters=SimpleFunctionParameters(params),
-            body=body,
+            body~,
             closure=env,
             strict=is_function_strict(strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
         initialize_block_function_binding(env, name, func_val)
       }
-      FuncDeclExt(name, params, rest_param, body, _, source_text) => {
+      FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
         ensure_block_function_binding(env, name)
         validate_function_signature_ext(
           strict,
@@ -1710,12 +1715,13 @@ fn Interpreter::instantiate_block_declarations(
         let func_val = self.materialize_function(
           FunctionMaterializationRequest(
             form=FunctionDeclaration,
+            site=loc,
             name=Some(name),
             parameters=ExtendedFunctionParameters(params, rest_param),
-            body=body,
+            body~,
             closure=env,
             strict=is_function_strict(strict, body),
-            source_text=source_text,
+            source_text~,
           ),
         )
         initialize_block_function_binding(env, name, func_val)

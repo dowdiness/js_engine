@@ -18,8 +18,12 @@ pub(all) enum FunctionMaterializationParameters {
 }
 
 ///|
-pub(all) struct FunctionMaterializationRequest {
+pub struct FunctionMaterializationRequest {
   form : FunctionMaterializationForm
+  // The parser-owned coordinate identifies the exact syntax site being
+  // materialized. Candidate routing treats it as a locator only; the
+  // immutable candidate source identity remains authoritative.
+  site : @token.Loc
   name : String?
   parameters : FunctionMaterializationParameters
   body : Array[@ast.Stmt]
@@ -28,13 +32,13 @@ pub(all) struct FunctionMaterializationRequest {
   source_text : String?
 }
 
-///| 
+///|
 // Runtime-owned lifecycle hooks let a compiler-provided capability record
 // the actual activation boundary without exposing compiler representations to
 // this package.
-pub(all) struct FunctionExecutionHooks {
-  start : () -> Unit raise Error
-  complete : (Bool) -> Unit raise Error
+pub struct FunctionExecutionHooks {
+  priv start : () -> Unit raise Error
+  priv complete : (Bool) -> Unit raise Error
 }
 
 ///|
@@ -48,6 +52,7 @@ pub fn FunctionExecutionHooks::FunctionExecutionHooks(
 ///|
 pub fn FunctionMaterializationRequest::FunctionMaterializationRequest(
   form~ : FunctionMaterializationForm,
+  site~ : @token.Loc,
   name~ : String?,
   parameters~ : FunctionMaterializationParameters,
   body~ : Array[@ast.Stmt],
@@ -55,14 +60,14 @@ pub fn FunctionMaterializationRequest::FunctionMaterializationRequest(
   strict~ : Bool,
   source_text~ : String?,
 ) -> FunctionMaterializationRequest {
-  { form, name, parameters, body, closure, strict, source_text }
+  { form, site, name, parameters, body, closure, strict, source_text }
 }
 
 ///|
-pub(all) struct FunctionMaterializer {
-  begin : () -> FunctionMaterializer
-  materialize : (Interpreter, FunctionMaterializationRequest) -> Value raise Error
-  hooks : FunctionExecutionHooks?
+pub struct FunctionMaterializer {
+  priv begin : () -> FunctionMaterializer
+  priv materialize : (Interpreter, FunctionMaterializationRequest) -> Value raise Error
+  priv hooks : FunctionExecutionHooks?
 }
 
 ///|
@@ -86,7 +91,9 @@ fn function_materialization_name(
 }
 
 ///|
-fn function_materialization_is_method(form : FunctionMaterializationForm) -> Bool {
+fn function_materialization_is_method(
+  form : FunctionMaterializationForm,
+) -> Bool {
   match form {
     MethodFunction | ComputedMethodFunction => true
     _ => false
@@ -125,14 +132,13 @@ pub fn make_materialized_tree_function(
         materializer: child_materializer,
       }
       match request.form {
-        ArrowFunction => {
+        ArrowFunction =>
           build_func_object(
             name,
             data.params.length(),
             ArrowFunc(data),
             realm_state=request.closure.realm_state,
           )
-        }
         _ => make_func(data)
       }
     }
@@ -150,14 +156,13 @@ pub fn make_materialized_tree_function(
         materializer: child_materializer,
       }
       match request.form {
-        ArrowFunction => {
+        ArrowFunction =>
           build_func_object(
             name,
             expected_argument_count_ext(data.params),
             ArrowFuncExt(data),
             realm_state=request.closure.realm_state,
           )
-        }
         _ => make_func_ext(data)
       }
     }
@@ -198,9 +203,10 @@ pub fn[T] Interpreter::with_function_materializer(
 }
 
 ///|
-// Run one UserFunc/ArrowFunc activation with its own immutable child cursor.
-// The capability's lifecycle hooks mark the actual start/completion boundary;
-// no caller can transition a started activation to another executor.
+// Run one UserFunc/ArrowFunc activation with its own immutable materializer
+// capability. The capability's lifecycle hooks mark the actual
+// start/completion boundary; no caller can transition a started activation to
+// another executor.
 pub fn[T] Interpreter::run_materialized_function(
   self : Interpreter,
   materializer : FunctionMaterializer?,
@@ -238,13 +244,14 @@ pub fn[T] Interpreter::run_materialized_function(
 ///|
 fn callable_has_function_materializer(value : Value) -> Bool {
   match value {
-    Object(data) => match data.callable {
-      Some(UserFunc(func_data)) => func_data.materializer is Some(_)
-      Some(UserFuncExt(func_data)) => func_data.materializer is Some(_)
-      Some(ArrowFunc(func_data)) => func_data.materializer is Some(_)
-      Some(ArrowFuncExt(func_data)) => func_data.materializer is Some(_)
-      _ => false
-    }
+    Object(data) =>
+      match data.callable {
+        Some(UserFunc(func_data)) => func_data.materializer is Some(_)
+        Some(UserFuncExt(func_data)) => func_data.materializer is Some(_)
+        Some(ArrowFunc(func_data)) => func_data.materializer is Some(_)
+        Some(ArrowFuncExt(func_data)) => func_data.materializer is Some(_)
+        _ => false
+      }
     _ => false
   }
 }
@@ -261,25 +268,23 @@ pub fn Interpreter::run_with_function_materializer(
 ) -> Value raise Error {
   let strict = @static_semantics.has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
-  try {
-    self.run_materialized_function(Some(materializer), fn() raise {
-      with_cleared_active_callee_realm(self.realm_state, () => {
-        self.prepare_root_program_execution(stmts, self.global, strict)
-        let mut last : Value = Undefined
-        for stmt in stmts {
-          match self.exec_stmt(ctx, stmt, self.global) {
-            Normal(v) => last = v
-            ReturnSignal(_) =>
-              raise @errors.SyntaxError(
-                message="return statement outside of function",
-              )
-            sig => raise_if_break_continue(sig)
-          }
+  self.run_materialized_function(Some(materializer), fn() raise {
+    with_cleared_active_callee_realm(self.realm_state, () => {
+      self.prepare_root_program_execution(stmts, self.global, strict)
+      let mut last : Value = Undefined
+      for stmt in stmts {
+        match self.exec_stmt(ctx, stmt, self.global) {
+          Normal(v) => last = v
+          ReturnSignal(_) =>
+            raise @errors.SyntaxError(
+              message="return statement outside of function",
+            )
+          sig => raise_if_break_continue(sig)
         }
-        last
-      })
+      }
+      last
     })
-  } catch {
+  }) catch {
     error =>
       if is_js_catchable_error(error) {
         let translated = JsException(

@@ -435,7 +435,23 @@ fn current_eval_super_context(env : Environment) -> (Bool, Bool) {
 ///   but let/const are isolated in a new eval lexical scope
 /// - Non-strict indirect eval: var/function declarations leak to global scope,
 ///   but let/const are isolated in a new eval lexical scope
+// Eval parses a fresh source namespace. It must not inherit the candidate
+// materializer of the enclosing activation: its declarations are not children
+// of that verified plan. The dynamic extent is restored on every exit.
 pub fn Interpreter::perform_eval(
+  self : Interpreter,
+  code : String,
+  caller_env : Environment,
+  direct : Bool,
+  caller_strict? : Bool = false,
+) -> Value raise Error {
+  self.with_function_materializer(None, fn() raise {
+    self.perform_eval_unscoped(code, caller_env, direct, caller_strict~)
+  })
+}
+
+///|
+fn Interpreter::perform_eval_unscoped(
   self : Interpreter,
   code : String,
   caller_env : Environment,
@@ -1481,7 +1497,7 @@ fn Interpreter::call_value_impl(
     }
     Object(obj_data) =>
       match obj_data.callable {
-        Some(UserFunc(data)) => {
+        Some(UserFunc(data)) =>
           self.run_materialized_function(data.materializer, fn() raise {
             // §19.2.1.3 gate reset (#A.6): any function call entry clears
             // the signal so a nested invocation (e.g. an IIFE in an outer
@@ -1511,8 +1527,7 @@ fn Interpreter::call_value_impl(
             self.finish_simple_user_func_parameter_gate(gate_scope)
             result
           })
-        }
-        Some(ArrowFunc(data)) => {
+        Some(ArrowFunc(data)) =>
           self.run_materialized_function(data.materializer, fn() raise {
             // §19.2.1.3 gate reset (#A.6), same rationale as UserFunc above.
             let saved_in_default = self.in_nonarrow_param_default_eval
@@ -1520,30 +1535,30 @@ fn Interpreter::call_value_impl(
             self.in_nonarrow_param_default_eval = false
             self.param_default_eval_var_conflicts = None
             let result : Value = try {
-            let func_env = Environment::new(parent=Some(data.closure))
-            func_env.is_var_scope = true
-            let func_ctx : ExecContext = {
-              strict: data.strict,
-              current_generator: None,
-            }
-            // Arrow functions do NOT rebind this — use closure's this
-            for i, param in data.params {
-              let val : Value = if i < args.length() {
-                args[i]
-              } else {
-                Undefined
+              let func_env = Environment::new(parent=Some(data.closure))
+              func_env.is_var_scope = true
+              let func_ctx : ExecContext = {
+                strict: data.strict,
+                current_generator: None,
               }
-              func_env.def_parameter(param, val)
-            }
-            self.hoist_declarations(data.body, func_env, strict=data.strict)
-            hoist_block_tdz(data.body, func_env)
-            let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
-            raise_if_break_continue(exec_result)
-            match exec_result {
-              Normal(_) => Undefined
-              ReturnSignal(v) => v
-              _ => Undefined
-            }
+              // Arrow functions do NOT rebind this — use closure's this
+              for i, param in data.params {
+                let val : Value = if i < args.length() {
+                  args[i]
+                } else {
+                  Undefined
+                }
+                func_env.def_parameter(param, val)
+              }
+              self.hoist_declarations(data.body, func_env, strict=data.strict)
+              hoist_block_tdz(data.body, func_env)
+              let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+              raise_if_break_continue(exec_result)
+              match exec_result {
+                Normal(_) => Undefined
+                ReturnSignal(v) => v
+                _ => Undefined
+              }
             } catch {
               e => {
                 self.in_nonarrow_param_default_eval = saved_in_default
@@ -1555,77 +1570,76 @@ fn Interpreter::call_value_impl(
             self.param_default_eval_var_conflicts = saved_param_default_conflicts
             result
           })
-        }
-        Some(UserFuncExt(data)) => {
+        Some(UserFuncExt(data)) =>
           self.run_materialized_function(data.materializer, fn() raise {
-          // §15.2.5: for named function expressions, install the self-name
-          // on a dedicated func_env sitting between data.closure and
-          // param_env, so default expressions that close over param_env
-          // can still resolve the name (e.g.
-          // `var g = function f(a = () => f) { return a(); }`).
-          // Gated on has_name_binding so methods / class methods /
-          // function declarations (which also carry a `name`) do NOT get
-          // the self-binding — per spec those names live in enclosing
-          // envs, not on a per-call funcEnv.
-          let self_name_env : Environment = if data.has_name_binding {
-            match data.name {
-              Some(name) => {
-                let ne = Environment::new(parent=Some(data.closure))
-                ne.def(name, callee, FunctionNameBinding)
-                ne
+            // §15.2.5: for named function expressions, install the self-name
+            // on a dedicated func_env sitting between data.closure and
+            // param_env, so default expressions that close over param_env
+            // can still resolve the name (e.g.
+            // `var g = function f(a = () => f) { return a(); }`).
+            // Gated on has_name_binding so methods / class methods /
+            // function declarations (which also carry a `name`) do NOT get
+            // the self-binding — per spec those names live in enclosing
+            // envs, not on a per-call funcEnv.
+            let self_name_env : Environment = if data.has_name_binding {
+              match data.name {
+                Some(name) => {
+                  let ne = Environment::new(parent=Some(data.closure))
+                  ne.def(name, callee, FunctionNameBinding)
+                  ne
+                }
+                None => data.closure
               }
-              None => data.closure
-            }
-          } else {
-            data.closure
-          }
-          let param_env = Environment::new(parent=Some(self_name_env))
-          param_env.is_var_scope = true
-          param_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
-          let func_strict = data.strict
-          let func_ctx : ExecContext = {
-            strict: func_strict,
-            current_generator: None,
-          }
-          if func_strict {
-            // Strict mode: check for duplicate parameters and reserved names
-            check_duplicate_params_ext(data.params, data.rest_param)
-            validate_strict_param_binding_names_ext(
-              data.params,
-              data.rest_param,
-            )
-          }
-          let effective_this = if func_strict {
-            this_val
-          } else {
-            self.normalize_sloppy_this(this_val)
-          }
-          param_env.def("this", effective_this, LetBinding)
-          param_env.def("<new.target>", Undefined, LetBinding)
-          if !ext_params_include_arguments(data.params, data.rest_param) {
-            // Create arguments object before binding params so defaults can reference it,
-            // unless a formal parameter is named `arguments`.
-            let tte_val2 : Value? = if param_env.has("[[ThrowTypeError]]") {
-              Some(param_env.get("[[ThrowTypeError]]"))
             } else {
-              None
+              data.closure
             }
-            param_env.def(
-              "arguments",
-              make_arguments_object(
-                self.realm_state,
-                self.realm_state.well_known_symbols,
-                args,
-                callee,
-                func_strict,
-                throw_type_error=tte_val2,
-              ),
-              VarBinding,
-            )
-          }
-          // Self-name lives on self_name_env; body-local `var/let/const`
-          // of the same name naturally shadows via lexical lookup, and a
-          // param of the same name sits on param_env which shadows too.
+            let param_env = Environment::new(parent=Some(self_name_env))
+            param_env.is_var_scope = true
+            param_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
+            let func_strict = data.strict
+            let func_ctx : ExecContext = {
+              strict: func_strict,
+              current_generator: None,
+            }
+            if func_strict {
+              // Strict mode: check for duplicate parameters and reserved names
+              check_duplicate_params_ext(data.params, data.rest_param)
+              validate_strict_param_binding_names_ext(
+                data.params,
+                data.rest_param,
+              )
+            }
+            let effective_this = if func_strict {
+              this_val
+            } else {
+              self.normalize_sloppy_this(this_val)
+            }
+            param_env.def("this", effective_this, LetBinding)
+            param_env.def("<new.target>", Undefined, LetBinding)
+            if !ext_params_include_arguments(data.params, data.rest_param) {
+              // Create arguments object before binding params so defaults can reference it,
+              // unless a formal parameter is named `arguments`.
+              let tte_val2 : Value? = if param_env.has("[[ThrowTypeError]]") {
+                Some(param_env.get("[[ThrowTypeError]]"))
+              } else {
+                None
+              }
+              param_env.def(
+                "arguments",
+                make_arguments_object(
+                  self.realm_state,
+                  self.realm_state.well_known_symbols,
+                  args,
+                  callee,
+                  func_strict,
+                  throw_type_error=tte_val2,
+                ),
+                VarBinding,
+              )
+            }
+            // Self-name lives on self_name_env; body-local `var/let/const`
+            // of the same name naturally shadows via lexical lookup, and a
+            // param of the same name sits on param_env which shadows too.
             self.bind_ext_params_and_exec_body(
               data,
               args,
@@ -1634,18 +1648,17 @@ fn Interpreter::call_value_impl(
               is_arrow=false,
             )
           })
-        }
-        Some(ArrowFuncExt(data)) => {
+        Some(ArrowFuncExt(data)) =>
           self.run_materialized_function(data.materializer, fn() raise {
-          // Arrows skip `arguments`/this/<new.target> install
-          // (ThisMode=lexical per §10.2.11 step 18) and have no self-name
-          // wrapper — param_env's parent is just `data.closure`.
-          let param_env = Environment::new(parent=Some(data.closure))
-          param_env.is_var_scope = true
-          let func_ctx : ExecContext = {
-            strict: data.strict,
-            current_generator: None,
-          }
+            // Arrows skip `arguments`/this/<new.target> install
+            // (ThisMode=lexical per §10.2.11 step 18) and have no self-name
+            // wrapper — param_env's parent is just `data.closure`.
+            let param_env = Environment::new(parent=Some(data.closure))
+            param_env.is_var_scope = true
+            let func_ctx : ExecContext = {
+              strict: data.strict,
+              current_generator: None,
+            }
             self.bind_ext_params_and_exec_body(
               data,
               args,
@@ -1654,7 +1667,6 @@ fn Interpreter::call_value_impl(
               is_arrow=true,
             )
           })
-        }
         Some(BoundFunc(target, bound_this, bound_args)) => {
           let all_args : Array[Value] = []
           for a in bound_args {

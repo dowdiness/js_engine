@@ -544,7 +544,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(completion)
     }
-    FuncDecl(name, params, body, _, source_text) => {
+    FuncDecl(name, params, body, loc, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       match instantiated_block_function_value(env, name) {
         Some(func_val) => {
@@ -563,12 +563,13 @@ fn Interpreter::exec_stmt(
       let func_val = self.materialize_function(
         FunctionMaterializationRequest(
           form=FunctionDeclaration,
+          site=loc,
           name=Some(name),
           parameters=SimpleFunctionParameters(params),
-          body=body,
+          body~,
           closure=env,
           strict=is_function_strict(ctx.strict, body),
-          source_text=source_text,
+          source_text~,
         ),
       )
       self.bind_function_decl_value(ctx, env, name, func_val)
@@ -1440,7 +1441,7 @@ fn Interpreter::exec_stmt(
       self.bind_pattern(pattern, value, env, bk, ctx~)
       Normal(Undefined)
     }
-    FuncDeclExt(name, params, rest_param, body, _, source_text) => {
+    FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1461,12 +1462,13 @@ fn Interpreter::exec_stmt(
       let func_val = self.materialize_function(
         FunctionMaterializationRequest(
           form=FunctionDeclaration,
+          site=loc,
           name=Some(name),
           parameters=ExtendedFunctionParameters(params, rest_param),
-          body=body,
+          body~,
           closure=env,
           strict=is_function_strict(ctx.strict, body),
-          source_text=source_text,
+          source_text~,
         ),
       )
       self.bind_function_decl_value(ctx, env, name, func_val)

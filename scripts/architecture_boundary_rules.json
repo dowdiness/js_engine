@@ -96,6 +96,12 @@
       "reason": "stateful Engine supplies a host call location to runtime call dispatch"
     },
     {
+      "from": ".",
+      "to": "internal/engine_candidate_mode",
+      "scope": "prod",
+      "reason": "stable Engine reads the build-time virtual candidate-mode policy once per evaluation"
+    },
+    {
       "from": "example/rule_engine",
       "to": ".",
       "scope": "prod",
@@ -118,6 +124,12 @@
       "to": ".",
       "scope": "test",
       "reason": "external-consumer acceptance fixture imports only the stable root facade"
+    },
+    {
+      "from": "integration/external_consumer_candidate",
+      "to": ".",
+      "scope": "test",
+      "reason": "candidate-mode external-consumer fixture exercises the same stable root facade under a virtual override"
     },
     {
       "from": "integration/diago_readiness",

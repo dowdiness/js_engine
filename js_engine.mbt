@@ -134,12 +134,22 @@ fn classify_engine_runtime_error(err : Error) -> EngineError {
 
 ///|
 pub fn Engine::eval(self : Engine, source : String) -> Unit raise EngineError {
+  let candidate_mode = @engine_candidate_mode.candidate_mode_enabled()
   let program = @parser.parse(source) catch {
     err => raise ParseError(err.to_string())
   }
-  ignore(self.interp.run(program.stmts)) catch {
-    @runtime.JsException(value) => raise JavaScriptException(value.to_string())
-    err => raise classify_engine_runtime_error(err)
+  if candidate_mode {
+    ignore(@compiler.run_candidate_program(self.interp, program.stmts)) catch {
+      @runtime.JsException(value) =>
+        raise JavaScriptException(value.to_string())
+      err => raise classify_engine_runtime_error(err)
+    }
+  } else {
+    ignore(self.interp.run(program.stmts)) catch {
+      @runtime.JsException(value) =>
+        raise JavaScriptException(value.to_string())
+      err => raise classify_engine_runtime_error(err)
+    }
   }
 }
 

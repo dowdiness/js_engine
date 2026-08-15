@@ -1,11 +1,26 @@
 ///|
-// A compiler-owned cursor is created for each materialized JavaScript
-// function value.  It consumes children in source order, while the child
-// source identity and typed selection remain the authority for routing.
-priv struct CandidateMaterializationCursor {
-  candidate : CandidateFunction
-  evidence : Ref[CandidateRouteEvidence]
-  mut next_child : Int
+// Bytecode frames retain only this executor-neutral child capability. The
+// candidate tree and checked child slots remain captured by the compiler
+// closure, rather than entering the bytecode frame's VM state.
+priv struct CandidateChildMaterializer {
+  materialize : (Interpreter, Int, Environment) -> Value raise Error
+}
+
+///|
+// The checked carrier and its child capability cross into a bytecode
+// activation as one candidate-specific execution capability. The frame never
+// receives the raw carrier independently.
+priv struct CandidateBytecodeExecution {
+  bytecode : CandidateVerifiedBytecodeFunction
+  child_materializer : CandidateChildMaterializer
+}
+
+///|
+fn CandidateBytecodeExecution::CandidateBytecodeExecution(
+  bytecode : CandidateVerifiedBytecodeFunction,
+  child_materializer : CandidateChildMaterializer,
+) -> CandidateBytecodeExecution {
+  { bytecode, child_materializer }
 }
 
 ///|
@@ -22,30 +37,76 @@ fn candidate_request_form(
   }
 }
 
+// Resolve a request by its exact parser coordinate and consumer form. The
+// coordinate locates a verified child; the child source identity and
+// selection remain the compiler's authority.
+
 ///|
-fn candidate_request_matches(
+fn candidate_child_index_for_request(
   candidate : CandidateFunction,
   request : @runtime.FunctionMaterializationRequest,
-) -> Bool {
-  let consumer_form = match candidate.consumer_form {
-    Some(form) => form
-    None => return false
+) -> Int raise Error {
+  let site = request.site
+  let mut found : Int? = None
+  for child_index, child in candidate.children {
+    let child_site = match child.materialization_site {
+      Some(child_site) => child_site
+      None =>
+        raise @errors.InternalError(
+          message="candidate child has no syntax site",
+        )
+    }
+    let child_form = match child.consumer_form {
+      Some(form) => candidate_request_form(form)
+      None =>
+        raise @errors.InternalError(
+          message="candidate child is missing its consumer form",
+        )
+    }
+    if child_site == site && child_form == request.form {
+      match found {
+        Some(_) =>
+          raise @errors.InternalError(
+            message="candidate materialization site is ambiguous",
+          )
+        None => found = Some(child_index)
+      }
+    }
   }
-  if candidate_request_form(consumer_form) != request.form {
-    return false
+  match found {
+    Some(child_index) => child_index
+    None =>
+      raise @errors.InternalError(
+        message="candidate materialization site is absent from verified plan",
+      )
   }
-  if candidate.name != request.name &&
-    request.form != @runtime.ArrowFunction {
-    return false
-  }
-  match (candidate.signature, request.parameters) {
-    (CandidateSimpleSignature(params), @runtime.SimpleFunctionParameters(actual)) =>
-      params == actual
-    (
-      CandidateExtendedSignature(params, rest),
-      @runtime.ExtendedFunctionParameters(actual, actual_rest),
-    ) => params == actual && rest == actual_rest
-    _ => false
+}
+
+///|
+fn candidate_child_materializer(
+  candidate : CandidateFunction,
+  carrier : CandidateVerifiedBytecodeFunction,
+  evidence : Ref[CandidateRouteEvidence],
+) -> CandidateChildMaterializer {
+  {
+    materialize: fn(interp, child_index, closure) raise {
+      guard child_index >= 0 && child_index < candidate.children.length() else {
+        raise @errors.InternalError(
+          message="candidate child index is outside the verified plan",
+        )
+      }
+      let child = candidate.children[child_index]
+      match (child.bytecode, carrier.child_slots[child_index]) {
+        (Some(_), CandidateBytecodeChild(_)) | (None, CandidateTreeChild(_)) =>
+          ()
+        _ =>
+          raise @errors.InternalError(
+            message="candidate child slot disagrees with selected child",
+          )
+      }
+      let request = candidate_function_request(child, closure)
+      candidate_make_callable(interp, child, evidence, request)
+    },
   }
 }
 
@@ -70,10 +131,11 @@ fn candidate_function_request(
   }
   @runtime.FunctionMaterializationRequest(
     form=candidate_request_form(consumer_form),
-    name=name,
-    parameters=parameters,
+    site=candidate.materialization_site.unwrap(),
+    name~,
+    parameters~,
     body=candidate.body.copy(),
-    closure=closure,
+    closure~,
     strict=candidate.strict,
     source_text=candidate.source_text,
   )
@@ -85,12 +147,10 @@ fn candidate_materializer_template(
   evidence : Ref[CandidateRouteEvidence],
 ) -> @runtime.FunctionMaterializer {
   @runtime.FunctionMaterializer(
-    begin=fn() {
-      candidate_materializer_instance(candidate, evidence)
-    },
+    begin=fn() { candidate_materializer_instance(candidate, evidence) },
     materialize=fn(_interp, _request) raise {
       raise @errors.InternalError(
-        message="candidate materializer used outside an activation cursor",
+        message="candidate materializer used outside an activation",
       )
     },
   )
@@ -101,13 +161,6 @@ fn candidate_materializer_instance(
   candidate : CandidateFunction,
   evidence : Ref[CandidateRouteEvidence],
 ) -> @runtime.FunctionMaterializer {
-  let cursor : Ref[CandidateMaterializationCursor] = {
-    val: {
-      candidate,
-      evidence,
-      next_child: 0,
-    },
-  }
   let activation = candidate_route_prepare(
     evidence,
     candidate.source_identity,
@@ -120,29 +173,20 @@ fn candidate_materializer_instance(
     complete=fn(normal) raise {
       candidate_route_complete(
         activation,
-        if normal { CandidateRouteNormal } else { CandidateRouteAbrupt },
+        if normal {
+          CandidateRouteNormal
+        } else {
+          CandidateRouteAbrupt
+        },
       )
     },
   )
   @runtime.FunctionMaterializer(
-    begin=fn() {
-      candidate_materializer_instance(candidate, evidence)
-    },
+    begin=fn() { candidate_materializer_instance(candidate, evidence) },
     materialize=fn(interp, request) raise {
-      let state = cursor.val
-      guard state.next_child < state.candidate.children.length() else {
-        raise @errors.InternalError(
-          message="candidate function child cursor exceeded verified plan",
-        )
-      }
-      let child = state.candidate.children[state.next_child]
-      state.next_child += 1
-      guard candidate_request_matches(child, request) else {
-        raise @errors.InternalError(
-          message="candidate child materialization metadata mismatch",
-        )
-      }
-      candidate_make_callable(interp, child, state.evidence, request)
+      let child_index = candidate_child_index_for_request(candidate, request)
+      let child = candidate.children[child_index]
+      candidate_make_callable(interp, child, evidence, request)
     },
     hooks=Some(hooks),
   )
@@ -150,18 +194,16 @@ fn candidate_materializer_instance(
 
 ///|
 priv struct CandidateBytecodeExecutorCode {
-  candidate : CandidateFunction
-  bytecode : CandidateVerifiedBytecodeFunction
+  execution : CandidateBytecodeExecution
   activation : CandidateRouteActivation
 }
 
 ///|
 fn CandidateBytecodeExecutorCode::CandidateBytecodeExecutorCode(
-  candidate : CandidateFunction,
-  bytecode : CandidateVerifiedBytecodeFunction,
+  execution : CandidateBytecodeExecution,
   activation : CandidateRouteActivation,
 ) -> CandidateBytecodeExecutorCode {
-  { candidate, bytecode, activation }
+  { execution, activation }
 }
 
 ///|
@@ -171,14 +213,20 @@ fn candidate_make_bytecode_callable(
   bytecode : CandidateVerifiedBytecodeFunction,
   evidence : Ref[CandidateRouteEvidence],
   request : @runtime.FunctionMaterializationRequest,
-) -> @runtime.Value raise Error {
+) -> @runtime.Value {
   let func_def = bytecode.function
   let activation = candidate_route_prepare(
     evidence,
     candidate.source_identity,
     candidate.selection,
   )
-  let code = CandidateBytecodeExecutorCode(candidate, bytecode, activation)
+  let child_materializer = candidate_child_materializer(
+    candidate, bytecode, evidence,
+  )
+  let code = CandidateBytecodeExecutorCode(
+    CandidateBytecodeExecution(bytecode, child_materializer),
+    activation,
+  )
   let capability = func_def.preparation.activation_capability
   match request.form {
     @runtime.ArrowFunction =>
@@ -239,7 +287,8 @@ fn candidate_make_callable(
   request : @runtime.FunctionMaterializationRequest,
 ) -> @runtime.Value raise Error {
   match candidate.selection {
-    UseTreeWalker(_) => candidate_make_tree_callable(candidate, evidence, request)
+    UseTreeWalker(_) =>
+      candidate_make_tree_callable(candidate, evidence, request)
     UseBytecode(_) => {
       let bytecode = match candidate.bytecode {
         Some(bytecode) => bytecode
@@ -249,11 +298,7 @@ fn candidate_make_callable(
           )
       }
       candidate_make_bytecode_callable(
-        interp,
-        candidate,
-        bytecode,
-        evidence,
-        request,
+        interp, candidate, bytecode, evidence, request,
       )
     }
   }
@@ -265,10 +310,10 @@ impl @runtime.ExecutorCode for CandidateBytecodeExecutorCode with fn start(
   interp,
   prepared,
 ) {
+  let execution = self.execution
   candidate_route_start(self.activation, CandidateBytecodeExecutor)
   let frame = BytecodeFrame::candidate(
-    self.candidate,
-    self.bytecode,
+    execution,
     prepared.environment(),
     prepared.context(),
     self.activation,
@@ -279,7 +324,8 @@ impl @runtime.ExecutorCode for CandidateBytecodeExecutorCode with fn start(
       raise error
     }
   }
-  start_candidate_bytecode_frame(interp, frame) as &@runtime.ExecutorActivationFrame
+  start_candidate_bytecode_frame(interp, frame)
+  as &@runtime.ExecutorActivationFrame
 }
 
 ///|
@@ -293,13 +339,11 @@ fn run_candidate_bytecode_function(
 ) -> @runtime.Value raise Error {
   let _ = candidate
   candidate_route_start(activation, CandidateBytecodeExecutor)
-  let frame = BytecodeFrame::candidate(
-    candidate,
+  let execution = CandidateBytecodeExecution(
     bytecode,
-    env,
-    ctx,
-    activation,
-  ) catch {
+    candidate_child_materializer(candidate, bytecode, activation.evidence),
+  )
+  let frame = BytecodeFrame::candidate(execution, env, ctx, activation) catch {
     error => {
       candidate_route_complete(activation, CandidateRouteAbrupt)
       raise error
@@ -335,9 +379,7 @@ fn run_candidate_program_with_evidence(
   stmts : Array[@ast.Stmt],
 ) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
   let program = prepare_candidate_program(stmts)
-  let evidence : Ref[CandidateRouteEvidence] = {
-    val: CandidateRouteEvidence(),
-  }
+  let evidence : Ref[CandidateRouteEvidence] = { val: CandidateRouteEvidence() }
   let value = match program.root.selection {
     UseTreeWalker(_) => {
       let materializer = candidate_materializer_template(program.root, evidence)

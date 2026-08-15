@@ -289,12 +289,17 @@ fn Interpreter::create_class(
           instance_method_env
         }
         let method_val : Value = match m.value {
-          FuncExpr(fn_name, params, body, _, method_source_text) => {
+          FuncExpr(fn_name, params, body, loc, method_source_text) => {
             let strict_body = ensure_strict_body(body)
             validate_function_signature(true, fn_name, params, strict_body)
             self.materialize_function(
               FunctionMaterializationRequest(
-                form=MethodFunction,
+                form=if m.computed {
+                  ComputedMethodFunction
+                } else {
+                  MethodFunction
+                },
+                site=loc,
                 name=fn_name,
                 parameters=SimpleFunctionParameters(params),
                 body=strict_body,
@@ -304,14 +309,19 @@ fn Interpreter::create_class(
               ),
             )
           }
-          FuncExprExt(fn_name, params, rest, body, _, method_source_text) => {
+          FuncExprExt(fn_name, params, rest, body, loc, method_source_text) => {
             let strict_body = ensure_strict_body(body)
             validate_function_signature_ext(
               true, fn_name, params, rest, strict_body,
             )
             self.materialize_function(
               FunctionMaterializationRequest(
-                form=MethodFunction,
+                form=if m.computed {
+                  ComputedMethodFunction
+                } else {
+                  MethodFunction
+                },
+                site=loc,
                 name=fn_name,
                 parameters=ExtendedFunctionParameters(params, rest),
                 body=strict_body,

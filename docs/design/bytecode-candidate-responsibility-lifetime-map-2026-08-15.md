@@ -43,8 +43,11 @@ captures the parent source-point owner, child index, and consumer form in
 | `ComputedMethodFunctionConsumer` | computed object method | `MakeComputedMethodFunction` | method `FuncData`, computed-key consumer |
 | `ArrowFunctionConsumer` | arrow expressions | `MakeArrowFunction` | `ArrowFunc`/`ArrowFuncExt` body with lexical receiver |
 
-The compiler must retain this ordering and exact consumer fact for every child;
-names alone are not an identity key. Nested children repeat the same relation
+The compiler retains this ordering and exact consumer fact for every child;
+names alone are not an identity key. The ordered index remains provenance for
+the immutable `BytecodeSourceIdentity`, while runtime tree materialization
+locates a child by its typed parser site and consumer form rather than by
+dynamic evaluation order. Nested children repeat the same relation
 recursively.
 
 Candidate collection computes effective strictness at each function boundary

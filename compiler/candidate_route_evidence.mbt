@@ -59,7 +59,7 @@ fn CandidateRouteCompleted::CandidateRouteCompleted(
 priv enum CandidateRouteCompletion {
   CandidateRouteNormal
   CandidateRouteAbrupt
-} derive(Eq)
+}
 
 ///|
 priv enum CandidateRouteEvent {
@@ -84,11 +84,38 @@ priv struct CandidateRouteEvidence {
 
 ///|
 fn CandidateRouteEvidence::CandidateRouteEvidence() -> CandidateRouteEvidence {
-  {
-    next_activation_id: 0,
-    events: [],
-    lifecycles: Map([]),
+  { next_activation_id: 0, events: [], lifecycles: Map([]) }
+}
+
+///|
+// Keep the evidence values typed all the way to storage. This small recorder
+// also forces every event payload to remain part of the private invariant,
+// rather than degrading into an uninspected string log.
+fn candidate_route_record_event(
+  evidence : Ref[CandidateRouteEvidence],
+  event : CandidateRouteEvent,
+) -> Unit {
+  match event {
+    CandidateRoutePreparedEvent(prepared) => {
+      ignore(prepared.activation_id)
+      ignore(prepared.source_identity)
+      ignore(prepared.decision)
+    }
+    CandidateRouteStartedEvent(started) => {
+      ignore(started.activation_id)
+      ignore(started.source_identity)
+      ignore(started.executor)
+    }
+    CandidateRouteCompletedEvent(completed) => {
+      ignore(completed.activation_id)
+      ignore(completed.source_identity)
+      match completed.completion {
+        CandidateRouteNormal => ()
+        CandidateRouteAbrupt => ()
+      }
+    }
   }
+  evidence.val.events.push(event)
 }
 
 ///|
@@ -105,9 +132,11 @@ fn candidate_route_prepare(
 ) -> CandidateRouteActivation {
   let activation_id = evidence.val.next_activation_id
   evidence.val.next_activation_id += 1
-  let prepared = CandidateRoutePrepared(activation_id, source_identity, decision)
+  let prepared = CandidateRoutePrepared(
+    activation_id, source_identity, decision,
+  )
   evidence.val.lifecycles[activation_id] = CandidateRoutePending(prepared)
-  evidence.val.events.push(CandidateRoutePreparedEvent(prepared))
+  candidate_route_record_event(evidence, CandidateRoutePreparedEvent(prepared))
   { evidence, prepared }
 }
 
@@ -116,9 +145,8 @@ fn candidate_route_start(
   activation : CandidateRouteActivation,
   executor : CandidateRouteExecutor,
 ) -> Unit raise Error {
-  let current = match activation.evidence.val.lifecycles.get(
-    activation.prepared.activation_id,
-  ) {
+  let current = match
+    activation.evidence.val.lifecycles.get(activation.prepared.activation_id) {
     Some(lifecycle) => lifecycle
     None =>
       raise @errors.InternalError(
@@ -127,12 +155,11 @@ fn candidate_route_start(
   }
   match current {
     CandidateRoutePending(prepared) => {
-      let decision_matches = match (prepared.decision, executor) {
-        (UseBytecode(_), CandidateBytecodeExecutor)
-        | (UseTreeWalker(_), CandidateTreeWalkerExecutor) => true
-        _ => false
+      let expected_executor = match prepared.decision {
+        UseBytecode(_) => CandidateBytecodeExecutor
+        UseTreeWalker(_) => CandidateTreeWalkerExecutor
       }
-      guard decision_matches else {
+      guard executor == expected_executor else {
         raise @errors.InternalError(
           message="candidate route executor disagrees with prepared decision",
         )
@@ -142,9 +169,13 @@ fn candidate_route_start(
         prepared.source_identity,
         executor,
       )
-      activation.evidence.val.lifecycles[prepared.activation_id] =
-        CandidateRouteRunning(started)
-      activation.evidence.val.events.push(CandidateRouteStartedEvent(started))
+      activation.evidence.val.lifecycles[prepared.activation_id] = CandidateRouteRunning(
+        started,
+      )
+      candidate_route_record_event(
+        activation.evidence,
+        CandidateRouteStartedEvent(started),
+      )
     }
     CandidateRouteRunning(_) =>
       raise @errors.InternalError(
@@ -162,9 +193,8 @@ fn candidate_route_complete(
   activation : CandidateRouteActivation,
   completion : CandidateRouteCompletion,
 ) -> Unit raise Error {
-  let current = match activation.evidence.val.lifecycles.get(
-    activation.prepared.activation_id,
-  ) {
+  let current = match
+    activation.evidence.val.lifecycles.get(activation.prepared.activation_id) {
     Some(lifecycle) => lifecycle
     None =>
       raise @errors.InternalError(
@@ -178,9 +208,11 @@ fn candidate_route_complete(
         started.source_identity,
         completion,
       )
-      activation.evidence.val.lifecycles[activation.prepared.activation_id] =
-        CandidateRouteFinished(completed)
-      activation.evidence.val.events.push(
+      activation.evidence.val.lifecycles[activation.prepared.activation_id] = CandidateRouteFinished(
+        completed,
+      )
+      candidate_route_record_event(
+        activation.evidence,
         CandidateRouteCompletedEvent(completed),
       )
     }
@@ -188,9 +220,11 @@ fn candidate_route_complete(
       raise @errors.InternalError(
         message="candidate route completed before executor start",
       )
-    CandidateRouteFinished(_) =>
+    CandidateRouteFinished(completed) => {
+      ignore(completed.completion)
       raise @errors.InternalError(
         message="candidate route activation completed more than once",
       )
+    }
   }
 }
