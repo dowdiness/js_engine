@@ -17,6 +17,8 @@ pub fn compile_script_to_closure(Array[@ast.Stmt]) -> (@runtime.Interpreter) -> 
 
 pub fn run_bytecode_script(@runtime.Interpreter, Array[@ast.Stmt]) -> @runtime.Value raise
 
+pub fn run_candidate_program(@runtime.Interpreter, Array[@ast.Stmt]) -> @runtime.Value raise
+
 // Errors
 
 // Types and methods

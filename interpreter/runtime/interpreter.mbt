@@ -114,6 +114,10 @@ pub(all) struct Interpreter {
   // record over module-level mutable state.
   mut in_nonarrow_param_default_eval : Bool
   mut param_default_eval_var_conflicts : @set.Set[String]?
+  // Candidate execution capability for the currently entering activation.
+  // The stable runtime stores only this neutral interface; compiler-owned
+  // candidate representations never cross this package boundary.
+  mut active_function_materializer : FunctionMaterializer?
 }
 
 ///|
@@ -172,6 +176,7 @@ pub fn Interpreter::new(
     stdlib_hooks,
     in_nonarrow_param_default_eval: false,
     param_default_eval_var_conflicts: None,
+    active_function_materializer: None,
   }
   global.interpreter_context = Some(interp)
   with_cleared_active_callee_realm_unit(realm_state, fn() {

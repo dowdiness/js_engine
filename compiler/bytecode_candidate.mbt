@@ -49,6 +49,7 @@ priv struct CandidateIdentityPlan {
 ///|
 priv struct CandidateFunctionPlan {
   name : String?
+  materialization_site : @token.Loc?
   signature : CandidateFunctionSignature
   params : Array[String]
   rest_param : String?
@@ -66,8 +67,10 @@ priv struct CandidateFunctionPlan {
 ///|
 priv struct CandidateFunction {
   name : String?
+  materialization_site : @token.Loc?
   signature : CandidateFunctionSignature
   body : Array[@ast.Stmt]
+  strict : Bool
   source_text : String?
   is_method : Bool
   consumer_form : BytecodeFunctionConsumerForm?
@@ -94,6 +97,7 @@ priv struct CandidateProgram {
   program_identity : Ref[Unit]
   identity_authority : CandidateIdentityAuthority
   root : CandidateFunction
+  script_preparation : @runtime.CompiledScriptPreparation?
 }
 
 ///|
@@ -167,6 +171,7 @@ fn candidate_prepare_plan(
   enclosing_strict : Bool,
   activation_kind : BytecodeActivationKind,
   children : Array[CandidateFunctionPlan],
+  materialization_site : @token.Loc?,
   function_form? : BytecodeFunctionForm = OrdinaryFunction,
   function_form_loc? : @token.Loc? = None,
 ) -> CandidateFunctionPlan raise Error {
@@ -193,6 +198,7 @@ fn candidate_prepare_plan(
   }
   {
     name,
+    materialization_site,
     signature,
     params: simple_params,
     rest_param: simple_rest,
@@ -218,6 +224,7 @@ fn candidate_prepare_simple_plan(
   consumer_form : BytecodeFunctionConsumerForm?,
   enclosing_strict : Bool,
   children : Array[CandidateFunctionPlan],
+  materialization_site : @token.Loc?,
 ) -> CandidateFunctionPlan raise Error {
   candidate_prepare_plan(
     name,
@@ -230,6 +237,7 @@ fn candidate_prepare_simple_plan(
     enclosing_strict,
     FunctionActivation,
     children,
+    materialization_site,
   )
 }
 
@@ -245,6 +253,7 @@ fn candidate_prepare_ext_plan(
   consumer_form : BytecodeFunctionConsumerForm?,
   enclosing_strict : Bool,
   children : Array[CandidateFunctionPlan],
+  materialization_site : @token.Loc?,
 ) -> CandidateFunctionPlan raise Error {
   let normalized = candidate_normalize_ext_params(params, rest_param, loc)
   candidate_prepare_plan(
@@ -258,6 +267,7 @@ fn candidate_prepare_ext_plan(
     enclosing_strict,
     FunctionActivation,
     children,
+    materialization_site,
   )
 }
 
@@ -285,6 +295,7 @@ fn candidate_prepare_function_form_plan(
     enclosing_strict,
     FunctionActivation,
     children,
+    Some(loc),
     function_form~,
     function_form_loc=Some(loc),
   )
@@ -371,7 +382,7 @@ fn candidate_collect_function_expr(
   name : String?,
   params : Array[String],
   body : Array[@ast.Stmt],
-  _loc : @token.Loc,
+  loc : @token.Loc,
   source_text : String?,
   consumer_form : BytecodeFunctionConsumerForm,
   enclosing_strict : Bool,
@@ -390,6 +401,7 @@ fn candidate_collect_function_expr(
       Some(consumer_form),
       strict,
       children,
+      Some(loc),
     ),
   )
 }
@@ -422,6 +434,7 @@ fn candidate_collect_function_expr_ext(
       Some(consumer_form),
       strict,
       children,
+      Some(loc),
     ),
   )
 }
@@ -434,7 +447,7 @@ fn candidate_collect_method_expr(
   plans : Array[CandidateFunctionPlan],
 ) -> Unit raise Error {
   match expr {
-    FuncExpr(name, params, body, _, source_text) => {
+    FuncExpr(name, params, body, loc, source_text) => {
       let strict = candidate_function_strict(enclosing_strict, body)
       let children : Array[CandidateFunctionPlan] = []
       candidate_collect_function_body(body, strict, children)
@@ -450,6 +463,7 @@ fn candidate_collect_method_expr(
           strict,
           FunctionActivation,
           children,
+          Some(loc),
         ),
       )
     }
@@ -470,6 +484,7 @@ fn candidate_collect_method_expr(
           strict,
           FunctionActivation,
           children,
+          Some(loc),
         ),
       )
     }
@@ -975,7 +990,7 @@ fn candidate_collect_stmt(
       }
       candidate_collect_stmt(body, enclosing_strict, plans)
     }
-    FuncDecl(name, params, body, _, source_text) => {
+    FuncDecl(name, params, body, loc, source_text) => {
       let strict = candidate_function_strict(enclosing_strict, body)
       let children : Array[CandidateFunctionPlan] = []
       candidate_collect_function_body(body, strict, children)
@@ -989,6 +1004,7 @@ fn candidate_collect_stmt(
           Some(DeclareFunctionConsumer(name)),
           strict,
           children,
+          Some(loc),
         ),
       )
     }
@@ -1009,6 +1025,7 @@ fn candidate_collect_stmt(
           Some(DeclareFunctionConsumer(name)),
           strict,
           children,
+          Some(loc),
         ),
       )
     }
@@ -1285,7 +1302,7 @@ fn candidate_compile_function(
     plan.rest_param,
     allocator,
     source_text=plan.source_text,
-    use_local_slots=true,
+    use_local_slots=plan.activation_kind != ScriptRootActivation,
     source_unit=SourceUnitHandle(0),
     enclosing_strict~,
     is_method=plan.is_method,
@@ -1504,8 +1521,10 @@ fn candidate_materialize_function(
   }
   {
     name: plan.name,
+    materialization_site: plan.materialization_site,
     signature: plan.signature,
     body: plan.body.copy(),
+    strict: plan.enclosing_strict,
     source_text: plan.source_text,
     is_method: plan.is_method,
     consumer_form: plan.consumer_form,
@@ -1548,6 +1567,39 @@ fn candidate_verify_metadata(function : CandidateFunction) -> Unit raise Error {
   candidate_verify_selection(function.selection)
   guard function.source_identity.consumer_form == function.consumer_form else {
     raise @errors.InternalError(message="candidate consumer metadata mismatch")
+  }
+  match (function.consumer_form, function.materialization_site) {
+    (None, None) | (Some(_), Some(_)) => ()
+    _ =>
+      raise @errors.InternalError(
+        message="candidate materialization site metadata mismatch",
+      )
+  }
+}
+
+///|
+// A verified parent may not contain two children at one syntax coordinate.
+// Rejecting this during preparation prevents runtime lookup from becoming
+// ambiguous, while repeated evaluation of one site still returns the same
+// immutable child.
+fn candidate_verify_materialization_sites(
+  function : CandidateFunction,
+) -> Unit raise Error {
+  let seen : Array[@token.Loc] = []
+  for child in function.children {
+    let site = match child.materialization_site {
+      Some(site) => site
+      None =>
+        raise @errors.InternalError(
+          message="candidate child has no materialization site",
+        )
+    }
+    if seen.contains(site) {
+      raise @errors.InternalError(
+        message="candidate materialization site is duplicated",
+      )
+    }
+    seen.push(site)
   }
 }
 
@@ -1770,6 +1822,7 @@ fn verify_candidate_function(
   authority : CandidateIdentityNode,
 ) -> Unit raise Error {
   candidate_verify_metadata(function)
+  candidate_verify_materialization_sites(function)
   guard bytecode_source_identity_equal(
     function.source_identity,
     authority.source_identity,
@@ -1832,6 +1885,7 @@ fn prepare_candidate_program(
   )
   let root_plan : CandidateFunctionPlan = {
     name: None,
+    materialization_site: None,
     signature: CandidateSimpleSignature([]),
     params: [],
     rest_param: None,
@@ -1851,10 +1905,42 @@ fn prepare_candidate_program(
     root_plan, allocator,
   )
   let root = candidate_materialize_function(root_plan, allocator, None, [])
+  let script_preparation = match root.bytecode {
+    Some(bytecode) => {
+      let lexical_bindings = bytecode.function.preparation.lexical_bindings.map(binding => {
+          let kind = match binding.kind {
+            BytecodeLet => @runtime.LetBinding
+            BytecodeConst => @runtime.ConstBinding
+          }
+          @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+        },
+      )
+      let function_names = bytecode.function.preparation.function_declarations.map(declaration => {
+          declaration.name
+        },
+      )
+      let settlement = @runtime.prepare_compiled_script_early_error(
+        stmts,
+        root_strict,
+        provenance_token=Some(allocator.val.program_identity),
+      )
+      Some(
+        @runtime.CompiledScriptPreparation::with_early_error_settlement(
+          strict=root_strict,
+          var_names=bytecode.function.env_var_hoist_names,
+          function_names~,
+          lexical_bindings~,
+          settlement~,
+        ),
+      )
+    }
+    None => None
+  }
   let program = {
     program_identity: allocator.val.program_identity,
     identity_authority,
     root,
+    script_preparation,
   }
   verify_candidate_program(program)
   program

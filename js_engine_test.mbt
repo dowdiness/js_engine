@@ -69,6 +69,28 @@ test "run facade" {
 }
 
 ///|
+test "Engine default keeps the stable tree-walker consumer contract" {
+  let engine = @js_engine.Engine()
+  engine.eval("function answer(value) { return value + 1; }")
+  json_inspect(engine.call_json("answer", [41]), content=42)
+  engine.eval("console.log(\"default\");")
+  json_inspect(engine.take_output(), content=["default"])
+  expect_bool(engine.has_pending_microtasks(), false, "default microtasks")
+  expect_bool(engine.has_pending_timers(), false, "default timers")
+  expect_bool(engine.run_microtask_checkpoint(), false, "default checkpoint")
+  engine.run_timer_checkpoint()
+}
+
+///|
+test "Engine default retains earlier functions across later evals" {
+  let engine = @js_engine.Engine()
+  engine.eval("function oldFunction(value) { return value + 1; }")
+  engine.eval("function anotherFunction(value) { return value + 2; }")
+  json_inspect(engine.call_json("oldFunction", [1]), content=2)
+  json_inspect(engine.call_json("anotherFunction", [1]), content=3)
+}
+
+///|
 test "run fibonacci" {
   let src =
     #|function fib(n) {

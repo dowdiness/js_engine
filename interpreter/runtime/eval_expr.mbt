@@ -278,21 +278,26 @@ fn Interpreter::eval_prop_value(
 ) -> Value raise Error {
   if prop.is_method {
     match prop.value {
-      FuncExpr(name, params, body, _, source_text) => {
+      FuncExpr(name, params, body, loc, source_text) => {
         validate_function_signature(ctx.strict, None, params, body)
-        let func_data : FuncData = {
-          name,
-          params,
-          body,
-          closure: method_env,
-          strict: is_function_strict(ctx.strict, body),
-          has_name_binding: false,
-          is_method: true,
-          source_text,
-        }
-        return make_func(func_data)
+        return self.materialize_function(
+          FunctionMaterializationRequest(
+            form=if prop.computed {
+              ComputedMethodFunction
+            } else {
+              MethodFunction
+            },
+            site=loc,
+            name~,
+            parameters=SimpleFunctionParameters(params),
+            body~,
+            closure=method_env,
+            strict=is_function_strict(ctx.strict, body),
+            source_text~,
+          ),
+        )
       }
-      FuncExprExt(name, params, rest_param, body, _, source_text) => {
+      FuncExprExt(name, params, rest_param, body, loc, source_text) => {
         validate_function_signature_ext(
           ctx.strict,
           None,
@@ -300,18 +305,22 @@ fn Interpreter::eval_prop_value(
           rest_param,
           body,
         )
-        let func_data : FuncDataExt = {
-          name,
-          params,
-          rest_param,
-          body,
-          closure: method_env,
-          strict: is_function_strict(ctx.strict, body),
-          has_name_binding: false,
-          is_method: true,
-          source_text,
-        }
-        return make_func_ext(func_data)
+        return self.materialize_function(
+          FunctionMaterializationRequest(
+            form=if prop.computed {
+              ComputedMethodFunction
+            } else {
+              MethodFunction
+            },
+            site=loc,
+            name~,
+            parameters=ExtendedFunctionParameters(params, rest_param),
+            body~,
+            closure=method_env,
+            strict=is_function_strict(ctx.strict, body),
+            source_text~,
+          ),
+        )
       }
       // Generator/async methods: fast path with has_name_binding=false.
       // strip_self_name_binding is a no-op for InterpreterCallable, so we
@@ -1285,21 +1294,24 @@ fn Interpreter::eval_expr(
     Call(callee, args, loc) => self.eval_call(ctx, callee, args, env, loc)
     Member(obj_expr, prop, loc) =>
       self.eval_member(ctx, obj_expr, prop, env, loc)
-    FuncExpr(name, params, body, _, source_text) => {
+    FuncExpr(name, params, body, loc, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
-      let func_data : FuncData = {
-        name,
-        params,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        // Named FunctionExpression: §15.2.5 installs a self-name binding
-        // in a dedicated funcEnv. Anonymous FEs have no such binding.
-        has_name_binding: name is Some(_),
-        is_method: false,
-        source_text,
-      }
-      make_func(func_data)
+      self.materialize_function(
+        FunctionMaterializationRequest(
+          form=if name is Some(_) {
+            NamedFunctionExpression
+          } else {
+            FunctionExpression
+          },
+          site=loc,
+          name~,
+          parameters=SimpleFunctionParameters(params),
+          body~,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text~,
+        ),
+      )
     }
     GeneratorExpr(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
@@ -1732,49 +1744,22 @@ fn Interpreter::eval_expr(
       }
       self.call_value(tag, this_val, args, loc)
     }
-    ArrowFunc(params, body, _, source_text) => {
+    ArrowFunc(params, body, loc, source_text) => {
       validate_function_signature(ctx.strict, None, params, body)
-      let func_data : FuncData = {
-        name: None,
-        params,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        has_name_binding: false,
-        is_method: false,
-        source_text,
-      }
-      let nf_desc : PropDescriptor = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      stamp_function_realm(
-        Object({
-          bag: {
-            properties: {
-              "name": String_(""),
-              "length": Number(params.length().to_double()),
-            },
-            symbol_properties: Map([]),
-            descriptors: { "name": nf_desc, "length": nf_desc },
-            symbol_descriptors: Map([]),
-            internal_slots: Map([]),
-            host_slots: Map([]),
-          },
-          prototype: get_func_proto(realm_state=Some(self.realm_state)),
-          callable: Some(ArrowFunc(func_data)),
-          class_name: "Function",
-          extensible: true,
-          arraybuffer_state: None,
-        }),
-        realm_state=Some(self.realm_state),
+      self.materialize_function(
+        FunctionMaterializationRequest(
+          form=ArrowFunction,
+          site=loc,
+          name=None,
+          parameters=SimpleFunctionParameters(params),
+          body~,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text~,
+        ),
       )
     }
-    ArrowFuncExt(params, rest_param, body, _, source_text) => {
+    ArrowFuncExt(params, rest_param, body, loc, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         None,
@@ -1782,49 +1767,20 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
       )
-      let func_data : FuncDataExt = {
-        name: None,
-        params,
-        rest_param,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        has_name_binding: false,
-        is_method: false,
-        source_text,
-      }
-      let nf_desc : PropDescriptor = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      let arrow_len = expected_argument_count_ext(params)
-      stamp_function_realm(
-        Object({
-          bag: {
-            properties: {
-              "name": String_(""),
-              "length": Number(arrow_len.to_double()),
-            },
-            symbol_properties: Map([]),
-            descriptors: { "name": nf_desc, "length": nf_desc },
-            symbol_descriptors: Map([]),
-            internal_slots: Map([]),
-            host_slots: Map([]),
-          },
-          prototype: get_func_proto(realm_state=Some(self.realm_state)),
-          callable: Some(ArrowFuncExt(func_data)),
-          class_name: "Function",
-          extensible: true,
-          arraybuffer_state: None,
-        }),
-        realm_state=Some(self.realm_state),
+      self.materialize_function(
+        FunctionMaterializationRequest(
+          form=ArrowFunction,
+          site=loc,
+          name=None,
+          parameters=ExtendedFunctionParameters(params, rest_param),
+          body~,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text~,
+        ),
       )
     }
-    FuncExprExt(name, params, rest_param, body, _, source_text) => {
+    FuncExprExt(name, params, rest_param, body, loc, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         name,
@@ -1832,18 +1788,22 @@ fn Interpreter::eval_expr(
         rest_param,
         body,
       )
-      let func_data : FuncDataExt = {
-        name,
-        params,
-        rest_param,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        has_name_binding: name is Some(_),
-        is_method: false,
-        source_text,
-      }
-      make_func_ext(func_data)
+      self.materialize_function(
+        FunctionMaterializationRequest(
+          form=if name is Some(_) {
+            NamedFunctionExpression
+          } else {
+            FunctionExpression
+          },
+          site=loc,
+          name~,
+          parameters=ExtendedFunctionParameters(params, rest_param),
+          body~,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text~,
+        ),
+      )
     }
     RegexLit(pattern, flags, _) =>
       (self.stdlib_hooks.make_regexp_object)(self.realm_state, pattern, flags)

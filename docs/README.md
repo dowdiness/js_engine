@@ -19,6 +19,7 @@ truth; when a doc and the code disagree, trust the code.
 - [decisions/README.md](decisions/README.md) — architecture-decision-record-style documents and project contracts
 - [development.md](development.md) — maintainer workflow, generated files, Test262, benchmarks, releases
 - [design/architecture.md](design/architecture.md) — design principles, package boundaries, value model, host integration
+- [design/candidate-routing.md](design/candidate-routing.md) — build-time candidate routing and mixed activation invariants
 - [GLOSSARY.md](GLOSSARY.md) — terminology used in the code and docs
 - [RELEASING.md](RELEASING.md) — release checklist (test262-number minting, tag/CHANGELOG drift rules)
 - [../AGENTS.md](../AGENTS.md) — MoonBit conventions and tooling guide (also used by AI agents)

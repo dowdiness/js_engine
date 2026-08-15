@@ -544,7 +544,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(completion)
     }
-    FuncDecl(name, params, body, _, source_text) => {
+    FuncDecl(name, params, body, loc, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       match instantiated_block_function_value(env, name) {
         Some(func_val) => {
@@ -560,19 +560,18 @@ fn Interpreter::exec_stmt(
       guard !function_decl_is_hoisted_noop(env, name) else {
         return Normal(Undefined)
       }
-      let func_data : FuncData = {
-        name: Some(name),
-        params,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        // FunctionDeclaration execution path — name binds in enclosing
-        // VarEnvironment, no dedicated funcEnv.
-        has_name_binding: false,
-        is_method: false,
-        source_text,
-      }
-      let func_val = make_func(func_data)
+      let func_val = self.materialize_function(
+        FunctionMaterializationRequest(
+          form=FunctionDeclaration,
+          site=loc,
+          name=Some(name),
+          parameters=SimpleFunctionParameters(params),
+          body~,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text~,
+        ),
+      )
       self.bind_function_decl_value(ctx, env, name, func_val)
       Normal(Undefined)
     }
@@ -1442,7 +1441,7 @@ fn Interpreter::exec_stmt(
       self.bind_pattern(pattern, value, env, bk, ctx~)
       Normal(Undefined)
     }
-    FuncDeclExt(name, params, rest_param, body, _, source_text) => {
+    FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1460,18 +1459,18 @@ fn Interpreter::exec_stmt(
       guard !function_decl_is_hoisted_noop(env, name) else {
         return Normal(Undefined)
       }
-      let func_data : FuncDataExt = {
-        name: Some(name),
-        params,
-        rest_param,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        has_name_binding: false,
-        is_method: false,
-        source_text,
-      }
-      let func_val = make_func_ext(func_data)
+      let func_val = self.materialize_function(
+        FunctionMaterializationRequest(
+          form=FunctionDeclaration,
+          site=loc,
+          name=Some(name),
+          parameters=ExtendedFunctionParameters(params, rest_param),
+          body~,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text~,
+        ),
+      )
       self.bind_function_decl_value(ctx, env, name, func_val)
       Normal(Undefined)
     }

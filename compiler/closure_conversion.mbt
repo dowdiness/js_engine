@@ -1031,6 +1031,7 @@ fn compile_func_expr_ext(
       has_name_binding: name is Some(_),
       is_method: false,
       source_text: None,
+      materializer: None,
     }
     @runtime.make_func_ext(func_data)
   }
@@ -1077,6 +1078,7 @@ fn compile_arrow_func_ext(
       has_name_binding: false,
       is_method: false,
       source_text: None,
+      materializer: None,
     }
     make_arrow_func_ext(func_data, arrow_ext_length(params))
   }

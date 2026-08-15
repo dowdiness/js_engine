@@ -188,6 +188,7 @@ fn tree_executor_graph_copy_func_data(data : FuncData) -> FuncData {
     has_name_binding: data.has_name_binding,
     is_method: data.is_method,
     source_text: data.source_text,
+    materializer: data.materializer,
   }
 }
 

@@ -16,6 +16,97 @@ test "characterization: unsupported nested lowering rejects whole script" {
 }
 
 ///|
+// The runtime wiring in #885 consumes this closed evidence seam.  Keeping the
+// transition test beside candidate preparation makes an accidental fallback
+// or second start a compiler defect rather than an observable log convention.
+test "candidate route evidence permits exactly one typed start and completion" {
+  let program = prepare_candidate_program(
+    @parser.parse("function child() {}").stmts,
+  )
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=true),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    program.root.source_identity,
+    program.root.selection,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  candidate_route_complete(activation, CandidateRouteNormal)
+  guard evidence.val.events.length() == 3 else {
+    fail("candidate route evidence did not record prepare/start/complete")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      if prepared.activation_id != 0 {
+        fail("first candidate activation did not start at zero")
+      }
+    _ => fail("candidate route evidence did not begin with preparation")
+  }
+}
+
+///|
+test "candidate aggregate evidence retains no per-call storage" {
+  let program = prepare_candidate_program(
+    @parser.parse("function child() {}").stmts,
+  )
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  for _ in 0..<100 {
+    let activation = candidate_route_prepare(
+      evidence,
+      program.root.source_identity,
+      program.root.selection,
+    )
+    candidate_route_start(activation, CandidateBytecodeExecutor)
+    candidate_route_complete(activation, CandidateRouteNormal)
+  }
+  guard candidate_route_trace_length(evidence) == 0 else {
+    fail("aggregate candidate recorder retained per-call trace")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("aggregate candidate recorder retained completed activations")
+  }
+  guard evidence.val.summary.normal_completions == 100 else {
+    fail("aggregate candidate recorder lost completion counts")
+  }
+}
+
+///|
+// RED characterization for the first production seam: both parent directions
+// are already visible in the pure candidate tree, but neither is materialized
+// into an Engine activation yet.
+test "RED: candidate tree retains both mixed parent directions" {
+  let source =
+    #|function bytecodeParent() {
+    #|  function treeChild() { for (var value of [1]) {} }
+    #|  return treeChild;
+    #|}
+    #|function treeParent() {
+    #|  function bytecodeChild() { return 1; }
+    #|  return bytecodeChild;
+    #|}
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let bytecode_parent = root.children[0]
+  let tree_parent = root.children[1]
+  guard bytecode_parent.bytecode is Some(_) else {
+    fail("bytecode parent lost candidate carrier")
+  }
+  guard tree_parent.bytecode is Some(_) else {
+    fail("tree parent fixture did not retain a candidate carrier")
+  }
+  match bytecode_parent.children[0].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+    _ => fail("bytecode parent did not retain typed tree child")
+  }
+  match tree_parent.children[0].selection {
+    UseBytecode(_) => ()
+    _ => fail("tree parent did not retain eligible bytecode child")
+  }
+}
+
+///|
 // RED for the pure candidate seam: this intentionally names the API that the
 // next slice introduces.  It must preserve an eligible parent candidate while
 // retaining a typed tree-only child candidate.
@@ -145,6 +236,719 @@ test "candidate root selection retains lowering fallback" {
       }
     UseTreeWalker(_) => fail("root fallback was not lowering unsupported")
     UseBytecode(_) => fail("lowering-unsupported root selected bytecode")
+  }
+}
+
+///|
+fn candidate_run_with_evidence_for_wb(
+  source : String,
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  let interp = @interpreter.new_interpreter()
+  run_candidate_program_with_evidence(interp, @parser.parse(source).stmts) catch {
+    @runtime.JsException(value) =>
+      fail("candidate execution threw: " + value.to_string())
+    error => fail("candidate execution failed: " + error.to_string())
+  }
+}
+
+///|
+fn candidate_run_with_summary_for_wb(
+  source : String,
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  let interp = @interpreter.new_interpreter()
+  run_candidate_program_with_summary(interp, @parser.parse(source).stmts) catch {
+    @runtime.JsException(value) =>
+      fail("candidate execution threw: " + value.to_string())
+    error => fail("candidate execution failed: " + error.to_string())
+  }
+}
+
+///|
+test "production candidate recorder remains bounded across repeated calls" {
+  let source =
+    #|function answer() { return 42; }
+    #|for (var index = 0; index < 100; index++) answer();
+  let (_, evidence) = candidate_run_with_summary_for_wb(source)
+  guard evidence.val.events.length() == 0 else {
+    fail("production candidate recorder retained event history")
+  }
+  guard evidence.val.lifecycles.length() == 0 else {
+    fail("production candidate recorder retained lifecycle history")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("production candidate recorder retained in-flight activations")
+  }
+  guard evidence.val.summary.bytecode_starts == 100 else {
+    fail("production candidate recorder lost bytecode start counts")
+  }
+  guard evidence.val.summary.tree_starts == 1 else {
+    fail("production candidate recorder lost tree start counts")
+  }
+  guard evidence.val.summary.normal_completions == 101 else {
+    fail("production candidate recorder lost completion counts")
+  }
+}
+
+///|
+test "old candidate functions retain bounded summaries after later eval" {
+  let interp = @interpreter.new_interpreter()
+  let (_, old_evidence) = run_candidate_program_with_summary(
+    interp,
+    @parser.parse("function oldFunction() { return 41; }").stmts,
+  )
+  ignore(
+    run_candidate_program_with_summary(
+      interp,
+      @parser.parse("function anotherFunction() { return 42; }").stmts,
+    ),
+  )
+  ignore(
+    run_candidate_program_with_summary(
+      interp,
+      @parser.parse("for (var index = 0; index < 100; index++) oldFunction();").stmts,
+    ),
+  )
+  guard old_evidence.val.events.length() == 0 else {
+    fail("old candidate function retained event history")
+  }
+  guard old_evidence.val.lifecycles.length() == 0 else {
+    fail("old candidate function retained lifecycle history")
+  }
+  guard old_evidence.val.summary.active_activations == 0 else {
+    fail("old candidate function retained completed activations")
+  }
+  guard old_evidence.val.summary.bytecode_starts == 101 else {
+    fail("old candidate function lost aggregate start counts")
+  }
+  guard old_evidence.val.summary.normal_completions == 101 else {
+    fail("old candidate function lost aggregate completion counts")
+  }
+}
+
+///|
+test "aggregate recorder releases abrupt activation state" {
+  let source =
+    #|function maybeFail(shouldFail) {
+    #|  if (shouldFail) throw "boom";
+    #|  return 7;
+    #|}
+    #|try { maybeFail(true); } catch (error) {}
+    #|maybeFail(false);
+  let (value, evidence) = candidate_run_with_summary_for_wb(source)
+  guard value.to_string() == "7" else {
+    fail("aggregate abrupt fixture returned an unexpected value")
+  }
+  guard evidence.val.events.length() == 0 else {
+    fail("aggregate abrupt fixture retained event history")
+  }
+  guard evidence.val.lifecycles.length() == 0 else {
+    fail("aggregate abrupt fixture retained lifecycle history")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("aggregate abrupt fixture retained an in-flight activation")
+  }
+  guard evidence.val.summary.abrupt_completions == 1 else {
+    fail("aggregate abrupt fixture lost its abrupt completion count")
+  }
+  guard evidence.val.summary.normal_completions == 2 else {
+    fail("aggregate abrupt fixture lost its normal completion counts")
+  }
+}
+
+///|
+fn candidate_started_executors_for_wb(
+  evidence : Ref[CandidateRouteEvidence],
+) -> Array[CandidateRouteExecutor] {
+  evidence.val.events
+  .map(event => {
+    match event {
+      CandidateRouteStartedEvent(started) => Some(started.executor)
+      _ => None
+    }
+  })
+  .filter_map(x => x)
+}
+
+///|
+fn candidate_started_executor_labels_for_wb(
+  evidence : Ref[CandidateRouteEvidence],
+) -> String {
+  candidate_started_executors_for_wb(evidence)
+  .map(executor => {
+    match executor {
+      CandidateBytecodeExecutor => "bytecode"
+      CandidateTreeWalkerExecutor => "tree"
+    }
+  })
+  .join(",")
+}
+
+///|
+test "candidate runner starts an eligible root through bytecode" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    "function answer() { return 42; } answer();",
+  )
+  if value.to_string() != "42" {
+    fail("eligible candidate root returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 2 else {
+    fail("candidate root and callable did not both start")
+  }
+  if starts[0] != CandidateBytecodeExecutor {
+    fail("eligible root did not start through bytecode")
+  }
+  guard evidence.val.events.length() == starts.length() * 3 else {
+    fail("candidate route evidence did not close every activation")
+  }
+}
+
+///|
+test "repeated bytecode calls record distinct completed activations" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    "function answer() { return 42; } answer(); answer();",
+  )
+  if value.to_string() != "42" {
+    fail("repeated candidate calls returned an unexpected value")
+  }
+  guard evidence.val.events.length() == 9 else {
+    fail("repeated candidate calls did not record two complete activations")
+  }
+  let first = match evidence.val.events[2] {
+    CandidateRoutePreparedEvent(prepared) => prepared
+    _ => fail("first function activation was not prepared before start")
+  }
+  let second = match evidence.val.events[5] {
+    CandidateRoutePreparedEvent(prepared) => prepared
+    _ => fail("second function activation was not prepared before start")
+  }
+  guard bytecode_source_identity_equal(
+    first.source_identity,
+    second.source_identity,
+  ) else {
+    fail("repeated calls did not retain the same function source identity")
+  }
+  guard first.activation_id != second.activation_id else {
+    fail("repeated calls reused a route activation id")
+  }
+  for activation_id in [first.activation_id, second.activation_id] {
+    match evidence.val.lifecycles.get(activation_id) {
+      Some(CandidateRouteFinished(completed)) =>
+        if completed.activation_id != activation_id ||
+          completed.completion is CandidateRouteAbrupt {
+          fail("repeated call activation did not complete normally")
+        }
+      _ => fail("repeated call activation did not reach completion")
+    }
+  }
+}
+
+///|
+test "recursive bytecode calls record overlapping distinct activations" {
+  let source =
+    #|function recursiveAnswer(reenter) {
+    #|  if (reenter) return recursiveAnswer();
+    #|  return 42;
+    #|}
+    #|recursiveAnswer(true);
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("recursive fixture did not select bytecode")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "42" {
+    fail("recursive candidate call returned an unexpected value")
+  }
+  let prepared = evidence.val.events.filter_map(event => {
+    match event {
+      CandidateRoutePreparedEvent(prepared) => Some(prepared)
+      _ => None
+    }
+  })
+  guard prepared.length() == 3 else {
+    fail("recursive candidate call did not prepare root and two calls")
+  }
+  guard prepared[1].activation_id != prepared[2].activation_id else {
+    fail("recursive candidate call reused the running activation id")
+  }
+  guard bytecode_source_identity_equal(
+    prepared[1].source_identity,
+    prepared[2].source_identity,
+  ) else {
+    fail("recursive calls did not retain the same function source identity")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("recursive candidate calls retained in-flight lifecycle state")
+  }
+  guard evidence.val.summary.maximum_concurrent_activations == 3 else {
+    fail("recursive candidate calls did not record overlapping activations")
+  }
+}
+
+///|
+test "bytecode call after abrupt completion records a fresh activation" {
+  let source =
+    #|function maybeFail(shouldFail) {
+    #|  if (shouldFail) throw "boom";
+    #|  return 7;
+    #|}
+    #|try { maybeFail(true); } catch (error) {}
+    #|maybeFail(false);
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("abrupt-reuse fixture did not select bytecode")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "7" {
+    fail("post-abrupt candidate call returned an unexpected value")
+  }
+  let prepared = evidence.val.events.filter_map(event => {
+    match event {
+      CandidateRoutePreparedEvent(prepared) => Some(prepared)
+      _ => None
+    }
+  })
+  guard prepared.length() == 3 else {
+    fail("post-abrupt candidate call did not prepare two function calls")
+  }
+  guard prepared[1].activation_id != prepared[2].activation_id else {
+    fail("post-abrupt candidate call reused its activation id")
+  }
+  guard bytecode_source_identity_equal(
+    prepared[1].source_identity,
+    prepared[2].source_identity,
+  ) else {
+    fail("post-abrupt calls did not retain the same source identity")
+  }
+  match evidence.val.lifecycles.get(prepared[1].activation_id) {
+    Some(CandidateRouteFinished(completed)) =>
+      if !(completed.completion is CandidateRouteAbrupt) {
+        fail("first candidate call did not record abrupt completion")
+      }
+    _ => fail("first candidate call did not finish")
+  }
+  match evidence.val.lifecycles.get(prepared[2].activation_id) {
+    Some(CandidateRouteFinished(completed)) =>
+      if !(completed.completion is CandidateRouteNormal) {
+        fail("second candidate call did not record normal completion")
+      }
+    _ => fail("second candidate call did not finish")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("post-abrupt candidate calls retained in-flight lifecycle state")
+  }
+}
+
+///|
+test "candidate frame startup error completes its route abruptly" {
+  let source = "function child() { return 1; }"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.bytecode is Some(bytecode) else {
+    fail("startup-error fixture did not retain root bytecode")
+  }
+  guard program.script_preparation is Some(preparation) else {
+    fail("startup-error fixture did not retain script preparation")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    program.root.source_identity,
+    program.root.selection,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  let failing_children : CandidateChildMaterializer = {
+    materialize: fn(_interp, _child_index, _closure) raise {
+      raise @errors.InternalError(message="injected candidate startup failure")
+    },
+  }
+  let execution = CandidateBytecodeExecution(bytecode, failing_children)
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
+      let frame = BytecodeFrame::candidate(execution, env, ctx, activation)
+      let startup_failed = try {
+        ignore(start_candidate_bytecode_frame(interp, frame))
+        false
+      } catch {
+        @errors.InternalError(message~) =>
+          message == "injected candidate startup failure"
+        _ => false
+      }
+      guard startup_failed else {
+        fail("candidate frame startup did not propagate its failure")
+      }
+      match activation.lifecycle.val {
+        CandidateRouteFinished(completed) =>
+          if !(completed.completion is CandidateRouteAbrupt) {
+            fail("candidate frame startup did not finish abruptly")
+          }
+        _ => fail("candidate frame startup left its route in flight")
+      }
+      guard evidence.val.summary.active_activations == 0 else {
+        fail("candidate frame startup retained an in-flight activation")
+      }
+      @runtime.Undefined
+    }),
+  )
+}
+
+///|
+test "candidate function startup error completes its route abruptly" {
+  let source = "function parent() { function child() { return 1; } return 2; }"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.children.length() == 1 else {
+    fail("function-startup fixture did not retain its parent candidate")
+  }
+  let parent = program.root.children[0]
+  guard parent.bytecode is Some(bytecode) else {
+    fail("function-startup fixture did not retain parent bytecode")
+  }
+  guard program.script_preparation is Some(preparation) else {
+    fail("function-startup fixture did not retain script preparation")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    parent.source_identity,
+    parent.selection,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  let failing_children : CandidateChildMaterializer = {
+    materialize: fn(_interp, _child_index, _closure) raise {
+      raise @errors.InternalError(
+        message="injected candidate function startup failure",
+      )
+    },
+  }
+  let execution = CandidateBytecodeExecution(bytecode, failing_children)
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
+      let frame = BytecodeFrame::candidate(execution, env, ctx, activation)
+      let startup_failed = try {
+        ignore(start_candidate_bytecode_frame(interp, frame))
+        false
+      } catch {
+        @errors.InternalError(message~) =>
+          message == "injected candidate function startup failure"
+        _ => false
+      }
+      guard startup_failed else {
+        fail("candidate function startup did not propagate its failure")
+      }
+      match activation.lifecycle.val {
+        CandidateRouteFinished(completed) =>
+          if !(completed.completion is CandidateRouteAbrupt) {
+            fail("candidate function startup did not finish abruptly")
+          }
+        _ => fail("candidate function startup left its route in flight")
+      }
+      guard evidence.val.summary.active_activations == 0 else {
+        fail("candidate function startup retained an in-flight activation")
+      }
+      @runtime.Undefined
+    }),
+  )
+}
+
+///|
+test "candidate runner starts unsupported root through tree before effects" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    "for (var value of [1]) {}; 42;",
+  )
+  if value.to_string() != "42" {
+    fail("unsupported candidate root returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() == 1 else {
+    fail("unsupported root started more than one executor")
+  }
+  if starts[0] != CandidateTreeWalkerExecutor {
+    fail("unsupported root did not start through tree walker")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+        _ => fail("unsupported root was not decided before tree start")
+      }
+    _ => fail("candidate root did not prepare before starting")
+  }
+}
+
+///|
+test "candidate runner materializes bytecode parent with tree child" {
+  let source =
+    #|function parent() {
+    #|  function child() { for (var value of [1]) {} }
+    #|  return child();
+    #|}
+    #|parent();
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  let parent = program.root.children[0]
+  guard parent.bytecode is Some(bytecode) else {
+    fail("mixed parent was not bytecode")
+  }
+  if bytecode.function.preparation.function_declarations.length() != 1 {
+    fail("mixed bytecode parent did not retain its declaration")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "undefined" {
+    fail("mixed bytecode-parent result was unexpected")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("mixed bytecode-parent route did not start root, parent, and child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateBytecodeExecutor ||
+    starts[2] != CandidateTreeWalkerExecutor {
+    fail("bytecode parent did not retain an independent tree child route")
+  }
+}
+
+///|
+test "candidate runner materializes tree parent with bytecode child" {
+  let source =
+    #|function parent() {
+    #|  for (var value of [1]) {}
+    #|  function child() { return 7; }
+    #|  return child();
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "7" {
+    fail("mixed tree-parent result was unexpected")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("mixed tree-parent route did not start root, parent, and child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor {
+    fail("tree parent did not retain an independent bytecode child route")
+  }
+}
+
+///|
+// RED: a skipped expression must not consume the later expression's
+// candidate.  Both anonymous functions have the same consumer form and
+// signature, but the earlier branch is never entered and is tree-only due to
+// its unsupported body.
+test "RED: tree materialization resolves an executed anonymous site" {
+  let source =
+    #|function parent(value) {
+    #|  for (var guard of [1]) {}
+    #|  if (value) {
+    #|    let skipped = function(x) {
+    #|      for (var inner of [1]) {}
+    #|      return 10;
+    #|    };
+    #|  }
+    #|  let later = function(x) { return 20; };
+    #|  return later(0);
+    #|}
+    #|parent(false);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "20" {
+    fail("tree materialization consumed a skipped anonymous child")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("tree anonymous site did not start root, parent, and child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor {
+    fail("executed anonymous site did not retain its bytecode selection")
+  }
+}
+
+///|
+test "candidate tree routes hoisted declarations by syntax site" {
+  let source =
+    #|function parent() {
+    #|  for (var guard of [1]) {}
+    #|  let first = function(x) { return 10; };
+    #|  function hoisted() { return 20; }
+    #|  return first(0) + hoisted();
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "30" {
+    fail("hoisted declaration route returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 4 else {
+    fail("hoisted declaration route did not start both children")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor ||
+    starts[3] != CandidateBytecodeExecutor {
+    fail("hoisted declaration did not retain its site selection")
+  }
+}
+
+///|
+test "candidate tree repeats one materialization site without consumption" {
+  let source =
+    #|function parent() {
+    #|  for (var guard of [1]) {}
+    #|  let total = 0;
+    #|  for (var value of [1, 2]) {
+    #|    let increment = function(x) { return 2; };
+    #|    total += increment(value);
+    #|  }
+    #|  return total;
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "4" {
+    fail("repeated materialization site returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 4 else {
+    fail("repeated materialization site did not start both iterations")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor ||
+    starts[3] != CandidateBytecodeExecutor {
+    fail(
+      "repeated materialization site changed executor selection: " +
+      candidate_started_executor_labels_for_wb(evidence),
+    )
+  }
+}
+
+///|
+test "candidate tree separates same-name same-signature siblings" {
+  let source =
+    #|function parent(value) {
+    #|  for (var guard of [1]) {}
+    #|  if (value) {
+    #|    let same = function same(x) {
+    #|      for (var inner of [1]) {}
+    #|      return 10;
+    #|    };
+    #|    return same(0);
+    #|  }
+    #|  let same = function same(x) { return 20; };
+    #|  return same(0);
+    #|}
+    #|parent(false) + parent(true);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "30" {
+    fail("same-name sibling route returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 5 else {
+    fail("same-name sibling route did not start both activations")
+  }
+  if starts[0] != CandidateTreeWalkerExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor ||
+    starts[3] != CandidateTreeWalkerExecutor ||
+    starts[4] != CandidateTreeWalkerExecutor {
+    fail(
+      "same-name siblings were paired by runtime order: " +
+      candidate_started_executor_labels_for_wb(evidence),
+    )
+  }
+}
+
+///|
+test "candidate tree restores site routing after abrupt activation" {
+  let source =
+    #|function parent(shouldThrow) {
+    #|  for (var guard of [1]) {}
+    #|  if (shouldThrow) {
+    #|    try {
+    #|      throw "stop";
+    #|      let skipped = function(x) {
+    #|        for (var inner of [1]) {}
+    #|        return 10;
+    #|      };
+    #|    } catch (error) {}
+    #|    throw "stop";
+    #|  }
+    #|  let later = function() { return 9; };
+    #|  return later();
+    #|}
+    #|try { parent(true); } catch (error) {}
+    #|parent(false);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "9" {
+    fail("post-abrupt activation returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 4 else {
+    fail("post-abrupt activation did not restart the parent route")
+  }
+  if starts[0] != CandidateTreeWalkerExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateTreeWalkerExecutor ||
+    starts[3] != CandidateBytecodeExecutor {
+    fail(
+      "post-abrupt activation reused stale routing state: " +
+      candidate_started_executor_labels_for_wb(evidence),
+    )
+  }
+}
+
+///|
+test "candidate tree excludes fresh direct eval definitions from its plan" {
+  let source =
+    #|function parent() {
+    #|  for (var guard of [1]) {}
+    #|  eval("var dynamic = function(x) { return 99; };");
+    #|  let later = function(x) { return 20; };
+    #|  return later(0);
+    #|}
+    #|parent();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "20" {
+    fail("direct eval consumed the enclosing candidate plan")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("direct eval route did not retain the later candidate child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor {
+    fail("direct eval changed the enclosing child route")
+  }
+}
+
+///|
+test "candidate verification rejects duplicate materialization sites" {
+  let program = prepare_candidate_program(
+    @parser.parse("function first() {}; function second() {};").stmts,
+  )
+  let first = program.root.children[0]
+  let second = {
+    ..program.root.children[1],
+    materialization_site: first.materialization_site,
+  }
+  let duplicate_root = { ..program.root, children: [first, second] }
+  let duplicate_program = { ..program, root: duplicate_root }
+  let rejected = try {
+    verify_candidate_program(duplicate_program)
+    false
+  } catch {
+    _ => true
+  }
+  if !rejected {
+    fail("candidate verification accepted duplicate materialization sites")
   }
 }
 
