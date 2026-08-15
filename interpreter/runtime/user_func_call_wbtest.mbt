@@ -14,6 +14,7 @@ fn user_func_call_test_fixture(
     has_name_binding: false,
     is_method: false,
     source_text: None,
+    materializer: None,
   }
   (data, make_func(data))
 }

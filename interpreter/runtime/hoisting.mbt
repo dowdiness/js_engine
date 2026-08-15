@@ -1306,19 +1306,17 @@ fn Interpreter::hoist_declarations(
         }
       FuncDecl(name, params, body, _, source_text) => {
         validate_function_signature(strict, Some(name), params, body)
-        let func_data : FuncData = {
-          name: Some(name),
-          params,
-          body,
-          closure: env,
-          strict: is_function_strict(strict, body),
-          // FunctionDeclarations don't get a §15.2.5 self-name binding:
-          // the name is hoisted into the enclosing VarEnvironment instead.
-          has_name_binding: false,
-          is_method: false,
-          source_text,
-        }
-        let func_val = make_func(func_data)
+        let func_val = _self.materialize_function(
+          FunctionMaterializationRequest(
+            form=FunctionDeclaration,
+            name=Some(name),
+            parameters=SimpleFunctionParameters(params),
+            body=body,
+            closure=env,
+            strict=is_function_strict(strict, body),
+            source_text=source_text,
+          ),
+        )
         if env.bindings.contains(name) {
           env.assign(name, func_val)
         } else {
@@ -1337,18 +1335,17 @@ fn Interpreter::hoist_declarations(
           rest_param,
           body,
         )
-        let func_data : FuncDataExt = {
-          name: Some(name),
-          params,
-          rest_param,
-          body,
-          closure: env,
-          strict: is_function_strict(strict, body),
-          has_name_binding: false,
-          is_method: false,
-          source_text,
-        }
-        let func_val = make_func_ext(func_data)
+        let func_val = _self.materialize_function(
+          FunctionMaterializationRequest(
+            form=FunctionDeclaration,
+            name=Some(name),
+            parameters=ExtendedFunctionParameters(params, rest_param),
+            body=body,
+            closure=env,
+            strict=is_function_strict(strict, body),
+            source_text=source_text,
+          ),
+        )
         if env.bindings.contains(name) {
           env.assign(name, func_val)
         } else {
@@ -1509,22 +1506,21 @@ fn Interpreter::hoist_declarations(
       // export default function name() {} - hoist the named function
       ExportDefaultDecl(FuncExpr(Some(name), params, body, _, source_text), _) => {
         validate_function_signature(strict, Some(name), params, body)
-        let func_data : FuncData = {
-          name: Some(name),
-          params,
-          body,
-          closure: env,
-          strict: is_function_strict(strict, body),
-          // `export default function f() {}` is a HoistableDeclaration;
-          // the name is bound in the module env, not on a funcEnv.
-          has_name_binding: false,
-          is_method: false,
-          source_text,
-        }
+        let func_val = _self.materialize_function(
+          FunctionMaterializationRequest(
+            form=FunctionDeclaration,
+            name=Some(name),
+            parameters=SimpleFunctionParameters(params),
+            body=body,
+            closure=env,
+            strict=is_function_strict(strict, body),
+            source_text=source_text,
+          ),
+        )
         if env.bindings.contains(name) {
-          env.assign(name, make_func(func_data))
+          env.assign(name, func_val)
         } else {
-          env.def(name, make_func(func_data), VarBinding)
+          env.def(name, func_val, VarBinding)
         }
       }
       ExportDefaultDecl(
@@ -1538,21 +1534,21 @@ fn Interpreter::hoist_declarations(
           rest_param,
           body,
         )
-        let func_data : FuncDataExt = {
-          name: Some(name),
-          params,
-          rest_param,
-          body,
-          closure: env,
-          strict: is_function_strict(strict, body),
-          has_name_binding: false,
-          is_method: false,
-          source_text,
-        }
+        let func_val = _self.materialize_function(
+          FunctionMaterializationRequest(
+            form=FunctionDeclaration,
+            name=Some(name),
+            parameters=ExtendedFunctionParameters(params, rest_param),
+            body=body,
+            closure=env,
+            strict=is_function_strict(strict, body),
+            source_text=source_text,
+          ),
+        )
         if env.bindings.contains(name) {
-          env.assign(name, make_func_ext(func_data))
+          env.assign(name, func_val)
         } else {
-          env.def(name, make_func_ext(func_data), VarBinding)
+          env.def(name, func_val, VarBinding)
         }
       }
       _ => ()
@@ -1689,16 +1685,17 @@ fn Interpreter::instantiate_block_declarations(
       FuncDecl(name, params, body, _, source_text) => {
         ensure_block_function_binding(env, name)
         validate_function_signature(strict, Some(name), params, body)
-        let func_val = make_func({
-          name: Some(name),
-          params,
-          body,
-          closure: env,
-          strict: is_function_strict(strict, body),
-          has_name_binding: false,
-          is_method: false,
-          source_text,
-        })
+        let func_val = self.materialize_function(
+          FunctionMaterializationRequest(
+            form=FunctionDeclaration,
+            name=Some(name),
+            parameters=SimpleFunctionParameters(params),
+            body=body,
+            closure=env,
+            strict=is_function_strict(strict, body),
+            source_text=source_text,
+          ),
+        )
         initialize_block_function_binding(env, name, func_val)
       }
       FuncDeclExt(name, params, rest_param, body, _, source_text) => {
@@ -1710,17 +1707,17 @@ fn Interpreter::instantiate_block_declarations(
           rest_param,
           body,
         )
-        let func_val = make_func_ext({
-          name: Some(name),
-          params,
-          rest_param,
-          body,
-          closure: env,
-          strict: is_function_strict(strict, body),
-          has_name_binding: false,
-          is_method: false,
-          source_text,
-        })
+        let func_val = self.materialize_function(
+          FunctionMaterializationRequest(
+            form=FunctionDeclaration,
+            name=Some(name),
+            parameters=ExtendedFunctionParameters(params, rest_param),
+            body=body,
+            closure=env,
+            strict=is_function_strict(strict, body),
+            source_text=source_text,
+          ),
+        )
         initialize_block_function_binding(env, name, func_val)
       }
       GeneratorDecl(name, params, body, _, source_text) => {

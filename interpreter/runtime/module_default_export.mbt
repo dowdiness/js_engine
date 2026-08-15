@@ -182,6 +182,7 @@ fn Interpreter::predeclare_anonymous_default_function_export(
     has_name_binding: false,
     is_method: false,
     source_text,
+    materializer: None,
   })
   set_function_name(value, "default")
   self.module_exports["default"] = value
@@ -207,6 +208,7 @@ fn Interpreter::predeclare_anonymous_default_function_export_ext(
     has_name_binding: false,
     is_method: false,
     source_text,
+    materializer: None,
   })
   set_function_name(value, "default")
   self.module_exports["default"] = value

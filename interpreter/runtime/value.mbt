@@ -17,6 +17,9 @@ pub(all) struct FuncData {
   // TypeError when called via `new`. Class methods use a separate path.
   is_method : Bool
   source_text : String?
+  // Optional executor-neutral capability retained by candidate-owned
+  // function values for independent child materialization.
+  materializer : FunctionMaterializer?
 }
 
 ///|
@@ -34,6 +37,9 @@ pub(all) struct FuncDataExt {
   // TypeError when called via `new`. Class methods use a separate path.
   is_method : Bool
   source_text : String?
+  // Optional executor-neutral capability retained by candidate-owned
+  // function values for independent child materialization.
+  materializer : FunctionMaterializer?
 }
 
 ///|

@@ -560,19 +560,17 @@ fn Interpreter::exec_stmt(
       guard !function_decl_is_hoisted_noop(env, name) else {
         return Normal(Undefined)
       }
-      let func_data : FuncData = {
-        name: Some(name),
-        params,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        // FunctionDeclaration execution path — name binds in enclosing
-        // VarEnvironment, no dedicated funcEnv.
-        has_name_binding: false,
-        is_method: false,
-        source_text,
-      }
-      let func_val = make_func(func_data)
+      let func_val = self.materialize_function(
+        FunctionMaterializationRequest(
+          form=FunctionDeclaration,
+          name=Some(name),
+          parameters=SimpleFunctionParameters(params),
+          body=body,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text=source_text,
+        ),
+      )
       self.bind_function_decl_value(ctx, env, name, func_val)
       Normal(Undefined)
     }
@@ -1460,18 +1458,17 @@ fn Interpreter::exec_stmt(
       guard !function_decl_is_hoisted_noop(env, name) else {
         return Normal(Undefined)
       }
-      let func_data : FuncDataExt = {
-        name: Some(name),
-        params,
-        rest_param,
-        body,
-        closure: env,
-        strict: is_function_strict(ctx.strict, body),
-        has_name_binding: false,
-        is_method: false,
-        source_text,
-      }
-      let func_val = make_func_ext(func_data)
+      let func_val = self.materialize_function(
+        FunctionMaterializationRequest(
+          form=FunctionDeclaration,
+          name=Some(name),
+          parameters=ExtendedFunctionParameters(params, rest_param),
+          body=body,
+          closure=env,
+          strict=is_function_strict(ctx.strict, body),
+          source_text=source_text,
+        ),
+      )
       self.bind_function_decl_value(ctx, env, name, func_val)
       Normal(Undefined)
     }

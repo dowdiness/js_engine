@@ -2241,6 +2241,7 @@ fn executor_activation_deep_acyclic_tree_call_graph(
     has_name_binding: false,
     is_method: false,
     source_text: None,
+    materializer: None,
   }
   interp.global.def_builtin(leaf_name, make_func(leaf_data))
   for index = depth - 1; index >= 0; index = index - 1 {
@@ -2255,6 +2256,7 @@ fn executor_activation_deep_acyclic_tree_call_graph(
       has_name_binding: false,
       is_method: false,
       source_text: None,
+      materializer: None,
     }
     interp.global.def_builtin(name, make_func(data))
   }
@@ -3727,6 +3729,7 @@ test "tree admission rejects with proxy closures without preflight traps" {
     has_name_binding: false,
     is_method: false,
     source_text: template.source_text,
+    materializer: None,
   })
   interp.global.def_builtin("savedProxyCall", saved)
   let control = ExecutionControl(

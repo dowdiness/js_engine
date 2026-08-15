@@ -292,37 +292,34 @@ fn Interpreter::create_class(
           FuncExpr(fn_name, params, body, _, method_source_text) => {
             let strict_body = ensure_strict_body(body)
             validate_function_signature(true, fn_name, params, strict_body)
-            let func_data : FuncData = {
-              name: fn_name,
-              params,
-              body: strict_body,
-              closure: method_closure,
-              strict: true,
-              // Class methods don't get a §15.2.5 self-name binding.
-              has_name_binding: false,
-              // Class MethodDefinitions do not go through MakeConstructor.
-              is_method: true,
-              source_text: method_source_text,
-            }
-            make_func(func_data)
+            self.materialize_function(
+              FunctionMaterializationRequest(
+                form=MethodFunction,
+                name=fn_name,
+                parameters=SimpleFunctionParameters(params),
+                body=strict_body,
+                closure=method_closure,
+                strict=true,
+                source_text=method_source_text,
+              ),
+            )
           }
           FuncExprExt(fn_name, params, rest, body, _, method_source_text) => {
             let strict_body = ensure_strict_body(body)
             validate_function_signature_ext(
               true, fn_name, params, rest, strict_body,
             )
-            let func_data : FuncDataExt = {
-              name: fn_name,
-              params,
-              rest_param: rest,
-              body: strict_body,
-              closure: method_closure,
-              strict: true,
-              has_name_binding: false,
-              is_method: true,
-              source_text: method_source_text,
-            }
-            make_func_ext(func_data)
+            self.materialize_function(
+              FunctionMaterializationRequest(
+                form=MethodFunction,
+                name=fn_name,
+                parameters=ExtendedFunctionParameters(params, rest),
+                body=strict_body,
+                closure=method_closure,
+                strict=true,
+                source_text=method_source_text,
+              ),
+            )
           }
           // Generator/async methods: fast path with has_name_binding=false.
           // Class MethodDefinitionEvaluation must not create a FunctionExpressionName

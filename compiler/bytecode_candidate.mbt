@@ -68,6 +68,7 @@ priv struct CandidateFunction {
   name : String?
   signature : CandidateFunctionSignature
   body : Array[@ast.Stmt]
+  strict : Bool
   source_text : String?
   is_method : Bool
   consumer_form : BytecodeFunctionConsumerForm?
@@ -94,6 +95,7 @@ priv struct CandidateProgram {
   program_identity : Ref[Unit]
   identity_authority : CandidateIdentityAuthority
   root : CandidateFunction
+  script_preparation : @runtime.CompiledScriptPreparation?
 }
 
 ///|
@@ -1506,6 +1508,7 @@ fn candidate_materialize_function(
     name: plan.name,
     signature: plan.signature,
     body: plan.body.copy(),
+    strict: plan.enclosing_strict,
     source_text: plan.source_text,
     is_method: plan.is_method,
     consumer_form: plan.consumer_form,
@@ -1851,10 +1854,40 @@ fn prepare_candidate_program(
     root_plan, allocator,
   )
   let root = candidate_materialize_function(root_plan, allocator, None, [])
+  let script_preparation = match root.bytecode {
+    Some(bytecode) => {
+      let lexical_bindings = bytecode.function.preparation.lexical_bindings.map(binding => {
+        let kind = match binding.kind {
+          BytecodeLet => @runtime.LetBinding
+          BytecodeConst => @runtime.ConstBinding
+        }
+        @runtime.CompiledScriptLexicalBinding(kind~, name=binding.name)
+      })
+      let function_names = bytecode.function.preparation.function_declarations.map(
+        declaration => declaration.name,
+      )
+      let settlement = @runtime.prepare_compiled_script_early_error(
+        stmts,
+        root_strict,
+        provenance_token=Some(allocator.val.program_identity),
+      )
+      Some(
+        @runtime.CompiledScriptPreparation::with_early_error_settlement(
+          strict=root_strict,
+          var_names=bytecode.function.env_var_hoist_names,
+          function_names=function_names,
+          lexical_bindings=lexical_bindings,
+          settlement=settlement,
+        ),
+      )
+    }
+    None => None
+  }
   let program = {
     program_identity: allocator.val.program_identity,
     identity_authority,
     root,
+    script_preparation,
   }
   verify_candidate_program(program)
   program

@@ -1055,6 +1055,9 @@ fn Interpreter::try_tree_executor_admitted_call(
 ) -> Value? raise Error {
   guard callee is Object(object_data) else { return None }
   guard object_data.callable is Some(UserFunc(data)) else { return None }
+  // Candidate-owned functions carry their own executor-neutral capability;
+  // they must never be re-admitted into the legacy tree executor gate.
+  guard data.materializer is None else { return None }
   let admission = match tree_executor_callable_admission(callee, data, args) {
     Some(admission) => admission
     None => return None
@@ -1082,73 +1085,75 @@ pub fn Interpreter::call_value(
   let (current_callee, current_this_val, current_args) = self.resolve_call_forwarding(
     callee, this_val, args,
   )
-  match
-    self.preflight_changing_receiver_call(
-      current_callee, current_this_val, current_args, loc,
-    ) {
-    Some(preflight) => {
-      let registry = self.seal_changing_receiver_registry(
-        preflight, current_callee, current_this_val, current_args, loc,
-      )
-      let completion = self.run_activation_dispatch_changing_receiver_call(
-        DispatchCallRequest(
-          callee=current_callee,
-          this_value=current_this_val,
-          args=current_args,
-          loc~,
-        ),
-        registry,
-      )
-      return activation_dispatch_root_value(completion) catch {
-        ExecutionControlError(StackDepthLimit) as depth_error => {
-          let translated = JsException(
-            js_error_to_value_with_env(depth_error, Some(self.global)),
-          )
-          remap_observed_source_failure(
-            self.realm_state,
-            depth_error,
-            translated,
-          )
-          raise translated
+  if !callable_has_function_materializer(current_callee) {
+    match
+      self.preflight_changing_receiver_call(
+        current_callee, current_this_val, current_args, loc,
+      ) {
+      Some(preflight) => {
+        let registry = self.seal_changing_receiver_registry(
+          preflight, current_callee, current_this_val, current_args, loc,
+        )
+        let completion = self.run_activation_dispatch_changing_receiver_call(
+          DispatchCallRequest(
+            callee=current_callee,
+            this_value=current_this_val,
+            args=current_args,
+            loc~,
+          ),
+          registry,
+        )
+        return activation_dispatch_root_value(completion) catch {
+          ExecutionControlError(StackDepthLimit) as depth_error => {
+            let translated = JsException(
+              js_error_to_value_with_env(depth_error, Some(self.global)),
+            )
+            remap_observed_source_failure(
+              self.realm_state,
+              depth_error,
+              translated,
+            )
+            raise translated
+          }
+          error => raise error
         }
-        error => raise error
       }
+      None => ()
     }
-    None => ()
-  }
-  match
-    self.preflight_direct_numeric_recursion_call(
-      current_callee, current_this_val, current_args, loc,
-    ) {
-    Some(preflight) => {
-      let registry = self.seal_direct_numeric_recursion_registry(
-        preflight, current_callee, current_this_val, current_args, loc,
-      )
-      let completion = self.run_activation_dispatch_numeric_call(
-        DispatchCallRequest(
-          callee=current_callee,
-          this_value=current_this_val,
-          args=current_args,
-          loc~,
-        ),
-        registry,
-      )
-      return activation_dispatch_root_value(completion) catch {
-        ExecutionControlError(StackDepthLimit) as depth_error => {
-          let translated = JsException(
-            js_error_to_value_with_env(depth_error, Some(self.global)),
-          )
-          remap_observed_source_failure(
-            self.realm_state,
-            depth_error,
-            translated,
-          )
-          raise translated
+    match
+      self.preflight_direct_numeric_recursion_call(
+        current_callee, current_this_val, current_args, loc,
+      ) {
+      Some(preflight) => {
+        let registry = self.seal_direct_numeric_recursion_registry(
+          preflight, current_callee, current_this_val, current_args, loc,
+        )
+        let completion = self.run_activation_dispatch_numeric_call(
+          DispatchCallRequest(
+            callee=current_callee,
+            this_value=current_this_val,
+            args=current_args,
+            loc~,
+          ),
+          registry,
+        )
+        return activation_dispatch_root_value(completion) catch {
+          ExecutionControlError(StackDepthLimit) as depth_error => {
+            let translated = JsException(
+              js_error_to_value_with_env(depth_error, Some(self.global)),
+            )
+            remap_observed_source_failure(
+              self.realm_state,
+              depth_error,
+              translated,
+            )
+            raise translated
+          }
+          error => raise error
         }
-        error => raise error
       }
+      None => ()
     }
-    None => ()
   }
   // Fast path: skip both realm-proto wrapper layers when every active-override
   // slot is None and every callee stamped proto matches the main realm's (or is
@@ -1477,41 +1482,44 @@ fn Interpreter::call_value_impl(
     Object(obj_data) =>
       match obj_data.callable {
         Some(UserFunc(data)) => {
-          // §19.2.1.3 gate reset (#A.6): any function call entry clears
-          // the signal so a nested invocation (e.g. an IIFE in an outer
-          // function's param default) does not inherit the outer state.
-          let gate_scope = self.begin_simple_user_func_parameter_gate()
-          let result : Value = try {
-            let prepared = self.prepare_user_func_activation(
-              callee, this_val, args, data,
-            )
-            let exec_result = self.exec_stmts(
-              prepared.ctx,
-              data.body,
-              prepared.env,
-            )
-            raise_if_break_continue(exec_result)
-            match exec_result {
-              Normal(_) => Undefined
-              ReturnSignal(v) => v
-              _ => Undefined
+          self.run_materialized_function(data.materializer, fn() raise {
+            // §19.2.1.3 gate reset (#A.6): any function call entry clears
+            // the signal so a nested invocation (e.g. an IIFE in an outer
+            // function's param default) does not inherit the outer state.
+            let gate_scope = self.begin_simple_user_func_parameter_gate()
+            let result : Value = try {
+              let prepared = self.prepare_user_func_activation(
+                callee, this_val, args, data,
+              )
+              let exec_result = self.exec_stmts(
+                prepared.ctx,
+                data.body,
+                prepared.env,
+              )
+              raise_if_break_continue(exec_result)
+              match exec_result {
+                Normal(_) => Undefined
+                ReturnSignal(v) => v
+                _ => Undefined
+              }
+            } catch {
+              e => {
+                self.finish_simple_user_func_parameter_gate(gate_scope)
+                raise e
+              }
             }
-          } catch {
-            e => {
-              self.finish_simple_user_func_parameter_gate(gate_scope)
-              raise e
-            }
-          }
-          self.finish_simple_user_func_parameter_gate(gate_scope)
-          result
+            self.finish_simple_user_func_parameter_gate(gate_scope)
+            result
+          })
         }
         Some(ArrowFunc(data)) => {
-          // §19.2.1.3 gate reset (#A.6), same rationale as UserFunc above.
-          let saved_in_default = self.in_nonarrow_param_default_eval
-          let saved_param_default_conflicts = self.param_default_eval_var_conflicts
-          self.in_nonarrow_param_default_eval = false
-          self.param_default_eval_var_conflicts = None
-          let result : Value = try {
+          self.run_materialized_function(data.materializer, fn() raise {
+            // §19.2.1.3 gate reset (#A.6), same rationale as UserFunc above.
+            let saved_in_default = self.in_nonarrow_param_default_eval
+            let saved_param_default_conflicts = self.param_default_eval_var_conflicts
+            self.in_nonarrow_param_default_eval = false
+            self.param_default_eval_var_conflicts = None
+            let result : Value = try {
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
             let func_ctx : ExecContext = {
@@ -1536,18 +1544,20 @@ fn Interpreter::call_value_impl(
               ReturnSignal(v) => v
               _ => Undefined
             }
-          } catch {
-            e => {
-              self.in_nonarrow_param_default_eval = saved_in_default
-              self.param_default_eval_var_conflicts = saved_param_default_conflicts
-              raise e
+            } catch {
+              e => {
+                self.in_nonarrow_param_default_eval = saved_in_default
+                self.param_default_eval_var_conflicts = saved_param_default_conflicts
+                raise e
+              }
             }
-          }
-          self.in_nonarrow_param_default_eval = saved_in_default
-          self.param_default_eval_var_conflicts = saved_param_default_conflicts
-          result
+            self.in_nonarrow_param_default_eval = saved_in_default
+            self.param_default_eval_var_conflicts = saved_param_default_conflicts
+            result
+          })
         }
         Some(UserFuncExt(data)) => {
+          self.run_materialized_function(data.materializer, fn() raise {
           // §15.2.5: for named function expressions, install the self-name
           // on a dedicated func_env sitting between data.closure and
           // param_env, so default expressions that close over param_env
@@ -1616,15 +1626,17 @@ fn Interpreter::call_value_impl(
           // Self-name lives on self_name_env; body-local `var/let/const`
           // of the same name naturally shadows via lexical lookup, and a
           // param of the same name sits on param_env which shadows too.
-          self.bind_ext_params_and_exec_body(
-            data,
-            args,
-            param_env,
-            func_ctx,
-            is_arrow=false,
-          )
+            self.bind_ext_params_and_exec_body(
+              data,
+              args,
+              param_env,
+              func_ctx,
+              is_arrow=false,
+            )
+          })
         }
         Some(ArrowFuncExt(data)) => {
+          self.run_materialized_function(data.materializer, fn() raise {
           // Arrows skip `arguments`/this/<new.target> install
           // (ThisMode=lexical per §10.2.11 step 18) and have no self-name
           // wrapper — param_env's parent is just `data.closure`.
@@ -1634,13 +1646,14 @@ fn Interpreter::call_value_impl(
             strict: data.strict,
             current_generator: None,
           }
-          self.bind_ext_params_and_exec_body(
-            data,
-            args,
-            param_env,
-            func_ctx,
-            is_arrow=true,
-          )
+            self.bind_ext_params_and_exec_body(
+              data,
+              args,
+              param_env,
+              func_ctx,
+              is_arrow=true,
+            )
+          })
         }
         Some(BoundFunc(target, bound_this, bound_args)) => {
           let all_args : Array[Value] = []

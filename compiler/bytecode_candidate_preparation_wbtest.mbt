@@ -211,6 +211,129 @@ test "candidate root selection retains lowering fallback" {
 }
 
 ///|
+fn candidate_run_with_evidence_for_wb(
+  source : String,
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  let interp = @interpreter.new_interpreter()
+  try {
+    run_candidate_program_with_evidence(interp, @parser.parse(source).stmts)
+  } catch {
+    @runtime.JsException(value) =>
+      fail("candidate execution threw: " + value.to_string())
+    error => fail("candidate execution failed: " + error.to_string())
+  }
+}
+
+///|
+fn candidate_started_executors_for_wb(
+  evidence : Ref[CandidateRouteEvidence],
+) -> Array[CandidateRouteExecutor] {
+  evidence.val.events.map(event => match event {
+    CandidateRouteStartedEvent(started) => Some(started.executor)
+    _ => None
+  }).filter_map(x => x)
+}
+
+///|
+test "candidate runner starts an eligible root through bytecode" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    "function answer() { return 42; } answer();",
+  )
+  if value.to_string() != "42" {
+    fail("eligible candidate root returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 2 else {
+    fail("candidate root and callable did not both start")
+  }
+  if starts[0] != CandidateBytecodeExecutor {
+    fail("eligible root did not start through bytecode")
+  }
+  guard evidence.val.events.length() == starts.length() * 3 else {
+    fail("candidate route evidence did not close every activation")
+  }
+}
+
+///|
+test "candidate runner starts unsupported root through tree before effects" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    "for (var value of [1]) {}; 42;",
+  )
+  if value.to_string() != "42" {
+    fail("unsupported candidate root returned an unexpected value")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() == 1 else {
+    fail("unsupported root started more than one executor")
+  }
+  if starts[0] != CandidateTreeWalkerExecutor {
+    fail("unsupported root did not start through tree walker")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) => match prepared.decision {
+      UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+      _ => fail("unsupported root was not decided before tree start")
+    }
+    _ => fail("candidate root did not prepare before starting")
+  }
+}
+
+///|
+test "candidate runner materializes bytecode parent with tree child" {
+  let source =
+    #|function parent() {
+    #|  function child() { for (var value of [1]) {} }
+    #|  return child();
+    #|}
+    #|parent();
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  let parent = program.root.children[0]
+  guard parent.bytecode is Some(bytecode) else {
+    fail("mixed parent was not bytecode")
+  }
+  if bytecode.function.preparation.function_declarations.length() != 1 {
+    fail("mixed bytecode parent did not retain its declaration")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "undefined" {
+    fail("mixed bytecode-parent result was unexpected")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("mixed bytecode-parent route did not start root, parent, and child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateBytecodeExecutor ||
+    starts[2] != CandidateTreeWalkerExecutor {
+    fail("bytecode parent did not retain an independent tree child route")
+  }
+}
+
+///|
+test "candidate runner materializes tree parent with bytecode child" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    #|function parent() {
+    #|  for (var value of [1]) {}
+    #|  function child() { return 7; }
+    #|  return child();
+    #|}
+    #|parent();
+  )
+  if value.to_string() != "7" {
+    fail("mixed tree-parent result was unexpected")
+  }
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 3 else {
+    fail("mixed tree-parent route did not start root, parent, and child")
+  }
+  if starts[0] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
+    starts[2] != CandidateBytecodeExecutor {
+    fail("tree parent did not retain an independent bytecode child route")
+  }
+}
+
+///|
 test "candidate tree retains eligible descendants of an unsupported parent" {
   let source =
     #|function parent() {
