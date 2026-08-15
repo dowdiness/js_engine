@@ -50,6 +50,25 @@ priv struct BytecodeUnsupported {
 }
 
 ///|
+// Function-form rejection is owned by lowering.  Candidate collection may
+// identify a syntactic function boundary, but it supplies this form to the
+// same typed lowering entry that ordinary compilation uses for the boundary's
+// unsupported outcome.
+priv enum BytecodeFunctionForm {
+  OrdinaryFunction
+  GeneratorDeclarationFunction
+  GeneratorExpressionFunction
+  AsyncFunctionDeclarationFunction
+  AsyncFunctionExpressionFunction
+  AsyncArrowFunction
+  AsyncGeneratorDeclarationFunction
+  AsyncGeneratorExpressionFunction
+  ObjectLiteralGeneratorMethodFunction
+  ObjectLiteralAsyncMethodFunction
+  ObjectLiteralAsyncGeneratorMethodFunction
+}
+
+///|
 fn BytecodeUnsupported::BytecodeUnsupported(
   reason : BytecodeUnsupportedReason,
   loc : @token.Loc,
@@ -153,6 +172,33 @@ fn bytecode_reject(
   loc : @token.Loc,
 ) -> Unit raise BytecodeUnsupportedSignal {
   raise BytecodeUnsupportedSignal(BytecodeUnsupported(reason, loc))
+}
+
+///|
+fn bytecode_reject_function_form(
+  form : BytecodeFunctionForm,
+  loc : @token.Loc,
+) -> Unit raise BytecodeUnsupportedSignal {
+  match form {
+    OrdinaryFunction => ()
+    GeneratorDeclarationFunction => bytecode_reject(GeneratorDeclaration, loc)
+    GeneratorExpressionFunction => bytecode_reject(GeneratorExpression, loc)
+    AsyncFunctionDeclarationFunction =>
+      bytecode_reject(AsyncFunctionDeclaration, loc)
+    AsyncFunctionExpressionFunction =>
+      bytecode_reject(AsyncFunctionExpression, loc)
+    AsyncArrowFunction => bytecode_reject(AsyncArrowFunction, loc)
+    AsyncGeneratorDeclarationFunction =>
+      bytecode_reject(AsyncGeneratorDeclaration, loc)
+    AsyncGeneratorExpressionFunction =>
+      bytecode_reject(AsyncGeneratorExpression, loc)
+    ObjectLiteralGeneratorMethodFunction =>
+      bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
+    ObjectLiteralAsyncMethodFunction =>
+      bytecode_reject(ObjectLiteralAsyncMethodProperty, loc)
+    ObjectLiteralAsyncGeneratorMethodFunction =>
+      bytecode_reject(ObjectLiteralAsyncGeneratorMethodProperty, loc)
+  }
 }
 
 ///|
@@ -1666,9 +1712,26 @@ fn compile_bytecode_function(
   is_method? : Bool = false,
   header_provenance? : BytecodeHeaderProvenance? = None,
   activation_kind? : BytecodeActivationKind = FunctionActivation,
+  candidate_identity_plan? : CandidateIdentityPlan? = None,
+  candidate_mode? : Bool = false,
+  function_form? : BytecodeFunctionForm = OrdinaryFunction,
+  function_form_loc? : @token.Loc? = None,
 ) -> BytecodeFunction raise Error {
   let body_has_use_strict = @static_semantics.has_use_strict(body)
   let function_strict = enclosing_strict || body_has_use_strict
+  match function_form {
+    OrdinaryFunction => ()
+    _ => {
+      let loc = match function_form_loc {
+        Some(loc) => loc
+        None =>
+          raise @errors.InternalError(
+            message="candidate function form is missing its source location",
+          )
+      }
+      bytecode_reject_function_form(function_form, loc)
+    }
+  }
   let signature_name = if is_method { None } else { name }
   // Validate this function's own parameter/body combination before lowering
   // nested children, preserving header-before-body diagnostic order.
@@ -1680,7 +1743,10 @@ fn compile_bytecode_function(
     body,
     use_local_slots=use_local_slots && rest_param is None,
   )
-  let source_point_owner = allocate_source_point_owner(owner_allocator)
+  let source_point_owner = match candidate_identity_plan {
+    Some(identity_plan) => identity_plan.source_point_owner
+    None => allocate_source_point_owner(owner_allocator)
+  }
   let builder = BytecodeBuilder::BytecodeBuilder(
     plan,
     template_cache_key_prefix,
@@ -1688,6 +1754,8 @@ fn compile_bytecode_function(
     owner_allocator,
     source_unit~,
     enclosing_strict=function_strict,
+    candidate_identity_plan~,
+    candidate_mode~,
   )
   for stmt in body {
     builder.compile_stmt(stmt)
@@ -1900,39 +1968,177 @@ fn BytecodeBuilder::add_function(
   call_self_name? : Bool = false,
   is_method? : Bool = false,
 ) -> Int raise Error {
-  let idx = self.children.length()
+  let idx = if self.candidate_mode {
+    let index = self.candidate_child_slot_count
+    self.candidate_child_slot_count += 1
+    index
+  } else {
+    self.children.length()
+  }
   let template_cache_key_prefix = self.template_cache_key_prefix +
     "/" +
     idx.to_string()
-  self.children.push(
-    compile_bytecode_function(
-      name,
-      params,
-      body,
-      rest_param,
-      self.owner_allocator,
-      source_text~,
-      call_self_name~,
-      template_cache_key_prefix~,
-      source_unit=self.source_unit,
-      enclosing_strict=self.enclosing_strict,
-      is_method~,
-      header_provenance=Some(
-        BytecodeHeaderProvenance(
-          self.owner_allocator.val.program_identity,
-          name,
-          params.copy(),
-          rest_param,
-          self.enclosing_strict,
-          self.source_point_owner,
-          idx,
-          consumer_form,
-          source_text,
-        ),
-      ),
-    ),
+  let candidate_identity_plan = match self.candidate_identity_plan {
+    Some(identity_plan) => {
+      guard idx < identity_plan.children.length() else {
+        raise @errors.InternalError(
+          message="candidate identity plan is missing a child entry",
+        )
+      }
+      Some(identity_plan.children[idx])
+    }
+    None => None
+  }
+  let header = BytecodeHeaderProvenance(
+    self.owner_allocator.val.program_identity,
+    name,
+    params.copy(),
+    rest_param,
+    self.enclosing_strict,
+    self.source_point_owner,
+    idx,
+    consumer_form,
+    source_text,
   )
+  let child : BytecodeFunction? = if self.candidate_pending_unsupported_child {
+    self.candidate_pending_unsupported_child = false
+    None
+  } else {
+    Some(
+      compile_bytecode_function(
+        name,
+        params,
+        body,
+        rest_param,
+        self.owner_allocator,
+        source_text~,
+        call_self_name~,
+        template_cache_key_prefix~,
+        source_unit=self.source_unit,
+        enclosing_strict=self.enclosing_strict,
+        is_method~,
+        header_provenance=Some(header),
+        candidate_identity_plan~,
+        candidate_mode=self.candidate_mode,
+      ),
+    ) catch {
+      BytecodeUnsupportedSignal(unsupported) => {
+        guard self.candidate_mode else {
+          raise BytecodeUnsupportedSignal(unsupported)
+        }
+        None
+      }
+      error => raise error
+    }
+  }
+  match child {
+    Some(child) => self.children.push(child)
+    None => ()
+  }
   idx
+}
+
+///|
+// Candidate lowering retains the parent's instruction and preparation facts
+// while reserving a typed, non-executable child slot.  Ordinary lowering never
+// calls this path and keeps its existing unsupported rejection.
+fn BytecodeBuilder::add_candidate_unsupported_function(
+  self : BytecodeBuilder,
+  consumer_form : BytecodeFunctionConsumerForm,
+) -> Int raise Error {
+  guard self.candidate_mode else {
+    raise @errors.InternalError(
+      message="unsupported candidate child slot escaped candidate lowering",
+    )
+  }
+  let idx = self.candidate_child_slot_count
+  self.candidate_child_slot_count += 1
+  ignore(consumer_form)
+  idx
+}
+
+///|
+fn BytecodeBuilder::compile_candidate_unsupported_declaration(
+  self : BytecodeBuilder,
+  name : String,
+  consumer_form : BytecodeFunctionConsumerForm,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let fn_idx = self.add_candidate_unsupported_function(consumer_form)
+  self.function_declarations.push({
+    name,
+    child_index: fn_idx,
+    loc,
+    source_identity: self.child_source_identity(fn_idx, consumer_form),
+  })
+  let _ = self.emit(DeclareFunction(name, fn_idx))
+  self.emit_undefined_completion()
+}
+
+///|
+fn BytecodeBuilder::compile_candidate_unsupported_expression(
+  self : BytecodeBuilder,
+  name : String?,
+  consumer_form : BytecodeFunctionConsumerForm,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let fn_idx = self.add_candidate_unsupported_function(consumer_form)
+  let instruction = match consumer_form {
+    FunctionConsumer => MakeFunction(fn_idx)
+    NamedFunctionConsumer(name) => MakeNamedFunction(fn_idx, name)
+    MethodFunctionConsumer => MakeMethodFunction(fn_idx)
+    ComputedMethodFunctionConsumer => MakeComputedMethodFunction(fn_idx)
+    ArrowFunctionConsumer => MakeArrowFunction(fn_idx)
+    DeclareFunctionConsumer(_) =>
+      raise @errors.InternalError(
+        message="declaration consumer reached expression candidate lowering",
+      )
+  }
+  ignore(name)
+  let _ = self.emit_with_source_locations(instruction, [(ExpressionEntry, loc)])
+}
+
+///|
+fn BytecodeBuilder::child_source_identity(
+  self : BytecodeBuilder,
+  child_index : Int,
+  consumer_form : BytecodeFunctionConsumerForm,
+) -> BytecodeSourceIdentity raise Error {
+  match self.candidate_identity_plan {
+    Some(identity_plan) => {
+      guard child_index < identity_plan.children.length() else {
+        raise @errors.InternalError(
+          message="candidate identity plan is missing a declaration child",
+        )
+      }
+      BytecodeSourceIdentity::child(
+        self.owner_allocator.val.program_identity,
+        self.source_unit,
+        identity_plan.children[child_index].source_point_owner,
+        self.source_point_owner,
+        child_index,
+        consumer_form,
+      )
+    }
+    None =>
+      if self.candidate_mode {
+        // This preliminary lowering pass classifies the current function only;
+        // its identities are discarded before the canonical candidate plan is
+        // assigned.  Reserve an owner for a sparse unsupported slot instead of
+        // manufacturing a child function or indexing the compact child array.
+        let child_owner = allocate_source_point_owner(self.owner_allocator)
+        BytecodeSourceIdentity::child(
+          self.owner_allocator.val.program_identity,
+          self.source_unit,
+          child_owner,
+          self.source_point_owner,
+          child_index,
+          consumer_form,
+        )
+      } else {
+        self.children[child_index].source_identity
+      }
+  }
 }
 
 ///|
@@ -2410,13 +2616,16 @@ fn BytecodeBuilder::compile_stmt_body(
         name,
         child_index: fn_idx,
         loc: bytecode_stmt_loc(stmt),
-        source_identity: self.children[fn_idx].source_identity,
+        source_identity: self.child_source_identity(
+          fn_idx,
+          DeclareFunctionConsumer(name),
+        ),
       })
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
     FuncDeclExt(name, params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -2431,7 +2640,10 @@ fn BytecodeBuilder::compile_stmt_body(
         name,
         child_index: fn_idx,
         loc: bytecode_stmt_loc(stmt),
-        source_identity: self.children[fn_idx].source_identity,
+        source_identity: self.child_source_identity(
+          fn_idx,
+          DeclareFunctionConsumer(name),
+        ),
       })
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
@@ -2486,13 +2698,66 @@ fn BytecodeBuilder::compile_stmt_body(
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
-    GeneratorDecl(_, _, _, loc, _) | GeneratorDeclExt(_, _, _, _, loc, _) =>
-      bytecode_reject(GeneratorDeclaration, loc)
-    AsyncFuncDecl(_, _, _, loc, _) | AsyncFuncDeclExt(_, _, _, _, loc, _) =>
-      bytecode_reject(AsyncFunctionDeclaration, loc)
-    AsyncGeneratorDecl(_, _, _, loc, _)
-    | AsyncGeneratorDeclExt(_, _, _, _, loc, _) =>
-      bytecode_reject(AsyncGeneratorDeclaration, loc)
+    GeneratorDecl(name, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_declaration(
+          name,
+          DeclareFunctionConsumer(name),
+          loc,
+        )
+      } else {
+        bytecode_reject(GeneratorDeclaration, loc)
+      }
+    GeneratorDeclExt(name, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_declaration(
+          name,
+          DeclareFunctionConsumer(name),
+          loc,
+        )
+      } else {
+        bytecode_reject(GeneratorDeclaration, loc)
+      }
+    AsyncFuncDecl(name, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_declaration(
+          name,
+          DeclareFunctionConsumer(name),
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncFunctionDeclaration, loc)
+      }
+    AsyncFuncDeclExt(name, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_declaration(
+          name,
+          DeclareFunctionConsumer(name),
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncFunctionDeclaration, loc)
+      }
+    AsyncGeneratorDecl(name, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_declaration(
+          name,
+          DeclareFunctionConsumer(name),
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncGeneratorDeclaration, loc)
+      }
+    AsyncGeneratorDeclExt(name, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_declaration(
+          name,
+          DeclareFunctionConsumer(name),
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncGeneratorDeclaration, loc)
+      }
     ClassDecl(_, _, _, loc, _) => bytecode_reject(ClassDeclaration, loc)
     WithStmt(_, _, loc) => bytecode_reject(WithStatement, loc)
     ImportDecl(_, _, _, _, _, loc) => bytecode_reject(ImportDeclaration, loc)
@@ -3806,7 +4071,7 @@ fn BytecodeBuilder::compile_object_method(
         is_method=true,
       )
     FuncExprExt(Some(name), params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       self.add_function(
@@ -3820,7 +4085,7 @@ fn BytecodeBuilder::compile_object_method(
       )
     }
     FuncExprExt(None, params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       self.add_function(
@@ -3833,19 +4098,28 @@ fn BytecodeBuilder::compile_object_method(
         is_method=true,
       )
     }
-    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) => {
-      bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
-      0
-    }
-    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) => {
-      bytecode_reject(ObjectLiteralAsyncMethodProperty, loc)
-      0
-    }
+    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.add_candidate_unsupported_function(consumer_form)
+      } else {
+        bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
+        0
+      }
+    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.add_candidate_unsupported_function(consumer_form)
+      } else {
+        bytecode_reject(ObjectLiteralAsyncMethodProperty, loc)
+        0
+      }
     AsyncGeneratorExpr(_, _, _, loc, _)
-    | AsyncGeneratorExprExt(_, _, _, _, loc, _) => {
-      bytecode_reject(ObjectLiteralAsyncGeneratorMethodProperty, loc)
-      0
-    }
+    | AsyncGeneratorExprExt(_, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.add_candidate_unsupported_function(consumer_form)
+      } else {
+        bytecode_reject(ObjectLiteralAsyncGeneratorMethodProperty, loc)
+        0
+      }
     _ => {
       let loc = bytecode_expr_loc(prop.value)
       raise @errors.InternalError(
@@ -4521,7 +4795,7 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     FuncExprExt(Some(name), params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -4537,7 +4811,7 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     FuncExprExt(None, params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -4566,7 +4840,7 @@ fn BytecodeBuilder::compile_expr_body(
       ])
     }
     ArrowFuncExt(params, rest_param, body, loc, source_text) => {
-      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+      let (simple_params, simple_rest) = self.candidate_ext_param_names_with_rest(
         params, rest_param, loc,
       )
       let fn_idx = self.add_function(
@@ -4854,8 +5128,20 @@ fn BytecodeBuilder::compile_expr_body(
           ", col " +
           loc.col.to_string(),
       )
-    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) =>
-      bytecode_reject(GeneratorExpression, loc)
+    GeneratorExpr(name, _, _, loc, _)
+    | GeneratorExprExt(name, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_expression(
+          name,
+          match name {
+            Some(name) => NamedFunctionConsumer(name)
+            None => FunctionConsumer
+          },
+          loc,
+        )
+      } else {
+        bytecode_reject(GeneratorExpression, loc)
+      }
     YieldExpr(_, _, loc) =>
       raise @errors.InternalError(
         message="bytecode yield expression escaped generator lowering at line " +
@@ -4863,13 +5149,44 @@ fn BytecodeBuilder::compile_expr_body(
           ", col " +
           loc.col.to_string(),
       )
-    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) =>
-      bytecode_reject(AsyncFunctionExpression, loc)
+    AsyncFuncExpr(name, _, _, loc, _)
+    | AsyncFuncExprExt(name, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_expression(
+          name,
+          match name {
+            Some(name) => NamedFunctionConsumer(name)
+            None => FunctionConsumer
+          },
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncFunctionExpression, loc)
+      }
     AsyncArrowFunc(_, _, loc, _) | AsyncArrowFuncExt(_, _, _, loc, _) =>
-      bytecode_reject(AsyncArrowFunction, loc)
-    AsyncGeneratorExpr(_, _, _, loc, _)
-    | AsyncGeneratorExprExt(_, _, _, _, loc, _) =>
-      bytecode_reject(AsyncGeneratorExpression, loc)
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_expression(
+          None,
+          ArrowFunctionConsumer,
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncArrowFunction, loc)
+      }
+    AsyncGeneratorExpr(name, _, _, loc, _)
+    | AsyncGeneratorExprExt(name, _, _, _, loc, _) =>
+      if self.candidate_mode {
+        self.compile_candidate_unsupported_expression(
+          name,
+          match name {
+            Some(name) => NamedFunctionConsumer(name)
+            None => FunctionConsumer
+          },
+          loc,
+        )
+      } else {
+        bytecode_reject(AsyncGeneratorExpression, loc)
+      }
     AwaitExpr(_, loc) =>
       raise @errors.InternalError(
         message="bytecode await expression escaped async lowering at line " +
@@ -4903,4 +5220,26 @@ fn simple_ext_param_names_with_rest(
     }
   }
   (names, rest_param)
+}
+
+///|
+// Candidate parents retain their own lowering result when a child parameter
+// shape is unsupported. The child is represented by a typed candidate slot;
+// ordinary lowering keeps the original rejection and diagnostics.
+fn BytecodeBuilder::candidate_ext_param_names_with_rest(
+  self : BytecodeBuilder,
+  params : Array[@ast.Param],
+  rest_param : String?,
+  owner_loc : @token.Loc,
+) -> (Array[String], String?) raise Error {
+  simple_ext_param_names_with_rest(params, rest_param, owner_loc) catch {
+    BytecodeUnsupportedSignal(unsupported) =>
+      if self.candidate_mode {
+        self.candidate_pending_unsupported_child = true
+        ([], None)
+      } else {
+        raise BytecodeUnsupportedSignal(unsupported)
+      }
+    error => raise error
+  }
 }

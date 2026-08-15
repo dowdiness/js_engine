@@ -532,17 +532,25 @@ fn verify_bytecode_child_provenance(
 fn verify_bytecode_preparation(
   function : BytecodeFunction,
   function_path : Array[Int],
+  child_count? : Int? = None,
+  recurse? : Bool = true,
 ) -> Unit raise Error {
+  let expected_child_count = match child_count {
+    Some(count) => count
+    None => function.children.length()
+  }
   let consumer_scan = scan_bytecode_function_consumers_for_verification(
     function.code,
-    function.children.length(),
+    expected_child_count,
   )
   verify_lexical_preparation(function, function_path)
-  verify_function_declaration_preparation(
-    function,
-    function_path,
-    consumer_scan.declarations,
-  )
+  if recurse {
+    verify_function_declaration_preparation(
+      function,
+      function_path,
+      consumer_scan.declarations,
+    )
+  }
   verify_signature_preparation(
     function,
     function_path,
@@ -572,14 +580,14 @@ fn verify_bytecode_preparation(
   }
   for declaration in function.preparation.function_declarations {
     guard declaration.child_index >= 0 &&
-      declaration.child_index < function.children.length() else {
+      declaration.child_index < expected_child_count else {
       raise @errors.InternalError(
         message="bytecode function declaration preparation child index is invalid at line " +
           declaration.loc.line.to_string(),
       )
     }
   }
-  if !consumer_scan.invalid_index {
+  if recurse && !consumer_scan.invalid_index {
     for child_index, child in function.children {
       let child_path = function_path.copy()
       child_path.push(child_index)
@@ -599,9 +607,11 @@ fn verify_bytecode_preparation(
       }
     }
   }
-  for child_index, child in function.children {
-    let child_path = function_path.copy()
-    child_path.push(child_index)
-    verify_bytecode_preparation(child, child_path)
+  if recurse {
+    for child_index, child in function.children {
+      let child_path = function_path.copy()
+      child_path.push(child_index)
+      verify_bytecode_preparation(child, child_path)
+    }
   }
 }
