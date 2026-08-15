@@ -16,6 +16,68 @@ test "characterization: unsupported nested lowering rejects whole script" {
 }
 
 ///|
+// The runtime wiring in #885 consumes this closed evidence seam.  Keeping the
+// transition test beside candidate preparation makes an accidental fallback
+// or second start a compiler defect rather than an observable log convention.
+test "candidate route evidence permits exactly one typed start and completion" {
+  let program = prepare_candidate_program(@parser.parse("function child() {}").stmts)
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    program.root.source_identity,
+    program.root.selection,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  candidate_route_complete(activation, CandidateRouteNormal)
+  guard evidence.val.events.length() == 3 else {
+    fail("candidate route evidence did not record prepare/start/complete")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) => {
+      if prepared.activation_id != 0 {
+        fail("first candidate activation did not start at zero")
+      }
+    }
+    _ => fail("candidate route evidence did not begin with preparation")
+  }
+}
+
+///|
+// RED characterization for the first production seam: both parent directions
+// are already visible in the pure candidate tree, but neither is materialized
+// into an Engine activation yet.
+test "RED: candidate tree retains both mixed parent directions" {
+  let source =
+    #|function bytecodeParent() {
+    #|  function treeChild() { for (var value of [1]) {} }
+    #|  return treeChild;
+    #|}
+    #|function treeParent() {
+    #|  function bytecodeChild() { return 1; }
+    #|  return bytecodeChild;
+    #|}
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let bytecode_parent = root.children[0]
+  let tree_parent = root.children[1]
+  guard bytecode_parent.bytecode is Some(_) else {
+    fail("bytecode parent lost candidate carrier")
+  }
+  guard tree_parent.bytecode is Some(_) else {
+    fail("tree parent fixture did not retain a candidate carrier")
+  }
+  match bytecode_parent.children[0].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+    _ => fail("bytecode parent did not retain typed tree child")
+  }
+  match tree_parent.children[0].selection {
+    UseBytecode(_) => ()
+    _ => fail("tree parent did not retain eligible bytecode child")
+  }
+}
+
+///|
 // RED for the pure candidate seam: this intentionally names the API that the
 // next slice introduces.  It must preserve an eligible parent candidate while
 // retaining a typed tree-only child candidate.
