@@ -270,6 +270,135 @@ test "candidate runner starts an eligible root through bytecode" {
 }
 
 ///|
+test "repeated bytecode calls record distinct completed activations" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb(
+    "function answer() { return 42; } answer(); answer();",
+  )
+  if value.to_string() != "42" {
+    fail("repeated candidate calls returned an unexpected value")
+  }
+  guard evidence.val.events.length() == 9 else {
+    fail("repeated candidate calls did not record two complete activations")
+  }
+  let first = match evidence.val.events[2] {
+    CandidateRoutePreparedEvent(prepared) => prepared
+    _ => fail("first function activation was not prepared before start")
+  }
+  let second = match evidence.val.events[5] {
+    CandidateRoutePreparedEvent(prepared) => prepared
+    _ => fail("second function activation was not prepared before start")
+  }
+  guard bytecode_source_identity_equal(
+    first.source_identity,
+    second.source_identity,
+  ) else {
+    fail("repeated calls did not retain the same function source identity")
+  }
+  guard first.activation_id != second.activation_id else {
+    fail("repeated calls reused a route activation id")
+  }
+  for activation_id in [first.activation_id, second.activation_id] {
+    match evidence.val.lifecycles.get(activation_id) {
+      Some(CandidateRouteFinished(completed)) =>
+        if completed.activation_id != activation_id ||
+          completed.completion is CandidateRouteAbrupt {
+          fail("repeated call activation did not complete normally")
+        }
+      _ => fail("repeated call activation did not reach completion")
+    }
+  }
+}
+
+///|
+test "recursive bytecode calls record overlapping distinct activations" {
+  let source =
+    #|function recursiveAnswer(reenter) {
+    #|  if (reenter) return recursiveAnswer();
+    #|  return 42;
+    #|}
+    #|recursiveAnswer(true);
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("recursive fixture did not select bytecode")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "42" {
+    fail("recursive candidate call returned an unexpected value")
+  }
+  let prepared = evidence.val.events.filter_map(event => {
+    match event {
+      CandidateRoutePreparedEvent(prepared) => Some(prepared)
+      _ => None
+    }
+  })
+  guard prepared.length() == 3 else {
+    fail("recursive candidate call did not prepare root and two calls")
+  }
+  guard prepared[1].activation_id != prepared[2].activation_id else {
+    fail("recursive candidate call reused the running activation id")
+  }
+  guard bytecode_source_identity_equal(
+    prepared[1].source_identity,
+    prepared[2].source_identity,
+  ) else {
+    fail("recursive calls did not retain the same function source identity")
+  }
+}
+
+///|
+test "bytecode call after abrupt completion records a fresh activation" {
+  let source =
+    #|function maybeFail(shouldFail) {
+    #|  if (shouldFail) throw "boom";
+    #|  return 7;
+    #|}
+    #|try { maybeFail(true); } catch (error) {}
+    #|maybeFail(false);
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("abrupt-reuse fixture did not select bytecode")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "7" {
+    fail("post-abrupt candidate call returned an unexpected value")
+  }
+  let prepared = evidence.val.events.filter_map(event => {
+    match event {
+      CandidateRoutePreparedEvent(prepared) => Some(prepared)
+      _ => None
+    }
+  })
+  guard prepared.length() == 3 else {
+    fail("post-abrupt candidate call did not prepare two function calls")
+  }
+  guard prepared[1].activation_id != prepared[2].activation_id else {
+    fail("post-abrupt candidate call reused its activation id")
+  }
+  guard bytecode_source_identity_equal(
+    prepared[1].source_identity,
+    prepared[2].source_identity,
+  ) else {
+    fail("post-abrupt calls did not retain the same source identity")
+  }
+  match evidence.val.lifecycles.get(prepared[1].activation_id) {
+    Some(CandidateRouteFinished(completed)) =>
+      if !(completed.completion is CandidateRouteAbrupt) {
+        fail("first candidate call did not record abrupt completion")
+      }
+    _ => fail("first candidate call did not finish")
+  }
+  match evidence.val.lifecycles.get(prepared[2].activation_id) {
+    Some(CandidateRouteFinished(completed)) =>
+      if !(completed.completion is CandidateRouteNormal) {
+        fail("second candidate call did not record normal completion")
+      }
+    _ => fail("second candidate call did not finish")
+  }
+}
+
+///|
 test "candidate runner starts unsupported root through tree before effects" {
   let (value, evidence) = candidate_run_with_evidence_for_wb(
     "for (var value of [1]) {}; 42;",

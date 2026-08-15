@@ -195,15 +195,19 @@ fn candidate_materializer_instance(
 ///|
 priv struct CandidateBytecodeExecutorCode {
   execution : CandidateBytecodeExecution
-  activation : CandidateRouteActivation
+  evidence : Ref[CandidateRouteEvidence]
+  source_identity : BytecodeSourceIdentity
+  decision : CandidateSelection
 }
 
 ///|
 fn CandidateBytecodeExecutorCode::CandidateBytecodeExecutorCode(
   execution : CandidateBytecodeExecution,
-  activation : CandidateRouteActivation,
+  evidence : Ref[CandidateRouteEvidence],
+  source_identity : BytecodeSourceIdentity,
+  decision : CandidateSelection,
 ) -> CandidateBytecodeExecutorCode {
-  { execution, activation }
+  { execution, evidence, source_identity, decision }
 }
 
 ///|
@@ -215,17 +219,14 @@ fn candidate_make_bytecode_callable(
   request : @runtime.FunctionMaterializationRequest,
 ) -> @runtime.Value {
   let func_def = bytecode.function
-  let activation = candidate_route_prepare(
-    evidence,
-    candidate.source_identity,
-    candidate.selection,
-  )
   let child_materializer = candidate_child_materializer(
     candidate, bytecode, evidence,
   )
   let code = CandidateBytecodeExecutorCode(
     CandidateBytecodeExecution(bytecode, child_materializer),
-    activation,
+    evidence,
+    candidate.source_identity,
+    candidate.selection,
   )
   let capability = func_def.preparation.activation_capability
   match request.form {
@@ -311,16 +312,21 @@ impl @runtime.ExecutorCode for CandidateBytecodeExecutorCode with fn start(
   prepared,
 ) {
   let execution = self.execution
-  candidate_route_start(self.activation, CandidateBytecodeExecutor)
+  let activation = candidate_route_prepare(
+    self.evidence,
+    self.source_identity,
+    self.decision,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
   let frame = BytecodeFrame::candidate(
     execution,
     prepared.environment(),
     prepared.context(),
-    self.activation,
+    activation,
     direct_args=Some(prepared.arguments()),
   ) catch {
     error => {
-      candidate_route_complete(self.activation, CandidateRouteAbrupt)
+      candidate_route_complete(activation, CandidateRouteAbrupt)
       raise error
     }
   }

@@ -16,6 +16,7 @@ test "candidate override fixture uses the stable Engine contract" {
   let engine = @js_engine.Engine()
   engine.eval("function answer() { return 42; }")
   json_inspect(engine.call_json("answer", []), content=42)
+  json_inspect(engine.call_json("answer", []), content=42)
   engine.eval("console.log(\"candidate\");")
   json_inspect(engine.take_output(), content=["candidate"])
   expect_bool(engine.has_pending_microtasks(), false, "candidate microtasks")
@@ -86,10 +87,36 @@ test "candidate mode keeps same-name siblings tied to their source identities" {
 ///|
 test "candidate mode retains function values after later eval" {
   let engine = @js_engine.Engine()
-  engine.eval("function oldFunction(value) { return value + 1; }")
-  engine.eval("function anotherFunction(value) { return value + 2; }")
-  json_inspect(engine.call_json("oldFunction", [1]), content=2)
-  json_inspect(engine.call_json("anotherFunction", [1]), content=3)
+  engine.eval("function oldFunction() { return 41; }")
+  engine.eval("function anotherFunction() { return 42; }")
+  json_inspect(engine.call_json("oldFunction", []), content=41)
+  json_inspect(engine.call_json("oldFunction", []), content=41)
+  json_inspect(engine.call_json("anotherFunction", []), content=42)
+}
+
+///|
+test "candidate mode starts a fresh activation for repeated script calls" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function repeatedAnswer() { return 42; }
+    #|var repeatedResults = [repeatedAnswer(), repeatedAnswer()];
+    #|function readRepeatedResults() { return repeatedResults; }
+  engine.eval(source)
+  json_inspect(engine.call_json("readRepeatedResults", []), content=[42, 42])
+}
+
+///|
+test "candidate mode starts a fresh activation for recursive calls" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function recursiveAnswer(reenter) {
+    #|  if (reenter) return recursiveAnswer();
+    #|  return 42;
+    #|}
+    #|var recursiveResult = recursiveAnswer(true);
+    #|function readRecursiveResult() { return recursiveResult; }
+  engine.eval(source)
+  json_inspect(engine.call_json("readRecursiveResult", []), content=42)
 }
 
 ///|
@@ -146,4 +173,21 @@ test "candidate mode guest throw leaves Engine reusable" {
   expect_bool(failed, true, "candidate guest throw")
   engine.eval("function recovered() { return 9; }")
   json_inspect(engine.call_json("recovered", []), content=9)
+}
+
+///|
+test "candidate mode reuses an eligible function after abrupt completion" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "function maybeFail(shouldFail) { " +
+    "if (shouldFail) throw \"boom\"; return 7; }",
+  )
+  let failed = try {
+    ignore(engine.call_json("maybeFail", [true]))
+    false
+  } catch {
+    error => error.to_string().contains("boom")
+  }
+  expect_bool(failed, true, "candidate repeated guest throw")
+  json_inspect(engine.call_json("maybeFail", [false]), content=7)
 }
