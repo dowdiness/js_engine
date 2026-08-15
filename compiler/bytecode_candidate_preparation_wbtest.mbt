@@ -23,7 +23,9 @@ test "candidate route evidence permits exactly one typed start and completion" {
   let program = prepare_candidate_program(
     @parser.parse("function child() {}").stmts,
   )
-  let evidence : Ref[CandidateRouteEvidence] = { val: CandidateRouteEvidence() }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=true),
+  }
   let activation = candidate_route_prepare(
     evidence,
     program.root.source_identity,
@@ -40,6 +42,34 @@ test "candidate route evidence permits exactly one typed start and completion" {
         fail("first candidate activation did not start at zero")
       }
     _ => fail("candidate route evidence did not begin with preparation")
+  }
+}
+
+///|
+test "candidate aggregate evidence retains no per-call storage" {
+  let program = prepare_candidate_program(
+    @parser.parse("function child() {}").stmts,
+  )
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  for _ in 0..<100 {
+    let activation = candidate_route_prepare(
+      evidence,
+      program.root.source_identity,
+      program.root.selection,
+    )
+    candidate_route_start(activation, CandidateBytecodeExecutor)
+    candidate_route_complete(activation, CandidateRouteNormal)
+  }
+  guard candidate_route_trace_length(evidence) == 0 else {
+    fail("aggregate candidate recorder retained per-call trace")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("aggregate candidate recorder retained completed activations")
+  }
+  guard evidence.val.summary.normal_completions == 100 else {
+    fail("aggregate candidate recorder lost completion counts")
   }
 }
 
@@ -222,6 +252,110 @@ fn candidate_run_with_evidence_for_wb(
 }
 
 ///|
+fn candidate_run_with_summary_for_wb(
+  source : String,
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  let interp = @interpreter.new_interpreter()
+  run_candidate_program_with_summary(interp, @parser.parse(source).stmts) catch {
+    @runtime.JsException(value) =>
+      fail("candidate execution threw: " + value.to_string())
+    error => fail("candidate execution failed: " + error.to_string())
+  }
+}
+
+///|
+test "production candidate recorder remains bounded across repeated calls" {
+  let source =
+    #|function answer() { return 42; }
+    #|for (var index = 0; index < 100; index++) answer();
+  let (_, evidence) = candidate_run_with_summary_for_wb(source)
+  guard evidence.val.events.length() == 0 else {
+    fail("production candidate recorder retained event history")
+  }
+  guard evidence.val.lifecycles.length() == 0 else {
+    fail("production candidate recorder retained lifecycle history")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("production candidate recorder retained in-flight activations")
+  }
+  guard evidence.val.summary.bytecode_starts == 100 else {
+    fail("production candidate recorder lost bytecode start counts")
+  }
+  guard evidence.val.summary.tree_starts == 1 else {
+    fail("production candidate recorder lost tree start counts")
+  }
+  guard evidence.val.summary.normal_completions == 101 else {
+    fail("production candidate recorder lost completion counts")
+  }
+}
+
+///|
+test "old candidate functions retain bounded summaries after later eval" {
+  let interp = @interpreter.new_interpreter()
+  let (_, old_evidence) = run_candidate_program_with_summary(
+    interp,
+    @parser.parse("function oldFunction() { return 41; }").stmts,
+  )
+  ignore(
+    run_candidate_program_with_summary(
+      interp,
+      @parser.parse("function anotherFunction() { return 42; }").stmts,
+    ),
+  )
+  ignore(
+    run_candidate_program_with_summary(
+      interp,
+      @parser.parse("for (var index = 0; index < 100; index++) oldFunction();").stmts,
+    ),
+  )
+  guard old_evidence.val.events.length() == 0 else {
+    fail("old candidate function retained event history")
+  }
+  guard old_evidence.val.lifecycles.length() == 0 else {
+    fail("old candidate function retained lifecycle history")
+  }
+  guard old_evidence.val.summary.active_activations == 0 else {
+    fail("old candidate function retained completed activations")
+  }
+  guard old_evidence.val.summary.bytecode_starts == 101 else {
+    fail("old candidate function lost aggregate start counts")
+  }
+  guard old_evidence.val.summary.normal_completions == 101 else {
+    fail("old candidate function lost aggregate completion counts")
+  }
+}
+
+///|
+test "aggregate recorder releases abrupt activation state" {
+  let source =
+    #|function maybeFail(shouldFail) {
+    #|  if (shouldFail) throw "boom";
+    #|  return 7;
+    #|}
+    #|try { maybeFail(true); } catch (error) {}
+    #|maybeFail(false);
+  let (value, evidence) = candidate_run_with_summary_for_wb(source)
+  guard value.to_string() == "7" else {
+    fail("aggregate abrupt fixture returned an unexpected value")
+  }
+  guard evidence.val.events.length() == 0 else {
+    fail("aggregate abrupt fixture retained event history")
+  }
+  guard evidence.val.lifecycles.length() == 0 else {
+    fail("aggregate abrupt fixture retained lifecycle history")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("aggregate abrupt fixture retained an in-flight activation")
+  }
+  guard evidence.val.summary.abrupt_completions == 1 else {
+    fail("aggregate abrupt fixture lost its abrupt completion count")
+  }
+  guard evidence.val.summary.normal_completions == 2 else {
+    fail("aggregate abrupt fixture lost its normal completion counts")
+  }
+}
+
+///|
 fn candidate_started_executors_for_wb(
   evidence : Ref[CandidateRouteEvidence],
 ) -> Array[CandidateRouteExecutor] {
@@ -344,6 +478,12 @@ test "recursive bytecode calls record overlapping distinct activations" {
   ) else {
     fail("recursive calls did not retain the same function source identity")
   }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("recursive candidate calls retained in-flight lifecycle state")
+  }
+  guard evidence.val.summary.maximum_concurrent_activations == 3 else {
+    fail("recursive candidate calls did not record overlapping activations")
+  }
 }
 
 ///|
@@ -396,6 +536,125 @@ test "bytecode call after abrupt completion records a fresh activation" {
       }
     _ => fail("second candidate call did not finish")
   }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("post-abrupt candidate calls retained in-flight lifecycle state")
+  }
+}
+
+///|
+test "candidate frame startup error completes its route abruptly" {
+  let source = "function child() { return 1; }"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.bytecode is Some(bytecode) else {
+    fail("startup-error fixture did not retain root bytecode")
+  }
+  guard program.script_preparation is Some(preparation) else {
+    fail("startup-error fixture did not retain script preparation")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    program.root.source_identity,
+    program.root.selection,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  let failing_children : CandidateChildMaterializer = {
+    materialize: fn(_interp, _child_index, _closure) raise {
+      raise @errors.InternalError(message="injected candidate startup failure")
+    },
+  }
+  let execution = CandidateBytecodeExecution(bytecode, failing_children)
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
+      let frame = BytecodeFrame::candidate(execution, env, ctx, activation)
+      let startup_failed = try {
+        ignore(start_candidate_bytecode_frame(interp, frame))
+        false
+      } catch {
+        @errors.InternalError(message~) =>
+          message == "injected candidate startup failure"
+        _ => false
+      }
+      guard startup_failed else {
+        fail("candidate frame startup did not propagate its failure")
+      }
+      match activation.lifecycle.val {
+        CandidateRouteFinished(completed) =>
+          if !(completed.completion is CandidateRouteAbrupt) {
+            fail("candidate frame startup did not finish abruptly")
+          }
+        _ => fail("candidate frame startup left its route in flight")
+      }
+      guard evidence.val.summary.active_activations == 0 else {
+        fail("candidate frame startup retained an in-flight activation")
+      }
+      @runtime.Undefined
+    }),
+  )
+}
+
+///|
+test "candidate function startup error completes its route abruptly" {
+  let source = "function parent() { function child() { return 1; } return 2; }"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.children.length() == 1 else {
+    fail("function-startup fixture did not retain its parent candidate")
+  }
+  let parent = program.root.children[0]
+  guard parent.bytecode is Some(bytecode) else {
+    fail("function-startup fixture did not retain parent bytecode")
+  }
+  guard program.script_preparation is Some(preparation) else {
+    fail("function-startup fixture did not retain script preparation")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    parent.source_identity,
+    parent.selection,
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  let failing_children : CandidateChildMaterializer = {
+    materialize: fn(_interp, _child_index, _closure) raise {
+      raise @errors.InternalError(
+        message="injected candidate function startup failure",
+      )
+    },
+  }
+  let execution = CandidateBytecodeExecution(bytecode, failing_children)
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
+      let frame = BytecodeFrame::candidate(execution, env, ctx, activation)
+      let startup_failed = try {
+        ignore(start_candidate_bytecode_frame(interp, frame))
+        false
+      } catch {
+        @errors.InternalError(message~) =>
+          message == "injected candidate function startup failure"
+        _ => false
+      }
+      guard startup_failed else {
+        fail("candidate function startup did not propagate its failure")
+      }
+      match activation.lifecycle.val {
+        CandidateRouteFinished(completed) =>
+          if !(completed.completion is CandidateRouteAbrupt) {
+            fail("candidate function startup did not finish abruptly")
+          }
+        _ => fail("candidate function startup left its route in flight")
+      }
+      guard evidence.val.summary.active_activations == 0 else {
+        fail("candidate function startup retained an in-flight activation")
+      }
+      @runtime.Undefined
+    }),
+  )
 }
 
 ///|

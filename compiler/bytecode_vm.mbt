@@ -139,29 +139,36 @@ fn start_candidate_bytecode_frame(
   interp : Interpreter,
   frame : BytecodeFrame,
 ) -> BytecodeFrame raise Error {
-  match frame.func_def.activation_kind {
-    ScriptRootActivation => {
-      if frame.func_def.env_slot_names.length() > 0 {
-        frame.bind_env_slots()
-      }
-      frame.hoist_function_decls(interp)
-    }
-    FunctionActivation => {
-      if frame.func_def.needs_own_env {
-        frame.hoist_env_var_bindings(interp)
-        frame.hoist_lexical_bindings()
+  try {
+    match frame.func_def.activation_kind {
+      ScriptRootActivation => {
         if frame.func_def.env_slot_names.length() > 0 {
           frame.bind_env_slots()
         }
+        frame.hoist_function_decls(interp)
       }
-      // Candidate children retain their own typed selection even when the
-      // bytecode activation does not need an additional lexical environment.
-      // Function declarations still need to be materialized into the frame's
-      // local slots or enclosing environment before the first instruction.
-      frame.hoist_function_decls(interp)
+      FunctionActivation => {
+        if frame.func_def.needs_own_env {
+          frame.hoist_env_var_bindings(interp)
+          frame.hoist_lexical_bindings()
+          if frame.func_def.env_slot_names.length() > 0 {
+            frame.bind_env_slots()
+          }
+        }
+        // Candidate children retain their own typed selection even when the
+        // bytecode activation does not need an additional lexical environment.
+        // Function declarations still need to be materialized into the frame's
+        // local slots or enclosing environment before the first instruction.
+        frame.hoist_function_decls(interp)
+      }
+    }
+    frame
+  } catch {
+    error => {
+      frame.complete_candidate_route(false)
+      raise error
     }
   }
-  frame
 }
 
 ///|

@@ -380,13 +380,13 @@ fn run_candidate_bytecode_function(
 }
 
 ///|
-fn run_candidate_program_with_evidence(
+fn run_candidate_program_with_recorder(
   interp : @runtime.Interpreter,
   stmts : Array[@ast.Stmt],
-) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  evidence : Ref[CandidateRouteEvidence],
+) -> @runtime.Value raise Error {
   let program = prepare_candidate_program(stmts)
-  let evidence : Ref[CandidateRouteEvidence] = { val: CandidateRouteEvidence() }
-  let value = match program.root.selection {
+  match program.root.selection {
     UseTreeWalker(_) => {
       let materializer = candidate_materializer_template(program.root, evidence)
       interp.run_with_function_materializer(stmts, materializer)
@@ -423,6 +423,31 @@ fn run_candidate_program_with_evidence(
       })
     }
   }
+}
+
+///|
+#warnings("-unused_value")
+fn run_candidate_program_with_evidence(
+  interp : @runtime.Interpreter,
+  stmts : Array[@ast.Stmt],
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=true),
+  }
+  let value = run_candidate_program_with_recorder(interp, stmts, evidence)
+  (value, evidence)
+}
+
+///|
+#warnings("-unused_value")
+fn run_candidate_program_with_summary(
+  interp : @runtime.Interpreter,
+  stmts : Array[@ast.Stmt],
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  let value = run_candidate_program_with_recorder(interp, stmts, evidence)
   (value, evidence)
 }
 
@@ -431,6 +456,6 @@ pub fn run_candidate_program(
   interp : @runtime.Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> @runtime.Value raise Error {
-  let (value, _) = run_candidate_program_with_evidence(interp, stmts)
+  let (value, _) = run_candidate_program_with_summary(interp, stmts)
   value
 }

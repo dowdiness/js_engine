@@ -102,6 +102,7 @@
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::update_compiled_name"},
     {"count":1,"enclosing":"candidate_route_complete","kind":"compiler","reachable_from":["BytecodeFrame::deliver_activation_completion","BytecodeFrame::step"],"target":"CandidateRouteCompleted::CandidateRouteCompleted"},
     {"count":1,"enclosing":"candidate_route_complete","kind":"compiler","reachable_from":["BytecodeFrame::deliver_activation_completion","BytecodeFrame::step"],"target":"candidate_route_record_event"},
+    {"count":1,"enclosing":"candidate_route_complete","kind":"compiler","reachable_from":["BytecodeFrame::deliver_activation_completion","BytecodeFrame::step"],"target":"candidate_route_record_lifecycle"},
     {"count":1,"enclosing":"make_bytecode_arrow_func","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"BytecodeExecutorCode::BytecodeExecutorCode"},
     {"count":1,"enclosing":"make_bytecode_arrow_func","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"ensure_bytecode_signature_validated"},
     {"count":1,"enclosing":"make_bytecode_arrow_func","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@dowdiness/js_engine/interpreter/runtime.make_prepared_executor_arrow_function"},
