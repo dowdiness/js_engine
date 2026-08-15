@@ -1478,7 +1478,7 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
   assert_instruction_contract_for_wb(
     BinaryOp(Add, BinaryExpression, loc),
     true,
-    UnsupportedBeforeActivation(BinaryOperation),
+    ManagedSuspension,
     [Operator],
   )
   assert_instruction_contract_for_wb(
@@ -1589,7 +1589,7 @@ test "managed disposition corresponds to a typed VM suspension" {
 ///|
 test "activation selection is per function and precedes frame construction" {
   let src =
-    #|function child() { return 1 + 2; }
+    #|function child() { return 1 - 2; }
     #|1;
   let bytecode = parse_bytecode_for_wb(src)
   guard bytecode.main_for_wb().children.length() == 1 else {
@@ -1625,7 +1625,7 @@ test "activation selection recomputes typed reasons without a cached summary" {
     Ok(SynchronousLeaf) => ()
     _ => fail("literal-only function must be a synchronous leaf")
   }
-  bytecode.main_for_wb().code.push(BinaryOp(Add, BinaryExpression, loc))
+  bytecode.main_for_wb().code.push(BinaryOp(Sub, BinaryExpression, loc))
   match select_bytecode_function_activation(bytecode.verified_main, []) {
     Err(unsupported) =>
       match unsupported.reason {
@@ -1638,7 +1638,7 @@ test "activation selection recomputes typed reasons without a cached summary" {
 
 ///|
 test "verified program carrier gates activation selection before frame construction" {
-  let bytecode = parse_bytecode_for_wb("function child() { return 1 + 2; } 1;")
+  let bytecode = parse_bytecode_for_wb("function child() { return 1 - 2; } 1;")
   match select_bytecode_function_activation(bytecode.verified_main, []) {
     Ok(SynchronousLeaf) => ()
     _ => fail("verified literal-only function must be a synchronous leaf")

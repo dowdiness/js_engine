@@ -711,6 +711,14 @@ fn BytecodeFrame::step_bytecode(
             raise @errors.InternalError(message="bytecode stack underflow")
         }
       Dup => stack.push(frame.peek())
+      BinaryOp(Add, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        frame.pending_activation_result = Some(PushValue)
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_coercing_addition(left, right, loc),
+        )
+      }
       BinaryOp(op, _, loc) => {
         let right = match stack.pop() {
           Some(value) => value

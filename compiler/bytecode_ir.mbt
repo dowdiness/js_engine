@@ -723,8 +723,9 @@ fn bytecode_binary_contract(
     | (Or, _)
     | (NullishCoalesce, _) =>
       bytecode_contract(false, SynchronousLeaf, [Operator])
-    (Add, BinaryExpression)
-    | (Add, CompoundAssignment)
+    (Add, BinaryExpression) =>
+      bytecode_contract(true, ManagedSuspension, [Operator])
+    (Add, CompoundAssignment)
     | (Sub, BinaryExpression)
     | (Sub, CompoundAssignment)
     | (Mul, BinaryExpression)

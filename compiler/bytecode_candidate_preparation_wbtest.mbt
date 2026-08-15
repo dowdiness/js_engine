@@ -153,7 +153,7 @@ test "candidate tree separates parent and child outcomes" {
 test "candidate selection keeps activation unsupported local to a function" {
   let source =
     #|function parent() { return 1; }
-    #|function child() { return 1 + 2; }
+    #|function child() { return 1 - 2; }
   let root = (prepare_candidate_program(@parser.parse(source).stmts) catch {
       error => {
         debug_inspect(error.to_string())
@@ -184,7 +184,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
-    #|  function child() { return 1 + 2; }
+    #|  function child() { return 1 - 2; }
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
@@ -210,7 +210,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
 
 ///|
 test "candidate root selection distinguishes activation fallback" {
-  let program = prepare_candidate_program(@parser.parse("1 + 2;").stmts)
+  let program = prepare_candidate_program(@parser.parse("1 - 2;").stmts)
   match program.root.selection {
     UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
       match unsupported.reason {
@@ -240,9 +240,9 @@ test "candidate root selection retains lowering fallback" {
 }
 
 ///|
-// RED for #886: plain addition is the first coercive binary expression that
-// must eventually enter the managed candidate route.
-test "RED: candidate plain addition selects bytecode before frame construction" {
+// Candidate evidence for #886: plain addition enters the managed route once,
+// before the runtime request frame is constructed.
+test "candidate plain addition selects bytecode before frame construction" {
   let (value, evidence) = candidate_run_with_evidence_for_wb("1 + 2;")
   assert_eq(value.to_string(), "3")
   let starts = candidate_started_executors_for_wb(evidence)
@@ -252,6 +252,29 @@ test "RED: candidate plain addition selects bytecode before frame construction" 
   if starts[0] != CandidateBytecodeExecutor {
     fail("plain addition did not select bytecode")
   }
+}
+
+///|
+test "candidate plain addition resumes through guest ToPrimitive" {
+  let source =
+    #|var events = "";
+    #|var object = {};
+    #|object[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + hint;
+    #|  return 2;
+    #|};
+    #|function add(value) { return value + 1; }
+    #|add(object);
+    #|events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "default")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.contains(CandidateBytecodeExecutor) else {
+    fail("plain addition did not enter the bytecode route")
+  }
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
 }
 
 ///|
@@ -902,9 +925,9 @@ test "candidate tree separates same-name same-signature siblings" {
     #|  let same = function same(x) { return 20; };
     #|  return same(0);
     #|}
-    #|parent(false) + parent(true);
+    #|parent(false) - parent(true);
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  if value.to_string() != "30" {
+  if value.to_string() != "10" {
     fail("same-name sibling route returned an unexpected value")
   }
   let starts = candidate_started_executors_for_wb(evidence)
@@ -1374,7 +1397,7 @@ test "candidate verification rejects stale cross-compilation and malformed paren
 test "candidate preparation is deterministic across repeated calls" {
   let source =
     #|function same() { return 1; }
-    #|function same() { return 2 + 3; }
+    #|function same() { return 2 - 3; }
     #|var holder = { method() {}, arrow: () => 1 };
   let first = prepare_candidate_program(@parser.parse(source).stmts)
   let second = prepare_candidate_program(@parser.parse(source).stmts)
