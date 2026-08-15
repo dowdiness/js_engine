@@ -329,46 +329,135 @@ test "candidate compound addition evidence starts TreeWalker before effects" {
 }
 
 ///|
-fn assert_candidate_binary_tree_for_wb(
+fn assert_candidate_tree_route_evidence_for_wb(
   source : String,
+  expected_value : String,
   child? : Bool = false,
 ) -> Unit raise Error {
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
   let function = if child { root.children[0] } else { root }
-  match function.selection {
-    UseTreeWalker(_) => ()
-    UseBytecode(_) => fail("candidate binary form selected bytecode")
+  let source_identity = function.source_identity
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), expected_value)
+  let mut prepared_count = 0
+  let mut tree_starts = 0
+  let mut bytecode_starts = 0
+  let mut completed_count = 0
+  let activation_ids : Array[Int] = []
+  for event in evidence.val.events {
+    match event {
+      CandidateRoutePreparedEvent(prepared) =>
+        if bytecode_source_identity_coordinates_equal_for_wb(
+            prepared.source_identity,
+            source_identity,
+          ) {
+          prepared_count += 1
+          activation_ids.push(prepared.activation_id)
+          match prepared.decision {
+            UseTreeWalker(_) => ()
+            UseBytecode(_) =>
+              fail("excluded candidate prepared a bytecode route")
+          }
+        }
+      CandidateRouteStartedEvent(started) =>
+        if bytecode_source_identity_coordinates_equal_for_wb(
+            started.source_identity,
+            source_identity,
+          ) {
+          match started.executor {
+            CandidateTreeWalkerExecutor => tree_starts += 1
+            CandidateBytecodeExecutor => bytecode_starts += 1
+          }
+        }
+      CandidateRouteCompletedEvent(completed) =>
+        if bytecode_source_identity_coordinates_equal_for_wb(
+            completed.source_identity,
+            source_identity,
+          ) {
+          completed_count += 1
+          match completed.completion {
+            CandidateRouteNormal => ()
+            CandidateRouteAbrupt =>
+              fail("excluded candidate completed abruptly")
+          }
+        }
+    }
+  }
+  guard prepared_count == 1 else {
+    fail("excluded candidate did not record exactly one route decision")
+  }
+  guard tree_starts == prepared_count else {
+    fail("excluded candidate did not start TreeWalker after preparation")
+  }
+  guard bytecode_starts == 0 else {
+    fail("excluded candidate started bytecode")
+  }
+  guard completed_count == tree_starts else {
+    fail("excluded candidate did not complete exactly once")
+  }
+  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  for activation_id in activation_ids {
+    match evidence.val.lifecycles.get(activation_id) {
+      Some(CandidateRouteFinished(completed)) =>
+        match completed.completion {
+          CandidateRouteNormal => ()
+          CandidateRouteAbrupt =>
+            fail("excluded candidate lifecycle completed abruptly")
+        }
+      _ => fail("excluded candidate lifecycle did not finish")
+    }
   }
 }
 
 ///|
+// The execution helper prepares a fresh program, so its compilation token is
+// intentionally distinct. Match the stable source coordinates while keeping
+// the route decision and executor evidence authoritative.
+fn bytecode_source_identity_coordinates_equal_for_wb(
+  left : BytecodeSourceIdentity,
+  right : BytecodeSourceIdentity,
+) -> Bool {
+  left.source_unit == right.source_unit &&
+  left.source_point_owner == right.source_point_owner &&
+  left.parent_source_point_owner == right.parent_source_point_owner &&
+  left.child_index == right.child_index &&
+  left.consumer_form == right.consumer_form
+}
+
+///|
 test "candidate local identifier compound addition stays tree-walker" {
-  assert_candidate_binary_tree_for_wb(
-    "function local() { var x = 1; x += 2; } local();",
+  assert_candidate_tree_route_evidence_for_wb(
+    "for (var unused of [0]) {}; function local() { var x = 1; x += 2; return x; } local();",
+    "3",
     child=true,
   )
 }
 
 ///|
 test "candidate environment or global compound addition stays tree-walker" {
-  assert_candidate_binary_tree_for_wb("var x = 1; x += 2;")
+  assert_candidate_tree_route_evidence_for_wb("var x = 1; x += 2; x;", "3")
 }
 
 ///|
 test "candidate property compound addition stays tree-walker" {
-  assert_candidate_binary_tree_for_wb("var o = { x: 1 }; o.x += 2;")
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 1 }; o.x += 2; o.x;", "3",
+  )
 }
 
 ///|
 test "candidate computed compound addition stays tree-walker" {
-  assert_candidate_binary_tree_for_wb(
-    "var o = { x: 1 }; var k = 'x'; o[k] += 2;",
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 1 }; var k = 'x'; o[k] += 2; o[k];", "3",
   )
 }
 
 ///|
 test "candidate sibling subtraction stays tree-walker" {
-  assert_candidate_binary_tree_for_wb("1 - 2;")
+  assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
 }
 
 ///|

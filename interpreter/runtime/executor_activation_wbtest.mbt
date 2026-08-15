@@ -46,6 +46,15 @@ priv struct ExecutorActivationValueCode {
 }
 
 ///|
+priv struct ExecutorActivationProxyAdditionGetCode {
+  events : Array[String]
+  expected_receiver : Ref[Value]
+  to_primitive_id : Int
+  value_of : Value
+  to_string : Value
+}
+
+///|
 priv struct ExecutorActivationOrderedValueCode {
   events : Array[String]
   label : String
@@ -383,6 +392,17 @@ fn ExecutorActivationValueCode::ExecutorActivationValueCode(
 }
 
 ///|
+fn ExecutorActivationProxyAdditionGetCode::ExecutorActivationProxyAdditionGetCode(
+  events~ : Array[String],
+  expected_receiver~ : Ref[Value],
+  to_primitive_id~ : Int,
+  value_of~ : Value,
+  to_string~ : Value,
+) -> ExecutorActivationProxyAdditionGetCode {
+  { events, expected_receiver, to_primitive_id, value_of, to_string }
+}
+
+///|
 fn ExecutorActivationRecursivePropertySetCode::ExecutorActivationRecursivePropertySetCode(
   target~ : Ref[Value],
   remaining~ : Ref[Int],
@@ -540,6 +560,117 @@ fn run_executor_coercing_addition_root_for_wb(
   match interp.run_executor_activation_coordinator(root) {
     ExecutorActivationReturn(result) => result
     _ => fail("coercing-addition root must return its result")
+  }
+}
+
+///|
+fn make_coercing_addition_object_for_wb(
+  to_primitive_id : Int,
+  symbol_value : Value?,
+  symbol_getter : Value?,
+  value_of : Value?,
+  value_of_getter : Value?,
+  to_string : Value?,
+  to_string_getter : Value?,
+) -> Value raise Error {
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match object {
+    Object(data) => {
+      match symbol_value {
+        Some(value) => data.bag.symbol_properties[to_primitive_id] = value
+        None => ()
+      }
+      match symbol_getter {
+        Some(getter) =>
+          data.bag.symbol_descriptors[to_primitive_id] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: Some(getter),
+            setter: None,
+            is_accessor: true,
+          }
+        None => ()
+      }
+      match value_of {
+        Some(value) => data.bag.properties["valueOf"] = value
+        None => ()
+      }
+      match value_of_getter {
+        Some(getter) =>
+          data.bag.descriptors["valueOf"] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: Some(getter),
+            setter: None,
+            is_accessor: true,
+          }
+        None => ()
+      }
+      match to_string {
+        Some(value) => data.bag.properties["toString"] = value
+        None => ()
+      }
+      match to_string_getter {
+        Some(getter) =>
+          data.bag.descriptors["toString"] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: Some(getter),
+            setter: None,
+            is_accessor: true,
+          }
+        None => ()
+      }
+    }
+    _ => fail("expected an object fixture")
+  }
+  object
+}
+
+///|
+fn coercing_addition_error_for_wb(
+  interp : Interpreter,
+  left : Value,
+  right : Value,
+) -> Error? {
+  try {
+    let _ = run_executor_coercing_addition_root_for_wb(interp, left, right)
+    None
+  } catch {
+    error => Some(error)
+  }
+}
+
+///|
+fn make_coercing_addition_thrower_for_wb(
+  interp : Interpreter,
+  name : String,
+  error : Error,
+) -> Value {
+  make_executor_function(
+    Some(name),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationThrowCode(error~),
+    constructable=false,
+  )
+}
+
+///|
+fn assert_coercing_addition_type_error_for_wb(
+  interp : Interpreter,
+  left : Value,
+  right : Value,
+  label : String,
+) -> Unit raise Error {
+  match coercing_addition_error_for_wb(interp, left, right) {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail(label + " raised " + error.to_string())
+    None => fail(label + " unexpectedly completed")
   }
 }
 
@@ -980,6 +1111,32 @@ impl ExecutorCode for ExecutorActivationValueCode with fn start(
 ) {
   self.starts.val += 1
   ExecutorActivationValueFrame(value=self.value) as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorCode for ExecutorActivationProxyAdditionGetCode with fn start(
+  self,
+  _interp,
+  prepared,
+) {
+  let receiver = prepared.environment().get("receiver")
+  assert_true(physical_equal(receiver, self.expected_receiver.val))
+  let value = match prepared.environment().get("key") {
+    Symbol(symbol) if symbol.id == self.to_primitive_id => {
+      self.events.push("get:@@toPrimitive")
+      Undefined
+    }
+    String_("valueOf") => {
+      self.events.push("get:valueOf")
+      self.value_of
+    }
+    String_("toString") => {
+      self.events.push("get:toString")
+      self.to_string
+    }
+    key => fail("unexpected Proxy get key: " + key.to_string())
+  }
+  ExecutorActivationValueFrame(value~) as &ExecutorActivationFrame
 }
 
 ///|
@@ -4226,6 +4383,81 @@ test "coercing addition frame completes primitive operands" {
 }
 
 ///|
+test "coercing addition routes Proxy conversion lookups through guest activation" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let receiver : Ref[Value] = { val: Undefined }
+  let fallback = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let value_of = make_executor_function(
+    Some("proxy valueOf"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="call:valueOf",
+      value=fallback,
+    ),
+    constructable=false,
+  )
+  let to_string = make_executor_function(
+    Some("proxy toString"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="call:toString",
+      value=String_("proxy"),
+    ),
+    constructable=false,
+  )
+  let to_primitive_id = interp.realm_state.well_known_symbols.to_primitive.id
+  let get_trap = make_executor_function(
+    Some("proxy get"),
+    ["target", "key", "receiver"],
+    interp.global,
+    false,
+    ExecutorActivationProxyAdditionGetCode(
+      events~,
+      expected_receiver=receiver,
+      to_primitive_id~,
+      value_of~,
+      to_string~,
+    ),
+    constructable=false,
+  )
+  let proxy_target = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let proxy_handler = make_object(
+    { "get": get_trap },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let proxy = Proxy({
+    target: Some(proxy_target),
+    handler: Some(proxy_handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  receiver.val = proxy
+  let result = run_executor_coercing_addition_root_for_wb(
+    interp,
+    proxy,
+    Number(2.0),
+  )
+  match result {
+    String_(value) => inspect(value, content="proxy2")
+    _ => fail("Proxy conversion must select string addition")
+  }
+  json_inspect(events, content=[
+    "get:@@toPrimitive", "get:valueOf", "call:valueOf", "get:toString", "call:toString",
+  ])
+}
+
+///|
 test "coercing addition uses default hint and original receiver" {
   let interp = Interpreter::new()
   let events : Array[String] = []
@@ -4300,6 +4532,225 @@ test "coercing addition uses valueOf then toString fallback" {
     _ => fail("toString fallback must select string addition")
   }
   json_inspect(events, content=["valueOf", "toString"])
+}
+
+///|
+test "coercing addition rejects non-callable @@toPrimitive without fallback" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let value_of = make_executor_function(
+    Some("unused valueOf"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="valueOf",
+      value=Number(1.0),
+    ),
+    constructable=false,
+  )
+  let to_string = make_executor_function(
+    Some("unused toString"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="toString",
+      value=String_("unused"),
+    ),
+    constructable=false,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    Some(Number(1.0)),
+    None,
+    Some(value_of),
+    None,
+    Some(to_string),
+    None,
+  )
+  assert_coercing_addition_type_error_for_wb(
+    interp,
+    object,
+    Number(1.0),
+    "non-callable @@toPrimitive",
+  )
+  json_inspect(events, content=[])
+}
+
+///|
+test "coercing addition propagates @@toPrimitive getter throw" {
+  let interp = Interpreter::new()
+  let sentinel = @errors.TypeError(message="@@toPrimitive getter")
+  let getter = make_coercing_addition_thrower_for_wb(
+    interp, "@@toPrimitive getter", sentinel,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    Some(getter),
+    None,
+    None,
+    None,
+    None,
+  )
+  match coercing_addition_error_for_wb(interp, object, Number(1.0)) {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("@@toPrimitive getter unexpectedly completed")
+  }
+}
+
+///|
+test "coercing addition propagates valueOf getter throw" {
+  let interp = Interpreter::new()
+  let sentinel = @errors.TypeError(message="valueOf getter")
+  let getter = make_coercing_addition_thrower_for_wb(
+    interp, "valueOf getter", sentinel,
+  )
+  let events : Array[String] = []
+  let to_string = make_executor_function(
+    Some("unused toString"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="toString",
+      value=String_("unused"),
+    ),
+    constructable=false,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    None,
+    None,
+    Some(getter),
+    Some(to_string),
+    None,
+  )
+  match coercing_addition_error_for_wb(interp, object, Number(1.0)) {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("valueOf getter unexpectedly completed")
+  }
+  json_inspect(events, content=[])
+}
+
+///|
+test "coercing addition propagates valueOf call throw" {
+  let interp = Interpreter::new()
+  let sentinel = @errors.TypeError(message="valueOf call")
+  let value_of = make_coercing_addition_thrower_for_wb(
+    interp, "valueOf call", sentinel,
+  )
+  let events : Array[String] = []
+  let to_string = make_executor_function(
+    Some("unused toString"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="toString",
+      value=String_("unused"),
+    ),
+    constructable=false,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    None,
+    Some(value_of),
+    None,
+    Some(to_string),
+    None,
+  )
+  match coercing_addition_error_for_wb(interp, object, Number(1.0)) {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("valueOf call unexpectedly completed")
+  }
+  json_inspect(events, content=[])
+}
+
+///|
+test "coercing addition propagates toString getter throw" {
+  let interp = Interpreter::new()
+  let sentinel = @errors.TypeError(message="toString getter")
+  let getter = make_coercing_addition_thrower_for_wb(
+    interp, "toString getter", sentinel,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    None,
+    Some(Undefined),
+    None,
+    None,
+    Some(getter),
+  )
+  match coercing_addition_error_for_wb(interp, object, Number(1.0)) {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("toString getter unexpectedly completed")
+  }
+}
+
+///|
+test "coercing addition propagates toString call throw" {
+  let interp = Interpreter::new()
+  let sentinel = @errors.TypeError(message="toString call")
+  let to_string = make_coercing_addition_thrower_for_wb(
+    interp, "toString call", sentinel,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    None,
+    Some(Undefined),
+    None,
+    Some(to_string),
+    None,
+  )
+  match coercing_addition_error_for_wb(interp, object, Number(1.0)) {
+    Some(error) => assert_true(physical_equal(error, sentinel))
+    None => fail("toString call unexpectedly completed")
+  }
+}
+
+///|
+test "coercing addition rejects object result from toString fallback" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let result_object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let to_string = make_executor_function(
+    Some("object toString"),
+    [],
+    interp.global,
+    false,
+    ExecutorActivationOrderedValueCode(
+      events~,
+      label="toString",
+      value=result_object,
+    ),
+    constructable=false,
+  )
+  let object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    None,
+    Some(Undefined),
+    None,
+    Some(to_string),
+    None,
+  )
+  assert_coercing_addition_type_error_for_wb(
+    interp,
+    object,
+    Number(1.0),
+    "object toString result",
+  )
+  json_inspect(events, content=["toString"])
 }
 
 ///|
