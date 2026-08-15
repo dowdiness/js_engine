@@ -147,6 +147,88 @@ test "Engine plain addition coercion remains reusable after abrupt completion" {
 }
 
 ///|
+// Stable default-vs-candidate Array coercion parity seam.
+test "Engine Array valueOf participates in addition" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var a = [1]; " +
+    "a.valueOf = function() { return 2; }; " +
+    "function arrayValueOfAdd() { return a + 1; }",
+  )
+  json_inspect(engine.call_json("arrayValueOfAdd", []), content=3)
+}
+
+///|
+test "Engine Array Symbol.toPrimitive keeps hint and receiver" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var a = [1]; " +
+    "var seen = ''; " +
+    "a[Symbol.toPrimitive] = function(hint) { " +
+    "seen = hint + (this === a); return 40; }; " +
+    "function arraySymbolAdd() { return [a + 1, seen]; }",
+  )
+  json_inspect(
+    engine.call_json("arraySymbolAdd", []),
+    content=[41, "defaulttrue"],
+  )
+}
+
+///|
+test "Engine Array toString participates in addition" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var a = [1]; " +
+    "a.toString = function() { return 'custom'; }; " +
+    "function arrayToStringAdd() { return a + 1; }",
+  )
+  json_inspect(engine.call_json("arrayToStringAdd", []), content="custom1")
+}
+
+///|
+test "Engine Array coercion hook matrix preserves parity" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var events = ''; " +
+    "var symbolArray = [1]; " +
+    "symbolArray[Symbol.toPrimitive] = function(hint) { " +
+    "events = events + 'symbol:' + hint + ':' + (this === symbolArray) + ';'; " +
+    "return 4; }; " +
+    "var valueOfArray = [1]; " +
+    "valueOfArray.valueOf = function() { " +
+    "events = events + 'valueOf:' + (this === valueOfArray) + ';'; " +
+    "return 5; }; " +
+    "var toStringArray = [1]; " +
+    "toStringArray.toString = function() { " +
+    "events = events + 'toString:' + (this === toStringArray) + ';'; " +
+    "return 'string'; }; " +
+    "var accessorArray = [1]; " +
+    "Object.defineProperty(accessorArray, Symbol.toPrimitive, { get: function() { " +
+    "events = events + 'getter;'; " +
+    "return function(hint) { events = events + 'accessor:' + hint + ':' + (this === accessorArray) + ';'; return 6; }; " +
+    "} }); " +
+    "var throwArray = [1]; " +
+    "throwArray.valueOf = function() { events = events + 'throw;'; throw 'guest'; }; " +
+    "var objectResultArray = [1]; " +
+    "objectResultArray.valueOf = function() { events = events + 'object;'; return {}; }; " +
+    "objectResultArray.toString = function() { events = events + 'objectString;'; return {}; }; " +
+    "function arrayCoercionMatrix() { " +
+    "var thrown = 'none'; try { throwArray + 1; } catch (error) { thrown = error; } " +
+    "var typeError = false; try { objectResultArray + 1; } catch (error) { typeError = error instanceof TypeError; } " +
+    "return { results: [symbolArray + 1, valueOfArray + 1, toStringArray + 1, accessorArray + 1], thrown: thrown, typeError: typeError, events: events }; }",
+  )
+  json_inspect(
+    engine.call_json("arrayCoercionMatrix", []),
+    content={
+      "results": [5, 6, "string1", 7],
+      "thrown": "guest",
+      "typeError": true,
+      "events": "throw;object;objectString;symbol:default:true;valueOf:true;toString:true;getter;accessor:default:true;",
+    },
+  )
+}
+
+///|
 test "Engine inject_json exposes immutable host-owned data" {
   let engine = @js_engine.Engine()
   let config = Json::object({

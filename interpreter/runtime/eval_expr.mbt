@@ -2377,15 +2377,7 @@ pub fn eval_binary_op(
   }
   fn p_default(v : Value) -> Value raise Error {
     match interp {
-      Some(ip) =>
-        match v {
-          // Preserve the existing array stringification path used by the
-          // synchronous tree walker; managed executor coercion uses the
-          // canonical property dispatcher for arrays.
-          Array(arr_data) =>
-            String_(arr_data.elements.map(value => value.to_string()).join(","))
-          _ => ip.to_primitive_value(v, "default")
-        }
+      Some(ip) => ip.to_primitive_value(v, "default")
       None =>
         match v {
           Object(data) => to_primitive_default(v, data, interp~)
