@@ -1476,7 +1476,7 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     [Spread, Iterator],
   )
   assert_instruction_contract_for_wb(
-    BinaryOp(Add, loc),
+    BinaryOp(Add, BinaryExpression, loc),
     true,
     UnsupportedBeforeActivation(BinaryOperation),
     [Operator],
@@ -1625,7 +1625,7 @@ test "activation selection recomputes typed reasons without a cached summary" {
     Ok(SynchronousLeaf) => ()
     _ => fail("literal-only function must be a synchronous leaf")
   }
-  bytecode.main_for_wb().code.push(BinaryOp(Add, loc))
+  bytecode.main_for_wb().code.push(BinaryOp(Add, BinaryExpression, loc))
   match select_bytecode_function_activation(bytecode.verified_main, []) {
     Err(unsupported) =>
       match unsupported.reason {
@@ -2715,7 +2715,7 @@ test "bytecode lowers instanceof to the shared binary op instruction" {
   let mut saw_instanceof = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      BinaryOp(Instanceof, _) => saw_instanceof = true
+      BinaryOp(Instanceof, _, _) => saw_instanceof = true
       _ => ()
     }
   }
@@ -3461,7 +3461,7 @@ test "bytecode lowers switch statements with duplicated discriminant dispatch" {
   for instr in bytecode.main_for_wb().code {
     match instr {
       Dup => saw_dup = true
-      BinaryOp(EqEqEq, _) => saw_strict_equal = true
+      BinaryOp(EqEqEq, _, _) => saw_strict_equal = true
       Jump(target) => {
         if target == -1 {
           abort("unpatched switch jump")
@@ -3847,6 +3847,21 @@ test "bytecode lowers member and computed assignments to property set instructio
 }
 
 ///|
+test "bytecode lowers plain binary expressions with expression origin" {
+  let bytecode = parse_bytecode_for_wb("1 + 2;")
+  let mut saw_add = false
+  for instr in bytecode.main_for_wb().code {
+    match instr {
+      BinaryOp(Add, BinaryExpression, _) => saw_add = true
+      BinaryOp(Add, CompoundAssignment, _) =>
+        abort("plain add retained compound-assignment origin")
+      _ => ()
+    }
+  }
+  guard saw_add else { abort("expected plain expression binary add") }
+}
+
+///|
 test "bytecode lowers identifier compound assignment through binary op and local store" {
   let bytecode = parse_bytecode_for_wb(
     "function f() { var x = 1; x += 2; return x; } f();",
@@ -3858,7 +3873,9 @@ test "bytecode lowers identifier compound assignment through binary op and local
   let mut saw_store_local = false
   for instr in bytecode.main_for_wb().children[0].code {
     match instr {
-      BinaryOp(Add, _) => saw_add = true
+      BinaryOp(Add, CompoundAssignment, _) => saw_add = true
+      BinaryOp(Add, BinaryExpression, _) =>
+        abort("identifier compound add retained expression origin")
       StoreLocal(0) => saw_store_local = true
       _ => ()
     }
@@ -3904,7 +3921,9 @@ test "bytecode lowers member compound assignments through reference-preserving r
   for instr in bytecode.main_for_wb().code {
     match instr {
       ReadPropertyForAssign("x", _) => saw_property_read = true
-      BinaryOp(Add, _) => saw_add = true
+      BinaryOp(Add, CompoundAssignment, _) => saw_add = true
+      BinaryOp(Add, BinaryExpression, _) =>
+        abort("member compound add retained expression origin")
       SetProperty("x", _) => saw_property_set = true
       _ => ()
     }
@@ -3925,7 +3944,9 @@ test "bytecode lowers computed compound assignments through canonicalized keys" 
   for instr in bytecode.main_for_wb().code {
     match instr {
       ReadComputedForAssign(_) => saw_computed_read = true
-      BinaryOp(Mul, _) => saw_mul = true
+      BinaryOp(Mul, CompoundAssignment, _) => saw_mul = true
+      BinaryOp(Mul, BinaryExpression, _) =>
+        abort("computed compound multiply retained expression origin")
       SetComputed(_) => saw_computed_set = true
       _ => ()
     }

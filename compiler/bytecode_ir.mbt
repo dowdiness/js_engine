@@ -337,6 +337,16 @@ priv enum BytecodeActivationUnsupportedReason {
 }
 
 ///|
+// The origin is retained in the instruction itself because admission must
+// never infer compound-assignment syntax from neighboring stack operations.
+// Both origins currently share the pre-activation binary-operation contract;
+// #886 later admits only the plain Add origin.
+priv enum BytecodeBinaryOrigin {
+  BinaryExpression
+  CompoundAssignment
+}
+
+///|
 #warnings("-unused_field")
 priv struct BytecodeInstructionContract {
   may_raise_js : Bool
@@ -371,7 +381,7 @@ priv enum BytecodeInstr {
   SetCompletionValue(Value) // direct completion update for constants/empty statements
   Pop
   Dup
-  BinaryOp(@ast.BinOp, @token.Loc)
+  BinaryOp(@ast.BinOp, BytecodeBinaryOrigin, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
   TypeofName(String)
   DeleteName(String)
@@ -541,7 +551,7 @@ fn bytecode_instruction_contract(
         UnsupportedBeforeActivation(SuperComputedPropertyAccess),
         [SuperMemberAccess, PropertyKey],
       )
-    BinaryOp(op, _) => bytecode_binary_contract(op)
+    BinaryOp(op, origin, _) => bytecode_binary_contract(op, origin)
     UnaryValueOp(op, _) => bytecode_unary_contract(op)
     DeleteProperty(_) =>
       bytecode_contract(true, UnsupportedBeforeActivation(DeleteProperty), [
@@ -702,30 +712,57 @@ fn bytecode_contract(
 }
 
 ///|
-fn bytecode_binary_contract(op : @ast.BinOp) -> BytecodeInstructionContract {
-  match op {
-    EqEqEq | NotEqEq | And | Or | NullishCoalesce =>
+fn bytecode_binary_contract(
+  op : @ast.BinOp,
+  origin : BytecodeBinaryOrigin,
+) -> BytecodeInstructionContract {
+  match (op, origin) {
+    (EqEqEq, _)
+    | (NotEqEq, _)
+    | (And, _)
+    | (Or, _)
+    | (NullishCoalesce, _) =>
       bytecode_contract(false, SynchronousLeaf, [Operator])
-    Add
-    | Sub
-    | Mul
-    | Div
-    | Mod
-    | EqEq
-    | NotEq
-    | Lt
-    | Gt
-    | LtEq
-    | GtEq
-    | BitAnd
-    | BitOr
-    | BitXor
-    | LShift
-    | RShift
-    | URShift
-    | Exp
-    | In
-    | Instanceof =>
+    (Add, BinaryExpression)
+    | (Add, CompoundAssignment)
+    | (Sub, BinaryExpression)
+    | (Sub, CompoundAssignment)
+    | (Mul, BinaryExpression)
+    | (Mul, CompoundAssignment)
+    | (Div, BinaryExpression)
+    | (Div, CompoundAssignment)
+    | (Mod, BinaryExpression)
+    | (Mod, CompoundAssignment)
+    | (EqEq, BinaryExpression)
+    | (EqEq, CompoundAssignment)
+    | (NotEq, BinaryExpression)
+    | (NotEq, CompoundAssignment)
+    | (Lt, BinaryExpression)
+    | (Lt, CompoundAssignment)
+    | (Gt, BinaryExpression)
+    | (Gt, CompoundAssignment)
+    | (LtEq, BinaryExpression)
+    | (LtEq, CompoundAssignment)
+    | (GtEq, BinaryExpression)
+    | (GtEq, CompoundAssignment)
+    | (BitAnd, BinaryExpression)
+    | (BitAnd, CompoundAssignment)
+    | (BitOr, BinaryExpression)
+    | (BitOr, CompoundAssignment)
+    | (BitXor, BinaryExpression)
+    | (BitXor, CompoundAssignment)
+    | (LShift, BinaryExpression)
+    | (LShift, CompoundAssignment)
+    | (RShift, BinaryExpression)
+    | (RShift, CompoundAssignment)
+    | (URShift, BinaryExpression)
+    | (URShift, CompoundAssignment)
+    | (Exp, BinaryExpression)
+    | (Exp, CompoundAssignment)
+    | (In, BinaryExpression)
+    | (In, CompoundAssignment)
+    | (Instanceof, BinaryExpression)
+    | (Instanceof, CompoundAssignment) =>
       bytecode_contract(true, UnsupportedBeforeActivation(BinaryOperation), [
         Operator,
       ])

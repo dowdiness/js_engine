@@ -240,6 +240,64 @@ test "candidate root selection retains lowering fallback" {
 }
 
 ///|
+// RED for #886: plain addition is the first coercive binary expression that
+// must eventually enter the managed candidate route.
+test "RED: candidate plain addition selects bytecode before frame construction" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb("1 + 2;")
+  assert_eq(value.to_string(), "3")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() == 1 else {
+    fail("plain addition started an unexpected number of executors")
+  }
+  if starts[0] != CandidateBytecodeExecutor {
+    fail("plain addition did not select bytecode")
+  }
+}
+
+///|
+fn assert_candidate_binary_tree_for_wb(
+  source : String,
+  child? : Bool = false,
+) -> Unit raise Error {
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let function = if child { root.children[0] } else { root }
+  match function.selection {
+    UseTreeWalker(_) => ()
+    UseBytecode(_) => fail("candidate binary form selected bytecode")
+  }
+}
+
+///|
+test "candidate local identifier compound addition stays tree-walker" {
+  assert_candidate_binary_tree_for_wb(
+    "function local() { var x = 1; x += 2; } local();",
+    child=true,
+  )
+}
+
+///|
+test "candidate environment or global compound addition stays tree-walker" {
+  assert_candidate_binary_tree_for_wb("var x = 1; x += 2;")
+}
+
+///|
+test "candidate property compound addition stays tree-walker" {
+  assert_candidate_binary_tree_for_wb("var o = { x: 1 }; o.x += 2;")
+}
+
+///|
+test "candidate computed compound addition stays tree-walker" {
+  assert_candidate_binary_tree_for_wb(
+    "var o = { x: 1 }; var k = 'x'; o[k] += 2;",
+  )
+}
+
+///|
+test "candidate sibling subtraction stays tree-walker" {
+  assert_candidate_binary_tree_for_wb("1 - 2;")
+}
+
+///|
 fn candidate_run_with_evidence_for_wb(
   source : String,
 ) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {

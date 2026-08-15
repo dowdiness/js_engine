@@ -707,7 +707,7 @@ fn BytecodeFrame::step_bytecode(
             raise @errors.InternalError(message="bytecode stack underflow")
         }
       Dup => stack.push(frame.peek())
-      BinaryOp(op, loc) => {
+      BinaryOp(op, _, loc) => {
         let right = match stack.pop() {
           Some(value) => value
           None =>
