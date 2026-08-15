@@ -105,6 +105,48 @@ test "Engine preserves state and isolates realms" {
 }
 
 ///|
+test "Engine plain addition coercion remains reusable after abrupt completion" {
+  let engine = @js_engine.Engine()
+  engine.eval("function add(left, right) { return left + right; }")
+  json_inspect(
+    engine.call_json("add", [Json::number(2.0), Json::number(3.0)]),
+    content=5,
+  )
+  engine.eval(
+    "var hintSeen = ''; " +
+    "var box = {}; " +
+    "box[Symbol.toPrimitive] = function(hint) { " +
+    "console.log(hint); queueMicrotask(() => console.log('micro')); " +
+    "hintSeen = hint; return 4; }; " +
+    "function addBox() { return box + 2; }",
+  )
+  json_inspect(engine.call_json("addBox", []), content=6)
+  json_inspect(engine.take_output(), content=["default"])
+  assert_true(engine.has_pending_microtasks())
+  assert_false(engine.run_microtask_checkpoint())
+  json_inspect(engine.take_output(), content=["micro"])
+  let failure : @js_engine.EngineError? = try {
+    engine.eval(
+      "var bad = {}; " +
+      "bad[Symbol.toPrimitive] = function() { throw new Error('boom'); }; " +
+      "function failAdd() { return bad + 1; }",
+    )
+    let _ = engine.call_json("failAdd", [])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.JavaScriptException(_)) => ()
+    Some(error) =>
+      fail("expected JavaScriptException, got " + error.to_string())
+    None => fail("abrupt addition unexpectedly completed")
+  }
+  engine.eval("function afterFailure() { return 9 + 1; }")
+  json_inspect(engine.call_json("afterFailure", []), content=10)
+}
+
+///|
 test "Engine inject_json exposes immutable host-owned data" {
   let engine = @js_engine.Engine()
   let config = Json::object({

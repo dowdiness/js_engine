@@ -2169,11 +2169,7 @@ fn BytecodeBuilder::compile_switch(
         let _ = self.emit(Dup)
         self.compile_expr(cond)
         let _ = self.emit_with_source_locations(
-          BinaryOp(
-            EqEqEq,
-            BinaryExpression,
-            @token.Loc::default(),
-          ),
+          BinaryOp(EqEqEq, BinaryExpression, @token.Loc::default()),
           [(Operator, bytecode_expr_loc(cond))],
         )
         let no_match = self.emit(JumpIfFalse(-1))
@@ -3648,9 +3644,7 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
       self.compile_expr(value)
       let _ = self.emit_with_source_locations(
         BinaryOp(bin_op, CompoundAssignment, loc),
-        [
-        (Operator, loc),
-        ],
+        [(Operator, loc)],
       )
       self.compile_identifier_store(name, loc)
     }
@@ -3694,9 +3688,7 @@ fn BytecodeBuilder::compile_property_compound_assign(
   self.compile_expr(value)
   let _ = self.emit_with_source_locations(
     BinaryOp(bin_op, CompoundAssignment, loc),
-    [
-    (Operator, loc),
-    ],
+    [(Operator, loc)],
   )
   let _ = self.emit_with_source_locations(SetProperty(prop, loc), [
     (MemberAccess, loc),
@@ -3741,9 +3733,7 @@ fn BytecodeBuilder::compile_computed_compound_assign(
   self.compile_expr(value)
   let _ = self.emit_with_source_locations(
     BinaryOp(bin_op, CompoundAssignment, loc),
-    [
-    (Operator, loc),
-    ],
+    [(Operator, loc)],
   )
   let _ = self.emit_with_source_locations(SetComputed(loc), [
     (MemberAccess, loc),
@@ -4620,9 +4610,7 @@ fn BytecodeBuilder::compile_expr_body(
       self.compile_expr(right)
       let _ = self.emit_with_source_locations(
         BinaryOp(op, BinaryExpression, loc),
-        [
-        (Operator, loc),
-        ],
+        [(Operator, loc)],
       )
     }
     Comma(left, right, _) => {

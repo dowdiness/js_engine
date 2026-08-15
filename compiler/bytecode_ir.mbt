@@ -717,11 +717,7 @@ fn bytecode_binary_contract(
   origin : BytecodeBinaryOrigin,
 ) -> BytecodeInstructionContract {
   match (op, origin) {
-    (EqEqEq, _)
-    | (NotEqEq, _)
-    | (And, _)
-    | (Or, _)
-    | (NullishCoalesce, _) =>
+    (EqEqEq, _) | (NotEqEq, _) | (And, _) | (Or, _) | (NullishCoalesce, _) =>
       bytecode_contract(false, SynchronousLeaf, [Operator])
     (Add, BinaryExpression) =>
       bytecode_contract(true, ManagedSuspension, [Operator])

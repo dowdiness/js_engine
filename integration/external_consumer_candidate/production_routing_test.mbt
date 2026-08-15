@@ -42,6 +42,44 @@ test "candidate override fixture uses the stable Engine contract" {
 }
 
 ///|
+test "candidate Engine routes plain addition coercion and remains reusable" {
+  let engine = @js_engine.Engine()
+  engine.eval("function add(left, right) { return left + right; }")
+  json_inspect(engine.call_json("add", [2, 3]), content=5)
+  engine.eval(
+    "var events = ''; " +
+    "var box = {}; " +
+    "box[Symbol.toPrimitive] = function(hint) { " +
+    "events = events + hint; console.log(hint); " +
+    "queueMicrotask(() => console.log('micro')); return 4; }; " +
+    "function addBox() { return box + 2; }",
+  )
+  json_inspect(engine.call_json("addBox", []), content=6)
+  json_inspect(engine.take_output(), content=["default"])
+  expect_bool(engine.has_pending_microtasks(), true, "addition queue")
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "addition queue checkpoint",
+  )
+  json_inspect(engine.take_output(), content=["micro"])
+  engine.eval(
+    "var bad = {}; " +
+    "bad[Symbol.toPrimitive] = function() { throw new Error('addition'); }; " +
+    "function failAdd() { return bad + 1; }",
+  )
+  let failed = try {
+    ignore(engine.call_json("failAdd", []))
+    false
+  } catch {
+    error => error.to_string().contains("addition")
+  }
+  expect_bool(failed, true, "candidate addition abrupt completion")
+  engine.eval("function afterAdditionFailure() { return 9 + 1; }")
+  json_inspect(engine.call_json("afterAdditionFailure", []), content=10)
+}
+
+///|
 test "candidate mode routes each mixed child independently" {
   let engine = @js_engine.Engine()
   let source =

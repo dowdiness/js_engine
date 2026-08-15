@@ -278,6 +278,57 @@ test "candidate plain addition resumes through guest ToPrimitive" {
 }
 
 ///|
+test "candidate plain addition supports finite guest re-entry" {
+  let source =
+    #|var depth = 0;
+    #|var object = {};
+    #|object[Symbol.toPrimitive] = function(hint) {
+    #|  if (depth === 320) return 1;
+    #|  depth = depth + 1;
+    #|  return object + 0;
+    #|};
+    #|function add(value) { return value + 0; }
+    #|add(object);
+    #|depth;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "320")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate compound addition evidence starts TreeWalker before effects" {
+  let source = "var value = 1; value += 2; value;"
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "3")
+  assert_eq(evidence.val.summary.tree_starts, 1)
+  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() >= 3 else {
+    fail("compound addition route evidence is incomplete")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseTreeWalker(CandidateActivationUnsupported(_)) => ()
+        UseTreeWalker(CandidateLoweringUnsupported(_)) =>
+          fail("compound addition was mislabeled as lowering unsupported")
+        UseBytecode(_) => fail("compound addition prepared bytecode")
+      }
+    _ => fail("compound addition started before its route decision")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateTreeWalkerExecutor => ()
+        CandidateBytecodeExecutor => fail("compound addition started bytecode")
+      }
+    _ => fail("compound addition route did not start after preparation")
+  }
+}
+
+///|
 fn assert_candidate_binary_tree_for_wb(
   source : String,
   child? : Bool = false,
