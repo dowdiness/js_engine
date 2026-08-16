@@ -558,6 +558,99 @@ test "managed iterable spread uses bare Map and Set iterator hooks" {
 }
 
 ///|
+test "managed bare Map fallback defers a Proxy method to call activation" {
+  let map_ref : Ref[Value] = { val: Undefined }
+  let method_ref : Ref[Value] = { val: Undefined }
+  let method_calls : Ref[Int] = { val: 0 }
+  let hooks = {
+    ..default_stdlib_hooks(),
+    get_map_method: fn(_data, prop, realm_state) {
+      guard prop == "entries" else { return Undefined }
+      let target = make_method_func(
+        name="bare Map Proxy target",
+        realm_state=Some(realm_state),
+        fn(this_value, _args) raise {
+          method_calls.val += 1
+          assert_true(physical_equal(this_value, map_ref.val))
+          let next = make_method_func(
+            name="bare Map Proxy next",
+            realm_state=Some(realm_state),
+            fn(_iterator, _next_args) { create_iter_result(Undefined, true) },
+          )
+          make_object({ "next": next }, Null, None, "Object", Map([]), true)
+        },
+      )
+      let proxy = Proxy({
+        target: Some(target),
+        handler: Some(make_plain_object()),
+        is_callable: true,
+        is_constructor: false,
+      })
+      method_ref.val = proxy
+      proxy
+    },
+  }
+  let interp = Interpreter::new(stdlib_hooks=hooks)
+  let map = Map(MapData([]))
+  map_ref.val = map
+  let loc = @token.Loc::default()
+  let request = ExecutorIterableSpreadRequest(iterable=map, loc~)
+  let frame = ExecutorIterableSpreadFrame(request)
+  frame.phase = ExecutorIterableSpreadHaveIteratorMethod(map, Undefined)
+  let step = frame.step_frame(interp)
+  match step {
+    ExecutorActivationCall(call_request) => {
+      assert_true(physical_equal(call_request.callee, method_ref.val))
+      assert_true(physical_equal(call_request.this_value, map))
+      assert_true(call_request.loc == loc)
+    }
+    _ => fail("bare Map fallback must defer callable invocation")
+  }
+  assert_eq(method_calls.val, 0)
+  let values = run_executor_iterable_spread_for_wb(interp, map)
+  assert_eq(values.length(), 0)
+  assert_eq(method_calls.val, 1)
+}
+
+///|
+test "tree-walker bare Map fallback invokes the deferred Proxy method" {
+  let map_ref : Ref[Value] = { val: Undefined }
+  let method_calls : Ref[Int] = { val: 0 }
+  let hooks = {
+    ..default_stdlib_hooks(),
+    get_map_method: fn(_data, prop, realm_state) {
+      guard prop == "entries" else { return Undefined }
+      let target = make_method_func(
+        name="tree bare Map Proxy target",
+        realm_state=Some(realm_state),
+        fn(this_value, _args) raise {
+          method_calls.val += 1
+          assert_true(physical_equal(this_value, map_ref.val))
+          let next = make_method_func(
+            name="tree bare Map Proxy next",
+            realm_state=Some(realm_state),
+            fn(_iterator, _next_args) { create_iter_result(Undefined, true) },
+          )
+          make_object({ "next": next }, Null, None, "Object", Map([]), true)
+        },
+      )
+      Proxy({
+        target: Some(target),
+        handler: Some(make_plain_object()),
+        is_callable: true,
+        is_constructor: false,
+      })
+    },
+  }
+  let interp = Interpreter::new(stdlib_hooks=hooks)
+  let map = Map(MapData([]))
+  map_ref.val = map
+  let values = interp.spread_iterable(map, @token.Loc::default())
+  assert_eq(values.length(), 0)
+  assert_eq(method_calls.val, 1)
+}
+
+///|
 test "Map and Set spread fallback respects observable overrides" {
   let fallback_calls : Ref[Int] = { val: 0 }
   let hooks = {

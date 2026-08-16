@@ -31,10 +31,10 @@ pub fn Interpreter::spread_iterable(
       // Built-in Array/String iterator creation is centralized so an
       // explicit own @@iterator = undefined is not mistaken for absence.
       match
-        self.default_iterable_iterator_if_unoverridden(
-          val, iterator_method, loc,
-        ) {
-        Some(iterator) => iterator
+        self.default_iterable_iterator_if_unoverridden(val, iterator_method) {
+        Some(ExecutorIterableSpreadReadyIterator(iterator)) => iterator
+        Some(ExecutorIterableSpreadIteratorMethod(iterator_method)) =>
+          self.call_value(iterator_method, val, [], loc)
         None =>
           raise @errors.TypeError(message=type_of(val) + " is not iterable")
       }

@@ -1,4 +1,13 @@
 ///|
+// A closed fallback result keeps an already-created intrinsic iterator apart
+// from a callable iterator method. The latter must cross the managed call
+// activation seam before it can execute guest code.
+priv enum ExecutorIterableSpreadIteratorFallback {
+  ExecutorIterableSpreadReadyIterator(Value)
+  ExecutorIterableSpreadIteratorMethod(Value)
+}
+
+///|
 // Canonical built-in iterator fallback for spread. Built-in variants may lack
 // a materialized @@iterator in a bare RealmState, so the fallback is selected
 // only after the observable lookup returned undefined and callback-free shape
@@ -8,8 +17,7 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
   self : Interpreter,
   iterable : Value,
   iterator_method : Value,
-  loc : @token.Loc,
-) -> Value? raise Error {
+) -> ExecutorIterableSpreadIteratorFallback? {
   guard iterator_method is Undefined else { return None }
   let iterator_sym = self.realm_state.well_known_symbols.iterator
   match iterable {
@@ -25,19 +33,28 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
       // facts and must suppress fallback without probing a Proxy with `has`.
       guard get_array_prototype_override(data) is None else { return None }
       guard self.realm_state.get_array_proto() is Null else { return None }
-      Some(self.realm_state.make_array_iterator_value(data))
+      Some(
+        ExecutorIterableSpreadReadyIterator(
+          self.realm_state.make_array_iterator_value(data),
+        ),
+      )
     }
     String_(value) => {
       // As with Array, only an uninitialized realm may use the intrinsic
       // fallback. Initialized String.prototype lookup owns even an undefined
       // result, including observable inherited overrides.
       guard self.realm_state.get_string_proto() is Null else { return None }
-      Some(self.realm_state.make_string_iterator_value(value))
+      Some(
+        ExecutorIterableSpreadReadyIterator(
+          self.realm_state.make_string_iterator_value(value),
+        ),
+      )
     }
     Map(data) => {
-      // Bare Map lookup has no materialized prototype. Call the supplied
+      // Bare Map lookup has no materialized prototype. Return the supplied
       // intrinsic method only after callback-free representation facts prove
-      // that own and inherited overrides cannot be present.
+      // that own and inherited overrides cannot be present. The caller owns
+      // the eventual invocation because this Value may enter guest code.
       guard data.prototype is None &&
         self.realm_state.get_map_proto() is Null &&
         !data.bag.symbol_descriptors.contains(iterator_sym.id) &&
@@ -50,11 +67,12 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
         self.realm_state,
       )
       guard is_callable(intrinsic_method) else { return None }
-      Some(self.call_value(intrinsic_method, iterable, [], loc))
+      Some(ExecutorIterableSpreadIteratorMethod(intrinsic_method))
     }
     Set(data) => {
       // Set follows the same bare-runtime contract as Map, using its
       // intrinsic values method and preserving the original Set receiver.
+      // Invocation is deferred to the caller for the same guest-entry reason.
       guard data.prototype is None &&
         self.realm_state.get_set_proto() is Null &&
         !data.bag.symbol_descriptors.contains(iterator_sym.id) &&
@@ -67,7 +85,7 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
         self.realm_state,
       )
       guard is_callable(intrinsic_method) else { return None }
-      Some(self.call_value(intrinsic_method, iterable, [], loc))
+      Some(ExecutorIterableSpreadIteratorMethod(intrinsic_method))
     }
     _ => None
   }
@@ -156,11 +174,22 @@ fn ExecutorIterableSpreadFrame::step_frame(
       } else {
         match
           interp.default_iterable_iterator_if_unoverridden(
-            iterable, iterator_method, loc,
+            iterable, iterator_method,
           ) {
-          Some(iterator) => {
+          Some(ExecutorIterableSpreadReadyIterator(iterator)) => {
             self.phase = ExecutorIterableSpreadHaveIterator(iterator)
             self.step_frame(interp)
+          }
+          Some(ExecutorIterableSpreadIteratorMethod(iterator_method)) => {
+            self.phase = ExecutorIterableSpreadAwaitIteratorCall
+            ExecutorActivationCall(
+              ExecutorCallRequest(
+                callee=iterator_method,
+                this_value=iterable,
+                args=[],
+                loc~,
+              ),
+            )
           }
           None => {
             let message = match iterator_method {
