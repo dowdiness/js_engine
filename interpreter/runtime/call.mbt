@@ -27,24 +27,11 @@ pub fn Interpreter::spread_iterable(
           )
       }
     Undefined =>
-      // No iterator method — fall back for arrays/strings which are built-in iterables
-      match val {
-        Array(arr) => {
-          for el in arr.elements {
-            result.push(el)
-          }
-          return result
-        }
-        String_(s) => {
-          let chars = s.to_array()
-          for c in chars {
-            let buf = StringBuilder::new()
-            buf.write_char(c)
-            result.push(String_(buf.to_string()))
-          }
-          return result
-        }
-        _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
+      // Built-in Array/String iterator creation is centralized so an
+      // explicit own @@iterator = undefined is not mistaken for absence.
+      match self.default_iterable_iterator_if_unoverridden(val, iterator_method) {
+        Some(iterator) => iterator
+        None => raise @errors.TypeError(message=type_of(val) + " is not iterable")
       }
     _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
   }
