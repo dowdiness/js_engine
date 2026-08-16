@@ -320,7 +320,7 @@ fn bytecode_instruction_transfer(
     | SetCompletion
     | Pop => Fallthrough(bytecode_stack_effect(1, -1))
     Dup => Fallthrough(bytecode_stack_effect(1, 1))
-    BinaryOp(_, _) | DeleteComputed | AppendTemplate(_) =>
+    BinaryOp(_, _, _) | DeleteComputed | AppendTemplate(_) =>
       Fallthrough(bytecode_stack_effect(2, -1))
     UpdateProperty(_, _, _, _, _) => Fallthrough(bytecode_stack_effect(1, 0))
     UpdateComputed(_, _, _, _) => Fallthrough(bytecode_stack_effect(2, -1))
@@ -1687,7 +1687,7 @@ fn bytecode_indexed_operand(
     | SetCompletionValue(_)
     | Pop
     | Dup
-    | BinaryOp(_, _)
+    | BinaryOp(_, _, _)
     | UnaryValueOp(_, _)
     | TypeofName(_)
     | DeleteName(_)

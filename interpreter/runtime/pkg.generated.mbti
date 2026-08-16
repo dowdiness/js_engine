@@ -29,6 +29,8 @@ pub fn apply_object_literal_static_data_property(Value, String, Value) -> Unit r
 
 pub fn array_species_create(Interpreter, Value, Int64) -> Value raise
 
+pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
+
 pub fn builtin_method_desc() -> PropDescriptor
 
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
@@ -92,6 +94,10 @@ pub fn execution_control_failure_code(Error) -> String?
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_capability_summary_equal(ExecutorActivationCapabilitySummary?, ExecutorActivationCapabilitySummary?) -> Bool
+
+pub fn executor_activation_coercing_addition(Value, Value, @token.Loc) -> ExecutorActivationStep
+
+pub fn executor_activation_coercing_addition_request(ExecutorCoercingAdditionRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_completion_abrupt(Error) -> ExecutorActivationCompletion
 
@@ -677,6 +683,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
+  ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -691,6 +698,15 @@ pub fn ExecutorCallableData::length(Self) -> Int
 pub fn ExecutorCallableData::name(Self) -> String
 pub fn ExecutorCallableData::source_text(Self) -> String?
 pub fn ExecutorCallableData::start_frame(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
+
+pub struct ExecutorCoercingAdditionRequest {
+  // private fields
+}
+
+pub enum ExecutorCoercingAdditionStart {
+  ExecutorCoercingAdditionCompleted(Value)
+  ExecutorCoercingAdditionSuspended(ExecutorCoercingAdditionRequest)
+}
 
 pub struct ExecutorConstructRequest {
   // private fields

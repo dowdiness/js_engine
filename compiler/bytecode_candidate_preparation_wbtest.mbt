@@ -153,7 +153,7 @@ test "candidate tree separates parent and child outcomes" {
 test "candidate selection keeps activation unsupported local to a function" {
   let source =
     #|function parent() { return 1; }
-    #|function child() { return 1 + 2; }
+    #|function child() { return 1 - 2; }
   let root = (prepare_candidate_program(@parser.parse(source).stmts) catch {
       error => {
         debug_inspect(error.to_string())
@@ -184,7 +184,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
-    #|  function child() { return 1 + 2; }
+    #|  function child() { return 1 - 2; }
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
@@ -210,7 +210,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
 
 ///|
 test "candidate root selection distinguishes activation fallback" {
-  let program = prepare_candidate_program(@parser.parse("1 + 2;").stmts)
+  let program = prepare_candidate_program(@parser.parse("1 - 2;").stmts)
   match program.root.selection {
     UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
       match unsupported.reason {
@@ -237,6 +237,285 @@ test "candidate root selection retains lowering fallback" {
     UseTreeWalker(_) => fail("root fallback was not lowering unsupported")
     UseBytecode(_) => fail("lowering-unsupported root selected bytecode")
   }
+}
+
+///|
+// Candidate evidence for #886: plain addition enters the managed route once,
+// before the runtime request frame is constructed.
+test "candidate plain addition selects bytecode before frame construction" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb("1 + 2;")
+  assert_eq(value.to_string(), "3")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() == 1 else {
+    fail("plain addition started an unexpected number of executors")
+  }
+  if starts[0] != CandidateBytecodeExecutor {
+    fail("plain addition did not select bytecode")
+  }
+}
+
+///|
+test "candidate benchmark fixed-unroll shape selects managed bytecode" {
+  let source =
+    #|function issue886NumberAdd(left, right) {
+    #|  var value = 0;
+    #|  value = left + right;
+    #|  value = left + right;
+    #|  value = left + right;
+    #|  return value;
+    #|}
+    #|issue886NumberAdd(1, 2);
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.children.length() == 1 else {
+    fail("benchmark shape must contain one hot function")
+  }
+  let addition_count = match program.root.children[0].bytecode {
+    Some(bytecode) =>
+      bytecode.function.code
+      .filter(instruction => {
+        match instruction {
+          BinaryOp(Add, BinaryExpression, _) => true
+          _ => false
+        }
+      })
+      .length()
+    None => 0
+  }
+  match program.root.children[0].selection {
+    UseBytecode(ManagedSuspension) => ()
+    _ => fail("benchmark hot function was not UseBytecode(ManagedSuspension)")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "3")
+  assert_eq(addition_count, 3)
+  let bytecode_starts = evidence.val.summary.bytecode_starts
+  let tree_starts = evidence.val.summary.tree_starts
+  let fallback_violations = evidence.val.summary.fallback_violations
+  let replay_violations = evidence.val.summary.replay_violations
+  guard addition_count == 3 &&
+    bytecode_starts == 2 &&
+    tree_starts == 0 &&
+    fallback_violations == 0 &&
+    replay_violations == 0 else {
+    fail(
+      "benchmark route mismatch: additions=" +
+      addition_count.to_string() +
+      ", bytecode=" +
+      bytecode_starts.to_string() +
+      ", tree=" +
+      tree_starts.to_string() +
+      ", fallback=" +
+      fallback_violations.to_string() +
+      ", replay=" +
+      replay_violations.to_string(),
+    )
+  }
+}
+
+///|
+test "candidate plain addition resumes through guest ToPrimitive" {
+  let source =
+    #|var events = "";
+    #|var object = {};
+    #|object[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + hint;
+    #|  return 2;
+    #|};
+    #|function add(value) { return value + 1; }
+    #|add(object);
+    #|events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "default")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.contains(CandidateBytecodeExecutor) else {
+    fail("plain addition did not enter the bytecode route")
+  }
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate plain addition supports finite guest re-entry" {
+  let source =
+    #|var depth = 0;
+    #|var object = {};
+    #|object[Symbol.toPrimitive] = function(hint) {
+    #|  if (depth === 320) return 1;
+    #|  depth = depth + 1;
+    #|  return object + 0;
+    #|};
+    #|function add(value) { return value + 0; }
+    #|add(object);
+    #|depth;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "320")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate compound addition evidence starts TreeWalker before effects" {
+  let source = "var value = 1; value += 2; value;"
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "3")
+  assert_eq(evidence.val.summary.tree_starts, 1)
+  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() >= 3 else {
+    fail("compound addition route evidence is incomplete")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseTreeWalker(CandidateActivationUnsupported(_)) => ()
+        UseTreeWalker(CandidateLoweringUnsupported(_)) =>
+          fail("compound addition was mislabeled as lowering unsupported")
+        UseBytecode(_) => fail("compound addition prepared bytecode")
+      }
+    _ => fail("compound addition started before its route decision")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateTreeWalkerExecutor => ()
+        CandidateBytecodeExecutor => fail("compound addition started bytecode")
+      }
+    _ => fail("compound addition route did not start after preparation")
+  }
+}
+
+///|
+fn assert_candidate_tree_route_evidence_for_wb(
+  source : String,
+  expected_value : String,
+  child? : Bool = false,
+) -> Unit raise Error {
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let function = if child { root.children[0] } else { root }
+  let source_identity = function.source_identity
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), expected_value)
+  let mut prepared_count = 0
+  let mut tree_starts = 0
+  let mut bytecode_starts = 0
+  let mut completed_count = 0
+  let activation_ids : Array[Int] = []
+  for event in evidence.val.events {
+    match event {
+      CandidateRoutePreparedEvent(prepared) =>
+        if bytecode_source_identity_coordinates_equal_for_wb(
+            prepared.source_identity,
+            source_identity,
+          ) {
+          prepared_count += 1
+          activation_ids.push(prepared.activation_id)
+          match prepared.decision {
+            UseTreeWalker(_) => ()
+            UseBytecode(_) =>
+              fail("excluded candidate prepared a bytecode route")
+          }
+        }
+      CandidateRouteStartedEvent(started) =>
+        if bytecode_source_identity_coordinates_equal_for_wb(
+            started.source_identity,
+            source_identity,
+          ) {
+          match started.executor {
+            CandidateTreeWalkerExecutor => tree_starts += 1
+            CandidateBytecodeExecutor => bytecode_starts += 1
+          }
+        }
+      CandidateRouteCompletedEvent(completed) =>
+        if bytecode_source_identity_coordinates_equal_for_wb(
+            completed.source_identity,
+            source_identity,
+          ) {
+          completed_count += 1
+          match completed.completion {
+            CandidateRouteNormal => ()
+            CandidateRouteAbrupt =>
+              fail("excluded candidate completed abruptly")
+          }
+        }
+    }
+  }
+  guard prepared_count == 1 else {
+    fail("excluded candidate did not record exactly one route decision")
+  }
+  guard tree_starts == prepared_count else {
+    fail("excluded candidate did not start TreeWalker after preparation")
+  }
+  guard bytecode_starts == 0 else {
+    fail("excluded candidate started bytecode")
+  }
+  guard completed_count == tree_starts else {
+    fail("excluded candidate did not complete exactly once")
+  }
+  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  for activation_id in activation_ids {
+    match evidence.val.lifecycles.get(activation_id) {
+      Some(CandidateRouteFinished(completed)) =>
+        match completed.completion {
+          CandidateRouteNormal => ()
+          CandidateRouteAbrupt =>
+            fail("excluded candidate lifecycle completed abruptly")
+        }
+      _ => fail("excluded candidate lifecycle did not finish")
+    }
+  }
+}
+
+///|
+// The execution helper prepares a fresh program, so its compilation token is
+// intentionally distinct. Match the stable source coordinates while keeping
+// the route decision and executor evidence authoritative.
+fn bytecode_source_identity_coordinates_equal_for_wb(
+  left : BytecodeSourceIdentity,
+  right : BytecodeSourceIdentity,
+) -> Bool {
+  left.source_unit == right.source_unit &&
+  left.source_point_owner == right.source_point_owner &&
+  left.parent_source_point_owner == right.parent_source_point_owner &&
+  left.child_index == right.child_index &&
+  left.consumer_form == right.consumer_form
+}
+
+///|
+test "candidate local identifier compound addition stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "for (var unused of [0]) {}; function local() { var x = 1; x += 2; return x; } local();",
+    "3",
+    child=true,
+  )
+}
+
+///|
+test "candidate environment or global compound addition stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb("var x = 1; x += 2; x;", "3")
+}
+
+///|
+test "candidate property compound addition stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 1 }; o.x += 2; o.x;", "3",
+  )
+}
+
+///|
+test "candidate computed compound addition stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 1 }; var k = 'x'; o[k] += 2; o[k];", "3",
+  )
+}
+
+///|
+test "candidate sibling subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
 }
 
 ///|
@@ -844,9 +1123,9 @@ test "candidate tree separates same-name same-signature siblings" {
     #|  let same = function same(x) { return 20; };
     #|  return same(0);
     #|}
-    #|parent(false) + parent(true);
+    #|parent(false) - parent(true);
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  if value.to_string() != "30" {
+  if value.to_string() != "10" {
     fail("same-name sibling route returned an unexpected value")
   }
   let starts = candidate_started_executors_for_wb(evidence)
@@ -1316,7 +1595,7 @@ test "candidate verification rejects stale cross-compilation and malformed paren
 test "candidate preparation is deterministic across repeated calls" {
   let source =
     #|function same() { return 1; }
-    #|function same() { return 2 + 3; }
+    #|function same() { return 2 - 3; }
     #|var holder = { method() {}, arrow: () => 1 };
   let first = prepare_candidate_program(@parser.parse(source).stmts)
   let second = prepare_candidate_program(@parser.parse(source).stmts)

@@ -1,4 +1,39 @@
 ///|
+test "eval_binary_op converts the right operand before Symbol failure" {
+  let interp = Interpreter::new()
+  let calls : Ref[Int] = { val: 0 }
+  let hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      calls.val += 1
+      Number(2.0)
+    },
+  )
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+    _ => fail("expected object fixture")
+  }
+  let raised = try {
+    let _ = eval_binary_op(
+      @ast.BinOp::Add,
+      Symbol({ id: 9002, description: None }),
+      object,
+      @token.Loc::default(),
+      interp=Some(interp),
+    )
+    false
+  } catch {
+    @errors.TypeError(_) => true
+    _ => false
+  }
+  assert_true(raised)
+  inspect(calls.val, content="1")
+}
+
+///|
 test "expr_may_contain_yield handles 4096 nested expressions" {
   let loc = @token.Loc::default()
   let mut nested = @ast.Expr::YieldExpr(None, false, loc)

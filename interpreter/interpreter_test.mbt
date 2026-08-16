@@ -4354,10 +4354,15 @@ test "Array concat Proxy receiver and argument invoke get traps in order" {
     #|Array.prototype.concat.call(p, p);
     #|console.log(get[0] === "constructor");
     #|console.log(get[1] === Symbol.isConcatSpreadable);
-    #|console.log(get.slice(2) + "");
+    #|console.log(get.length === 7);
+    #|console.log(get[2] === "length");
+    #|console.log(get[3] === "0");
+    #|console.log(get[4] === Symbol.isConcatSpreadable);
+    #|console.log(get[5] === "length");
+    #|console.log(get[6] === "0");
   let output = run_output(src)
   json_inspect(output, content=[
-    "true", "true", "length,0,Symbol(Symbol.isConcatSpreadable),length,0",
+    "true", "true", "true", "true", "true", "true", "true", "true",
   ])
 }
 

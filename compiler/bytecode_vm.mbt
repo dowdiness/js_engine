@@ -613,6 +613,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property update",
       )
+    @runtime.ExecutorActivationCoercingAddition(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending coercing addition",
+      )
   }
 }
 
@@ -707,7 +711,20 @@ fn BytecodeFrame::step_bytecode(
             raise @errors.InternalError(message="bytecode stack underflow")
         }
       Dup => stack.push(frame.peek())
-      BinaryOp(op, loc) => {
+      BinaryOp(Add, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match @runtime.begin_executor_coercing_addition(left, right, loc) {
+          @runtime.ExecutorCoercingAdditionCompleted(value) => stack.push(value)
+          @runtime.ExecutorCoercingAdditionSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_addition_request(request),
+            )
+          }
+        }
+      }
+      BinaryOp(op, _, loc) => {
         let right = match stack.pop() {
           Some(value) => value
           None =>

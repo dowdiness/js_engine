@@ -16,6 +16,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
+  ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
 }
 
 ///|
@@ -215,6 +216,43 @@ pub fn executor_activation_property_set(
   ExecutorActivationPropertySet(
     ExecutorPropertySetRequest(target~, property_name~, value~, loc~, strict~),
   )
+}
+
+///|
+// A closed addition request. Runtime owns ToPrimitive ordering, conversion
+// hooks, final string-or-numeric addition, and abrupt completion; executors
+// supply only the already-evaluated operands and source location.
+pub struct ExecutorCoercingAdditionRequest {
+  priv left : Value
+  priv right : Value
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorCoercingAdditionRequest::ExecutorCoercingAdditionRequest(
+  left~ : Value,
+  right~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorCoercingAdditionRequest {
+  { left, right, loc }
+}
+
+///|
+pub fn executor_activation_coercing_addition(
+  left : Value,
+  right : Value,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingAddition(
+    ExecutorCoercingAdditionRequest(left~, right~, loc~),
+  )
+}
+
+///|
+pub fn executor_activation_coercing_addition_request(
+  request : ExecutorCoercingAdditionRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingAddition(request)
 }
 
 ///|
@@ -529,6 +567,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertyGet
   ExecutorChildPropertySet(Value)
   ExecutorChildPropertyUpdate
+  ExecutorChildCoercingAddition
 }
 
 ///|
@@ -674,18 +713,7 @@ priv enum ExecutorPropertyUpdatePhase {
   ExecutorPropertyUpdateNeedGet
   ExecutorPropertyUpdateAwaitGet
   ExecutorPropertyUpdateHaveCurrent(Value)
-  ExecutorPropertyUpdateAwaitToPrimitiveLookup(Value)
-  ExecutorPropertyUpdateHaveToPrimitiveMethod(Value, Value)
-  ExecutorPropertyUpdateAwaitToPrimitive
-  ExecutorPropertyUpdateHaveToPrimitiveResult(Value)
-  ExecutorPropertyUpdateAwaitValueOfLookup(Value)
-  ExecutorPropertyUpdateHaveValueOfMethod(Value, Value)
-  ExecutorPropertyUpdateAwaitValueOf(Value)
-  ExecutorPropertyUpdateHaveValueOfResult(Value, Value)
-  ExecutorPropertyUpdateAwaitToStringLookup(Value)
-  ExecutorPropertyUpdateHaveToStringMethod(Value, Value)
-  ExecutorPropertyUpdateAwaitToString
-  ExecutorPropertyUpdateHaveToStringResult(Value)
+  ExecutorPropertyUpdateAwaitToPrimitive(ExecutorToPrimitiveOperation)
   ExecutorPropertyUpdateAwaitSet(Value)
   ExecutorPropertyUpdateComplete(Value)
 }
@@ -736,28 +764,16 @@ fn reduce_executor_property_update_completion(
       match phase {
         ExecutorPropertyUpdateAwaitGet =>
           ExecutorPropertyUpdateHaveCurrent(value)
-        ExecutorPropertyUpdateAwaitToPrimitiveLookup(current) =>
-          ExecutorPropertyUpdateHaveToPrimitiveMethod(current, value)
-        ExecutorPropertyUpdateAwaitToPrimitive =>
-          ExecutorPropertyUpdateHaveToPrimitiveResult(value)
-        ExecutorPropertyUpdateAwaitValueOfLookup(current) =>
-          ExecutorPropertyUpdateHaveValueOfMethod(current, value)
-        ExecutorPropertyUpdateAwaitValueOf(current) =>
-          ExecutorPropertyUpdateHaveValueOfResult(current, value)
-        ExecutorPropertyUpdateAwaitToStringLookup(current) =>
-          ExecutorPropertyUpdateHaveToStringMethod(current, value)
-        ExecutorPropertyUpdateAwaitToString =>
-          ExecutorPropertyUpdateHaveToStringResult(value)
+        ExecutorPropertyUpdateAwaitToPrimitive(operation) => {
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+          ExecutorPropertyUpdateAwaitToPrimitive(operation)
+        }
         ExecutorPropertyUpdateAwaitSet(result) =>
           ExecutorPropertyUpdateComplete(result)
         ExecutorPropertyUpdateNeedGet
         | ExecutorPropertyUpdateHaveCurrent(_)
-        | ExecutorPropertyUpdateHaveToPrimitiveMethod(_, _)
-        | ExecutorPropertyUpdateHaveToPrimitiveResult(_)
-        | ExecutorPropertyUpdateHaveValueOfMethod(_, _)
-        | ExecutorPropertyUpdateHaveValueOfResult(_, _)
-        | ExecutorPropertyUpdateHaveToStringMethod(_, _)
-        | ExecutorPropertyUpdateHaveToStringResult(_)
         | ExecutorPropertyUpdateComplete(_) =>
           raise @errors.InternalError(
             message="property update received an unexpected child completion",
@@ -767,16 +783,24 @@ fn reduce_executor_property_update_completion(
 }
 
 ///|
-fn ExecutorPropertyUpdateFrame::begin_to_string_lookup(
+fn ExecutorPropertyUpdateFrame::begin_to_primitive(
   self : ExecutorPropertyUpdateFrame,
   current : Value,
-) -> ExecutorActivationStep {
-  self.phase = ExecutorPropertyUpdateAwaitToStringLookup(current)
-  executor_activation_managed_property_get(
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  let operation = ExecutorToPrimitiveOperation(
     current,
-    "toString",
+    ExecutorToPrimitiveNumber,
     self.request.loc,
   )
+  match operation.step(interp) {
+    ExecutorActivationNormal(value) =>
+      self.begin_set(to_number(value, interp=Some(interp)))
+    step => {
+      self.phase = ExecutorPropertyUpdateAwaitToPrimitive(operation)
+      step
+    }
+  }
 }
 
 ///|
@@ -807,105 +831,26 @@ impl ExecutorActivationFrame for ExecutorPropertyUpdateFrame with fn step(
       )
     }
     ExecutorPropertyUpdateHaveCurrent(current) =>
-      match current {
-        Object(_) | Proxy(_) => {
-          let to_primitive = interp.realm_state.well_known_symbols.to_primitive
-          self.phase = ExecutorPropertyUpdateAwaitToPrimitiveLookup(current)
-          executor_activation_symbol_property_get(
-            current,
-            to_primitive,
-            self.request.loc,
-          )
-        }
-        _ => self.begin_set(to_number(current, interp=Some(interp)))
-      }
-    ExecutorPropertyUpdateHaveToPrimitiveMethod(current, to_primitive) =>
-      match to_primitive {
-        Undefined | Null => {
-          self.phase = ExecutorPropertyUpdateAwaitValueOfLookup(current)
-          executor_activation_managed_property_get(
-            current,
-            "valueOf",
-            self.request.loc,
-          )
-        }
-        _ if is_callable(to_primitive) => {
-          self.phase = ExecutorPropertyUpdateAwaitToPrimitive
-          ExecutorActivationCall(
-            ExecutorCallRequest(
-              callee=to_primitive,
-              this_value=current,
-              args=[String_("number")],
-              loc=self.request.loc,
-            ),
-          )
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Symbol.toPrimitive is not a function",
-          )
-      }
-    ExecutorPropertyUpdateHaveToPrimitiveResult(result) => {
-      if is_js_object(result) {
-        raise @errors.TypeError(
-          message="Cannot convert object to primitive value",
-        )
-      }
-      self.begin_set(to_number(result, interp=Some(interp)))
-    }
-    ExecutorPropertyUpdateHaveValueOfMethod(current, value_of) =>
-      if is_callable(value_of) {
-        self.phase = ExecutorPropertyUpdateAwaitValueOf(current)
-        ExecutorActivationCall(
-          ExecutorCallRequest(
-            callee=value_of,
-            this_value=current,
-            args=[],
-            loc=self.request.loc,
-          ),
-        )
+      if is_js_object(current) {
+        self.begin_to_primitive(current, interp)
       } else {
-        self.begin_to_string_lookup(current)
+        self.begin_set(to_number(current, interp=Some(interp)))
       }
-    ExecutorPropertyUpdateHaveValueOfResult(current, value_of_result) =>
-      if is_js_object(value_of_result) {
-        self.begin_to_string_lookup(current)
-      } else {
-        self.begin_set(to_number(value_of_result, interp=Some(interp)))
+    ExecutorPropertyUpdateAwaitToPrimitive(operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) =>
+          self.begin_set(to_number(value, interp=Some(interp)))
+        step => {
+          self.phase = ExecutorPropertyUpdateAwaitToPrimitive(operation)
+          step
+        }
       }
-    ExecutorPropertyUpdateHaveToStringMethod(current, to_string) =>
-      if is_callable(to_string) {
-        self.phase = ExecutorPropertyUpdateAwaitToString
-        ExecutorActivationCall(
-          ExecutorCallRequest(
-            callee=to_string,
-            this_value=current,
-            args=[],
-            loc=self.request.loc,
-          ),
-        )
-      } else {
-        raise @errors.TypeError(
-          message="Cannot convert object to primitive value",
-        )
-      }
-    ExecutorPropertyUpdateHaveToStringResult(result) => {
-      if is_js_object(result) {
-        raise @errors.TypeError(
-          message="Cannot convert object to primitive value",
-        )
-      }
-      self.begin_set(to_number(result, interp=Some(interp)))
-    }
     ExecutorPropertyUpdateComplete(result) => ExecutorActivationNormal(result)
-    ExecutorPropertyUpdateAwaitGet
-    | ExecutorPropertyUpdateAwaitToPrimitiveLookup(_)
-    | ExecutorPropertyUpdateAwaitToPrimitive
-    | ExecutorPropertyUpdateAwaitValueOfLookup(_)
-    | ExecutorPropertyUpdateAwaitValueOf(_)
-    | ExecutorPropertyUpdateAwaitToStringLookup(_)
-    | ExecutorPropertyUpdateAwaitToString
-    | ExecutorPropertyUpdateAwaitSet(_) =>
+    ExecutorPropertyUpdateAwaitGet =>
+      raise @errors.InternalError(
+        message="property update stepped while awaiting a child completion",
+      )
+    ExecutorPropertyUpdateAwaitSet(_) =>
       raise @errors.InternalError(
         message="property update stepped while awaiting a child completion",
       )
@@ -1185,6 +1130,8 @@ fn Interpreter::complete_executor_step(
       executor_property_set_completion(value)
     Some(ExecutorChildPropertyUpdate) =>
       executor_property_update_completion(step)
+    Some(ExecutorChildCoercingAddition) =>
+      executor_coercing_addition_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -1774,6 +1721,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationCoercingAddition(request) => {
+      let addition_frame = ExecutorCoercingAdditionFrame(request)
+      stack.push({
+        frame: addition_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildCoercingAddition),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
   }
 }
 
@@ -2028,7 +1985,8 @@ fn executor_call_completion(
         | ExecutorActivationConstruct(_)
         | ExecutorActivationPropertyGet(_)
         | ExecutorActivationPropertySet(_)
-        | ExecutorActivationPropertyUpdate(_) => Undefined
+        | ExecutorActivationPropertyUpdate(_)
+        | ExecutorActivationCoercingAddition(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
@@ -2039,7 +1997,8 @@ fn executor_call_completion(
         | ExecutorActivationConstruct(_)
         | ExecutorActivationPropertyGet(_)
         | ExecutorActivationPropertySet(_)
-        | ExecutorActivationPropertyUpdate(_) => Undefined
+        | ExecutorActivationPropertyUpdate(_)
+        | ExecutorActivationCoercingAddition(_) => Undefined
       }
   }
 }
@@ -2060,7 +2019,8 @@ fn executor_construct_completion(
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_) => instance
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_) => instance
   }
 }
 
@@ -2083,7 +2043,8 @@ fn executor_property_get_completion(
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_) =>
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property get completed with a pending activation step",
@@ -2104,10 +2065,33 @@ fn executor_property_update_completion(
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_) =>
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_coercing_addition_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    ExecutorActivationContinue
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationPropertySet(_)
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_) =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="coercing addition completed with a pending activation step",
         ),
       )
   }
