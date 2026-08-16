@@ -1393,6 +1393,7 @@ fn activation_reason_matches_for_wb(
   match (actual, expected) {
     (DirectEval, DirectEval)
     | (SuperComputedPropertyCall, SuperComputedPropertyCall)
+    | (ConstructSpread, ConstructSpread)
     | (ArgumentSpread, ArgumentSpread)
     | (BinaryOperation, BinaryOperation)
     | (SynchronousPropertyAssignment, SynchronousPropertyAssignment)
@@ -1470,10 +1471,22 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     [SuperMemberAccess, PropertyKey],
   )
   assert_instruction_contract_for_wb(
+    ArrayPushSpread(loc),
+    true,
+    ManagedSuspension,
+    [Spread, Iterator],
+  )
+  assert_instruction_contract_for_wb(
     ArgPushSpread(loc),
     true,
-    UnsupportedBeforeActivation(ArgumentSpread),
+    ManagedSuspension,
     [Spread, Iterator],
+  )
+  assert_instruction_contract_for_wb(
+    ConstructSpread(loc),
+    true,
+    UnsupportedBeforeActivation(ConstructSpread),
+    [Construct],
   )
   assert_instruction_contract_for_wb(
     BinaryOp(Add, BinaryExpression, loc),

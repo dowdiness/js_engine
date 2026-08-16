@@ -14,9 +14,9 @@ fn issue888_candidate_route_for_wb(
 test "RED issue 888 candidate array spread must start bytecode" {
   let source =
     #|var xs = [0, ...[1, 2], 3];
-    #|xs[3];
+    #|xs.length;
   let (value, evidence) = issue888_candidate_route_for_wb(source)
-  assert_eq(value.to_string(), "3")
+  assert_eq(value.to_string(), "4")
   guard evidence.val.summary.bytecode_starts > 0 else {
     fail("array iterable spread remained on the Tree-walker")
   }
@@ -71,9 +71,7 @@ test "RED issue 888 candidate custom iterator records one ordered pass" {
 ///|
 test "RED issue 888 constructor and direct eval spread stay excluded" {
   let ctor_source =
-    #|function C(value) { this.value = value; }
-    #|var instance = new C(...[9]);
-    #|instance.value;
+    #|new Object(...[9]).toString();
   let (constructor_value, constructor_evidence) =
     issue888_candidate_route_for_wb(ctor_source)
   assert_eq(constructor_value.to_string(), "9")
