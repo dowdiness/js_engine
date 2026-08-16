@@ -472,7 +472,7 @@ fn ExecutorDeleteDescriptorParseOperation::ExecutorDeleteDescriptorParseOperatio
 }
 
 ///|
-fn ExecutorDeleteDescriptorParseOperation::complete(
+fn ExecutorDeleteDescriptorParseOperation::finish_descriptor(
   self : ExecutorDeleteDescriptorParseOperation,
 ) -> ExecutorActivationStep raise Error {
   let is_accessor = self.has_getter || self.has_setter
@@ -526,7 +526,7 @@ fn ExecutorDeleteDescriptorParseOperation::advance(
       self.phase = ExecutorDeleteDescriptorNeedField(next)
       ExecutorActivationContinue
     }
-    None => self.complete()
+    None => self.finish_descriptor()
   }
 }
 
