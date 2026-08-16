@@ -84,6 +84,52 @@ fn assert_spread_numbers_for_wb(
 }
 
 ///|
+fn make_bare_collection_intrinsic_for_wb(
+  name : String,
+  realm_state : RealmState,
+  receiver_ref : Ref[Value],
+  calls : Ref[Int],
+) -> Value {
+  make_method_func(name~, realm_state=Some(realm_state), fn(
+    this_value,
+    _args,
+  ) raise {
+    calls.val += 1
+    assert_true(physical_equal(this_value, receiver_ref.val))
+    let next = make_method_func(
+      name=name + " next",
+      realm_state=Some(realm_state),
+      fn(_iterator, _next_args) { create_iter_result(Undefined, true) },
+    )
+    make_object({ "next": next }, Null, None, "Object", Map([]), true)
+  })
+}
+
+///|
+fn bare_map_set_hooks_for_wb(
+  map_ref : Ref[Value],
+  set_ref : Ref[Value],
+  map_calls : Ref[Int],
+  set_calls : Ref[Int],
+) -> StdlibHooks {
+  {
+    ..default_stdlib_hooks(),
+    get_map_method: fn(_data, prop, realm_state) {
+      guard prop == "entries" else { return Undefined }
+      make_bare_collection_intrinsic_for_wb(
+        "bare map entries", realm_state, map_ref, map_calls,
+      )
+    },
+    get_set_method: fn(_data, prop, realm_state) {
+      guard prop == "values" else { return Undefined }
+      make_bare_collection_intrinsic_for_wb(
+        "bare set values", realm_state, set_ref, set_calls,
+      )
+    },
+  }
+}
+
+///|
 test "managed iterable spread owns the built-in array protocol" {
   let interp = Interpreter::new()
   let values = run_executor_iterable_spread_for_wb(
@@ -436,6 +482,160 @@ test "bare Map and Set fallback cannot bypass getterless own iterators" {
   let loc = @token.Loc::default()
   assert_true(interp.get_computed_property(map, key, loc) is Undefined)
   assert_true(interp.get_computed_property(set, key, loc) is Undefined)
+}
+
+///|
+test "tree-walker spread uses the bare Map iterator hook" {
+  let map_ref : Ref[Value] = { val: Undefined }
+  let method_calls : Ref[Int] = { val: 0 }
+  let hooks = {
+    ..default_stdlib_hooks(),
+    get_map_method: fn(_data, prop, realm_state) {
+      guard prop == "entries" else { return Undefined }
+      make_method_func(name="bare map entries", realm_state=Some(realm_state), fn(
+        this_value,
+        _args,
+      ) raise {
+        method_calls.val += 1
+        assert_true(physical_equal(this_value, map_ref.val))
+        let next = make_method_func(
+          name="bare map next",
+          realm_state=Some(realm_state),
+          fn(_iterator, _next_args) { create_iter_result(Undefined, true) },
+        )
+        make_object({ "next": next }, Null, None, "Object", Map([]), true)
+      })
+    },
+  }
+  let interp = Interpreter::new(stdlib_hooks=hooks)
+  let map = Map(MapData([]))
+  map_ref.val = map
+  let values = interp.spread_iterable(map, @token.Loc::default())
+  assert_eq(values.length(), 0)
+  assert_eq(method_calls.val, 1)
+}
+
+///|
+test "tree-walker spread uses the bare Set iterator hook" {
+  let map_ref : Ref[Value] = { val: Undefined }
+  let set_ref : Ref[Value] = { val: Undefined }
+  let map_calls : Ref[Int] = { val: 0 }
+  let set_calls : Ref[Int] = { val: 0 }
+  let interp = Interpreter::new(
+    stdlib_hooks=bare_map_set_hooks_for_wb(
+      map_ref, set_ref, map_calls, set_calls,
+    ),
+  )
+  let set = Set(SetData([]))
+  set_ref.val = set
+  let values = interp.spread_iterable(set, @token.Loc::default())
+  assert_eq(values.length(), 0)
+  assert_eq(set_calls.val, 1)
+  assert_eq(map_calls.val, 0)
+}
+
+///|
+test "managed iterable spread uses bare Map and Set iterator hooks" {
+  let map_ref : Ref[Value] = { val: Undefined }
+  let set_ref : Ref[Value] = { val: Undefined }
+  let map_calls : Ref[Int] = { val: 0 }
+  let set_calls : Ref[Int] = { val: 0 }
+  let interp = Interpreter::new(
+    stdlib_hooks=bare_map_set_hooks_for_wb(
+      map_ref, set_ref, map_calls, set_calls,
+    ),
+  )
+  let map = Map(MapData([]))
+  let set = Set(SetData([]))
+  map_ref.val = map
+  set_ref.val = set
+  let map_values = run_executor_iterable_spread_for_wb(interp, map)
+  let set_values = run_executor_iterable_spread_for_wb(interp, set)
+  assert_eq(map_values.length(), 0)
+  assert_eq(set_values.length(), 0)
+  assert_eq(map_calls.val, 1)
+  assert_eq(set_calls.val, 1)
+}
+
+///|
+test "Map and Set spread fallback respects observable overrides" {
+  let fallback_calls : Ref[Int] = { val: 0 }
+  let hooks = {
+    ..default_stdlib_hooks(),
+    get_map_method: fn(_data, _prop, _realm_state) {
+      fallback_calls.val += 1
+      Undefined
+    },
+    get_set_method: fn(_data, _prop, _realm_state) {
+      fallback_calls.val += 1
+      Undefined
+    },
+  }
+  let interp = Interpreter::new(stdlib_hooks=hooks)
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let setter = make_method_func(
+    name="override setter",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Undefined },
+  )
+  let setter_only = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: Some(setter),
+    is_accessor: true,
+  }
+  let map_own = Map(MapData([]))
+  match map_own {
+    Map(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Map fixture must be a Map")
+  }
+  let map_proto = make_plain_object()
+  match map_proto {
+    Object(data) => data.bag.symbol_properties[iterator_sym.id] = Undefined
+    _ => fail("Map prototype fixture must be an object")
+  }
+  let map_inherited = Map(MapData([], prototype=Some(map_proto)))
+  let getter_calls : Ref[Int] = { val: 0 }
+  let getter = make_method_func(
+    name="Set iterator getter",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      getter_calls.val += 1
+      Undefined
+    },
+  )
+  let set_proto = make_plain_object()
+  match set_proto {
+    Object(data) =>
+      data.bag.symbol_descriptors[iterator_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(getter),
+        setter: None,
+        is_accessor: true,
+      }
+    _ => fail("Set prototype fixture must be an object")
+  }
+  let set_inherited = Set(SetData([], prototype=Some(set_proto)))
+  let set_own = Set(SetData([]))
+  match set_own {
+    Set(data) => data.bag.symbol_properties[iterator_sym.id] = Undefined
+    _ => fail("Set fixture must be a Set")
+  }
+  for value in [map_own, map_inherited, set_own, set_inherited] {
+    try {
+      let _ = interp.spread_iterable(value, @token.Loc::default())
+      fail("observable collection override must raise")
+    } catch {
+      @errors.TypeError(_) => ()
+      error => raise error
+    }
+  }
+  assert_eq(fallback_calls.val, 0)
+  assert_eq(getter_calls.val, 1)
 }
 
 ///|

@@ -1,14 +1,15 @@
 ///|
-// Canonical built-in iterator fallback for spread. Array and String do not
-// materialize their default @@iterator as an ordinary property in this
-// runtime, so the fallback is selected only after the observable lookup
-// returned undefined. An explicit Array own override, including undefined,
-// suppresses the fallback and keeps the ordinary TypeError semantics.
+// Canonical built-in iterator fallback for spread. Built-in variants may lack
+// a materialized @@iterator in a bare RealmState, so the fallback is selected
+// only after the observable lookup returned undefined and callback-free shape
+// facts prove that no override can be hidden. An explicit own/prototype
+// override suppresses the fallback and keeps ordinary TypeError semantics.
 fn Interpreter::default_iterable_iterator_if_unoverridden(
   self : Interpreter,
   iterable : Value,
   iterator_method : Value,
-) -> Value? {
+  loc : @token.Loc,
+) -> Value? raise Error {
   guard iterator_method is Undefined else { return None }
   let iterator_sym = self.realm_state.well_known_symbols.iterator
   match iterable {
@@ -32,6 +33,41 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
       // result, including observable inherited overrides.
       guard self.realm_state.get_string_proto() is Null else { return None }
       Some(self.realm_state.make_string_iterator_value(value))
+    }
+    Map(data) => {
+      // Bare Map lookup has no materialized prototype. Call the supplied
+      // intrinsic method only after callback-free representation facts prove
+      // that own and inherited overrides cannot be present.
+      guard data.prototype is None &&
+        self.realm_state.get_map_proto() is Null &&
+        !data.bag.symbol_descriptors.contains(iterator_sym.id) &&
+        !data.bag.symbol_properties.contains(iterator_sym.id) else {
+        return None
+      }
+      let intrinsic_method = (self.stdlib_hooks.get_map_method)(
+        data,
+        "entries",
+        self.realm_state,
+      )
+      guard is_callable(intrinsic_method) else { return None }
+      Some(self.call_value(intrinsic_method, iterable, [], loc))
+    }
+    Set(data) => {
+      // Set follows the same bare-runtime contract as Map, using its
+      // intrinsic values method and preserving the original Set receiver.
+      guard data.prototype is None &&
+        self.realm_state.get_set_proto() is Null &&
+        !data.bag.symbol_descriptors.contains(iterator_sym.id) &&
+        !data.bag.symbol_properties.contains(iterator_sym.id) else {
+        return None
+      }
+      let intrinsic_method = (self.stdlib_hooks.get_set_method)(
+        data,
+        "values",
+        self.realm_state,
+      )
+      guard is_callable(intrinsic_method) else { return None }
+      Some(self.call_value(intrinsic_method, iterable, [], loc))
     }
     _ => None
   }
@@ -120,7 +156,7 @@ fn ExecutorIterableSpreadFrame::step_frame(
       } else {
         match
           interp.default_iterable_iterator_if_unoverridden(
-            iterable, iterator_method,
+            iterable, iterator_method, loc,
           ) {
           Some(iterator) => {
             self.phase = ExecutorIterableSpreadHaveIterator(iterator)
