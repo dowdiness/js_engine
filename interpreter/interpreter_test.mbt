@@ -6803,6 +6803,290 @@ test "Proxy prototype has and delete traps enforce nested nonextensible target i
 }
 
 ///|
+test "Proxy delete skips isExtensible for absent target descriptor" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = {};
+      #|var target = new Proxy(raw, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return undefined; },
+      #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var result = false;
+      #|var errorName = "";
+      #|try { result = remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+      #|var count = 0;
+      #|var events2 = "";
+      #|var raw2 = {};
+      #|var target2 = new Proxy(raw2, {
+      #|  getOwnPropertyDescriptor: function() { events2 = events2 + "d"; return undefined; },
+      #|  isExtensible: function() { count = count + 1; events2 = events2 + "e"; return false; }
+      #|});
+      #|var result2 = remove(new Proxy(target2, { deleteProperty: function() { return true; } }), "missing");
+      #|console.log(result + ":" + errorName + ":" + events + ":" + result2 + ":" + events2 + ":" + count);
+    ),
+  )
+  json_inspect(output, content=["true::d:true:d:0"])
+}
+
+///|
+test "descriptor Proxy has absent fields skips isExtensible" {
+  let output = run_output(
+    (
+      #|var events = "";
+      #|var count = 0;
+      #|var rawTarget = {};
+      #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+      #|var descriptorTarget = new Proxy({}, {
+      #|  isExtensible: function() { count = count + 1; events = events + "e"; return true; }
+      #|});
+      #|var descriptor = new Proxy(descriptorTarget, {
+      #|  has: function(target, key) { events = events + "h" + key; return false; }
+      #|});
+      #|var target = new Proxy(rawTarget, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events + ":" + count);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset:0",
+  ])
+}
+
+///|
+test "descriptor Proxy has absent fields skips throwing isExtensible" {
+  let output = run_output(
+    (
+      #|var events = "";
+      #|var rawTarget = {};
+      #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+      #|var descriptorTarget = new Proxy({}, {
+      #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+      #|});
+      #|var descriptor = new Proxy(descriptorTarget, {
+      #|  has: function(target, key) { events = events + "h" + key; return false; }
+      #|});
+      #|var target = new Proxy(rawTarget, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset",
+  ])
+}
+
+///|
+test "Proxy delete nested target ordering and errors match candidate" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = { value: 1 };
+      #|Object.defineProperty(raw, "value", { value: 1, writable: false, configurable: false });
+      #|var inner = new Proxy(raw, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "g"; return { value: 1, configurable: false, enumerable: true }; },
+      #|  isExtensible: function() { events = events + "e"; return true; }
+      #|});
+      #|var descriptor = { enumerable: true };
+      #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return false; } });
+      #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|var target = new Proxy(inner, { getOwnPropertyDescriptor: function() { events = events + "o"; return descriptor; } });
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events);
+      #|var getOwnEvents = "";
+      #|var throwingDescriptor = {};
+      #|Object.defineProperty(throwingDescriptor, "configurable", { get: function() { getOwnEvents = getOwnEvents + "d"; throw new Error("descriptor"); } });
+      #|var getOwnInner = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { getOwnEvents = getOwnEvents + "g"; throw new Error("target"); } });
+      #|var getOwnTarget = new Proxy(getOwnInner, { getOwnPropertyDescriptor: function() { getOwnEvents = getOwnEvents + "o"; return throwingDescriptor; } });
+      #|var getOwnProxy = new Proxy(getOwnTarget, { deleteProperty: function() { return true; } });
+      #|try { remove(getOwnProxy, "value"); } catch (error) { console.log(error.name + ":" + getOwnEvents); }
+      #|var extensibleEvents = "";
+      #|var extensibleDescriptor = {};
+      #|Object.defineProperty(extensibleDescriptor, "configurable", { get: function() { extensibleEvents = extensibleEvents + "d"; throw new Error("descriptor"); } });
+      #|var extensibleInner = new Proxy({ value: 1 }, {
+      #|  getOwnPropertyDescriptor: function() { extensibleEvents = extensibleEvents + "g"; return { value: 1, configurable: true }; },
+      #|  isExtensible: function() { extensibleEvents = extensibleEvents + "e"; throw new Error("extensible"); }
+      #|});
+      #|var extensibleTarget = new Proxy(extensibleInner, { getOwnPropertyDescriptor: function() { extensibleEvents = extensibleEvents + "o"; return extensibleDescriptor; } });
+      #|var extensibleProxy = new Proxy(extensibleTarget, { deleteProperty: function() { return true; } });
+      #|try { remove(extensibleProxy, "value"); } catch (error) { console.log(error.name + ":" + extensibleEvents); }
+      #|var absentRaw = {};
+      #|Object.preventExtensions(absentRaw);
+      #|var absentTarget = new Proxy(absentRaw, { getOwnPropertyDescriptor: function() { return { configurable: true }; } });
+      #|var absentProxy = new Proxy(absentTarget, { deleteProperty: function() { return true; } });
+      #|try { remove(absentProxy, "missing"); } catch (error) { console.log(error.name); }
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:ogecv", "Error:og", "Error:oge", "TypeError",
+  ])
+}
+
+///|
+test "Proxy delete branch ordering matches candidate" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = {};
+      #|Object.preventExtensions(raw);
+      #|var descriptor = {};
+      #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; throw new Error("descriptor"); } });
+      #|var inner = new Proxy(raw, { isExtensible: function() { events = events + "g"; return false; } });
+      #|var target = new Proxy(inner, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events);
+      #|var nonconfigEvents = "";
+      #|var nonconfigRaw = {};
+      #|Object.defineProperty(nonconfigRaw, "value", { value: 1, configurable: false });
+      #|var nonconfigInner = new Proxy(nonconfigRaw, { isExtensible: function() { nonconfigEvents = nonconfigEvents + "e"; throw new Error("extensible"); } });
+      #|var nonconfigTarget = new Proxy(nonconfigInner, {
+      #|  getOwnPropertyDescriptor: function() { nonconfigEvents = nonconfigEvents + "du"; return undefined; }
+      #|});
+      #|var nonconfigProxy = new Proxy(nonconfigTarget, { deleteProperty: function() { return true; } });
+      #|var nonconfigErrorName = "";
+      #|try { remove(nonconfigProxy, "value"); } catch (error) { nonconfigErrorName = error.name; }
+      #|console.log(nonconfigErrorName + ":" + nonconfigEvents);
+    ),
+  )
+  json_inspect(output, content=["Error:dgc", "TypeError:du"])
+}
+
+///|
+test "Proxy descriptor conversion observes six fields once and completes defaults" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var firstTarget = { value: 1 };
+      #|var firstDescriptor = {};
+      #|Object.defineProperty(firstDescriptor, "enumerable", { get: function() { events = events + "e"; return true; } });
+      #|Object.defineProperty(firstDescriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+      #|Object.defineProperty(firstDescriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|Object.defineProperty(firstDescriptor, "writable", { get: function() { events = events + "w"; return true; } });
+      #|var firstTargetProxy = new Proxy(firstTarget, { getOwnPropertyDescriptor: function() { events = events + "t"; return firstDescriptor; } });
+      #|var firstError = "";
+      #|try { remove(new Proxy(firstTargetProxy, { deleteProperty: function() { return true; } }), "value"); } catch (error) { firstError = error.name + ":" + error.message; }
+      #|console.log(firstError === "" ? events : firstError + ":" + events);
+      #|events = "";
+      #|var descriptorValues = { enumerable: true, configurable: true, value: 1, writable: true };
+      #|var descriptorProxy = new Proxy(descriptorValues, {
+      #|  has: function(target, key) { events = events + "H" + key; return key in target; },
+      #|  get: function(target, key) { events = events + "G" + key; return target[key]; }
+      #|});
+      #|var secondTargetProxy = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { return descriptorProxy; } });
+      #|var secondResult = false;
+      #|var secondError = "";
+      #|try { secondResult = remove(new Proxy(secondTargetProxy, { deleteProperty: function() { return true; } }), "value"); } catch (error) { secondError = error.name + ":" + error.message; }
+      #|console.log(secondError === "" ? secondResult && events : secondError + ":" + events);
+      #|events = "";
+      #|var accessorDescriptorValues = { enumerable: true, configurable: true, get: function() { return 1; }, set: undefined };
+      #|var accessorDescriptorProxy = new Proxy(accessorDescriptorValues, {
+      #|  has: function(target, key) { events = events + "H" + key; return key in target; },
+      #|  get: function(target, key) { events = events + "G" + key; return target[key]; }
+      #|});
+      #|var accessorTargetProxy = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { return accessorDescriptorProxy; } });
+      #|var accessorResult = false;
+      #|var accessorError = "";
+      #|try { accessorResult = remove(new Proxy(accessorTargetProxy, { deleteProperty: function() { return true; } }), "value"); } catch (error) { accessorError = error.name + ":" + error.message; }
+      #|console.log(accessorError === "" ? accessorResult && events : accessorError + ":" + events);
+      #|var outcome = function(target) {
+      #|  try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); return "ok:" + events; }
+      #|  catch (error) { return error.name + ":" + error.message + ":" + events; }
+      #|};
+      #|events = "";
+      #|var accessorRaw = {};
+      #|Object.defineProperty(accessorRaw, "value", { get: function() { return 1; }, configurable: false });
+      #|var accessorTarget = new Proxy(accessorRaw, { getOwnPropertyDescriptor: function() { return { configurable: false }; } });
+      #|console.log(outcome(accessorTarget));
+      #|events = "";
+      #|var writableRaw = {};
+      #|Object.defineProperty(writableRaw, "value", { value: 1, writable: true, configurable: false });
+      #|var writableDescriptor = { configurable: false };
+      #|Object.defineProperty(writableDescriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|var writableTarget = new Proxy(writableRaw, { getOwnPropertyDescriptor: function() { return writableDescriptor; } });
+      #|console.log(outcome(writableTarget));
+      #|events = "";
+      #|var frozenRaw = {};
+      #|Object.defineProperty(frozenRaw, "value", { value: 1, writable: false, configurable: false });
+      #|var frozenTarget = new Proxy(frozenRaw, { getOwnPropertyDescriptor: function() { return { configurable: false }; } });
+      #|console.log(outcome(frozenTarget));
+    ),
+  )
+  json_inspect(output, content=[
+    "tecvw", "HenumerableGenumerableHconfigurableGconfigurableHvalueGvalueHwritableGwritableHgetHset",
+    "HenumerableGenumerableHconfigurableGconfigurableHvalueHwritableHgetGgetHsetGset",
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported descriptor kind (data/accessor) mismatch for non-configurable property on proxy target:",
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and non-writable for property which is writable on the proxy target:v",
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target:",
+  ])
+}
+
+///|
+test "Proxy rejects writable lie for frozen data descriptor" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = {};
+      #|Object.defineProperty(raw, "value", { value: 1, writable: false, configurable: false });
+      #|var descriptor = { configurable: false };
+      #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return true; } });
+      #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+      #|var errorName = "";
+      #|var errorMessage = "";
+      #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+      #|console.log(errorName + ":" + errorMessage + ":" + events);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target:tvw",
+  ])
+}
+
+///|
+test "Proxy rejects configurable lie for frozen data descriptor" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = {};
+      #|Object.defineProperty(raw, "value", { value: 1, writable: false, enumerable: true, configurable: false });
+      #|var descriptor = { enumerable: true };
+      #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+      #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return false; } });
+      #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+      #|var errorName = "";
+      #|var errorMessage = "";
+      #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+      #|console.log(errorName + ":" + errorMessage + ":" + events);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported a different configurable value for a property on the proxy target:tcvw",
+  ])
+}
+
+///|
 test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
   let output = run_output(
     (

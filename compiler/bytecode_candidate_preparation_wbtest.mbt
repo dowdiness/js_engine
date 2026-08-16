@@ -514,6 +514,730 @@ test "candidate computed compound addition stays tree-walker" {
 }
 
 ///|
+// RED: property deletion must eventually admit the called function through
+// the candidate route even when the target is a Proxy.
+test "RED: candidate static Proxy deletion enters bytecode" {
+  let source =
+    #|function remove(target) { return delete target.value; }
+    #|var target = {};
+    #|var proxy = new Proxy(target, {});
+    #|remove(proxy);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 2 else {
+    fail("static Proxy deletion did not start its callable")
+  }
+  match starts[1] {
+    CandidateBytecodeExecutor => ()
+    CandidateTreeWalkerExecutor =>
+      fail("static Proxy deletion remained on the tree walker")
+  }
+}
+
+///|
+// RED: computed deletion must eventually admit the called function through
+// the candidate route while retaining the raw key for runtime coercion.
+test "RED: candidate computed deletion enters bytecode" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var target = {};
+    #|remove(target, "value");
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 2 else {
+    fail("computed deletion did not start its callable")
+  }
+  match starts[1] {
+    CandidateBytecodeExecutor => ()
+    CandidateTreeWalkerExecutor =>
+      fail("computed deletion remained on the tree walker")
+  }
+}
+
+///|
+test "candidate static deletion preserves ordinary descriptor semantics" {
+  let source =
+    #|function remove(target) { return delete target.value; }
+    #|function strictRemove(target) { "use strict"; return delete target.value; }
+    #|var configurable = { value: 1 };
+    #|var absent = {};
+    #|var fixed = {};
+    #|Object.defineProperty(fixed, "value", { value: 1, configurable: false });
+    #|var accessorCalls = 0;
+    #|var accessor = {};
+    #|Object.defineProperty(accessor, "value", {
+    #|  get: function() { accessorCalls = accessorCalls + 1; throw new Error("getter"); },
+    #|  set: function(value) { accessorCalls = accessorCalls + 1; },
+    #|  configurable: true
+    #|});
+    #|var configurableResult = remove(configurable);
+    #|var absentResult = remove(absent);
+    #|var sloppyFixedResult = remove(fixed);
+    #|var strictThrew = false;
+    #|try { strictRemove(fixed); } catch (error) { strictThrew = true; }
+    #|var accessorResult = remove(accessor);
+    #|configurableResult && absentResult && sloppyFixedResult === false &&
+    #|  strictThrew && accessorResult && accessorCalls === 0 &&
+    #|  Object.getOwnPropertyDescriptor(configurable, "value") === undefined &&
+    #|  Object.getOwnPropertyDescriptor(accessor, "value") === undefined;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion owns String hint ToPropertyKey" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var target = { value: 1, "7": 2 };
+    #|var symbol = Symbol("value");
+    #|target[symbol] = 3;
+    #|var hint = "";
+    #|var symbolKey = {
+    #|  [Symbol.toPrimitive]: function(value) { hint = hint + value; return symbol; }
+    #|};
+    #|var order = "";
+    #|var fallbackKey = {
+    #|  toString: function() { order = order + "t"; return {}; },
+    #|  valueOf: function() { order = order + "v"; return "7"; }
+    #|};
+    #|var objectResultKey = { toString: function() { return {}; }, valueOf: function() { return {}; } };
+    #|var symbolResult = remove(target, symbolKey);
+    #|var numberResult = remove(target, 7);
+    #|var fallbackResult = remove(target, fallbackKey);
+    #|var objectResultThrew = false;
+    #|try { remove(target, objectResultKey); } catch (error) { objectResultThrew = true; }
+    #|symbolResult && numberResult && fallbackResult && hint === "string" &&
+    #|  order === "tv" && objectResultThrew &&
+    #|  target[symbol] === undefined && target["7"] === undefined;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion String fallback throws after one pair" {
+  let source =
+    #|var calls = "";
+    #|var key = {
+    #|  toString: function() { calls = calls + "t"; return {}; },
+    #|  valueOf: function() { calls = calls + "v"; return {}; }
+    #|};
+    #|var threw = false;
+    #|try { delete ({ value: 1 })[key]; } catch (error) { threw = true; }
+    #|threw && calls === "tv";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion String hint gets non-callable methods once" {
+  let source =
+    #|var gets = "";
+    #|var key = {};
+    #|Object.defineProperty(key, "toString", { get: function() { gets = gets + "t"; return 1; } });
+    #|Object.defineProperty(key, "valueOf", { get: function() { gets = gets + "v"; return 2; } });
+    #|var threw = false;
+    #|try { delete ({ value: 1 })[key]; } catch (error) { threw = true; }
+    #|threw && gets === "tv";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion propagates key getter and call throws" {
+  let source =
+    #|var getterCalls = 0;
+    #|var getterKey = {};
+    #|Object.defineProperty(getterKey, Symbol.toPrimitive, {
+    #|  get: function() { getterCalls = getterCalls + 1; throw new Error("getter"); }
+    #|});
+    #|var callCalls = 0;
+    #|var callKey = {
+    #|  [Symbol.toPrimitive]: function() { callCalls = callCalls + 1; throw new Error("call"); }
+    #|};
+    #|var getterThrew = false;
+    #|try { delete ({ value: 1 })[getterKey]; } catch (error) { getterThrew = true; }
+    #|var callThrew = false;
+    #|try { delete ({ value: 1 })[callKey]; } catch (error) { callThrew = true; }
+    #|getterThrew && callThrew && getterCalls === 1 && callCalls === 1;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy deletion suspends trap forwarding and invariants" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var forwardedTarget = { value: 1 };
+    #|var forwarded = new Proxy(forwardedTarget, {});
+    #|var forwardedResult = remove(forwarded, "value");
+    #|var handler;
+    #|var receiverSeen = false;
+    #|var argsSeen = false;
+    #|handler = {
+    #|  deleteProperty: function(target, key) {
+    #|    receiverSeen = this === handler;
+    #|    argsSeen = target === trappedTarget && key === "value";
+    #|    return false;
+    #|  }
+    #|};
+    #|var trappedTarget = { value: 1 };
+    #|var trapped = new Proxy(trappedTarget, handler);
+    #|var sloppyFalse = remove(trapped, "value");
+    #|var strictThrew = false;
+    #|function strictRemove(target, key) { "use strict"; return delete target[key]; }
+    #|try { strictRemove(trapped, "value"); } catch (error) { strictThrew = true; }
+    #|var trueTarget = { value: 1 };
+    #|var trueProxy = new Proxy(trueTarget, { deleteProperty: function() { return true; } });
+    #|var trueResult = remove(trueProxy, "value");
+    #|var nonCallableThrew = false;
+    #|try { remove(new Proxy({}, { deleteProperty: 1 }), "value"); } catch (error) { nonCallableThrew = true; }
+    #|var getterThrew = false;
+    #|var getterHandler = {};
+    #|Object.defineProperty(getterHandler, "deleteProperty", { get: function() { throw new Error("get"); } });
+    #|try { remove(new Proxy({}, getterHandler), "value"); } catch (error) { getterThrew = true; }
+    #|var callThrew = false;
+    #|try { remove(new Proxy({}, { deleteProperty: function() { throw new Error("call"); } }), "value"); } catch (error) { callThrew = true; }
+    #|var revoked = Proxy.revocable({}, {});
+    #|revoked.revoke();
+    #|var revokedThrew = false;
+    #|try { remove(revoked.proxy, "value"); } catch (error) { revokedThrew = true; }
+    #|var nonConfigTarget = {};
+    #|Object.defineProperty(nonConfigTarget, "value", { value: 1, configurable: false });
+    #|var nonConfigThrew = false;
+    #|try { remove(new Proxy(nonConfigTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { nonConfigThrew = true; }
+    #|var sealedTarget = {};
+    #|Object.preventExtensions(sealedTarget);
+    #|var missingResult = remove(new Proxy(sealedTarget, { deleteProperty: function() { return true; } }), "value");
+    #|var configurableTarget = { value: 1 };
+    #|Object.preventExtensions(configurableTarget);
+    #|var configurableThrew = false;
+    #|try { remove(new Proxy(configurableTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { configurableThrew = true; }
+    #|forwardedResult && forwardedTarget.value === undefined && sloppyFalse === false &&
+    #|  strictThrew && trueResult && receiverSeen && argsSeen && nonCallableThrew &&
+    #|  getterThrew && callThrew && revokedThrew && nonConfigThrew && missingResult && configurableThrew;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate descriptor Proxy has absent fields skips isExtensible" {
+  let source =
+    #|var events = "";
+    #|var count = 0;
+    #|var rawTarget = {};
+    #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+    #|var descriptorTarget = new Proxy({}, {
+    #|  isExtensible: function() { count = count + 1; events = events + "e"; return true; }
+    #|});
+    #|var descriptor = new Proxy(descriptorTarget, {
+    #|  has: function(target, key) { events = events + "h" + key; return false; }
+    #|});
+    #|var target = new Proxy(rawTarget, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events + ":" + count;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset:0",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate descriptor Proxy has absent fields skips throwing isExtensible" {
+  let source =
+    #|var events = "";
+    #|var rawTarget = {};
+    #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+    #|var descriptorTarget = new Proxy({}, {
+    #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+    #|});
+    #|var descriptor = new Proxy(descriptorTarget, {
+    #|  has: function(target, key) { events = events + "h" + key; return false; }
+    #|});
+    #|var target = new Proxy(rawTarget, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy deletion skips isExtensible for absent target descriptor" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|var target = new Proxy(raw, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return undefined; },
+    #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var result = false;
+    #|var errorName = "";
+    #|try { result = remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+    #|var count = 0;
+    #|var events2 = "";
+    #|var raw2 = {};
+    #|var target2 = new Proxy(raw2, {
+    #|  getOwnPropertyDescriptor: function() { events2 = events2 + "d"; return undefined; },
+    #|  isExtensible: function() { count = count + 1; events2 = events2 + "e"; return false; }
+    #|});
+    #|var result2 = remove(new Proxy(target2, { deleteProperty: function() { return true; } }), "missing");
+    #|result + ":" + errorName + ":" + events + ":" + result2 + ":" + events2 + ":" + count;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true::d:true:d:0")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate nested Proxy delete forwarding suspends invariant guest edges" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var forwardingEvents = "";
+    #|var forwardingInner = new Proxy({ value: 1 }, {
+    #|  deleteProperty: function(target, key) { forwardingEvents = forwardingEvents + "i"; return true; }
+    #|});
+    #|var forwardingOuter = new Proxy(forwardingInner, {});
+    #|var forwarded = remove(forwardingOuter, "value");
+    #|var invariantEvents = "";
+    #|var invariantRaw = {};
+    #|Object.defineProperty(invariantRaw, "missing", { value: 1, configurable: true });
+    #|Object.preventExtensions(invariantRaw);
+    #|var invariantInner = new Proxy(invariantRaw, {
+    #|  isExtensible: function(target) { invariantEvents = invariantEvents + "e"; return false; }
+    #|});
+    #|var invariantMiddle = new Proxy(invariantInner, {
+    #|  getOwnPropertyDescriptor: function(target, key) {
+    #|    invariantEvents = invariantEvents + "a";
+    #|    return undefined;
+    #|  }
+    #|});
+    #|var invariantOuter = new Proxy(invariantMiddle, { deleteProperty: function() { return true; } });
+    #|var invariantThrew = false;
+    #|try { remove(invariantOuter, "missing"); } catch (error) { invariantThrew = true; }
+    #|forwarded && forwardingEvents === "i" && invariantThrew && invariantEvents === "ae";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy delete parses descriptor fields in canonical order" {
+  let source =
+    #|var events = "";
+    #|var target = { value: 1 };
+    #|var descriptor = {};
+    #|Object.defineProperty(descriptor, "enumerable", { get: function() { events = events + "e"; return true; } });
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return true; } });
+    #|var descriptorProxyTarget = new Proxy(target, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(descriptorProxyTarget, { deleteProperty: function() { return true; } });
+    #|var dataResult = delete proxy.value;
+    #|var accessorEvents = "";
+    #|var accessorGetter = function() { return 1; };
+    #|var accessorSetter = function(value) {};
+    #|var accessorTarget = {};
+    #|Object.defineProperty(accessorTarget, "accessor", { get: accessorGetter, configurable: true });
+    #|var accessorDescriptor = {};
+    #|Object.defineProperty(accessorDescriptor, "enumerable", { get: function() { accessorEvents = accessorEvents + "e"; return false; } });
+    #|Object.defineProperty(accessorDescriptor, "configurable", { get: function() { accessorEvents = accessorEvents + "c"; return true; } });
+    #|Object.defineProperty(accessorDescriptor, "get", { get: function() { accessorEvents = accessorEvents + "g"; return accessorGetter; } });
+    #|Object.defineProperty(accessorDescriptor, "set", { get: function() { accessorEvents = accessorEvents + "s"; return accessorSetter; } });
+    #|var accessorDescriptorProxyTarget = new Proxy(accessorTarget, {
+    #|  getOwnPropertyDescriptor: function() { accessorEvents = accessorEvents + "t"; return accessorDescriptor; }
+    #|});
+    #|var accessorProxy = new Proxy(accessorDescriptorProxyTarget, { deleteProperty: function() { return true; } });
+    #|var accessorResult = delete accessorProxy.accessor;
+    #|dataResult && events === "tecvw" && accessorResult && accessorEvents === "tecgs";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate descriptor conversion observes six fields once and completes defaults" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var output = "";
+    #|var events = "";
+    #|var firstTarget = { value: 1 };
+    #|var firstDescriptor = {};
+    #|Object.defineProperty(firstDescriptor, "enumerable", { get: function() { events = events + "e"; return true; } });
+    #|Object.defineProperty(firstDescriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+    #|Object.defineProperty(firstDescriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(firstDescriptor, "writable", { get: function() { events = events + "w"; return true; } });
+    #|var firstTargetProxy = new Proxy(firstTarget, { getOwnPropertyDescriptor: function() { events = events + "t"; return firstDescriptor; } });
+    #|remove(new Proxy(firstTargetProxy, { deleteProperty: function() { return true; } }), "value");
+    #|output = events;
+    #|events = "";
+    #|var descriptorValues = { enumerable: true, configurable: true, value: 1, writable: true };
+    #|var descriptorProxy = new Proxy(descriptorValues, {
+    #|  has: function(target, key) { events = events + "H" + key; return key in target; },
+    #|  get: function(target, key) { events = events + "G" + key; return target[key]; }
+    #|});
+    #|var secondTargetProxy = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { return descriptorProxy; } });
+    #|var secondResult = remove(new Proxy(secondTargetProxy, { deleteProperty: function() { return true; } }), "value");
+    #|output = output + "|" + (secondResult && events);
+    #|events = "";
+    #|var accessorDescriptorValues = { enumerable: true, configurable: true, get: function() { return 1; }, set: undefined };
+    #|var accessorDescriptorProxy = new Proxy(accessorDescriptorValues, {
+    #|  has: function(target, key) { events = events + "H" + key; return key in target; },
+    #|  get: function(target, key) { events = events + "G" + key; return target[key]; }
+    #|});
+    #|var accessorTargetProxy = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { return accessorDescriptorProxy; } });
+    #|var accessorResult = remove(new Proxy(accessorTargetProxy, { deleteProperty: function() { return true; } }), "value");
+    #|output = output + "|" + (accessorResult && events);
+    #|var outcome = function(target) {
+    #|  try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); return "ok:" + events; }
+    #|  catch (error) { return error.name + ":" + error.message + ":" + events; }
+    #|};
+    #|events = "";
+    #|var accessorRaw = {};
+    #|Object.defineProperty(accessorRaw, "value", { get: function() { return 1; }, configurable: false });
+    #|var accessorTarget = new Proxy(accessorRaw, { getOwnPropertyDescriptor: function() { return { configurable: false }; } });
+    #|output = output + "|" + outcome(accessorTarget);
+    #|events = "";
+    #|var writableRaw = {};
+    #|Object.defineProperty(writableRaw, "value", { value: 1, writable: true, configurable: false });
+    #|var writableDescriptor = { configurable: false };
+    #|Object.defineProperty(writableDescriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|var writableTarget = new Proxy(writableRaw, { getOwnPropertyDescriptor: function() { return writableDescriptor; } });
+    #|output = output + "|" + outcome(writableTarget);
+    #|events = "";
+    #|var frozenRaw = {};
+    #|Object.defineProperty(frozenRaw, "value", { value: 1, writable: false, configurable: false });
+    #|var frozenTarget = new Proxy(frozenRaw, { getOwnPropertyDescriptor: function() { return { configurable: false }; } });
+    #|output = output + "|" + outcome(frozenTarget);
+    #|output;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "tecvw|HenumerableGenumerableHconfigurableGconfigurableHvalueGvalueHwritableGwritableHgetHset|HenumerableGenumerableHconfigurableGconfigurableHvalueHwritableHgetGgetHsetGset|TypeError:'getOwnPropertyDescriptor' on proxy: trap reported descriptor kind (data/accessor) mismatch for non-configurable property on proxy target:|TypeError:'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and non-writable for property which is writable on the proxy target:v|TypeError:'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target:",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate rejects writable lie for frozen data descriptor" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.defineProperty(raw, "value", { value: 1, writable: false, configurable: false });
+    #|var descriptor = { configurable: false };
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return true; } });
+    #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+    #|var errorName = "";
+    #|var errorMessage = "";
+    #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+    #|errorName + ":" + errorMessage + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target:tvw",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate rejects configurable lie for frozen data descriptor" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.defineProperty(raw, "value", { value: 1, writable: false, enumerable: true, configurable: false });
+    #|var descriptor = { enumerable: true };
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return false; } });
+    #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+    #|var errorName = "";
+    #|var errorMessage = "";
+    #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+    #|errorName + ":" + errorMessage + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported a different configurable value for a property on the proxy target:tcvw",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate nested Proxy target precedes descriptor getters and extensibility" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = { value: 1 };
+    #|Object.defineProperty(raw, "value", { value: 1, writable: false, configurable: false });
+    #|var inner = new Proxy(raw, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "g"; return { value: 1, configurable: false, enumerable: true }; },
+    #|  isExtensible: function() { events = events + "e"; return true; }
+    #|});
+    #|var descriptor = { enumerable: true };
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return false; } });
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|var target = new Proxy(inner, { getOwnPropertyDescriptor: function() { events = events + "o"; return descriptor; } });
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "TypeError:ogecv")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate nested target getOwnPropertyDescriptor throw wins descriptor getter" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var descriptor = {};
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "d"; throw new Error("descriptor"); } });
+    #|var inner = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { events = events + "g"; throw new Error("target"); } });
+    #|var target = new Proxy(inner, { getOwnPropertyDescriptor: function() { events = events + "o"; return descriptor; } });
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+    #|errorName === "Error" && events === "og";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate nested target isExtensible throw wins descriptor getter" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var descriptor = {};
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "d"; throw new Error("descriptor"); } });
+    #|var inner = new Proxy({ value: 1 }, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "g"; return { value: 1, configurable: true }; },
+    #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+    #|});
+    #|var target = new Proxy(inner, { getOwnPropertyDescriptor: function() { events = events + "o"; return descriptor; } });
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+    #|errorName === "Error" && events === "oge";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate non-extensible absent descriptor reports TypeError" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var raw = {};
+    #|Object.preventExtensions(raw);
+    #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { return { configurable: true }; } });
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+    #|errorName === "TypeError";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate parses absent nonextensible descriptor before invariant" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.preventExtensions(raw);
+    #|var descriptor = {};
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; throw new Error("descriptor"); } });
+    #|var inner = new Proxy(raw, { isExtensible: function() { events = events + "g"; return false; } });
+    #|var target = new Proxy(inner, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "Error:dgc")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate rejects undefined nonconfigurable descriptor before extensibility" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.defineProperty(raw, "value", { value: 1, configurable: false });
+    #|var inner = new Proxy(raw, { isExtensible: function() { events = events + "e"; throw new Error("extensible"); } });
+    #|var target = new Proxy(inner, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "du"; return undefined; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "TypeError:du")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy delete propagates descriptor getter throws and shape invariants" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var getterEvents = "";
+    #|var throwingDescriptor = {};
+    #|Object.defineProperty(throwingDescriptor, "enumerable", { get: function() { getterEvents = getterEvents + "e"; return true; } });
+    #|Object.defineProperty(throwingDescriptor, "configurable", { get: function() { getterEvents = getterEvents + "c"; return true; } });
+    #|Object.defineProperty(throwingDescriptor, "value", { get: function() { getterEvents = getterEvents + "v"; throw new Error("descriptor"); } });
+    #|Object.defineProperty(throwingDescriptor, "writable", { get: function() { getterEvents = getterEvents + "w"; return true; } });
+    #|var getterThrew = false;
+    #|var throwingTarget = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { return throwingDescriptor; } });
+    #|try { remove(new Proxy(throwingTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { getterThrew = true; }
+    #|var dataTarget = {};
+    #|Object.defineProperty(dataTarget, "value", { value: 1, writable: false, configurable: false });
+    #|var accessorReport = { get: function() {}, configurable: false };
+    #|var dataKindThrew = false;
+    #|var dataDescriptorTarget = new Proxy(dataTarget, { getOwnPropertyDescriptor: function() { return accessorReport; } });
+    #|try { remove(new Proxy(dataDescriptorTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { dataKindThrew = true; }
+    #|var accessorTarget = {};
+    #|Object.defineProperty(accessorTarget, "value", { get: function() { return 1; }, configurable: false });
+    #|var dataReport = { value: 1, configurable: false };
+    #|var accessorKindThrew = false;
+    #|var accessorDescriptorTarget = new Proxy(accessorTarget, { getOwnPropertyDescriptor: function() { return dataReport; } });
+    #|try { remove(new Proxy(accessorDescriptorTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { accessorKindThrew = true; }
+    #|getterThrew && getterEvents === "ecv" && dataKindThrew && accessorKindThrew;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion preserves object key trap ordering" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var key = { [Symbol.toPrimitive]: function(hint) { events = events + "p"; return "value"; } };
+    #|var target = { value: 1 };
+    #|var handler = {};
+    #|Object.defineProperty(handler, "deleteProperty", {
+    #|  get: function() {
+    #|    events = events + "l";
+    #|    return function(target, key) { events = events + "c"; return false; };
+    #|  }
+    #|});
+    #|var proxy = new Proxy(target, handler);
+    #|var result = remove((events = events + "o", proxy), (events = events + "k", key));
+    #|events === "okplc" && result === false;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion supports finite guest re-entry" {
+  let source =
+    #|var depth = 0;
+    #|var proxy;
+    #|var key = {
+    #|  [Symbol.toPrimitive]: function(hint) {
+    #|    if (depth === 24) return "value";
+    #|    depth = depth + 1;
+    #|    return delete proxy[key];
+    #|  }
+    #|};
+    #|proxy = new Proxy({ value: 1 }, { deleteProperty: function() { return true; } });
+    #|function remove(target, key) { return delete target[key]; }
+    #|remove(proxy, key);
+    #|depth;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "24")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate non-property deletion remains lowering unsupported" {
+  assert_bytecode_unsupported(
+    "function remove() { return delete 1; }",
+    DeleteNonPropertyOperator,
+  )
+}
+
+///|
 test "candidate sibling subtraction stays tree-walker" {
   assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
 }
