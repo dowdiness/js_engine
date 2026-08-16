@@ -6979,6 +6979,30 @@ test "Proxy rejects writable lie for frozen data descriptor" {
 }
 
 ///|
+test "Proxy rejects configurable lie for frozen data descriptor" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = {};
+      #|Object.defineProperty(raw, "value", { value: 1, writable: false, enumerable: true, configurable: false });
+      #|var descriptor = { enumerable: true };
+      #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+      #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return false; } });
+      #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+      #|var errorName = "";
+      #|var errorMessage = "";
+      #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+      #|console.log(errorName + ":" + errorMessage + ":" + events);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported a different configurable value for a property on the proxy target:tcvw",
+  ])
+}
+
+///|
 test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
   let output = run_output(
     (

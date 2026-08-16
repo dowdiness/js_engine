@@ -1154,9 +1154,9 @@ pub fn proxy_get_own_property(
         }
         Some(existing) => {
           // Step 17.a: cannot report non-configurable when target is configurable.
-          if !trap_desc.configurable && existing.configurable {
+          if trap_desc.configurable != existing.configurable {
             raise @errors.TypeError(
-              message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for property which is configurable on the proxy target",
+              message="'getOwnPropertyDescriptor' on proxy: trap reported a different configurable value for a property on the proxy target",
             )
           }
           // §10.5.5 step 17.a (bis): enumerable must match when target is

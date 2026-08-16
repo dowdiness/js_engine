@@ -902,6 +902,32 @@ test "candidate rejects writable lie for frozen data descriptor" {
 }
 
 ///|
+test "candidate rejects configurable lie for frozen data descriptor" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.defineProperty(raw, "value", { value: 1, writable: false, enumerable: true, configurable: false });
+    #|var descriptor = { enumerable: true };
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return false; } });
+    #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+    #|var errorName = "";
+    #|var errorMessage = "";
+    #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+    #|errorName + ":" + errorMessage + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported a different configurable value for a property on the proxy target:tcvw",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate nested Proxy target precedes descriptor getters and extensibility" {
   let source =
     #|function remove(target, key) { return delete target[key]; }
