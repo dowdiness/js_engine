@@ -285,3 +285,332 @@ test "managed CopyDataProperties rejects duplicate Proxy ownKeys entries" {
     error => raise error
   }
 }
+
+///|
+test "managed Proxy ownKeys reads array-like length and indices through Get" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let target = make_object(
+    { "a": Number(7.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let array_like = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(
+          make_method_func(
+            name="length getter",
+            realm_state=Some(interp.realm_state),
+            fn(_receiver, _args) {
+              events.push("length")
+              Number(1.0)
+            },
+          ),
+        ),
+        setter: None,
+        is_accessor: true,
+      },
+      "0": {
+        writable: false,
+        enumerable: true,
+        configurable: true,
+        getter: Some(
+          make_method_func(
+            name="index getter",
+            realm_state=Some(interp.realm_state),
+            fn(_receiver, _args) {
+              events.push("index")
+              String_("a")
+            },
+          ),
+        ),
+        setter: None,
+        is_accessor: true,
+      },
+    },
+    true,
+  )
+  let own_keys = make_native_func(name="ownKeys", fn(_args) {
+    events.push("ownKeys")
+    array_like
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  run_executor_copy_data_properties_for_wb(interp, output, source)
+  json_inspect(events, content=["ownKeys", "length", "index"])
+  inspect(
+    interp.get_computed_property(output, String_("a"), @token.Loc::default()),
+    content="7",
+  )
+}
+
+///|
+test "managed CopyDataProperties handles nested Proxy ownKeys exactly once per layer" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let base = make_object(
+    { "a": Number(3.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let inner_keys = make_native_func(name="inner ownKeys", _args => {
+    events.push("inner")
+    make_array([String_("a")])
+  })
+  let inner_handler = make_object(
+    { "ownKeys": inner_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let inner = Proxy({
+    target: Some(base),
+    handler: Some(inner_handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let outer_keys = make_native_func(name="outer ownKeys", _args => {
+    events.push("outer")
+    make_array([String_("a")])
+  })
+  let outer_handler = make_object(
+    { "ownKeys": outer_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(inner),
+    handler: Some(outer_handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  run_executor_copy_data_properties_for_wb(interp, output, source)
+  json_inspect(events, content=["outer", "inner"])
+  inspect(
+    interp.get_computed_property(output, String_("a"), @token.Loc::default()),
+    content="3",
+  )
+}
+
+///|
+test "managed CopyDataProperties rejects revoked Proxy sources" {
+  let interp = Interpreter::new()
+  let source = Proxy({
+    target: None,
+    handler: None,
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  try {
+    run_executor_copy_data_properties_for_wb(interp, output, source)
+    fail("revoked Proxy source must raise")
+  } catch {
+    @errors.TypeError(_) => ()
+    error => raise error
+  }
+}
+
+///|
+test "managed CopyDataProperties enforces non-configurable Proxy ownKeys invariants" {
+  let interp = Interpreter::new()
+  let target = make_object(
+    { "a": Number(1.0) },
+    Null,
+    None,
+    "Object",
+    {
+      "a": {
+        writable: false,
+        enumerable: true,
+        configurable: false,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      },
+    },
+    true,
+  )
+  let own_keys = make_native_func(name="ownKeys", _args => make_array([]))
+  let handler = make_object(
+    { "ownKeys": own_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  try {
+    run_executor_copy_data_properties_for_wb(interp, output, source)
+    fail("missing non-configurable key must raise")
+  } catch {
+    @errors.TypeError(_) => ()
+    error => raise error
+  }
+}
+
+///|
+test "managed CopyDataProperties keeps one key snapshot across source mutation" {
+  let interp = Interpreter::new()
+  let source_ref : Ref[Value] = { val: Undefined }
+  let getter = make_method_func(
+    name="mutating source getter",
+    realm_state=Some(interp.realm_state),
+    fn(_receiver, _args) {
+      match source_ref.val {
+        Object(data) => {
+          data.bag.properties.remove("b")
+          data.bag.properties["d"] = Number(4.0)
+          match data.bag.descriptors.get("c") {
+            Some(descriptor) => {
+              let changed = descriptor
+              changed.enumerable = false
+              data.bag.descriptors["c"] = changed
+            }
+            None => ()
+          }
+        }
+        _ => ()
+      }
+      Number(1.0)
+    },
+  )
+  let source = make_object(
+    { "a": Undefined, "b": Number(2.0), "c": Number(3.0) },
+    Null,
+    None,
+    "Object",
+    {
+      "a": {
+        writable: false,
+        enumerable: true,
+        configurable: true,
+        getter: Some(getter),
+        setter: None,
+        is_accessor: true,
+      },
+      "c": {
+        writable: true,
+        enumerable: true,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      },
+    },
+    true,
+  )
+  source_ref.val = source
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  run_executor_copy_data_properties_for_wb(interp, output, source)
+  inspect(
+    interp.get_computed_property(output, String_("a"), @token.Loc::default()),
+    content="1",
+  )
+  assert_true(interp.get_own_property(output, String_("b")) is None)
+  assert_true(interp.get_own_property(output, String_("c")) is None)
+  assert_true(interp.get_own_property(output, String_("d")) is None)
+}
+
+///|
+test "managed CopyDataProperties creates data properties for proto-named and symbol keys" {
+  let interp = Interpreter::new()
+  let setter_calls : Ref[Int] = { val: 0 }
+  let inherited_setter = make_method_func(
+    name="inherited proto setter",
+    realm_state=Some(interp.realm_state),
+    fn(_receiver, _args) {
+      setter_calls.val += 1
+      Undefined
+    },
+  )
+  let prototype = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    {
+      "__proto__": {
+        writable: false,
+        enumerable: true,
+        configurable: true,
+        getter: None,
+        setter: Some(inherited_setter),
+        is_accessor: true,
+      },
+    },
+    true,
+  )
+  let target = make_object(Map([]), prototype, None, "Object", Map([]), true)
+  let symbol = interp.realm_state.symbols.new_symbol(Some("copy"))
+  let source = make_object(
+    { "__proto__": Number(1.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  match source {
+    Object(data) => data.bag.symbol_properties[symbol.id] = Number(2.0)
+    _ => fail("source must be an object")
+  }
+  run_executor_copy_data_properties_for_wb(interp, target, source)
+  inspect(setter_calls.val, content="0")
+  inspect(
+    interp.get_computed_property(
+      target,
+      String_("__proto__"),
+      @token.Loc::default(),
+    ),
+    content="1",
+  )
+  inspect(
+    interp.get_computed_property(target, Symbol(symbol), @token.Loc::default()),
+    content="2",
+  )
+  match interp.get_own_property(target, String_("__proto__")) {
+    Some((descriptor, _)) => assert_true(!descriptor.is_accessor)
+    None => fail("proto-named source key must become an own data property")
+  }
+}

@@ -710,6 +710,7 @@ fn ExecutorCopyDataPropertiesFrame::consume_get_own(
     }
     _ => {
       self.index += 1
+      self.current_key = None
       self.phase = ExecutorCopyDataPropertiesNeedKey
       self.step_frame(interp)
     }
@@ -783,6 +784,7 @@ fn ExecutorCopyDataPropertiesFrame::step_frame(
           key,
         ) {
           self.index += 1
+          self.current_key = None
           self.step_frame(interp)
         } else {
           self.current_key = Some(key)

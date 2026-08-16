@@ -27,7 +27,9 @@ in `runtime/destructuring.mbt` and must not be redirected to this operation.
 
 ## Semantic owners and may-call-user-code paths
 
-The existing helper delegates to these canonical owners:
+The existing tree-walker helper delegates to these canonical owners. The
+managed operation mirrors the same Proxy invariants while routing each
+guest-capable lookup through the activation seam:
 
 - `Interpreter::own_property_keys` / `proxy_own_property_keys`: own-key
   snapshot, `ownKeys` trap, array-like result length/index reads, duplicate and
