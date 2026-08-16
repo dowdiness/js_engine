@@ -899,6 +899,52 @@ test "candidate non-extensible absent descriptor reports TypeError" {
 }
 
 ///|
+test "candidate parses absent nonextensible descriptor before invariant" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.preventExtensions(raw);
+    #|var descriptor = {};
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; throw new Error("descriptor"); } });
+    #|var inner = new Proxy(raw, { isExtensible: function() { events = events + "g"; return false; } });
+    #|var target = new Proxy(inner, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "Error:dgc")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate rejects undefined nonconfigurable descriptor before extensibility" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.defineProperty(raw, "value", { value: 1, configurable: false });
+    #|var inner = new Proxy(raw, { isExtensible: function() { events = events + "e"; throw new Error("extensible"); } });
+    #|var target = new Proxy(inner, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "du"; return undefined; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "TypeError:du")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate Proxy delete propagates descriptor getter throws and shape invariants" {
   let source =
     #|function remove(target, key) { return delete target[key]; }

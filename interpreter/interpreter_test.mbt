@@ -6852,6 +6852,40 @@ test "Proxy delete nested target ordering and errors match candidate" {
 }
 
 ///|
+test "Proxy delete branch ordering matches candidate" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = {};
+      #|Object.preventExtensions(raw);
+      #|var descriptor = {};
+      #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; throw new Error("descriptor"); } });
+      #|var inner = new Proxy(raw, { isExtensible: function() { events = events + "g"; return false; } });
+      #|var target = new Proxy(inner, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events);
+      #|var nonconfigEvents = "";
+      #|var nonconfigRaw = {};
+      #|Object.defineProperty(nonconfigRaw, "value", { value: 1, configurable: false });
+      #|var nonconfigInner = new Proxy(nonconfigRaw, { isExtensible: function() { nonconfigEvents = nonconfigEvents + "e"; throw new Error("extensible"); } });
+      #|var nonconfigTarget = new Proxy(nonconfigInner, {
+      #|  getOwnPropertyDescriptor: function() { nonconfigEvents = nonconfigEvents + "du"; return undefined; }
+      #|});
+      #|var nonconfigProxy = new Proxy(nonconfigTarget, { deleteProperty: function() { return true; } });
+      #|var nonconfigErrorName = "";
+      #|try { remove(nonconfigProxy, "value"); } catch (error) { nonconfigErrorName = error.name; }
+      #|console.log(nonconfigErrorName + ":" + nonconfigEvents);
+    ),
+  )
+  json_inspect(output, content=["Error:dgc", "TypeError:du"])
+}
+
+///|
 test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
   let output = run_output(
     (
