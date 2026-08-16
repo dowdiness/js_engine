@@ -134,6 +134,26 @@ test "RED issue 888 candidate custom iterator records one ordered pass" {
 }
 
 ///|
+test "RED issue 888 candidate callable Proxy iterator keeps route hygiene" {
+  let source =
+    #|var iterable = {};
+    #|var calls = 0;
+    #|iterable[Symbol.iterator] = new Proxy(function() {}, {
+    #|  apply: function(target, thisArg, args) {
+    #|    calls = calls + 1;
+    #|    return [1, 2][Symbol.iterator]();
+    #|  }
+    #|});
+    #|[...iterable].join(",") + ":" + calls;
+  let (value, evidence) = issue888_candidate_route_for_wb(source)
+  assert_eq(value.to_string(), "1,2:1")
+  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "RED issue 888 constructor and direct eval spread stay excluded" {
   let ctor_source =
     #|new Object(...[9]).toString();

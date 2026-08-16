@@ -271,6 +271,68 @@ test "candidate Engine iterable spread honors deep prototype accessors" {
 }
 
 ///|
+test "candidate Engine iterable spread accepts callable Proxy iterator methods" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var iterable = {};
+    #|var calls = 0;
+    #|var receiver = false;
+    #|iterable[Symbol.iterator] = new Proxy(function() {}, {
+    #|  apply: function(target, thisArg, args) {
+    #|    calls = calls + 1;
+    #|    receiver = thisArg === iterable;
+    #|    return [1, 2][Symbol.iterator]();
+    #|  }
+    #|});
+    #|function probe() { return [...iterable].join(",") + ":" + calls + ":" + receiver; }
+    #|var inherited = {};
+    #|var inheritedProto = {};
+    #|var inheritedCalls = 0;
+    #|var inheritedReceiver = false;
+    #|Object.defineProperty(inheritedProto, Symbol.iterator, { value: new Proxy(function() {}, {
+    #|  apply: function(target, thisArg, args) {
+    #|    inheritedCalls = inheritedCalls + 1;
+    #|    inheritedReceiver = thisArg === inherited;
+    #|    return [3][Symbol.iterator]();
+    #|  }
+    #|}) });
+    #|Object.setPrototypeOf(inherited, inheritedProto);
+    #|function inheritedProbe() { return [...inherited].join(",") + ":" + inheritedCalls + ":" + inheritedReceiver; }
+    #|var throwing = {};
+    #|var events = [];
+    #|Object.defineProperty(throwing, Symbol.iterator, { value: new Proxy(function() {}, {
+    #|  apply: function(target, thisArg, args) {
+    #|    events.push("apply");
+    #|    throw new TypeError("proxy iterator");
+    #|  }
+    #|}) });
+    #|function throwingProbe() {
+    #|  try { [...throwing]; return "completed"; }
+    #|  catch (error) { return (error instanceof TypeError ? "TypeError" : "other") + ":" + events.join(","); }
+    #|}
+    #|var nonCallable = {};
+    #|Object.defineProperty(nonCallable, Symbol.iterator, { value: new Proxy({}, {}) });
+    #|function nonCallableProbe() {
+    #|  try { [...nonCallable]; return "completed"; }
+    #|  catch (error) { return error instanceof TypeError ? "TypeError" : "other"; }
+    #|}
+    #|var revoked = {};
+    #|var revokedRecord = Proxy.revocable(function() {}, {});
+    #|Object.defineProperty(revoked, Symbol.iterator, { value: revokedRecord.proxy });
+    #|revokedRecord.revoke();
+    #|function revokedProbe() {
+    #|  try { [...revoked]; return "completed"; }
+    #|  catch (error) { return error instanceof TypeError ? "TypeError" : "other"; }
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="1,2:1:true")
+  json_inspect(engine.call_json("inheritedProbe", []), content="3:1:true")
+  json_inspect(engine.call_json("throwingProbe", []), content="TypeError:apply")
+  json_inspect(engine.call_json("nonCallableProbe", []), content="TypeError")
+  json_inspect(engine.call_json("revokedProbe", []), content="TypeError")
+}
+
+///|
 test "candidate minimal Map iterator prototype probe" {
   let engine = @js_engine.Engine()
   let source =

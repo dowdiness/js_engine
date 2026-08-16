@@ -18,15 +18,6 @@ pub fn Interpreter::spread_iterable(
 
   // Get the iterator object
   let iterator = match iterator_method {
-    Object(data) =>
-      match data.callable {
-        Some(_) => self.call_value(iterator_method, val, [], loc)
-        None =>
-          raise @errors.TypeError(
-            message=type_of(val) +
-              " is not iterable (Symbol.iterator is not a function)",
-          )
-      }
     Undefined =>
       // Built-in Array/String iterator creation is centralized so an
       // explicit own @@iterator = undefined is not mistaken for absence.
@@ -38,6 +29,13 @@ pub fn Interpreter::spread_iterable(
         None =>
           raise @errors.TypeError(message=type_of(val) + " is not iterable")
       }
+    _ if is_callable(iterator_method) =>
+      self.call_value(iterator_method, val, [], loc)
+    Object(_) =>
+      raise @errors.TypeError(
+        message=type_of(val) +
+          " is not iterable (Symbol.iterator is not a function)",
+      )
     _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
   }
 

@@ -550,6 +550,87 @@ test "Engine iterable spread shadows getterless iterator accessors" {
 }
 
 ///|
+test "Engine iterable spread accepts callable Proxy iterator methods" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function callableProxyIteratorMatrix() {
+    #|  var result = {};
+    #|  var own = {};
+    #|  var ownCalls = 0;
+    #|  var ownReceiver = false;
+    #|  var ownMethod = new Proxy(function() {}, {
+    #|    apply: function(target, thisArg, args) {
+    #|      ownCalls = ownCalls + 1;
+    #|      ownReceiver = thisArg === own;
+    #|      return { next: function() { return { done: true }; } };
+    #|    }
+    #|  });
+    #|  Object.defineProperty(own, Symbol.iterator, { value: ownMethod });
+    #|  result.ownLength = [...own].length;
+    #|  result.ownCalls = ownCalls;
+    #|  result.ownReceiver = ownReceiver;
+    #|  var inherited = {};
+    #|  var inheritedProto = {};
+    #|  var inheritedCalls = 0;
+    #|  var inheritedReceiver = false;
+    #|  var inheritedMethod = new Proxy(function() {}, {
+    #|    apply: function(target, thisArg, args) {
+    #|      inheritedCalls = inheritedCalls + 1;
+    #|      inheritedReceiver = thisArg === inherited;
+    #|      return { next: function() { return { done: true }; } };
+    #|    }
+    #|  });
+    #|  Object.defineProperty(inheritedProto, Symbol.iterator, { value: inheritedMethod });
+    #|  Object.setPrototypeOf(inherited, inheritedProto);
+    #|  result.inheritedLength = [...inherited].length;
+    #|  result.inheritedCalls = inheritedCalls;
+    #|  result.inheritedReceiver = inheritedReceiver;
+    #|  var throwing = {};
+    #|  var events = [];
+    #|  var throwingMethod = new Proxy(function() {}, {
+    #|    apply: function(target, thisArg, args) {
+    #|      events.push("apply");
+    #|      throw new TypeError("proxy iterator");
+    #|    }
+    #|  });
+    #|  Object.defineProperty(throwing, Symbol.iterator, { value: throwingMethod });
+    #|  try { [...throwing]; result.throwResult = "completed"; }
+    #|  catch (error) {
+    #|    result.throwResult = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  result.throwEvents = events.join(",");
+    #|  var revoked = {};
+    #|  var revokedRecord = Proxy.revocable(function() {}, {});
+    #|  Object.defineProperty(revoked, Symbol.iterator, { value: revokedRecord.proxy });
+    #|  revokedRecord.revoke();
+    #|  try { [...revoked]; result.revoked = "completed"; }
+    #|  catch (error) {
+    #|    result.revoked = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var nonCallable = {};
+    #|  Object.defineProperty(nonCallable, Symbol.iterator, { value: new Proxy({}, {}) });
+    #|  try { [...nonCallable]; result.nonCallable = "completed"; }
+    #|  catch (error) {
+    #|    result.nonCallable = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("callableProxyIteratorMatrix", []), content={
+    "ownLength": 0,
+    "ownCalls": 1,
+    "ownReceiver": true,
+    "inheritedLength": 0,
+    "inheritedCalls": 1,
+    "inheritedReceiver": true,
+    "throwResult": "TypeError",
+    "throwEvents": "apply",
+    "revoked": "TypeError",
+    "nonCallable": "TypeError",
+  })
+}
+
+///|
 test "Engine Array Symbol.toPrimitive keeps hint and receiver" {
   let engine = @js_engine.Engine()
   engine.eval(
