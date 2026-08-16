@@ -31,6 +31,10 @@ pub fn array_species_create(Interpreter, Value, Int64) -> Value raise
 
 pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
 
+pub fn begin_executor_property_delete_computed(Interpreter, Value, Value, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
+
+pub fn begin_executor_property_delete_static(Interpreter, Value, String, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
+
 pub fn builtin_method_desc() -> PropDescriptor
 
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
@@ -112,6 +116,8 @@ pub fn executor_activation_continue() -> ExecutorActivationStep
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
 
 pub fn executor_activation_property_decrement(Value, String, Bool, @token.Loc, @token.Loc, Bool) -> ExecutorActivationStep
+
+pub fn executor_activation_property_delete_request(ExecutorPropertyDeleteRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_property_get(Value, String, @token.Loc) -> ExecutorActivationStep
 
@@ -684,6 +690,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
+  ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -710,6 +717,15 @@ pub enum ExecutorCoercingAdditionStart {
 
 pub struct ExecutorConstructRequest {
   // private fields
+}
+
+pub struct ExecutorPropertyDeleteRequest {
+  // private fields
+}
+
+pub enum ExecutorPropertyDeleteStart {
+  ExecutorPropertyDeleteCompleted(Value)
+  ExecutorPropertyDeleteSuspended(ExecutorPropertyDeleteRequest)
 }
 
 pub struct ExecutorPropertyGetRequest {
