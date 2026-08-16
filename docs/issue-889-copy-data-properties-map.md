@@ -16,10 +16,10 @@ accepted #383 object-spread matrix.
 ## Current lowering and consumers
 
 `BytecodeBuilder::compile_object_lit` lowers each spread property as
-`StartObject -> source -> ObjectSpread(loc)`. `ObjectSpread` currently has a
-typed `UnsupportedBeforeActivation(ObjectSpread)` contract and the VM pops
-the source before synchronously calling
-`Interpreter::copy_object_spread_properties(target, source, loc)`.
+`StartObject -> source -> ObjectSpread(loc)`. `ObjectSpread` now has a typed
+`ManagedSuspension` contract. The VM pops only the evaluated source, retains
+the target on the stack, and starts the runtime-owned operation with a
+no-stack-change completion destination.
 
 The same runtime helper is also called by the Tree-walker object-literal path
 in `Interpreter::eval_expr`. Object-rest/destructuring has separate consumers
