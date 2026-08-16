@@ -20,8 +20,7 @@ fn issue889_assert_root_bytecode_for_wb(
   let mut tree_starts = 0
   for event in evidence.val.events {
     match event {
-      CandidateRoutePreparedEvent(item) if
-        bytecode_source_identity_coordinates_equal_for_wb(
+      CandidateRoutePreparedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
           item.source_identity,
           root_identity,
         ) => {
@@ -31,8 +30,7 @@ fn issue889_assert_root_bytecode_for_wb(
           UseTreeWalker(_) => fail("issue 889 root selected Tree-walker")
         }
       }
-      CandidateRouteStartedEvent(item) if
-        bytecode_source_identity_coordinates_equal_for_wb(
+      CandidateRouteStartedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
           item.source_identity,
           root_identity,
         ) =>

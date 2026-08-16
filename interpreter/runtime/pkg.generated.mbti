@@ -31,6 +31,8 @@ pub fn array_species_create(Interpreter, Value, Int64) -> Value raise
 
 pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
 
+pub fn begin_executor_copy_data_properties(Interpreter, Value, Value, Array[Value], @token.Loc) -> ExecutorCopyDataPropertiesStart
+
 pub fn begin_executor_iterable_spread(Value, @token.Loc) -> ExecutorIterableSpreadStart
 
 pub fn begin_executor_property_delete_computed(Interpreter, Value, Value, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
@@ -114,6 +116,8 @@ pub fn executor_activation_computed_property_get_if_admitted(Value, Value, @toke
 pub fn executor_activation_construct(Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_continue() -> ExecutorActivationStep
+
+pub fn executor_activation_copy_data_properties_request(ExecutorCopyDataPropertiesRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_iterable_spread_request(ExecutorIterableSpreadRequest) -> ExecutorActivationStep
 
@@ -698,6 +702,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
+  ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -724,6 +729,15 @@ pub enum ExecutorCoercingAdditionStart {
 
 pub struct ExecutorConstructRequest {
   // private fields
+}
+
+pub struct ExecutorCopyDataPropertiesRequest {
+  // private fields
+}
+
+pub enum ExecutorCopyDataPropertiesStart {
+  ExecutorCopyDataPropertiesCompleted
+  ExecutorCopyDataPropertiesSuspended(ExecutorCopyDataPropertiesRequest)
 }
 
 pub struct ExecutorIterableSpreadRequest {

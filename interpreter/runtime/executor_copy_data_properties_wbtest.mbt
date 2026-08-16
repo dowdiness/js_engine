@@ -30,13 +30,14 @@ impl ExecutorActivationFrame for ExecutorCopyDataPropertiesTestRootFrame with fn
     ExecutorActivationReturn(Undefined)
   } else {
     self.requested = true
-    match begin_executor_copy_data_properties(
-      interp,
-      self.target,
-      self.source,
-      self.excluded_keys,
-      self.loc,
-    ) {
+    match
+      begin_executor_copy_data_properties(
+        interp,
+        self.target,
+        self.source,
+        self.excluded_keys,
+        self.loc,
+      ) {
       ExecutorCopyDataPropertiesCompleted => ExecutorActivationReturn(Undefined)
       ExecutorCopyDataPropertiesSuspended(request) =>
         executor_activation_copy_data_properties_request(request)
@@ -73,11 +74,12 @@ fn run_executor_copy_data_properties_for_wb_excluded(
   excluded_keys : Array[Value],
 ) -> Unit raise Error {
   let root = ExecutorCopyDataPropertiesTestRootFrame(
-    target~,
-    source~,
-    excluded_keys~,
-    loc=@token.Loc::default(),
-  ) as &ExecutorActivationFrame
+      target~,
+      source~,
+      excluded_keys~,
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
   match interp.run_executor_activation_coordinator(root) {
     ExecutorActivationReturn(_) => ()
     _ => fail("CopyDataProperties root did not return normally")
@@ -130,7 +132,11 @@ test "managed CopyDataProperties skips null undefined and non-enumerable values"
   assert_true(interp.get_own_property(target, String_("hidden")) is None)
   assert_true(interp.get_own_property(target, String_("shown")) is Some(_))
   inspect(
-    interp.get_computed_property(target, String_("shown"), @token.Loc::default()),
+    interp.get_computed_property(
+      target,
+      String_("shown"),
+      @token.Loc::default(),
+    ),
     content="2",
   )
 }
@@ -147,12 +153,9 @@ test "managed CopyDataProperties applies immutable exclusions before descriptor 
     Map([]),
     true,
   )
-  run_executor_copy_data_properties_for_wb_excluded(
-    interp,
-    target,
-    source,
-    [String_("a")],
-  )
+  run_executor_copy_data_properties_for_wb_excluded(interp, target, source, [
+    String_("a"),
+  ])
   assert_true(interp.get_own_property(target, String_("a")) is None)
   inspect(
     interp.get_computed_property(target, String_("b"), @token.Loc::default()),
@@ -213,14 +216,14 @@ test "managed CopyDataProperties preserves Proxy ownKeys descriptor get write or
       _ => "?"
     }
     events.push("get:" + key)
-    if key == "a" { Number(10.0) } else { Number(20.0) }
+    if key == "a" {
+      Number(10.0)
+    } else {
+      Number(20.0)
+    }
   })
   let handler = make_object(
-    {
-      "ownKeys": own_keys,
-      "getOwnPropertyDescriptor": get_own,
-      "get": get,
-    },
+    { "ownKeys": own_keys, "getOwnPropertyDescriptor": get_own, "get": get },
     Null,
     None,
     "Object",
@@ -235,16 +238,9 @@ test "managed CopyDataProperties preserves Proxy ownKeys descriptor get write or
   })
   let output = make_object(Map([]), Null, None, "Object", Map([]), true)
   run_executor_copy_data_properties_for_wb(interp, output, source)
-  json_inspect(
-    events,
-    content=[
-      "ownKeys",
-      "descriptor:a",
-      "get:a",
-      "descriptor:b",
-      "get:b",
-    ],
-  )
+  json_inspect(events, content=[
+    "ownKeys", "descriptor:a", "get:a", "descriptor:b", "get:b",
+  ])
   inspect(
     interp.get_computed_property(output, String_("a"), @token.Loc::default()),
     content="10",

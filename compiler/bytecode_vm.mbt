@@ -1149,20 +1149,19 @@ fn BytecodeFrame::step_bytecode(
       }
       ObjectSpread(loc) => {
         let source = frame.pop()
-        match @runtime.begin_executor_copy_data_properties(
-          interp,
-          frame.peek(),
-          source,
-          [],
-          loc,
-        ) {
+        match
+          @runtime.begin_executor_copy_data_properties(
+            interp,
+            frame.peek(),
+            source,
+            [],
+            loc,
+          ) {
           @runtime.ExecutorCopyDataPropertiesCompleted => ()
           @runtime.ExecutorCopyDataPropertiesSuspended(request) => {
             frame.pending_activation_result = Some(NoStackChange)
             return BytecodeFrameSuspended(
-              @runtime.executor_activation_copy_data_properties_request(
-                request,
-              ),
+              @runtime.executor_activation_copy_data_properties_request(request),
             )
           }
         }

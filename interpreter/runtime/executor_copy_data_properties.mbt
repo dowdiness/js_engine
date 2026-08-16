@@ -15,7 +15,9 @@ priv enum ExecutorOwnPropertyKeysPhase {
   ExecutorOwnPropertyKeysAwaitIndex
   ExecutorOwnPropertyKeysHaveIndex(Value)
   ExecutorOwnPropertyKeysNeedTargetExtensible
-  ExecutorOwnPropertyKeysAwaitTargetExtensible(ExecutorDeleteIsExtensibleOperation)
+  ExecutorOwnPropertyKeysAwaitTargetExtensible(
+    ExecutorDeleteIsExtensibleOperation
+  )
   ExecutorOwnPropertyKeysNeedTargetKeys
   ExecutorOwnPropertyKeysAwaitTargetKeys(ExecutorOwnPropertyKeysOperation)
   ExecutorOwnPropertyKeysNeedTargetDescriptor
@@ -268,10 +270,12 @@ fn ExecutorOwnPropertyKeysOperation::finish_invariants(
   let unchecked_symbols : Map[Int, Int] = Map([])
   for key in trap_keys {
     match key {
-      String_(name) =>
-        unchecked[name] = unchecked.get(name).unwrap_or(0) + 1
+      String_(name) => unchecked[name] = unchecked.get(name).unwrap_or(0) + 1
       Symbol(symbol) =>
-        unchecked_symbols[symbol.id] = unchecked_symbols.get(symbol.id).unwrap_or(0) + 1
+        unchecked_symbols[symbol.id] = unchecked_symbols
+          .get(symbol.id)
+          .unwrap_or(0) +
+          1
       _ => ()
     }
   }
@@ -343,7 +347,10 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
       match trap {
         Undefined | Null => {
           self.target = target
-          let operation = ExecutorOwnPropertyKeysOperation(target~, loc=self.loc)
+          let operation = ExecutorOwnPropertyKeysOperation(
+            target~,
+            loc=self.loc,
+          )
           match operation.step_frame(interp) {
             ExecutorActivationNormal(value) => {
               self.phase = ExecutorOwnPropertyKeysComplete(
@@ -391,7 +398,9 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
             ExecutorActivationNormal(value) =>
               self.finish_length_value(value, interp)
             step => {
-              self.phase = ExecutorOwnPropertyKeysAwaitLengthPrimitive(operation)
+              self.phase = ExecutorOwnPropertyKeysAwaitLengthPrimitive(
+                operation,
+              )
               step
             }
           }
@@ -417,7 +426,7 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
         )
       }
     }
-    ExecutorOwnPropertyKeysHaveIndex(value) => {
+    ExecutorOwnPropertyKeysHaveIndex(value) =>
       match value {
         String_(_) | Symbol(_) => {
           self.trap_keys.push(value)
@@ -430,7 +439,6 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
             message="'ownKeys' on proxy: trap result must contain only Strings and Symbols",
           )
       }
-    }
     ExecutorOwnPropertyKeysNeedTargetExtensible => {
       let operation = ExecutorDeleteIsExtensibleOperation(
         target=self.target,
@@ -454,7 +462,9 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
             ExecutorActivationNormal(Bool(value)) =>
               self.consume_target_extensible(value, interp)
             step => {
-              self.phase = ExecutorOwnPropertyKeysAwaitTargetExtensible(operation)
+              self.phase = ExecutorOwnPropertyKeysAwaitTargetExtensible(
+                operation,
+              )
               step
             }
           }
@@ -518,7 +528,9 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
             ExecutorActivationNormal(_) =>
               self.consume_target_descriptor(operation.result(), interp)
             step => {
-              self.phase = ExecutorOwnPropertyKeysAwaitTargetDescriptor(operation)
+              self.phase = ExecutorOwnPropertyKeysAwaitTargetDescriptor(
+                operation,
+              )
               step
             }
           }
@@ -780,9 +792,9 @@ fn ExecutorCopyDataPropertiesFrame::step_frame(
       } else {
         let key = self.keys[self.index]
         if executor_copy_data_properties_is_excluded(
-          self.request.excluded_keys,
-          key,
-        ) {
+            self.request.excluded_keys,
+            key,
+          ) {
           self.index += 1
           self.current_key = None
           self.step_frame(interp)

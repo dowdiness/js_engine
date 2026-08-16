@@ -1376,8 +1376,7 @@ fn executor_copy_data_properties_completion(
   step : ExecutorActivationStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(_)
-    | ExecutorActivationReturn(_) =>
+    ExecutorActivationNormal(_) | ExecutorActivationReturn(_) =>
       ExecutorActivationCompletionNormal(Undefined)
     _ =>
       ExecutorActivationCompletionAbrupt(
