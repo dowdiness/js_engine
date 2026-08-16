@@ -132,6 +132,10 @@ fn ExecutorToPrimitiveOperation::step(
             loc=self.loc,
           ),
         )
+      } else if self.hint is ExecutorToPrimitiveString {
+        raise @errors.TypeError(
+          message="Cannot convert object to primitive value",
+        )
       } else {
         self.tried_value_of = true
         self.begin_to_string_lookup(current)

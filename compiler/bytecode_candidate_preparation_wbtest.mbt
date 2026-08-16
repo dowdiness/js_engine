@@ -640,6 +640,23 @@ test "candidate computed deletion String fallback throws after one pair" {
 }
 
 ///|
+test "candidate computed deletion String hint gets non-callable methods once" {
+  let source =
+    #|var gets = "";
+    #|var key = {};
+    #|Object.defineProperty(key, "toString", { get: function() { gets = gets + "t"; return 1; } });
+    #|Object.defineProperty(key, "valueOf", { get: function() { gets = gets + "v"; return 2; } });
+    #|var threw = false;
+    #|try { delete ({ value: 1 })[key]; } catch (error) { threw = true; }
+    #|threw && gets === "tv";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate computed deletion propagates key getter and call throws" {
   let source =
     #|var getterCalls = 0;
@@ -707,11 +724,14 @@ test "candidate Proxy deletion suspends trap forwarding and invariants" {
     #|try { remove(new Proxy(nonConfigTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { nonConfigThrew = true; }
     #|var sealedTarget = {};
     #|Object.preventExtensions(sealedTarget);
-    #|var missingThrew = false;
-    #|try { remove(new Proxy(sealedTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { missingThrew = true; }
+    #|var missingResult = remove(new Proxy(sealedTarget, { deleteProperty: function() { return true; } }), "value");
+    #|var configurableTarget = { value: 1 };
+    #|Object.preventExtensions(configurableTarget);
+    #|var configurableThrew = false;
+    #|try { remove(new Proxy(configurableTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { configurableThrew = true; }
     #|forwardedResult && forwardedTarget.value === undefined && sloppyFalse === false &&
     #|  strictThrew && trueResult && receiverSeen && argsSeen && nonCallableThrew &&
-    #|  getterThrew && callThrew && revokedThrew && nonConfigThrew && missingThrew;
+    #|  getterThrew && callThrew && revokedThrew && nonConfigThrew && missingResult && configurableThrew;
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(value.to_string(), "true")
   assert_eq(evidence.val.summary.fallback_violations, 0)
@@ -731,8 +751,10 @@ test "candidate nested Proxy delete forwarding suspends invariant guest edges" {
     #|var forwarded = remove(forwardingOuter, "value");
     #|var invariantEvents = "";
     #|var invariantRaw = {};
+    #|Object.defineProperty(invariantRaw, "missing", { value: 1, configurable: true });
+    #|Object.preventExtensions(invariantRaw);
     #|var invariantInner = new Proxy(invariantRaw, {
-    #|  isExtensible: function(target) { invariantEvents = invariantEvents + "e"; return true; }
+    #|  isExtensible: function(target) { invariantEvents = invariantEvents + "e"; return false; }
     #|});
     #|var invariantMiddle = new Proxy(invariantInner, {
     #|  getOwnPropertyDescriptor: function(target, key) {
@@ -741,8 +763,80 @@ test "candidate nested Proxy delete forwarding suspends invariant guest edges" {
     #|  }
     #|});
     #|var invariantOuter = new Proxy(invariantMiddle, { deleteProperty: function() { return true; } });
-    #|var invariantResult = remove(invariantOuter, "missing");
-    #|forwarded && forwardingEvents === "i" && invariantResult && invariantEvents === "aee";
+    #|var invariantThrew = false;
+    #|try { remove(invariantOuter, "missing"); } catch (error) { invariantThrew = true; }
+    #|forwarded && forwardingEvents === "i" && invariantThrew && invariantEvents === "ae";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy delete parses descriptor fields in canonical order" {
+  let source =
+    #|var events = "";
+    #|var target = { value: 1 };
+    #|var descriptor = {};
+    #|Object.defineProperty(descriptor, "enumerable", { get: function() { events = events + "e"; return true; } });
+    #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return true; } });
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return true; } });
+    #|var descriptorProxyTarget = new Proxy(target, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(descriptorProxyTarget, { deleteProperty: function() { return true; } });
+    #|var dataResult = delete proxy.value;
+    #|var accessorEvents = "";
+    #|var accessorGetter = function() { return 1; };
+    #|var accessorSetter = function(value) {};
+    #|var accessorTarget = {};
+    #|Object.defineProperty(accessorTarget, "accessor", { get: accessorGetter, configurable: true });
+    #|var accessorDescriptor = {};
+    #|Object.defineProperty(accessorDescriptor, "enumerable", { get: function() { accessorEvents = accessorEvents + "e"; return false; } });
+    #|Object.defineProperty(accessorDescriptor, "configurable", { get: function() { accessorEvents = accessorEvents + "c"; return true; } });
+    #|Object.defineProperty(accessorDescriptor, "get", { get: function() { accessorEvents = accessorEvents + "g"; return accessorGetter; } });
+    #|Object.defineProperty(accessorDescriptor, "set", { get: function() { accessorEvents = accessorEvents + "s"; return accessorSetter; } });
+    #|var accessorDescriptorProxyTarget = new Proxy(accessorTarget, {
+    #|  getOwnPropertyDescriptor: function() { accessorEvents = accessorEvents + "t"; return accessorDescriptor; }
+    #|});
+    #|var accessorProxy = new Proxy(accessorDescriptorProxyTarget, { deleteProperty: function() { return true; } });
+    #|var accessorResult = delete accessorProxy.accessor;
+    #|dataResult && events === "tecvw" && accessorResult && accessorEvents === "tecgs";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy delete propagates descriptor getter throws and shape invariants" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var getterEvents = "";
+    #|var throwingDescriptor = {};
+    #|Object.defineProperty(throwingDescriptor, "enumerable", { get: function() { getterEvents = getterEvents + "e"; return true; } });
+    #|Object.defineProperty(throwingDescriptor, "configurable", { get: function() { getterEvents = getterEvents + "c"; return true; } });
+    #|Object.defineProperty(throwingDescriptor, "value", { get: function() { getterEvents = getterEvents + "v"; throw new Error("descriptor"); } });
+    #|Object.defineProperty(throwingDescriptor, "writable", { get: function() { getterEvents = getterEvents + "w"; return true; } });
+    #|var getterThrew = false;
+    #|var throwingTarget = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { return throwingDescriptor; } });
+    #|try { remove(new Proxy(throwingTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { getterThrew = true; }
+    #|var dataTarget = {};
+    #|Object.defineProperty(dataTarget, "value", { value: 1, writable: false, configurable: false });
+    #|var accessorReport = { get: function() {}, configurable: false };
+    #|var dataKindThrew = false;
+    #|var dataDescriptorTarget = new Proxy(dataTarget, { getOwnPropertyDescriptor: function() { return accessorReport; } });
+    #|try { remove(new Proxy(dataDescriptorTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { dataKindThrew = true; }
+    #|var accessorTarget = {};
+    #|Object.defineProperty(accessorTarget, "value", { get: function() { return 1; }, configurable: false });
+    #|var dataReport = { value: 1, configurable: false };
+    #|var accessorKindThrew = false;
+    #|var accessorDescriptorTarget = new Proxy(accessorTarget, { getOwnPropertyDescriptor: function() { return dataReport; } });
+    #|try { remove(new Proxy(accessorDescriptorTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { accessorKindThrew = true; }
+    #|getterThrew && getterEvents === "ecv" && dataKindThrew && accessorKindThrew;
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(value.to_string(), "true")
   assert_eq(evidence.val.summary.fallback_violations, 0)

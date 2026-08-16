@@ -4582,6 +4582,116 @@ test "coercing addition uses valueOf then toString fallback" {
 }
 
 ///|
+test "ToPrimitive default and number preserve valueOf then toString fallback" {
+  let interp = Interpreter::new()
+  let default_events : Array[String] = []
+  let default_fallback = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let default_value_of = make_method_func(
+    name="defaultValueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      default_events.push("valueOf")
+      default_fallback
+    },
+  )
+  let default_to_string = make_method_func(
+    name="defaultToString",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      default_events.push("toString")
+      String_("default")
+    },
+  )
+  let default_object = make_object(
+    { "valueOf": default_value_of, "toString": default_to_string },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let default_result = run_executor_coercing_addition_root_for_wb(
+    interp,
+    default_object,
+    Number(1.0),
+  )
+  match default_result {
+    String_(value) => inspect(value, content="default1")
+    _ => fail("default ToPrimitive must fall back to toString")
+  }
+  json_inspect(default_events, content=["valueOf", "toString"])
+
+  let number_events : Array[String] = []
+  let number_fallback = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let number_value_of = make_method_func(
+    name="numberValueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      number_events.push("valueOf")
+      number_fallback
+    },
+  )
+  let number_to_string = make_method_func(
+    name="numberToString",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      number_events.push("toString")
+      String_("4")
+    },
+  )
+  let number_object = make_object(
+    { "valueOf": number_value_of, "toString": number_to_string },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let target = make_object(
+    { "x": number_object },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let request = ExecutorPropertyUpdateRequest(
+    target~,
+    property_name="x",
+    operator=ExecutorPropertyIncrement,
+    prefix=false,
+    member_loc=@token.Loc::default(),
+    loc=@token.Loc::default(),
+    strict=false,
+  )
+  let root = ExecutorPropertyUpdateFrame(request) as &ExecutorActivationFrame
+  let number_result = match interp.run_executor_activation_coordinator(root) {
+    ExecutorActivationReturn(result) => result
+    ExecutorActivationNormal(result) => result
+    _ => fail("number ToPrimitive update must return its old value")
+  }
+  match number_result {
+    Number(value) => inspect(value, content="4")
+    _ => fail("number ToPrimitive must return the numeric old value")
+  }
+  json_inspect(number_events, content=["valueOf", "toString"])
+}
+
+///|
 test "coercing addition rejects non-callable @@toPrimitive without fallback" {
   let interp = Interpreter::new()
   let events : Array[String] = []

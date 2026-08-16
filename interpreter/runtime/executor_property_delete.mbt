@@ -1,19 +1,18 @@
 ///|
 priv struct ExecutorDeleteDescriptorInfo {
-  configurable : Bool
-}
-
-///|
-priv enum ExecutorDeleteGetOwnProxyStage {
-  ExecutorDeleteGetOwnAwaitUnderlyingDescriptor
+  descriptor : PropDescriptor
+  value : Value
+  has_value : Bool
+  has_writable : Bool
+  has_getter : Bool
+  has_setter : Bool
 }
 
 ///|
 priv struct ExecutorDeleteGetOwnProxyContext {
   target : Value
-  mut stage : ExecutorDeleteGetOwnProxyStage
-  mut trap_undefined : Bool
-  mut reported_configurable : Bool?
+  mut trap_missing : Bool
+  mut reported : ExecutorDeleteDescriptorInfo?
   mut underlying : ExecutorDeleteDescriptorInfo?
 }
 
@@ -24,8 +23,7 @@ priv enum ExecutorDeleteGetOwnPhase {
   ExecutorDeleteGetOwnHaveTrap(Value, Value, Value, Value)
   ExecutorDeleteGetOwnAwaitTrapCall
   ExecutorDeleteGetOwnHaveTrapResult(Value)
-  ExecutorDeleteGetOwnAwaitConfigurableLookup
-  ExecutorDeleteGetOwnHaveConfigurable(Bool)
+  ExecutorDeleteGetOwnAwaitDescriptor(ExecutorDeleteDescriptorParseOperation)
   ExecutorDeleteGetOwnAwaitTargetExtensible(ExecutorDeleteIsExtensibleOperation)
   ExecutorDeleteGetOwnComplete(ExecutorDeleteDescriptorInfo?)
 }
@@ -52,8 +50,723 @@ fn executor_delete_descriptor_info(
   entry : (PropDescriptor, Value)?,
 ) -> ExecutorDeleteDescriptorInfo? {
   match entry {
-    Some((desc, _)) => Some({ configurable: desc.configurable })
+    Some((descriptor, value)) =>
+      Some({
+        descriptor,
+        value,
+        has_value: !descriptor.is_accessor,
+        has_writable: !descriptor.is_accessor,
+        has_getter: descriptor.is_accessor,
+        has_setter: descriptor.is_accessor,
+      })
     None => None
+  }
+}
+
+///|
+priv enum ExecutorDeleteHasPropertyPhase {
+  ExecutorDeleteHasPropertyNeedCurrent(Value)
+  ExecutorDeleteHasPropertyAwaitTrapLookup(Value, Value)
+  ExecutorDeleteHasPropertyHaveTrap(Value, Value, Value)
+  ExecutorDeleteHasPropertyAwaitTrapCall(Value)
+  ExecutorDeleteHasPropertyHaveTrapResult(Value, Bool)
+  ExecutorDeleteHasPropertyAwaitTargetDescriptor(
+    Value,
+    ExecutorDeleteGetOwnOperation
+  )
+  ExecutorDeleteHasPropertyAwaitTargetExtensible(
+    Value,
+    ExecutorDeleteIsExtensibleOperation
+  )
+  ExecutorDeleteHasPropertyComplete
+}
+
+///|
+priv struct ExecutorDeleteHasPropertyOperation {
+  key : Value
+  loc : @token.Loc
+  mut phase : ExecutorDeleteHasPropertyPhase
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::ExecutorDeleteHasPropertyOperation(
+  target~ : Value,
+  key~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorDeleteHasPropertyOperation {
+  { key, loc, phase: ExecutorDeleteHasPropertyNeedCurrent(target) }
+}
+
+///|
+fn executor_delete_descriptor_prototype(
+  value : Value,
+  interp : Interpreter,
+) -> Value? {
+  match value {
+    Object(data) => Some(data.prototype)
+    Array(data) => Some(get_array_prototype(interp.realm_state, data))
+    Map(data) =>
+      Some(
+        data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_map_proto()
+        }),
+      )
+    Set(data) =>
+      Some(
+        data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_set_proto()
+        }),
+      )
+    Promise(data) =>
+      Some(
+        data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_promise_proto()
+        }),
+      )
+    _ => None
+  }
+}
+
+///|
+fn executor_delete_descriptor_has_own_property(
+  value : Value,
+  key : Value,
+) -> Bool raise Error {
+  ordinary_get_own_property(value, key) is Some(_)
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::complete_result(
+  self : ExecutorDeleteHasPropertyOperation,
+  result : Bool,
+) -> ExecutorActivationStep {
+  self.phase = ExecutorDeleteHasPropertyComplete
+  ExecutorActivationNormal(Bool(result))
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::finish_target_extensible(
+  self : ExecutorDeleteHasPropertyOperation,
+  extensible : Bool,
+) -> ExecutorActivationStep raise Error {
+  guard extensible else {
+    raise @errors.TypeError(
+      message="'has' on proxy: trap returned false for a property on a non-extensible proxy target",
+    )
+  }
+  self.complete_result(false)
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::consume_target_descriptor(
+  self : ExecutorDeleteHasPropertyOperation,
+  target : Value,
+  descriptor : ExecutorDeleteDescriptorInfo?,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match descriptor {
+    None => self.complete_result(false)
+    Some(info) => {
+      guard info.descriptor.configurable else {
+        raise @errors.TypeError(
+          message="'has' on proxy: trap returned false for a non-configurable property on the proxy target",
+        )
+      }
+      let operation = ExecutorDeleteIsExtensibleOperation(target~, loc=self.loc)
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) =>
+          match value {
+            Bool(extensible) => self.finish_target_extensible(extensible)
+            _ =>
+              raise @errors.InternalError(
+                message="descriptor HasProperty extensibility returned a non-boolean",
+              )
+          }
+        step => {
+          self.phase = ExecutorDeleteHasPropertyAwaitTargetExtensible(
+            target, operation,
+          )
+          step
+        }
+      }
+    }
+  }
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::begin_target_descriptor(
+  self : ExecutorDeleteHasPropertyOperation,
+  target : Value,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  let operation = ExecutorDeleteGetOwnOperation(
+    target~,
+    key=self.key,
+    loc=self.loc,
+  )
+  match operation.step(interp) {
+    ExecutorActivationNormal(_) =>
+      self.consume_target_descriptor(target, operation.result(), interp)
+    step => {
+      self.phase = ExecutorDeleteHasPropertyAwaitTargetDescriptor(
+        target, operation,
+      )
+      step
+    }
+  }
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::resume_target_descriptor(
+  self : ExecutorDeleteHasPropertyOperation,
+  target : Value,
+  operation : ExecutorDeleteGetOwnOperation,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match operation.phase {
+    ExecutorDeleteGetOwnComplete(_) =>
+      self.consume_target_descriptor(target, operation.result(), interp)
+    _ =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(_) =>
+          self.consume_target_descriptor(target, operation.result(), interp)
+        step => {
+          self.phase = ExecutorDeleteHasPropertyAwaitTargetDescriptor(
+            target, operation,
+          )
+          step
+        }
+      }
+  }
+}
+
+///|
+fn ExecutorDeleteHasPropertyOperation::resume_target_extensible(
+  self : ExecutorDeleteHasPropertyOperation,
+  target : Value,
+  operation : ExecutorDeleteIsExtensibleOperation,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match operation.phase {
+    ExecutorDeleteIsExtensibleComplete(extensible) =>
+      self.finish_target_extensible(extensible)
+    _ =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) =>
+          match value {
+            Bool(extensible) => self.finish_target_extensible(extensible)
+            _ =>
+              raise @errors.InternalError(
+                message="descriptor HasProperty extensibility returned a non-boolean",
+              )
+          }
+        step => {
+          self.phase = ExecutorDeleteHasPropertyAwaitTargetExtensible(
+            target, operation,
+          )
+          step
+        }
+      }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorDeleteHasPropertyOperation with fn step(
+  self,
+  interp,
+) {
+  match self.phase {
+    ExecutorDeleteHasPropertyNeedCurrent(current) =>
+      match current {
+        Proxy(proxy_data) => {
+          let handler = get_proxy_handler(proxy_data)
+          let target = get_proxy_target(proxy_data)
+          self.phase = ExecutorDeleteHasPropertyAwaitTrapLookup(target, handler)
+          executor_activation_managed_property_get(handler, "has", self.loc)
+        }
+        _ =>
+          if executor_delete_descriptor_has_own_property(current, self.key) {
+            self.phase = ExecutorDeleteHasPropertyComplete
+            ExecutorActivationNormal(Bool(true))
+          } else {
+            match executor_delete_descriptor_prototype(current, interp) {
+              Some(proto) => {
+                self.phase = ExecutorDeleteHasPropertyNeedCurrent(proto)
+                ExecutorActivationContinue
+              }
+              None => {
+                self.phase = ExecutorDeleteHasPropertyComplete
+                ExecutorActivationNormal(Bool(false))
+              }
+            }
+          }
+      }
+    ExecutorDeleteHasPropertyHaveTrap(target, handler, trap) =>
+      match trap {
+        Undefined | Null => {
+          self.phase = ExecutorDeleteHasPropertyNeedCurrent(target)
+          ExecutorActivationContinue
+        }
+        _ if is_callable(trap) => {
+          self.phase = ExecutorDeleteHasPropertyAwaitTrapCall(target)
+          ExecutorActivationCall(
+            ExecutorCallRequest(
+              callee=trap,
+              this_value=handler,
+              args=[target, self.key],
+              loc=self.loc,
+            ),
+          )
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="'has' on proxy: trap is not a function",
+          )
+      }
+    ExecutorDeleteHasPropertyHaveTrapResult(target, result) =>
+      if result {
+        self.complete_result(true)
+      } else {
+        self.begin_target_descriptor(target, interp)
+      }
+    ExecutorDeleteHasPropertyAwaitTrapLookup(_, _)
+    | ExecutorDeleteHasPropertyAwaitTrapCall(_) =>
+      raise @errors.InternalError(
+        message="descriptor HasProperty stepped while awaiting a child completion",
+      )
+    ExecutorDeleteHasPropertyAwaitTargetDescriptor(target, operation) =>
+      self.resume_target_descriptor(target, operation, interp)
+    ExecutorDeleteHasPropertyAwaitTargetExtensible(target, operation) =>
+      self.resume_target_extensible(target, operation, interp)
+    ExecutorDeleteHasPropertyComplete =>
+      raise @errors.InternalError(
+        message="descriptor HasProperty operation stepped after completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorDeleteHasPropertyOperation with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionNormal(value) =>
+      match self.phase {
+        ExecutorDeleteHasPropertyAwaitTrapLookup(target, handler) =>
+          self.phase = ExecutorDeleteHasPropertyHaveTrap(target, handler, value)
+        ExecutorDeleteHasPropertyAwaitTrapCall(target) =>
+          self.phase = ExecutorDeleteHasPropertyHaveTrapResult(
+            target,
+            is_truthy(value),
+          )
+        ExecutorDeleteHasPropertyAwaitTargetDescriptor(_, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorDeleteHasPropertyAwaitTargetExtensible(_, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorDeleteHasPropertyNeedCurrent(_)
+        | ExecutorDeleteHasPropertyHaveTrap(_, _, _)
+        | ExecutorDeleteHasPropertyHaveTrapResult(_, _)
+        | ExecutorDeleteHasPropertyComplete =>
+          raise @errors.InternalError(
+            message="descriptor HasProperty received an unexpected child completion",
+          )
+      }
+  }
+}
+
+///|
+extend ExecutorDeleteHasPropertyOperation with ExecutorActivationFrame::{
+  step,
+  deliver_activation_completion,
+}
+
+///|
+priv enum ExecutorDeleteDescriptorField {
+  ExecutorDeleteDescriptorEnumerable
+  ExecutorDeleteDescriptorConfigurable
+  ExecutorDeleteDescriptorValue
+  ExecutorDeleteDescriptorWritable
+  ExecutorDeleteDescriptorGetter
+  ExecutorDeleteDescriptorSetter
+}
+
+///|
+fn executor_delete_descriptor_field_name(
+  field : ExecutorDeleteDescriptorField,
+) -> String {
+  match field {
+    ExecutorDeleteDescriptorEnumerable => "enumerable"
+    ExecutorDeleteDescriptorConfigurable => "configurable"
+    ExecutorDeleteDescriptorValue => "value"
+    ExecutorDeleteDescriptorWritable => "writable"
+    ExecutorDeleteDescriptorGetter => "get"
+    ExecutorDeleteDescriptorSetter => "set"
+  }
+}
+
+///|
+fn executor_delete_descriptor_next_field(
+  field : ExecutorDeleteDescriptorField,
+) -> ExecutorDeleteDescriptorField? {
+  match field {
+    ExecutorDeleteDescriptorEnumerable =>
+      Some(ExecutorDeleteDescriptorConfigurable)
+    ExecutorDeleteDescriptorConfigurable => Some(ExecutorDeleteDescriptorValue)
+    ExecutorDeleteDescriptorValue => Some(ExecutorDeleteDescriptorWritable)
+    ExecutorDeleteDescriptorWritable => Some(ExecutorDeleteDescriptorGetter)
+    ExecutorDeleteDescriptorGetter => Some(ExecutorDeleteDescriptorSetter)
+    ExecutorDeleteDescriptorSetter => None
+  }
+}
+
+///|
+priv enum ExecutorDeleteDescriptorParsePhase {
+  ExecutorDeleteDescriptorNeedField(ExecutorDeleteDescriptorField)
+  ExecutorDeleteDescriptorAwaitHasProperty(
+    ExecutorDeleteDescriptorField,
+    ExecutorDeleteHasPropertyOperation
+  )
+  ExecutorDeleteDescriptorAwaitValue(ExecutorDeleteDescriptorField)
+  ExecutorDeleteDescriptorComplete(ExecutorDeleteDescriptorInfo)
+}
+
+///|
+priv struct ExecutorDeleteDescriptorParseOperation {
+  attrs : Value
+  loc : @token.Loc
+  mut enumerable : Bool?
+  mut configurable : Bool?
+  mut value : Value?
+  mut writable : Bool?
+  mut getter : Value?
+  mut setter : Value?
+  mut has_getter : Bool
+  mut has_setter : Bool
+  mut phase : ExecutorDeleteDescriptorParsePhase
+}
+
+///|
+fn ExecutorDeleteDescriptorParseOperation::ExecutorDeleteDescriptorParseOperation(
+  attrs~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorDeleteDescriptorParseOperation {
+  {
+    attrs,
+    loc,
+    enumerable: None,
+    configurable: None,
+    value: None,
+    writable: None,
+    getter: None,
+    setter: None,
+    has_getter: false,
+    has_setter: false,
+    phase: ExecutorDeleteDescriptorNeedField(ExecutorDeleteDescriptorEnumerable),
+  }
+}
+
+///|
+fn ExecutorDeleteDescriptorParseOperation::complete(
+  self : ExecutorDeleteDescriptorParseOperation,
+) -> ExecutorActivationStep raise Error {
+  let is_accessor = self.has_getter || self.has_setter
+  let is_data = self.value is Some(_) || self.writable is Some(_)
+  guard !(is_accessor && is_data) else {
+    raise @errors.TypeError(
+      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    )
+  }
+  let descriptor : PropDescriptor = {
+    writable: self.writable.unwrap_or(false),
+    enumerable: self.enumerable.unwrap_or(false),
+    configurable: self.configurable.unwrap_or(false),
+    getter: if self.has_getter {
+      self.getter
+    } else {
+      None
+    },
+    setter: if self.has_setter {
+      self.setter
+    } else {
+      None
+    },
+    is_accessor,
+  }
+  let has_value = self.value is Some(_)
+  let has_writable = self.writable is Some(_)
+  let info = {
+    descriptor,
+    value: if is_accessor {
+      Undefined
+    } else {
+      self.value.unwrap_or(Undefined)
+    },
+    has_value,
+    has_writable,
+    has_getter: self.has_getter,
+    has_setter: self.has_setter,
+  }
+  self.phase = ExecutorDeleteDescriptorComplete(info)
+  ExecutorActivationNormal(Undefined)
+}
+
+///|
+fn ExecutorDeleteDescriptorParseOperation::advance(
+  self : ExecutorDeleteDescriptorParseOperation,
+  field : ExecutorDeleteDescriptorField,
+) -> ExecutorActivationStep raise Error {
+  match executor_delete_descriptor_next_field(field) {
+    Some(next) => {
+      self.phase = ExecutorDeleteDescriptorNeedField(next)
+      ExecutorActivationContinue
+    }
+    None => self.complete()
+  }
+}
+
+///|
+fn ExecutorDeleteDescriptorParseOperation::after_has_property(
+  self : ExecutorDeleteDescriptorParseOperation,
+  field : ExecutorDeleteDescriptorField,
+  present : Bool,
+) -> ExecutorActivationStep raise Error {
+  if present {
+    self.phase = ExecutorDeleteDescriptorAwaitValue(field)
+    executor_activation_managed_property_get(
+      self.attrs,
+      executor_delete_descriptor_field_name(field),
+      self.loc,
+    )
+  } else {
+    self.advance(field)
+  }
+}
+
+///|
+fn ExecutorDeleteDescriptorParseOperation::record_value(
+  self : ExecutorDeleteDescriptorParseOperation,
+  field : ExecutorDeleteDescriptorField,
+  value : Value,
+) -> ExecutorActivationStep raise Error {
+  match field {
+    ExecutorDeleteDescriptorEnumerable =>
+      self.enumerable = Some(is_truthy(value))
+    ExecutorDeleteDescriptorConfigurable =>
+      self.configurable = Some(is_truthy(value))
+    ExecutorDeleteDescriptorValue => self.value = Some(value)
+    ExecutorDeleteDescriptorWritable => self.writable = Some(is_truthy(value))
+    ExecutorDeleteDescriptorGetter => {
+      self.has_getter = true
+      match value {
+        Undefined => self.getter = None
+        _ => {
+          guard is_callable(value) else {
+            raise @errors.TypeError(message="Getter must be a function")
+          }
+          self.getter = Some(value)
+        }
+      }
+    }
+    ExecutorDeleteDescriptorSetter => {
+      self.has_setter = true
+      match value {
+        Undefined => self.setter = None
+        _ => {
+          guard is_callable(value) else {
+            raise @errors.TypeError(message="Setter must be a function")
+          }
+          self.setter = Some(value)
+        }
+      }
+    }
+  }
+  self.advance(field)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorDeleteDescriptorParseOperation with fn step(
+  self,
+  interp,
+) {
+  match self.phase {
+    ExecutorDeleteDescriptorNeedField(field) => {
+      let operation = ExecutorDeleteHasPropertyOperation(
+        target=self.attrs,
+        key=String_(executor_delete_descriptor_field_name(field)),
+        loc=self.loc,
+      )
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) =>
+          match value {
+            Bool(present) => self.after_has_property(field, present)
+            _ =>
+              raise @errors.InternalError(
+                message="descriptor HasProperty returned a non-boolean",
+              )
+          }
+        step => {
+          self.phase = ExecutorDeleteDescriptorAwaitHasProperty(
+            field, operation,
+          )
+          step
+        }
+      }
+    }
+    ExecutorDeleteDescriptorAwaitHasProperty(field, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) =>
+          match value {
+            Bool(present) => self.after_has_property(field, present)
+            _ =>
+              raise @errors.InternalError(
+                message="descriptor HasProperty returned a non-boolean",
+              )
+          }
+        step => {
+          self.phase = ExecutorDeleteDescriptorAwaitHasProperty(
+            field, operation,
+          )
+          step
+        }
+      }
+    ExecutorDeleteDescriptorAwaitValue(_) =>
+      raise @errors.InternalError(
+        message="descriptor parser stepped while awaiting a child completion",
+      )
+    ExecutorDeleteDescriptorComplete(_) =>
+      raise @errors.InternalError(
+        message="descriptor parser stepped after completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorDeleteDescriptorParseOperation with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionNormal(value) =>
+      match self.phase {
+        ExecutorDeleteDescriptorAwaitHasProperty(_, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorDeleteDescriptorAwaitValue(field) =>
+          ignore(self.record_value(field, value))
+        ExecutorDeleteDescriptorNeedField(_)
+        | ExecutorDeleteDescriptorComplete(_) =>
+          raise @errors.InternalError(
+            message="descriptor parser received an unexpected child completion",
+          )
+      }
+  }
+}
+
+///|
+extend ExecutorDeleteDescriptorParseOperation with ExecutorActivationFrame::{
+  step,
+  deliver_activation_completion,
+}
+
+///|
+fn ExecutorDeleteDescriptorParseOperation::result(
+  self : ExecutorDeleteDescriptorParseOperation,
+) -> ExecutorDeleteDescriptorInfo raise Error {
+  match self.phase {
+    ExecutorDeleteDescriptorComplete(info) => info
+    _ =>
+      raise @errors.InternalError(
+        message="descriptor parser result requested before completion",
+      )
+  }
+}
+
+///|
+fn executor_delete_validate_descriptor(
+  existing : ExecutorDeleteDescriptorInfo,
+  reported : ExecutorDeleteDescriptorInfo,
+) -> Unit raise Error {
+  let existing_desc = existing.descriptor
+  let reported_desc = reported.descriptor
+  guard existing_desc.configurable == reported_desc.configurable else {
+    raise @errors.TypeError(
+      message="'getOwnPropertyDescriptor' on proxy: trap reported a different configurable value for a property on the proxy target",
+    )
+  }
+  guard existing_desc.configurable ||
+    existing_desc.enumerable == reported_desc.enumerable else {
+    raise @errors.TypeError(
+      message="'getOwnPropertyDescriptor' on proxy: trap reported different enumerable for non-configurable property on proxy target",
+    )
+  }
+  let existing_is_data = existing.has_value || existing.has_writable
+  let existing_is_accessor = existing.has_getter || existing.has_setter
+  let reported_is_data = reported.has_value || reported.has_writable
+  let reported_is_accessor = reported.has_getter || reported.has_setter
+  guard existing_desc.configurable ||
+    !(reported_is_data && reported_is_accessor) else {
+    raise @errors.TypeError(
+      message="'getOwnPropertyDescriptor' on proxy: trap reported both data and accessor fields",
+    )
+  }
+  if !existing_desc.configurable &&
+    (
+      (reported_is_data && !existing_is_data) ||
+      (reported_is_accessor && !existing_is_accessor)
+    ) {
+    raise @errors.TypeError(
+      message="'getOwnPropertyDescriptor' on proxy: trap reported descriptor kind (data/accessor) mismatch for non-configurable property on proxy target",
+    )
+  }
+  if !existing_desc.configurable && existing_is_data && reported_is_data {
+    if reported.has_writable &&
+      reported_desc.writable &&
+      !existing_desc.writable {
+      raise @errors.TypeError(
+        message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target",
+      )
+    }
+    if reported.has_value &&
+      !existing_desc.writable &&
+      !same_value(reported.value, existing.value) {
+      raise @errors.TypeError(
+        message="'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target",
+      )
+    }
+  }
+  if !existing_desc.configurable && existing_is_accessor && reported_is_accessor {
+    if reported.has_getter {
+      let getter_ok = match (existing_desc.getter, reported_desc.getter) {
+        (None, None) => true
+        (Some(a), Some(b)) => strict_equal(a, b)
+        _ => false
+      }
+      guard getter_ok else {
+        raise @errors.TypeError(
+          message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched getter for non-configurable accessor on proxy target",
+        )
+      }
+    }
+    if reported.has_setter {
+      let setter_ok = match (existing_desc.setter, reported_desc.setter) {
+        (None, None) => true
+        (Some(a), Some(b)) => strict_equal(a, b)
+        _ => false
+      }
+      guard setter_ok else {
+        raise @errors.TypeError(
+          message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched setter for non-configurable accessor on proxy target",
+        )
+      }
+    }
   }
 }
 
@@ -88,35 +801,44 @@ fn ExecutorDeleteGetOwnOperation::consume_target_extensible(
 ) -> ExecutorActivationStep raise Error {
   let index = self.contexts.length() - 1
   let context = self.contexts[index]
-  guard !context.trap_undefined else {
+  guard !context.trap_missing else {
     raise @errors.InternalError(
       message="delete invariant extensibility was requested for a forwarding getOwn trap",
     )
   }
-  match context.reported_configurable {
-    None => {
+  match (context.reported, context.underlying) {
+    (None, Some(existing)) => {
+      guard existing.descriptor.configurable else {
+        raise @errors.TypeError(
+          message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a non-configurable property on the proxy target",
+        )
+      }
       guard extensible else {
         raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a missing property on a non-extensible target",
+          message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a property on a non-extensible proxy target",
         )
       }
       ignore(self.contexts.pop())
       self.consume_descriptor(None, interp)
     }
-    Some(reported) => {
-      guard context.underlying is None else {
+    (Some(reported), None) => {
+      guard extensible else {
         raise @errors.InternalError(
-          message="delete invariant descriptor unexpectedly had an underlying property",
+          message="'getOwnPropertyDescriptor' on proxy: trap reported a property on a non-extensible target",
         )
       }
-      if !extensible || !reported {
+      guard reported.descriptor.configurable else {
         raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap reported an invalid descriptor for a missing property",
+          message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for a key that does not exist on the proxy target",
         )
       }
       ignore(self.contexts.pop())
-      self.consume_descriptor(Some({ configurable: reported }), interp)
+      self.consume_descriptor(Some(reported), interp)
     }
+    _ =>
+      raise @errors.InternalError(
+        message="delete invariant extensibility had an invalid descriptor context",
+      )
   }
 }
 
@@ -134,42 +856,22 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
     }
     let index = self.contexts.length() - 1
     let context = self.contexts[index]
-    match context.stage {
-      ExecutorDeleteGetOwnAwaitUnderlyingDescriptor => {
-        self.contexts[index].underlying = current
-        if context.trap_undefined {
-          ignore(self.contexts.pop())
-        } else {
-          match current {
-            None => return self.begin_target_extensible(interp)
-            Some(info) =>
-              match context.reported_configurable {
-                None => {
-                  guard info.configurable else {
-                    raise @errors.TypeError(
-                      message="'getOwnPropertyDescriptor' on proxy: trap returned undefined for a non-configurable property on the proxy target",
-                    )
-                  }
-                  ignore(self.contexts.pop())
-                  current = None
-                }
-                Some(reported) => {
-                  if reported && !info.configurable {
-                    raise @errors.TypeError(
-                      message="'getOwnPropertyDescriptor' on proxy: trap reported configurable for a non-configurable property on the proxy target",
-                    )
-                  }
-                  if !reported && info.configurable {
-                    raise @errors.TypeError(
-                      message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for property which is configurable on the proxy target",
-                    )
-                  }
-                  ignore(self.contexts.pop())
-                  current = Some({ configurable: reported })
-                }
-              }
-          }
-        }
+    if context.trap_missing {
+      ignore(self.contexts.pop())
+      continue
+    }
+    self.contexts[index].underlying = current
+    match (context.reported, current) {
+      (None, None) =>
+        // An absent trap result for an absent target property is a valid
+        // forwarding result. No extensibility check is required here.
+        ignore(self.contexts.pop())
+      (None, Some(_)) => return self.begin_target_extensible(interp)
+      (Some(_), None) => return self.begin_target_extensible(interp)
+      (Some(reported), Some(existing)) => {
+        executor_delete_validate_descriptor(existing, reported)
+        ignore(self.contexts.pop())
+        current = Some(reported)
       }
     }
   } nobreak {
@@ -180,10 +882,85 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
 }
 
 ///|
-fn ExecutorDeleteGetOwnOperation::step(
+fn ExecutorDeleteGetOwnOperation::record_reported_descriptor(
   self : ExecutorDeleteGetOwnOperation,
+  reported : ExecutorDeleteDescriptorInfo,
+) -> ExecutorActivationStep {
+  let index = self.contexts.length() - 1
+  let target = self.contexts[index].target
+  self.contexts[index].reported = Some(reported)
+  self.phase = ExecutorDeleteGetOwnNeedCurrent(target)
+  ExecutorActivationContinue
+}
+
+///|
+fn ExecutorDeleteGetOwnOperation::begin_descriptor_parse(
+  self : ExecutorDeleteGetOwnOperation,
+  result : Value,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
+  let operation = ExecutorDeleteDescriptorParseOperation(
+    attrs=result,
+    loc=self.loc,
+  )
+  match operation.step(interp) {
+    ExecutorActivationNormal(_) =>
+      self.record_reported_descriptor(operation.result())
+    step => {
+      self.phase = ExecutorDeleteGetOwnAwaitDescriptor(operation)
+      step
+    }
+  }
+}
+
+///|
+fn ExecutorDeleteGetOwnOperation::resume_descriptor_parse(
+  self : ExecutorDeleteGetOwnOperation,
+  operation : ExecutorDeleteDescriptorParseOperation,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match operation.phase {
+    ExecutorDeleteDescriptorComplete(_) =>
+      self.record_reported_descriptor(operation.result())
+    _ =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(_) =>
+          self.record_reported_descriptor(operation.result())
+        step => {
+          self.phase = ExecutorDeleteGetOwnAwaitDescriptor(operation)
+          step
+        }
+      }
+  }
+}
+
+///|
+fn ExecutorDeleteGetOwnOperation::resume_target_extensible(
+  self : ExecutorDeleteGetOwnOperation,
+  operation : ExecutorDeleteIsExtensibleOperation,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match operation.step(interp) {
+    ExecutorActivationNormal(value) =>
+      match value {
+        Bool(extensible) => self.consume_target_extensible(extensible, interp)
+        _ =>
+          raise @errors.InternalError(
+            message="delete invariant extensibility returned a non-boolean",
+          )
+      }
+    step => {
+      self.phase = ExecutorDeleteGetOwnAwaitTargetExtensible(operation)
+      step
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorDeleteGetOwnOperation with fn step(
+  self,
+  interp,
+) {
   match self.phase {
     ExecutorDeleteGetOwnNeedCurrent(current) =>
       match current {
@@ -192,9 +969,8 @@ fn ExecutorDeleteGetOwnOperation::step(
           let target = get_proxy_target(proxy_data)
           self.contexts.push({
             target,
-            stage: ExecutorDeleteGetOwnAwaitUnderlyingDescriptor,
-            trap_undefined: false,
-            reported_configurable: None,
+            trap_missing: false,
+            reported: None,
             underlying: None,
           })
           self.phase = ExecutorDeleteGetOwnAwaitTrapLookup(
@@ -220,7 +996,7 @@ fn ExecutorDeleteGetOwnOperation::step(
       match trap {
         Undefined | Null => {
           let index = self.contexts.length() - 1
-          self.contexts[index].trap_undefined = true
+          self.contexts[index].trap_missing = true
           self.phase = ExecutorDeleteGetOwnNeedCurrent(target)
           ExecutorActivationContinue
         }
@@ -242,66 +1018,35 @@ fn ExecutorDeleteGetOwnOperation::step(
       }
     ExecutorDeleteGetOwnHaveTrapResult(result) =>
       if result is Undefined {
-        let index = self.contexts.length() - 1
-        self.contexts[index].trap_undefined = false
         self.phase = ExecutorDeleteGetOwnNeedCurrent(
-          self.contexts[index].target,
+          self.contexts[self.contexts.length() - 1].target,
         )
         ExecutorActivationContinue
       } else if is_js_object(result) {
-        let index = self.contexts.length() - 1
-        self.contexts[index].trap_undefined = false
-        self.contexts[index].stage = ExecutorDeleteGetOwnAwaitUnderlyingDescriptor
-        self.phase = ExecutorDeleteGetOwnAwaitConfigurableLookup
-        executor_activation_managed_property_get(
-          result,
-          "configurable",
-          self.loc,
-        )
+        self.begin_descriptor_parse(result, interp)
       } else {
         raise @errors.TypeError(
           message="'getOwnPropertyDescriptor' on proxy: trap returned neither object nor undefined",
         )
       }
-    ExecutorDeleteGetOwnHaveConfigurable(configurable) => {
-      let index = self.contexts.length() - 1
-      self.contexts[index].reported_configurable = Some(configurable)
-      self.phase = ExecutorDeleteGetOwnNeedCurrent(self.contexts[index].target)
-      ExecutorActivationContinue
-    }
+    ExecutorDeleteGetOwnAwaitDescriptor(operation) =>
+      self.resume_descriptor_parse(operation, interp)
+    ExecutorDeleteGetOwnAwaitTargetExtensible(operation) =>
+      self.resume_target_extensible(operation, interp)
     ExecutorDeleteGetOwnAwaitTrapLookup(_, _, _)
-    | ExecutorDeleteGetOwnAwaitTrapCall
-    | ExecutorDeleteGetOwnAwaitConfigurableLookup =>
+    | ExecutorDeleteGetOwnAwaitTrapCall =>
       raise @errors.InternalError(
         message="delete [[GetOwnProperty]] stepped while awaiting a child completion",
       )
-    ExecutorDeleteGetOwnAwaitTargetExtensible(operation) =>
-      match operation.step(interp) {
-        ExecutorActivationNormal(value) =>
-          match value {
-            Bool(extensible) =>
-              self.consume_target_extensible(extensible, interp)
-            _ =>
-              raise @errors.InternalError(
-                message="delete invariant extensibility returned a non-boolean",
-              )
-          }
-        step => {
-          self.phase = ExecutorDeleteGetOwnAwaitTargetExtensible(operation)
-          step
-        }
-      }
-    ExecutorDeleteGetOwnComplete(value) => {
-      ignore(value)
+    ExecutorDeleteGetOwnComplete(_) =>
       raise @errors.InternalError(
         message="delete [[GetOwnProperty]] operation stepped after completion",
       )
-    }
   }
 }
 
 ///|
-fn ExecutorDeleteGetOwnOperation::deliver_activation_completion(
+impl ExecutorActivationFrame for ExecutorDeleteGetOwnOperation with fn deliver_activation_completion(
   self : ExecutorDeleteGetOwnOperation,
   completion : ExecutorActivationCompletion,
 ) -> Unit raise Error {
@@ -313,8 +1058,10 @@ fn ExecutorDeleteGetOwnOperation::deliver_activation_completion(
           self.phase = ExecutorDeleteGetOwnHaveTrap(target, handler, key, value)
         ExecutorDeleteGetOwnAwaitTrapCall =>
           self.phase = ExecutorDeleteGetOwnHaveTrapResult(value)
-        ExecutorDeleteGetOwnAwaitConfigurableLookup =>
-          self.phase = ExecutorDeleteGetOwnHaveConfigurable(is_truthy(value))
+        ExecutorDeleteGetOwnAwaitDescriptor(operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
         ExecutorDeleteGetOwnAwaitTargetExtensible(operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
@@ -322,13 +1069,18 @@ fn ExecutorDeleteGetOwnOperation::deliver_activation_completion(
         ExecutorDeleteGetOwnNeedCurrent(_)
         | ExecutorDeleteGetOwnHaveTrap(_, _, _, _)
         | ExecutorDeleteGetOwnHaveTrapResult(_)
-        | ExecutorDeleteGetOwnHaveConfigurable(_)
         | ExecutorDeleteGetOwnComplete(_) =>
           raise @errors.InternalError(
             message="delete [[GetOwnProperty]] received an unexpected child completion",
           )
       }
   }
+}
+
+///|
+extend ExecutorDeleteGetOwnOperation with ExecutorActivationFrame::{
+  step,
+  deliver_activation_completion,
 }
 
 ///|
@@ -570,15 +1322,13 @@ fn ExecutorPropertyDeleteFrame::finish_target_descriptor(
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   match descriptor {
+    None => self.complete_result(true)
     Some(info) => {
-      guard info.configurable else {
+      guard info.descriptor.configurable else {
         raise @errors.TypeError(
           message="'deleteProperty' on proxy: trap returned true for a non-configurable property on the proxy target",
         )
       }
-      self.complete_result(true)
-    }
-    None => {
       let operation = ExecutorDeleteIsExtensibleOperation(
         target~,
         loc=self.request.loc,
@@ -608,7 +1358,7 @@ fn ExecutorPropertyDeleteFrame::finish_target_extensible(
 ) -> ExecutorActivationStep raise Error {
   guard extensible else {
     raise @errors.TypeError(
-      message="'deleteProperty' on proxy: trap returned true for a missing property on a non-extensible proxy target",
+      message="'deleteProperty' on proxy: trap returned true for a configurable property on a non-extensible proxy target",
     )
   }
   self.complete_result(true)
