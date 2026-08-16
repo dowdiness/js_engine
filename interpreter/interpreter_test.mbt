@@ -6803,6 +6803,55 @@ test "Proxy prototype has and delete traps enforce nested nonextensible target i
 }
 
 ///|
+test "Proxy delete nested target ordering and errors match candidate" {
+  let output = run_output(
+    (
+      #|function remove(target, key) { return delete target[key]; }
+      #|var events = "";
+      #|var raw = { value: 1 };
+      #|Object.defineProperty(raw, "value", { value: 1, writable: false, configurable: false });
+      #|var inner = new Proxy(raw, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "g"; return { value: 1, configurable: false, enumerable: true }; },
+      #|  isExtensible: function() { events = events + "e"; return true; }
+      #|});
+      #|var descriptor = { enumerable: true };
+      #|Object.defineProperty(descriptor, "configurable", { get: function() { events = events + "c"; return false; } });
+      #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+      #|var target = new Proxy(inner, { getOwnPropertyDescriptor: function() { events = events + "o"; return descriptor; } });
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { remove(proxy, "value"); } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events);
+      #|var getOwnEvents = "";
+      #|var throwingDescriptor = {};
+      #|Object.defineProperty(throwingDescriptor, "configurable", { get: function() { getOwnEvents = getOwnEvents + "d"; throw new Error("descriptor"); } });
+      #|var getOwnInner = new Proxy({ value: 1 }, { getOwnPropertyDescriptor: function() { getOwnEvents = getOwnEvents + "g"; throw new Error("target"); } });
+      #|var getOwnTarget = new Proxy(getOwnInner, { getOwnPropertyDescriptor: function() { getOwnEvents = getOwnEvents + "o"; return throwingDescriptor; } });
+      #|var getOwnProxy = new Proxy(getOwnTarget, { deleteProperty: function() { return true; } });
+      #|try { remove(getOwnProxy, "value"); } catch (error) { console.log(error.name + ":" + getOwnEvents); }
+      #|var extensibleEvents = "";
+      #|var extensibleDescriptor = {};
+      #|Object.defineProperty(extensibleDescriptor, "configurable", { get: function() { extensibleEvents = extensibleEvents + "d"; throw new Error("descriptor"); } });
+      #|var extensibleInner = new Proxy({ value: 1 }, {
+      #|  getOwnPropertyDescriptor: function() { extensibleEvents = extensibleEvents + "g"; return { value: 1, configurable: true }; },
+      #|  isExtensible: function() { extensibleEvents = extensibleEvents + "e"; throw new Error("extensible"); }
+      #|});
+      #|var extensibleTarget = new Proxy(extensibleInner, { getOwnPropertyDescriptor: function() { extensibleEvents = extensibleEvents + "o"; return extensibleDescriptor; } });
+      #|var extensibleProxy = new Proxy(extensibleTarget, { deleteProperty: function() { return true; } });
+      #|try { remove(extensibleProxy, "value"); } catch (error) { console.log(error.name + ":" + extensibleEvents); }
+      #|var absentRaw = {};
+      #|Object.preventExtensions(absentRaw);
+      #|var absentTarget = new Proxy(absentRaw, { getOwnPropertyDescriptor: function() { return { configurable: true }; } });
+      #|var absentProxy = new Proxy(absentTarget, { deleteProperty: function() { return true; } });
+      #|try { remove(absentProxy, "missing"); } catch (error) { console.log(error.name); }
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:ogecv", "Error:og", "Error:oge", "TypeError",
+  ])
+}
+
+///|
 test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
   let output = run_output(
     (

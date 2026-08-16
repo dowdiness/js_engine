@@ -12,7 +12,7 @@ priv struct ExecutorDeleteDescriptorInfo {
 priv struct ExecutorDeleteGetOwnProxyContext {
   target : Value
   mut trap_missing : Bool
-  mut reported : ExecutorDeleteDescriptorInfo?
+  mut trap_result : Value?
   mut underlying : ExecutorDeleteDescriptorInfo?
 }
 
@@ -806,38 +806,51 @@ fn ExecutorDeleteGetOwnOperation::consume_target_extensible(
       message="delete invariant extensibility was requested for a forwarding getOwn trap",
     )
   }
-  match (context.reported, context.underlying) {
-    (None, Some(existing)) => {
-      guard existing.descriptor.configurable else {
-        raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a non-configurable property on the proxy target",
-        )
+  let trap_result = match context.trap_result {
+    Some(result) => result
+    None =>
+      raise @errors.InternalError(
+        message="delete invariant extensibility lost its trap result",
+      )
+  }
+  match trap_result {
+    Undefined =>
+      match context.underlying {
+        Some(existing) => {
+          guard existing.descriptor.configurable else {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a non-configurable property on the proxy target",
+            )
+          }
+          guard extensible else {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a property on a non-extensible proxy target",
+            )
+          }
+          ignore(self.contexts.pop())
+          self.consume_descriptor(None, interp)
+        }
+        None =>
+          raise @errors.InternalError(
+            message="delete invariant extensibility was requested for an absent undefined descriptor",
+          )
       }
-      guard extensible else {
-        raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap returned an undefined descriptor for a property on a non-extensible proxy target",
-        )
+    _ if is_js_object(trap_result) => {
+      match context.underlying {
+        None => {
+          guard extensible else {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported a property on a non-extensible target",
+            )
+          }
+        }
+        Some(_) => ()
       }
-      ignore(self.contexts.pop())
-      self.consume_descriptor(None, interp)
-    }
-    (Some(reported), None) => {
-      guard extensible else {
-        raise @errors.InternalError(
-          message="'getOwnPropertyDescriptor' on proxy: trap reported a property on a non-extensible target",
-        )
-      }
-      guard reported.descriptor.configurable else {
-        raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for a key that does not exist on the proxy target",
-        )
-      }
-      ignore(self.contexts.pop())
-      self.consume_descriptor(Some(reported), interp)
+      self.begin_descriptor_parse(trap_result, interp)
     }
     _ =>
       raise @errors.InternalError(
-        message="delete invariant extensibility had an invalid descriptor context",
+        message="delete invariant extensibility had an invalid trap result",
       )
   }
 }
@@ -848,7 +861,7 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
   descriptor : ExecutorDeleteDescriptorInfo?,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
-  let mut current = descriptor
+  let current = descriptor
   while true {
     guard !self.contexts.is_empty() else {
       self.phase = ExecutorDeleteGetOwnComplete(current)
@@ -861,18 +874,28 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
       continue
     }
     self.contexts[index].underlying = current
-    match (context.reported, current) {
-      (None, None) =>
-        // An absent trap result for an absent target property is a valid
-        // forwarding result. No extensibility check is required here.
-        ignore(self.contexts.pop())
-      (None, Some(_)) => return self.begin_target_extensible(interp)
-      (Some(_), None) => return self.begin_target_extensible(interp)
-      (Some(reported), Some(existing)) => {
-        executor_delete_validate_descriptor(existing, reported)
-        ignore(self.contexts.pop())
-        current = Some(reported)
-      }
+    let trap_result = match context.trap_result {
+      Some(result) => result
+      None =>
+        raise @errors.InternalError(
+          message="delete [[GetOwnProperty]] lost its trap result",
+        )
+    }
+    match trap_result {
+      Undefined =>
+        match current {
+          None =>
+            // An absent undefined trap result for an absent target property
+            // is valid forwarding. No extensibility check is required here.
+            ignore(self.contexts.pop())
+          Some(_) => return self.begin_target_extensible(interp)
+        }
+      _ if is_js_object(trap_result) =>
+        return self.begin_target_extensible(interp)
+      _ =>
+        raise @errors.InternalError(
+          message="delete [[GetOwnProperty]] had an invalid trap result",
+        )
     }
   } nobreak {
     raise @errors.InternalError(
@@ -882,15 +905,32 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
 }
 
 ///|
-fn ExecutorDeleteGetOwnOperation::record_reported_descriptor(
+fn ExecutorDeleteGetOwnOperation::finish_reported_descriptor(
   self : ExecutorDeleteGetOwnOperation,
   reported : ExecutorDeleteDescriptorInfo,
-) -> ExecutorActivationStep {
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
   let index = self.contexts.length() - 1
-  let target = self.contexts[index].target
-  self.contexts[index].reported = Some(reported)
-  self.phase = ExecutorDeleteGetOwnNeedCurrent(target)
-  ExecutorActivationContinue
+  let context = self.contexts[index]
+  match context.trap_result {
+    Some(result) if is_js_object(result) => ()
+    _ =>
+      raise @errors.InternalError(
+        message="descriptor parser completed without an object trap result",
+      )
+  }
+  match context.underlying {
+    None => {
+      guard reported.descriptor.configurable else {
+        raise @errors.TypeError(
+          message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable for a key that does not exist on the proxy target",
+        )
+      }
+    }
+    Some(existing) => executor_delete_validate_descriptor(existing, reported)
+  }
+  ignore(self.contexts.pop())
+  self.consume_descriptor(Some(reported), interp)
 }
 
 ///|
@@ -905,7 +945,7 @@ fn ExecutorDeleteGetOwnOperation::begin_descriptor_parse(
   )
   match operation.step(interp) {
     ExecutorActivationNormal(_) =>
-      self.record_reported_descriptor(operation.result())
+      self.finish_reported_descriptor(operation.result(), interp)
     step => {
       self.phase = ExecutorDeleteGetOwnAwaitDescriptor(operation)
       step
@@ -921,11 +961,11 @@ fn ExecutorDeleteGetOwnOperation::resume_descriptor_parse(
 ) -> ExecutorActivationStep raise Error {
   match operation.phase {
     ExecutorDeleteDescriptorComplete(_) =>
-      self.record_reported_descriptor(operation.result())
+      self.finish_reported_descriptor(operation.result(), interp)
     _ =>
       match operation.step(interp) {
         ExecutorActivationNormal(_) =>
-          self.record_reported_descriptor(operation.result())
+          self.finish_reported_descriptor(operation.result(), interp)
         step => {
           self.phase = ExecutorDeleteGetOwnAwaitDescriptor(operation)
           step
@@ -970,7 +1010,7 @@ impl ExecutorActivationFrame for ExecutorDeleteGetOwnOperation with fn step(
           self.contexts.push({
             target,
             trap_missing: false,
-            reported: None,
+            trap_result: None,
             underlying: None,
           })
           self.phase = ExecutorDeleteGetOwnAwaitTrapLookup(
@@ -1018,12 +1058,19 @@ impl ExecutorActivationFrame for ExecutorDeleteGetOwnOperation with fn step(
       }
     ExecutorDeleteGetOwnHaveTrapResult(result) =>
       if result is Undefined {
+        let index = self.contexts.length() - 1
+        self.contexts[index].trap_result = Some(result)
         self.phase = ExecutorDeleteGetOwnNeedCurrent(
           self.contexts[self.contexts.length() - 1].target,
         )
         ExecutorActivationContinue
       } else if is_js_object(result) {
-        self.begin_descriptor_parse(result, interp)
+        let index = self.contexts.length() - 1
+        self.contexts[index].trap_result = Some(result)
+        self.phase = ExecutorDeleteGetOwnNeedCurrent(
+          self.contexts[self.contexts.length() - 1].target,
+        )
+        ExecutorActivationContinue
       } else {
         raise @errors.TypeError(
           message="'getOwnPropertyDescriptor' on proxy: trap returned neither object nor undefined",

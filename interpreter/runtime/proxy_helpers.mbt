@@ -1142,14 +1142,16 @@ pub fn proxy_get_own_property(
           }
         }
       }
-      // §10.5.5 step 11+: parse trap descriptor; run invariants.
+      // §10.5.5 step 11: an object trap result always observes target
+      // extensibility before ToPropertyDescriptor can run guest getters.
+      let target_extensible = interp.is_extensible_internal(target)
+      // §10.5.5 step 12+: parse trap descriptor; run invariants.
       let trap_desc = trap_result_to_descriptor(trap_result, interp)
       let trap_value_opt = if !trap_desc.is_accessor {
         trap_result_value(trap_result, interp)
       } else {
         None
       }
-      let target_extensible = interp.is_extensible_internal(target)
       match target_desc {
         None => {
           // §10.5.5 step 17.c: target has no own desc; target must be
