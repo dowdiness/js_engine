@@ -986,6 +986,63 @@ test "Engine detailed operations preserve success values" {
 }
 
 ///|
+test "Engine default object spread preserves CopyDataProperties order" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|function copySpread() {
+      #|  var log = [];
+      #|  var source = { get z() { log.push("z"); return 2; }, get a() { log.push("a"); return 1; } };
+      #|  var copy = { before: 0, ...source, after: 3 };
+      #|  return log.join(",") + ":" + copy.before + ":" + copy.z + ":" + copy.a + ":" + copy.after;
+      #|}
+    ),
+  )
+  json_inspect(engine.call_json("copySpread", []), content="z,a:0:2:1:3")
+  json_inspect(engine.call_json("copySpread", []), content="z,a:0:2:1:3")
+}
+
+///|
+test "Engine default object spread abrupt queue checkpoint and reuse" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function failSpread() {
+      #|  var source = {
+      #|    get a() {
+      #|      events.push("a");
+      #|      queueMicrotask(function() { events.push("m"); });
+      #|      return 1;
+      #|    },
+      #|    get b() {
+      #|      events.push("b");
+      #|      throw new Error("spread");
+      #|    }
+      #|  };
+      #|  return { ...source };
+      #|}
+      #|function successSpread() { return ({ ...{ value: 1 } }).value; }
+      #|function eventsSnapshot() { return events.join(""); }
+    ),
+  )
+  let failed = try {
+    ignore(engine.call_json("failSpread", []))
+    false
+  } catch {
+    error => error.to_string().contains("Error: spread")
+  }
+  assert_true(failed)
+  json_inspect(engine.call_json("eventsSnapshot", []), content="ab")
+  assert_true(engine.has_pending_microtasks())
+  assert_false(engine.run_microtask_checkpoint())
+  json_inspect(engine.call_json("eventsSnapshot", []), content="abm")
+  assert_false(engine.has_pending_microtasks())
+  json_inspect(engine.call_json("successSpread", []), content=1)
+  json_inspect(engine.call_json("successSpread", []), content=1)
+}
+
+///|
 test "Engine detailed eval reports retained effects and pending jobs" {
   let engine = @js_engine.Engine()
   let diagnostic = expect_engine_diagnostic(

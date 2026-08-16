@@ -2696,6 +2696,27 @@ test "bytecode frame accepts one pending activation result" {
 }
 
 ///|
+test "bytecode frame keeps the object-spread target on a no-stack completion" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("0;")
+  let frame = BytecodeFrame(program.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  frame.stack.push(Number(9.0))
+  frame.pending_activation_result = Some(NoStackChange)
+  @runtime.ExecutorActivationFrame::deliver_activation_completion(
+    frame,
+    @runtime.executor_activation_completion_normal(Undefined),
+  )
+  inspect(frame.stack.length(), content="1")
+  match frame.peek() {
+    Number(value) => inspect(value, content="9")
+    _ => fail("no-stack completion must preserve the target")
+  }
+}
+
+///|
 test "bytecode frame delivers an owned receiver with a plain property result" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")

@@ -19,6 +19,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
+  ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
 }
 
 ///|
@@ -125,6 +126,64 @@ pub fn executor_activation_iterable_spread_request(
   request : ExecutorIterableSpreadRequest,
 ) -> ExecutorActivationStep {
   ExecutorActivationIterableSpread(request)
+}
+
+///|
+// A closed CopyDataProperties request. Runtime owns key snapshotting,
+// descriptor/enumerability checks, source reads, and incremental target
+// definitions. The compiler/VM supplies only the evaluated target/source and
+// an immutable exclusion snapshot.
+pub struct ExecutorCopyDataPropertiesRequest {
+  priv target : Value
+  priv source : Value
+  priv excluded_keys : Array[Value]
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorCopyDataPropertiesRequest::ExecutorCopyDataPropertiesRequest(
+  target~ : Value,
+  source~ : Value,
+  excluded_keys~ : Array[Value],
+  loc~ : @token.Loc,
+) -> ExecutorCopyDataPropertiesRequest {
+  { target, source, excluded_keys: excluded_keys.copy(), loc }
+}
+
+///|
+#warnings("-unused_constructor")
+pub enum ExecutorCopyDataPropertiesStart {
+  ExecutorCopyDataPropertiesCompleted
+  ExecutorCopyDataPropertiesSuspended(ExecutorCopyDataPropertiesRequest)
+}
+
+///|
+pub fn begin_executor_copy_data_properties(
+  _interp : Interpreter,
+  target : Value,
+  source : Value,
+  excluded_keys : Array[Value],
+  loc : @token.Loc,
+) -> ExecutorCopyDataPropertiesStart {
+  match source {
+    Null | Undefined => ExecutorCopyDataPropertiesCompleted
+    _ =>
+      ExecutorCopyDataPropertiesSuspended(
+        ExecutorCopyDataPropertiesRequest(
+          target~,
+          source~,
+          excluded_keys~,
+          loc~,
+        ),
+      )
+  }
+}
+
+///|
+pub fn executor_activation_copy_data_properties_request(
+  request : ExecutorCopyDataPropertiesRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCopyDataProperties(request)
 }
 
 ///|
@@ -720,6 +779,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildCoercingAddition
   ExecutorChildPropertyDelete
   ExecutorChildIterableSpread
+  ExecutorChildCopyDataProperties
 }
 
 ///|
@@ -1288,6 +1348,8 @@ fn Interpreter::complete_executor_step(
       executor_property_delete_completion(step)
     Some(ExecutorChildIterableSpread) =>
       executor_iterable_spread_completion(step)
+    Some(ExecutorChildCopyDataProperties) =>
+      executor_copy_data_properties_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -1304,6 +1366,22 @@ fn executor_iterable_spread_completion(
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="iterable spread frame completed without a value",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_copy_data_properties_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(_) | ExecutorActivationReturn(_) =>
+      ExecutorActivationCompletionNormal(Undefined)
+    _ =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="CopyDataProperties frame completed with a pending step",
         ),
       )
   }
@@ -1593,6 +1671,16 @@ fn Interpreter::handle_executor_activation_step(
         self.complete_executor_step(stack, ExecutorActivationReturn(value))
         None
       }
+    ExecutorActivationCopyDataProperties(request) => {
+      let copy_frame = ExecutorCopyDataPropertiesFrame(request)
+      stack.push({
+        frame: copy_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildCopyDataProperties),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
     ExecutorActivationCall(request) => {
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         {
@@ -2198,7 +2286,8 @@ fn executor_call_completion(
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationPropertyDelete(_)
-        | ExecutorActivationIterableSpread(_) => Undefined
+        | ExecutorActivationIterableSpread(_)
+        | ExecutorActivationCopyDataProperties(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
@@ -2212,7 +2301,8 @@ fn executor_call_completion(
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationPropertyDelete(_)
-        | ExecutorActivationIterableSpread(_) => Undefined
+        | ExecutorActivationIterableSpread(_)
+        | ExecutorActivationCopyDataProperties(_) => Undefined
       }
   }
 }
@@ -2236,7 +2326,8 @@ fn executor_construct_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_) => instance
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_) => instance
   }
 }
 
@@ -2262,7 +2353,8 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_) =>
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property get completed with a pending activation step",
@@ -2286,7 +2378,8 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_) =>
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
@@ -2310,7 +2403,8 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_) =>
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
@@ -2334,7 +2428,8 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_) =>
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property delete completed with a pending activation step",
