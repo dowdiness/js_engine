@@ -1884,8 +1884,10 @@ fn Interpreter::drive_executor_activation_stack(
             self.handle_executor_activation_step(stack, index, step)
           } catch {
             error => {
-              self.deliver_executor_activation_error(stack, index, error)
-              None
+              if index < stack.length() {
+                self.deliver_executor_activation_error(stack, index, error)
+              }
+              raise error
             }
           }
           match handled {

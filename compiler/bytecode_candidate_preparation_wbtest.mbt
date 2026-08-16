@@ -709,6 +709,53 @@ test "candidate nested Proxy delete forwarding suspends invariant guest edges" {
 }
 
 ///|
+test "candidate computed deletion preserves object key trap ordering" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var key = { [Symbol.toPrimitive]: function(hint) { events = events + "p"; return "value"; } };
+    #|var target = { value: 1 };
+    #|var handler = {};
+    #|Object.defineProperty(handler, "deleteProperty", {
+    #|  get: function() {
+    #|    events = events + "l";
+    #|    return function(target, key) { events = events + "c"; return false; };
+    #|  }
+    #|});
+    #|var proxy = new Proxy(target, handler);
+    #|var result = remove((events = events + "o", proxy), (events = events + "k", key));
+    #|events === "okplc" && result === false;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion supports finite guest re-entry" {
+  let source =
+    #|var depth = 0;
+    #|var proxy;
+    #|var key = {
+    #|  [Symbol.toPrimitive]: function(hint) {
+    #|    if (depth === 24) return "value";
+    #|    depth = depth + 1;
+    #|    return delete proxy[key];
+    #|  }
+    #|};
+    #|proxy = new Proxy({ value: 1 }, { deleteProperty: function() { return true; } });
+    #|function remove(target, key) { return delete target[key]; }
+    #|remove(proxy, key);
+    #|depth;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "24")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate non-property deletion remains lowering unsupported" {
   assert_bytecode_unsupported("function remove() { return delete 1; }", DeleteNonPropertyOperator)
 }
