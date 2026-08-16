@@ -740,6 +740,36 @@ test "candidate Proxy deletion suspends trap forwarding and invariants" {
 }
 
 ///|
+test "candidate Proxy deletion skips isExtensible for absent target descriptor" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|var target = new Proxy(raw, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return undefined; },
+    #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var result = false;
+    #|var errorName = "";
+    #|try { result = remove(proxy, "missing"); } catch (error) { errorName = error.name; }
+    #|var count = 0;
+    #|var events2 = "";
+    #|var raw2 = {};
+    #|var target2 = new Proxy(raw2, {
+    #|  getOwnPropertyDescriptor: function() { events2 = events2 + "d"; return undefined; },
+    #|  isExtensible: function() { count = count + 1; events2 = events2 + "e"; return false; }
+    #|});
+    #|var result2 = remove(new Proxy(target2, { deleteProperty: function() { return true; } }), "missing");
+    #|result + ":" + errorName + ":" + events + ":" + result2 + ":" + events2 + ":" + count;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true::d:true:d:0")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate nested Proxy delete forwarding suspends invariant guest edges" {
   let source =
     #|function remove(target, key) { return delete target[key]; }

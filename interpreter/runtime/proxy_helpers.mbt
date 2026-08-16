@@ -571,19 +571,20 @@ fn proxy_delete_property_key(
       if trap_result {
         let target_desc = interp.get_own_property(target, prop_key)
         match target_desc {
-          Some((desc, _)) =>
+          None => return true
+          Some((desc, _)) => {
             if !desc.configurable {
               raise @errors.TypeError(
                 message="'deleteProperty' on proxy: trap returned truish for property '\{key_display}' which is non-configurable in the proxy target",
               )
             }
-          None => ()
-        }
-        // Step 12: Cannot delete own property of non-extensible target
-        if !interp.is_extensible_internal(target) && target_desc is Some(_) {
-          raise @errors.TypeError(
-            message="'deleteProperty' on proxy: trap returned truish for property '\{key_display}' on a non-extensible proxy target",
-          )
+            // Step 12: Cannot delete own property of non-extensible target
+            if !interp.is_extensible_internal(target) {
+              raise @errors.TypeError(
+                message="'deleteProperty' on proxy: trap returned truish for property '\{key_display}' on a non-extensible proxy target",
+              )
+            }
+          }
         }
       }
       trap_result
