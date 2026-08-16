@@ -503,19 +503,20 @@ pub fn proxy_has_property_key(
         let target_desc = interp.get_own_property(target, key)
         // Cannot report a non-configurable own property as non-existent
         match target_desc {
-          Some((desc, _)) =>
+          None => return false
+          Some((desc, _)) => {
             if !desc.configurable {
               raise @errors.TypeError(
                 message="'has' on proxy: trap returned falsish for property '\{key_display}' which exists in the proxy target as non-configurable",
               )
             }
-          None => ()
-        }
-        // Cannot report an own property as non-existent on non-extensible target
-        if !interp.is_extensible_internal(target) && target_desc is Some(_) {
-          raise @errors.TypeError(
-            message="'has' on proxy: trap returned falsish for property '\{key_display}' but the proxy target is not extensible",
-          )
+            // Cannot report an own property as non-existent on non-extensible target
+            if !interp.is_extensible_internal(target) {
+              raise @errors.TypeError(
+                message="'has' on proxy: trap returned falsish for property '\{key_display}' but the proxy target is not extensible",
+              )
+            }
+          }
         }
       }
       trap_result

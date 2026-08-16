@@ -6832,6 +6832,61 @@ test "Proxy delete skips isExtensible for absent target descriptor" {
 }
 
 ///|
+test "descriptor Proxy has absent fields skips isExtensible" {
+  let output = run_output(
+    (
+      #|var events = "";
+      #|var count = 0;
+      #|var rawTarget = {};
+      #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+      #|var descriptorTarget = new Proxy({}, {
+      #|  isExtensible: function() { count = count + 1; events = events + "e"; return true; }
+      #|});
+      #|var descriptor = new Proxy(descriptorTarget, {
+      #|  has: function(target, key) { events = events + "h" + key; return false; }
+      #|});
+      #|var target = new Proxy(rawTarget, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events + ":" + count);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset:0",
+  ])
+}
+
+///|
+test "descriptor Proxy has absent fields skips throwing isExtensible" {
+  let output = run_output(
+    (
+      #|var events = "";
+      #|var rawTarget = {};
+      #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+      #|var descriptorTarget = new Proxy({}, {
+      #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+      #|});
+      #|var descriptor = new Proxy(descriptorTarget, {
+      #|  has: function(target, key) { events = events + "h" + key; return false; }
+      #|});
+      #|var target = new Proxy(rawTarget, {
+      #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+      #|});
+      #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+      #|var errorName = "";
+      #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+      #|console.log(errorName + ":" + events);
+    ),
+  )
+  json_inspect(output, content=[
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset",
+  ])
+}
+
+///|
 test "Proxy delete nested target ordering and errors match candidate" {
   let output = run_output(
     (

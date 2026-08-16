@@ -740,6 +740,65 @@ test "candidate Proxy deletion suspends trap forwarding and invariants" {
 }
 
 ///|
+test "candidate descriptor Proxy has absent fields skips isExtensible" {
+  let source =
+    #|var events = "";
+    #|var count = 0;
+    #|var rawTarget = {};
+    #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+    #|var descriptorTarget = new Proxy({}, {
+    #|  isExtensible: function() { count = count + 1; events = events + "e"; return true; }
+    #|});
+    #|var descriptor = new Proxy(descriptorTarget, {
+    #|  has: function(target, key) { events = events + "h" + key; return false; }
+    #|});
+    #|var target = new Proxy(rawTarget, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events + ":" + count;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset:0",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate descriptor Proxy has absent fields skips throwing isExtensible" {
+  let source =
+    #|var events = "";
+    #|var rawTarget = {};
+    #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
+    #|var descriptorTarget = new Proxy({}, {
+    #|  isExtensible: function() { events = events + "e"; throw new Error("extensible"); }
+    #|});
+    #|var descriptor = new Proxy(descriptorTarget, {
+    #|  has: function(target, key) { events = events + "h" + key; return false; }
+    #|});
+    #|var target = new Proxy(rawTarget, {
+    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
+    #|});
+    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
+    #|var errorName = "";
+    #|try { delete proxy.value; } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate Proxy deletion skips isExtensible for absent target descriptor" {
   let source =
     #|function remove(target, key) { return delete target[key]; }
