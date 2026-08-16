@@ -622,6 +622,24 @@ test "candidate computed deletion owns String hint ToPropertyKey" {
 }
 
 ///|
+test "candidate computed deletion String fallback throws after one pair" {
+  let source =
+    #|var calls = "";
+    #|var key = {
+    #|  toString: function() { calls = calls + "t"; return {}; },
+    #|  valueOf: function() { calls = calls + "v"; return {}; }
+    #|};
+    #|var threw = false;
+    #|try { delete ({ value: 1 })[key]; } catch (error) { threw = true; }
+    #|threw && calls === "tv";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate Proxy deletion suspends trap forwarding and invariants" {
   let source =
     #|function remove(target, key) { return delete target[key]; }

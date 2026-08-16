@@ -138,8 +138,14 @@ fn ExecutorToPrimitiveOperation::step(
       }
     ExecutorToPrimitiveHaveValueOfResult(current, value_of_result) =>
       if is_js_object(value_of_result) {
-        self.tried_value_of = true
-        self.begin_to_string_lookup(current)
+        if self.hint is ExecutorToPrimitiveString {
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
+        } else {
+          self.tried_value_of = true
+          self.begin_to_string_lookup(current)
+        }
       } else {
         self.phase = ExecutorToPrimitiveComplete(value_of_result)
         ExecutorActivationNormal(value_of_result)
