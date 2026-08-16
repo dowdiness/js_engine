@@ -437,3 +437,242 @@ test "bare Map and Set fallback cannot bypass getterless own iterators" {
   assert_true(interp.get_computed_property(map, key, loc) is Undefined)
   assert_true(interp.get_computed_property(set, key, loc) is Undefined)
 }
+
+///|
+test "tree-walker spread deep Array accessor shadows higher iterator" {
+  let interp = Interpreter::new()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let higher_calls : Ref[Int] = { val: 0 }
+  let next = make_method_func(
+    name="next",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { create_iter_result(Undefined, true) },
+  )
+  let iterator = make_object(
+    { "next": next },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let higher_iterator = make_method_func(
+    name="higher iterator",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      higher_calls.val += 1
+      iterator
+    },
+  )
+  let higher = make_plain_object()
+  match higher {
+    Object(data) =>
+      data.bag.symbol_properties[iterator_sym.id] = higher_iterator
+    _ => fail("higher prototype fixture must be an object")
+  }
+  let deep = make_plain_object()
+  match deep {
+    Object(data) => {
+      data.prototype = higher
+      let setter = make_method_func(
+        name="setter",
+        realm_state=Some(interp.realm_state),
+        fn(_this_value, _args) { Undefined },
+      )
+      data.bag.symbol_descriptors[iterator_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: Some(setter),
+        is_accessor: true,
+      }
+    }
+    _ => fail("deep prototype fixture must be an object")
+  }
+  let array_proto = make_plain_object()
+  match array_proto {
+    Object(data) => {
+      data.prototype = deep
+      interp.realm_state.array_prototype.val = Some(array_proto)
+    }
+    _ => fail("Array prototype fixture must be an object")
+  }
+  try {
+    let _ = interp.spread_iterable(make_array([]), @token.Loc::default())
+    fail("deep getterless Array iterator must raise")
+  } catch {
+    @errors.TypeError(_) => ()
+    error => raise error
+  }
+  assert_eq(higher_calls.val, 0)
+}
+
+///|
+test "tree-walker spread deep Array getterless iterator is absent" {
+  let interp = Interpreter::new()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let higher_calls : Ref[Int] = { val: 0 }
+  let higher_iterator = make_method_func(
+    name="higher iterator",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      higher_calls.val += 1
+      Undefined
+    },
+  )
+  let higher = make_plain_object()
+  match higher {
+    Object(data) =>
+      data.bag.symbol_properties[iterator_sym.id] = higher_iterator
+    _ => fail("higher prototype fixture must be an object")
+  }
+  let deep = make_plain_object()
+  match deep {
+    Object(data) => {
+      data.prototype = higher
+      data.bag.symbol_descriptors[iterator_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: true,
+      }
+    }
+    _ => fail("deep prototype fixture must be an object")
+  }
+  let array_proto = make_plain_object()
+  match array_proto {
+    Object(data) => {
+      data.prototype = deep
+      interp.realm_state.array_prototype.val = Some(array_proto)
+    }
+    _ => fail("Array prototype fixture must be an object")
+  }
+  try {
+    let _ = interp.spread_iterable(make_array([]), @token.Loc::default())
+    fail("deep getterless Array iterator must raise")
+  } catch {
+    @errors.TypeError(_) => ()
+    error => raise error
+  }
+  assert_eq(higher_calls.val, 0)
+}
+
+///|
+test "tree-walker spread deep Array getter keeps receiver and returned iterator" {
+  let interp = Interpreter::new()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let getter_calls : Ref[Int] = { val: 0 }
+  let iterator_calls : Ref[Int] = { val: 0 }
+  let array_ref : Ref[Value] = { val: Undefined }
+  let next = make_method_func(
+    name="next",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { create_iter_result(Undefined, true) },
+  )
+  let iterator = make_object(
+    { "next": next },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let iterator_method = make_method_func(
+    name="deep iterator",
+    realm_state=Some(interp.realm_state),
+    fn(this_value, _args) raise {
+      iterator_calls.val += 1
+      assert_true(physical_equal(this_value, array_ref.val))
+      iterator
+    },
+  )
+  let deep = make_plain_object()
+  match deep {
+    Object(data) => {
+      let getter = make_method_func(
+        name="deep iterator getter",
+        realm_state=Some(interp.realm_state),
+        fn(this_value, _args) raise {
+          getter_calls.val += 1
+          assert_true(physical_equal(this_value, array_ref.val))
+          iterator_method
+        },
+      )
+      data.bag.symbol_descriptors[iterator_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(getter),
+        setter: None,
+        is_accessor: true,
+      }
+    }
+    _ => fail("deep prototype fixture must be an object")
+  }
+  let array_proto = make_plain_object()
+  match array_proto {
+    Object(data) => {
+      data.prototype = deep
+      interp.realm_state.array_prototype.val = Some(array_proto)
+    }
+    _ => fail("Array prototype fixture must be an object")
+  }
+  let array = make_array([])
+  array_ref.val = array
+  let values = interp.spread_iterable(array, @token.Loc::default())
+  assert_eq(values.length(), 0)
+  assert_eq(getter_calls.val, 1)
+  assert_eq(iterator_calls.val, 1)
+}
+
+///|
+test "tree-walker spread Promise setter-only iterator shadows inherited callable" {
+  let interp = Interpreter::new()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let inherited_calls : Ref[Int] = { val: 0 }
+  let inherited_iterator = make_method_func(
+    name="inherited promise iterator",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      inherited_calls.val += 1
+      Undefined
+    },
+  )
+  let promise_proto = make_plain_object()
+  match promise_proto {
+    Object(data) =>
+      data.bag.symbol_properties[iterator_sym.id] = inherited_iterator
+    _ => fail("Promise prototype fixture must be an object")
+  }
+  interp.realm_state.promise_prototype.val = Some(promise_proto)
+  let promise = Promise(new_promise_data())
+  match promise {
+    Promise(data) => {
+      let setter = make_method_func(
+        name="promise setter",
+        realm_state=Some(interp.realm_state),
+        fn(_this_value, _args) { Undefined },
+      )
+      data.bag.symbol_descriptors[iterator_sym.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: Some(setter),
+        is_accessor: true,
+      }
+    }
+    _ => fail("Promise fixture must be a Promise")
+  }
+  try {
+    let _ = interp.spread_iterable(promise, @token.Loc::default())
+    fail("Promise getterless iterator must raise")
+  } catch {
+    @errors.TypeError(_) => ()
+    error => raise error
+  }
+  assert_eq(inherited_calls.val, 0)
+}

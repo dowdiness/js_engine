@@ -196,6 +196,81 @@ test "candidate Engine iterable spread does not probe replaced array prototypes"
 }
 
 ///|
+test "candidate Engine iterable spread honors deep prototype accessors" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var result = {};
+      #|var originalArrayProto = Object.getPrototypeOf(Array.prototype);
+      #|var originalArrayIterator = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+      #|var higherCalls = 0;
+      #|var higher = {};
+      #|Object.defineProperty(higher, Symbol.iterator, { value: function() {
+      #|  higherCalls = higherCalls + 1;
+      #|  return { next: function() { return { done: true }; } };
+      #|} });
+      #|var deep = {};
+      #|Object.setPrototypeOf(deep, higher);
+      #|delete Array.prototype[Symbol.iterator];
+      #|Object.defineProperty(deep, Symbol.iterator, { set: function(value) {} });
+      #|Object.setPrototypeOf(Array.prototype, deep);
+      #|try { [...[1, 2]]; result.arraySetter = "completed"; }
+      #|catch (error) { result.arraySetter = error instanceof TypeError ? "TypeError" : "other"; }
+      #|result.higherCalls = higherCalls;
+      #|Object.setPrototypeOf(Array.prototype, originalArrayProto);
+      #|Object.defineProperty(Array.prototype, Symbol.iterator, originalArrayIterator);
+      #|var getterCalls = 0;
+      #|var iteratorCalls = 0;
+      #|var receiverIsArray = false;
+      #|var array = [1, 2];
+      #|var getterDeep = {};
+      #|Object.defineProperty(getterDeep, Symbol.iterator, { get: function() {
+      #|  getterCalls = getterCalls + 1;
+      #|  receiverIsArray = this === array;
+      #|  return function() {
+      #|    iteratorCalls = iteratorCalls + 1;
+      #|    return { next: function() { return { done: true }; } };
+      #|  };
+      #|} });
+      #|delete Array.prototype[Symbol.iterator];
+      #|Object.setPrototypeOf(Array.prototype, getterDeep);
+      #|try { result.getterLength = [...array].length; }
+      #|catch (error) { result.getterLength = -1; }
+      #|result.getterCalls = getterCalls;
+      #|result.iteratorCalls = iteratorCalls;
+      #|result.receiverIsArray = receiverIsArray;
+      #|Object.setPrototypeOf(Array.prototype, originalArrayProto);
+      #|Object.defineProperty(Array.prototype, Symbol.iterator, originalArrayIterator);
+      #|var originalPromiseProto = Object.getPrototypeOf(Promise.prototype);
+      #|var promiseCalls = 0;
+      #|var promiseHigher = {};
+      #|Object.defineProperty(promiseHigher, Symbol.iterator, { value: function() {
+      #|  promiseCalls = promiseCalls + 1;
+      #|  return { next: function() { return { done: true }; } };
+      #|} });
+      #|Object.setPrototypeOf(Promise.prototype, promiseHigher);
+      #|var promise = new Promise(function(resolve) { resolve(1); });
+      #|Object.defineProperty(promise, Symbol.iterator, { set: function(value) {} });
+      #|try { [...promise]; result.promiseSetter = "completed"; }
+      #|catch (error) { result.promiseSetter = error instanceof TypeError ? "TypeError" : "other"; }
+      #|result.promiseCalls = promiseCalls;
+      #|Object.setPrototypeOf(Promise.prototype, originalPromiseProto);
+    ),
+  )
+  engine.eval("function deepPrototypeAccessorMatrix() { return result; }")
+  json_inspect(engine.call_json("deepPrototypeAccessorMatrix", []), content={
+    "arraySetter": "TypeError",
+    "higherCalls": 0,
+    "getterLength": 0,
+    "getterCalls": 1,
+    "iteratorCalls": 1,
+    "receiverIsArray": true,
+    "promiseSetter": "TypeError",
+    "promiseCalls": 0,
+  })
+}
+
+///|
 test "candidate minimal Map iterator prototype probe" {
   let engine = @js_engine.Engine()
   let source =

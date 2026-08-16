@@ -9,9 +9,10 @@ pub fn Interpreter::spread_iterable(
 
   // Try to get the iterator via Symbol.iterator protocol
   let iterator_sym = self.realm_state.well_known_symbols.iterator
-  let iterator_method = self.get_computed_property(
+  let iterator_method = self.get_property_key_with_receiver(
     val,
     Symbol(iterator_sym),
+    val,
     loc,
   )
 
