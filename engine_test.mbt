@@ -159,6 +159,478 @@ test "Engine Array valueOf participates in addition" {
 }
 
 ///|
+test "Engine iterable spread preserves order and reuse" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "function arraySpread() { return [0, ...[1, 2], 3].join(','); } " +
+    "function callSpread(left, right) { " +
+    "return (function(a, b, c, d) { return [a, b, c, d].join(','); })(" +
+    "0, ...left, 2, ...right); }",
+  )
+  json_inspect(engine.call_json("arraySpread", []), content="0,1,2,3")
+  json_inspect(
+    engine.call_json("callSpread", [
+      Json::array([Json::number(1.0)]),
+      Json::array([Json::number(3.0)]),
+    ]),
+    content="0,1,2,3",
+  )
+  json_inspect(engine.call_json("arraySpread", []), content="0,1,2,3")
+}
+
+///|
+test "Engine iterable spread preserves deep guest re-entry and queued effects" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function makeIterable(level) {
+      #|  return { [Symbol.iterator]: function() {
+      #|    var index = 0;
+      #|    return { next: function() {
+      #|      var current = index;
+      #|      events.push("next:" + level + ":" + current);
+      #|      if (current === 1) return { done: true };
+      #|      index = index + 1;
+      #|      if (level === 3) queueMicrotask(function() { events.push("micro:3:0"); });
+      #|      var nested = level === 0 ? [] : [...makeIterable(level - 1)];
+      #|      return { done: false, value: level + ":" + nested.length };
+      #|    } };
+      #|  } };
+      #|}
+      #|function deepSpread() { return [...makeIterable(3)].join(","); }
+      #|function eventsSnapshot() { return events; }
+    ),
+  )
+  json_inspect(engine.call_json("deepSpread", []), content="3:1")
+  json_inspect(engine.call_json("eventsSnapshot", []), content=[
+    "next:3:0", "next:2:0", "next:1:0", "next:0:0", "next:0:1", "next:1:1", "next:2:1",
+    "next:3:1",
+  ])
+  expect_bool(engine.has_pending_microtasks(), true, "iterable spread queue")
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "iterable spread queue checkpoint",
+  )
+  json_inspect(engine.call_json("eventsSnapshot", []), content=[
+    "next:3:0", "next:2:0", "next:1:0", "next:0:0", "next:0:1", "next:1:1", "next:2:1",
+    "next:3:1", "micro:3:0",
+  ])
+}
+
+///|
+test "Engine iterable spread observes inherited iterator overrides" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function prototypeIteratorMatrix() {
+    #|  var result = {};
+    #|  String.prototype[Symbol.iterator] = undefined;
+    #|  try {
+    #|    [..."ab"];
+    #|    result.stringUndefined = "completed";
+    #|  } catch (error) {
+    #|    result.stringUndefined = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var stringCalls = 0;
+    #|  var stringReceiver = false;
+    #|  String.prototype[Symbol.iterator] = function() {
+    #|    "use strict";
+    #|    stringCalls = stringCalls + 1;
+    #|    stringReceiver = typeof this === "string" && this === "ab";
+    #|    return { next: function() { return { done: true }; } };
+    #|  };
+    #|  result.stringCustom = [..."ab"].length;
+    #|  result.stringCalls = stringCalls;
+    #|  result.stringReceiver = stringReceiver;
+    #|  Array.prototype[Symbol.iterator] = undefined;
+    #|  try {
+    #|    [...[1, 2]];
+    #|    result.arrayUndefined = "completed";
+    #|  } catch (error) {
+    #|    result.arrayUndefined = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var arrayCalls = 0;
+    #|  var arrayReceiver = false;
+    #|  Array.prototype[Symbol.iterator] = function() {
+    #|    "use strict";
+    #|    arrayCalls = arrayCalls + 1;
+    #|    arrayReceiver = Array.isArray(this) && this.length === 2;
+    #|    return { next: function() { return { done: true }; } };
+    #|  };
+    #|  result.arrayCustom = [...[1, 2]].length;
+    #|  result.arrayCalls = arrayCalls;
+    #|  result.arrayReceiver = arrayReceiver;
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("prototypeIteratorMatrix", []), content={
+    "stringUndefined": "TypeError",
+    "stringCustom": 0,
+    "stringCalls": 1,
+    "stringReceiver": true,
+    "arrayUndefined": "TypeError",
+    "arrayCustom": 0,
+    "arrayCalls": 1,
+    "arrayReceiver": true,
+  })
+}
+
+///|
+test "Engine iterable spread does not probe replaced array prototypes" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function replacedArrayPrototypeMatrix() {
+    #|  var result = {};
+    #|  var array = [1, 2];
+    #|  Object.setPrototypeOf(array, {});
+    #|  try {
+    #|    [...array];
+    #|    result.replaced = "completed";
+    #|  } catch (error) {
+    #|    result.replaced = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var getCalls = 0;
+    #|  var hasCalls = 0;
+    #|  var receiverIsArray = false;
+    #|  var proxyPrototype = new Proxy({}, {
+    #|    get: function(target, key, receiver) {
+    #|      if (key === Symbol.iterator) {
+    #|        getCalls = getCalls + 1;
+    #|        receiverIsArray = Array.isArray(receiver) && receiver === array;
+    #|      }
+    #|      return undefined;
+    #|    },
+    #|    has: function(target, key) {
+    #|      hasCalls = hasCalls + 1;
+    #|      return false;
+    #|    }
+    #|  });
+    #|  Object.setPrototypeOf(array, proxyPrototype);
+    #|  try {
+    #|    [...array];
+    #|    result.proxy = "completed";
+    #|  } catch (error) {
+    #|    result.proxy = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  result.getCalls = getCalls;
+    #|  result.hasCalls = hasCalls;
+    #|  result.receiverIsArray = receiverIsArray;
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("replacedArrayPrototypeMatrix", []), content={
+    "replaced": "TypeError",
+    "proxy": "TypeError",
+    "getCalls": 1,
+    "hasCalls": 0,
+    "receiverIsArray": true,
+  })
+}
+
+///|
+test "Engine iterable spread honors deep prototype accessors" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function deepPrototypeAccessorMatrix() {
+    #|  var result = {};
+    #|  var originalArrayProto = Object.getPrototypeOf(Array.prototype);
+    #|  var originalArrayIterator = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+    #|  var arrayHigherCalls = 0;
+    #|  var arrayHigher = {};
+    #|  Object.defineProperty(arrayHigher, Symbol.iterator, { value: function() {
+    #|    arrayHigherCalls = arrayHigherCalls + 1;
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  var arrayDeep = {};
+    #|  Object.setPrototypeOf(arrayDeep, arrayHigher);
+    #|  delete Array.prototype[Symbol.iterator];
+    #|  Object.defineProperty(arrayDeep, Symbol.iterator, { set: function(value) {} });
+    #|  Object.setPrototypeOf(Array.prototype, arrayDeep);
+    #|  try { [...[1, 2]]; result.arraySetter = "completed"; }
+    #|  catch (error) { result.arraySetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.arraySetterCalls = arrayHigherCalls;
+    #|  Object.setPrototypeOf(Array.prototype, originalArrayProto);
+    #|  Object.defineProperty(Array.prototype, Symbol.iterator, originalArrayIterator);
+    #|  var arrayGetterCalls = 0;
+    #|  var arrayIteratorCalls = 0;
+    #|  var arrayGetterReceiver = false;
+    #|  var array = [1, 2];
+    #|  var getterDeep = {};
+    #|  Object.defineProperty(getterDeep, Symbol.iterator, { get: function() {
+    #|    arrayGetterCalls = arrayGetterCalls + 1;
+    #|    arrayGetterReceiver = this === array;
+    #|    return function() {
+    #|      arrayIteratorCalls = arrayIteratorCalls + 1;
+    #|      return { next: function() { return { done: true }; } };
+    #|    };
+    #|  } });
+    #|  delete Array.prototype[Symbol.iterator];
+    #|  Object.setPrototypeOf(Array.prototype, getterDeep);
+    #|  try { result.arrayGetterLength = [...array].length; }
+    #|  catch (error) { result.arrayGetterLength = -1; }
+    #|  result.arrayGetterCalls = arrayGetterCalls;
+    #|  result.arrayIteratorCalls = arrayIteratorCalls;
+    #|  result.arrayGetterReceiver = arrayGetterReceiver;
+    #|  Object.setPrototypeOf(Array.prototype, originalArrayProto);
+    #|  Object.defineProperty(Array.prototype, Symbol.iterator, originalArrayIterator);
+    #|  var originalPromiseProto = Object.getPrototypeOf(Promise.prototype);
+    #|  var promiseInheritedCalls = 0;
+    #|  var promiseHigher = {};
+    #|  Object.defineProperty(promiseHigher, Symbol.iterator, { value: function() {
+    #|    promiseInheritedCalls = promiseInheritedCalls + 1;
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  Object.setPrototypeOf(Promise.prototype, promiseHigher);
+    #|  var promise = new Promise(function(resolve) { resolve(1); });
+    #|  Object.defineProperty(promise, Symbol.iterator, { set: function(value) {} });
+    #|  try { [...promise]; result.promiseSetter = "completed"; }
+    #|  catch (error) { result.promiseSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.promiseInheritedCalls = promiseInheritedCalls;
+    #|  Object.setPrototypeOf(Promise.prototype, originalPromiseProto);
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("deepPrototypeAccessorMatrix", []), content={
+    "arraySetter": "TypeError",
+    "arraySetterCalls": 0,
+    "arrayGetterLength": 0,
+    "arrayGetterCalls": 1,
+    "arrayIteratorCalls": 1,
+    "arrayGetterReceiver": true,
+    "promiseSetter": "TypeError",
+    "promiseInheritedCalls": 0,
+  })
+}
+
+///|
+test "Engine iterable spread honors Map and Set iterator overrides" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function mapSetIteratorMatrix() {
+    #|  var result = {};
+    #|  var map = new Map();
+    #|  map.set(1, "one");
+    #|  var set = new Set();
+    #|  set.add(2);
+    #|  var mapCalls = 0;
+    #|  var setCalls = 0;
+    #|  var mapReceiver = false;
+    #|  var setReceiver = false;
+    #|  var mapProto = {};
+    #|  var setProto = {};
+    #|  Object.defineProperty(mapProto, Symbol.iterator, { value: function() {
+    #|    "use strict";
+    #|    mapCalls = mapCalls + 1;
+    #|    mapReceiver = this === map;
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  Object.defineProperty(setProto, Symbol.iterator, { value: function() {
+    #|    "use strict";
+    #|    setCalls = setCalls + 1;
+    #|    setReceiver = this === set;
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  Object.setPrototypeOf(map, mapProto);
+    #|  Object.setPrototypeOf(set, setProto);
+    #|  try { result.mapCustom = [...map].length; }
+    #|  catch (error) { result.mapCustom = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { result.setCustom = [...set].length; }
+    #|  catch (error) { result.setCustom = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.mapCalls = mapCalls;
+    #|  result.setCalls = setCalls;
+    #|  result.mapReceiver = mapReceiver;
+    #|  result.setReceiver = setReceiver;
+    #|  var mapUndefinedProto = {};
+    #|  var setUndefinedProto = {};
+    #|  Object.defineProperty(mapUndefinedProto, Symbol.iterator, { value: undefined });
+    #|  Object.defineProperty(setUndefinedProto, Symbol.iterator, { value: undefined });
+    #|  Object.setPrototypeOf(map, mapUndefinedProto);
+    #|  Object.setPrototypeOf(set, setUndefinedProto);
+    #|  try { [...map]; result.mapUndefined = "completed"; }
+    #|  catch (error) { result.mapUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...set]; result.setUndefined = "completed"; }
+    #|  catch (error) { result.setUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  var mapGetterCalls = 0;
+    #|  var setGetterCalls = 0;
+    #|  var mapGetterProto = {};
+    #|  var setGetterProto = {};
+    #|  Object.defineProperty(mapGetterProto, Symbol.iterator, { get: function() {
+    #|    mapGetterCalls = mapGetterCalls + 1;
+    #|    throw new TypeError("map getter");
+    #|  } });
+    #|  Object.defineProperty(setGetterProto, Symbol.iterator, { get: function() {
+    #|    setGetterCalls = setGetterCalls + 1;
+    #|    throw new TypeError("set getter");
+    #|  } });
+    #|  Object.setPrototypeOf(map, mapGetterProto);
+    #|  Object.setPrototypeOf(set, setGetterProto);
+    #|  try { [...map]; result.mapGetter = "completed"; }
+    #|  catch (error) { result.mapGetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...set]; result.setGetter = "completed"; }
+    #|  catch (error) { result.setGetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.mapGetterCalls = mapGetterCalls;
+    #|  result.setGetterCalls = setGetterCalls;
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("mapSetIteratorMatrix", []), content={
+    "mapCustom": 0,
+    "setCustom": 0,
+    "mapCalls": 1,
+    "setCalls": 1,
+    "mapReceiver": true,
+    "setReceiver": true,
+    "mapUndefined": "TypeError",
+    "setUndefined": "TypeError",
+    "mapGetter": "TypeError",
+    "setGetter": "TypeError",
+    "mapGetterCalls": 1,
+    "setGetterCalls": 1,
+  })
+}
+
+///|
+test "Engine iterable spread shadows getterless iterator accessors" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function getterlessIteratorMatrix() {
+    #|  var result = {};
+    #|  var inheritedProto = {};
+    #|  Object.defineProperty(inheritedProto, Symbol.iterator, { value: function() {
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  var objectSetter = {};
+    #|  var objectGetterUndefined = {};
+    #|  Object.setPrototypeOf(objectSetter, inheritedProto);
+    #|  Object.setPrototypeOf(objectGetterUndefined, inheritedProto);
+    #|  Object.defineProperty(objectSetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(objectGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  var arraySetter = [1, 2];
+    #|  var arrayGetterUndefined = [1, 2];
+    #|  Object.defineProperty(arraySetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(arrayGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  var mapSetter = new Map();
+    #|  var mapGetterUndefined = new Map();
+    #|  Object.defineProperty(mapSetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(mapGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  var setSetter = new Set();
+    #|  var setGetterUndefined = new Set();
+    #|  Object.defineProperty(setSetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(setGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  try { [...objectSetter]; result.objectSetter = "completed"; }
+    #|  catch (error) { result.objectSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...objectGetterUndefined]; result.objectGetterUndefined = "completed"; }
+    #|  catch (error) { result.objectGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...arraySetter]; result.arraySetter = "completed"; }
+    #|  catch (error) { result.arraySetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...arrayGetterUndefined]; result.arrayGetterUndefined = "completed"; }
+    #|  catch (error) { result.arrayGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...mapSetter]; result.mapSetter = "completed"; }
+    #|  catch (error) { result.mapSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...mapGetterUndefined]; result.mapGetterUndefined = "completed"; }
+    #|  catch (error) { result.mapGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...setSetter]; result.setSetter = "completed"; }
+    #|  catch (error) { result.setSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...setGetterUndefined]; result.setGetterUndefined = "completed"; }
+    #|  catch (error) { result.setGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("getterlessIteratorMatrix", []), content={
+    "objectSetter": "TypeError",
+    "objectGetterUndefined": "TypeError",
+    "arraySetter": "TypeError",
+    "arrayGetterUndefined": "TypeError",
+    "mapSetter": "TypeError",
+    "mapGetterUndefined": "TypeError",
+    "setSetter": "TypeError",
+    "setGetterUndefined": "TypeError",
+  })
+}
+
+///|
+test "Engine iterable spread accepts callable Proxy iterator methods" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function callableProxyIteratorMatrix() {
+    #|  var result = {};
+    #|  var own = {};
+    #|  var ownCalls = 0;
+    #|  var ownReceiver = false;
+    #|  var ownMethod = new Proxy(function() {}, {
+    #|    apply: function(target, thisArg, args) {
+    #|      ownCalls = ownCalls + 1;
+    #|      ownReceiver = thisArg === own;
+    #|      return { next: function() { return { done: true }; } };
+    #|    }
+    #|  });
+    #|  Object.defineProperty(own, Symbol.iterator, { value: ownMethod });
+    #|  result.ownLength = [...own].length;
+    #|  result.ownCalls = ownCalls;
+    #|  result.ownReceiver = ownReceiver;
+    #|  var inherited = {};
+    #|  var inheritedProto = {};
+    #|  var inheritedCalls = 0;
+    #|  var inheritedReceiver = false;
+    #|  var inheritedMethod = new Proxy(function() {}, {
+    #|    apply: function(target, thisArg, args) {
+    #|      inheritedCalls = inheritedCalls + 1;
+    #|      inheritedReceiver = thisArg === inherited;
+    #|      return { next: function() { return { done: true }; } };
+    #|    }
+    #|  });
+    #|  Object.defineProperty(inheritedProto, Symbol.iterator, { value: inheritedMethod });
+    #|  Object.setPrototypeOf(inherited, inheritedProto);
+    #|  result.inheritedLength = [...inherited].length;
+    #|  result.inheritedCalls = inheritedCalls;
+    #|  result.inheritedReceiver = inheritedReceiver;
+    #|  var throwing = {};
+    #|  var events = [];
+    #|  var throwingMethod = new Proxy(function() {}, {
+    #|    apply: function(target, thisArg, args) {
+    #|      events.push("apply");
+    #|      throw new TypeError("proxy iterator");
+    #|    }
+    #|  });
+    #|  Object.defineProperty(throwing, Symbol.iterator, { value: throwingMethod });
+    #|  try { [...throwing]; result.throwResult = "completed"; }
+    #|  catch (error) {
+    #|    result.throwResult = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  result.throwEvents = events.join(",");
+    #|  var revoked = {};
+    #|  var revokedRecord = Proxy.revocable(function() {}, {});
+    #|  Object.defineProperty(revoked, Symbol.iterator, { value: revokedRecord.proxy });
+    #|  revokedRecord.revoke();
+    #|  try { [...revoked]; result.revoked = "completed"; }
+    #|  catch (error) {
+    #|    result.revoked = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var nonCallable = {};
+    #|  Object.defineProperty(nonCallable, Symbol.iterator, { value: new Proxy({}, {}) });
+    #|  try { [...nonCallable]; result.nonCallable = "completed"; }
+    #|  catch (error) {
+    #|    result.nonCallable = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("callableProxyIteratorMatrix", []), content={
+    "ownLength": 0,
+    "ownCalls": 1,
+    "ownReceiver": true,
+    "inheritedLength": 0,
+    "inheritedCalls": 1,
+    "inheritedReceiver": true,
+    "throwResult": "TypeError",
+    "throwEvents": "apply",
+    "revoked": "TypeError",
+    "nonCallable": "TypeError",
+  })
+}
+
+///|
 test "Engine Array Symbol.toPrimitive keeps hint and receiver" {
   let engine = @js_engine.Engine()
   engine.eval(

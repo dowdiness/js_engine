@@ -18,6 +18,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
+  ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
 }
 
 ///|
@@ -78,6 +79,52 @@ pub fn executor_activation_call(
   loc : @token.Loc,
 ) -> ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest(callee~, this_value~, args~, loc~))
+}
+
+///|
+// A closed iterable-spread request. Runtime owns iterator acquisition, every
+// protocol step, validation, and abrupt completion. The executor supplies only
+// the already-evaluated iterable and source location; the eventual batch is
+// delivered through the neutral activation completion seam.
+pub struct ExecutorIterableSpreadRequest {
+  priv iterable : Value
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorIterableSpreadRequest::ExecutorIterableSpreadRequest(
+  iterable~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorIterableSpreadRequest {
+  { iterable, loc }
+}
+
+///|
+#warnings("-unused_constructor")
+pub enum ExecutorIterableSpreadStart {
+  ExecutorIterableSpreadCompleted(Array[Value])
+  ExecutorIterableSpreadSuspended(ExecutorIterableSpreadRequest)
+}
+
+///|
+// Acquisition always crosses the executor-neutral seam. Runtime decides
+// whether a particular iterator lookup or protocol step completes locally;
+// this keeps built-in Array/String handling in one canonical owner without a
+// VM-side fast path.
+pub fn begin_executor_iterable_spread(
+  iterable : Value,
+  loc : @token.Loc,
+) -> ExecutorIterableSpreadStart {
+  ExecutorIterableSpreadSuspended(
+    ExecutorIterableSpreadRequest(iterable~, loc~),
+  )
+}
+
+///|
+pub fn executor_activation_iterable_spread_request(
+  request : ExecutorIterableSpreadRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationIterableSpread(request)
 }
 
 ///|
@@ -672,6 +719,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertyUpdate
   ExecutorChildCoercingAddition
   ExecutorChildPropertyDelete
+  ExecutorChildIterableSpread
 }
 
 ///|
@@ -1238,9 +1286,27 @@ fn Interpreter::complete_executor_step(
       executor_coercing_addition_completion(step)
     Some(ExecutorChildPropertyDelete) =>
       executor_property_delete_completion(step)
+    Some(ExecutorChildIterableSpread) =>
+      executor_iterable_spread_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
+}
+
+///|
+fn executor_iterable_spread_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    _ =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="iterable spread frame completed without a value",
+        ),
+      )
+  }
 }
 
 ///|
@@ -1854,6 +1920,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationIterableSpread(request) => {
+      let spread_frame = ExecutorIterableSpreadFrame(request)
+      stack.push({
+        frame: spread_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildIterableSpread),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
   }
 }
 
@@ -2121,7 +2197,8 @@ fn executor_call_completion(
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
-        | ExecutorActivationPropertyDelete(_) => Undefined
+        | ExecutorActivationPropertyDelete(_)
+        | ExecutorActivationIterableSpread(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
@@ -2134,7 +2211,8 @@ fn executor_call_completion(
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
-        | ExecutorActivationPropertyDelete(_) => Undefined
+        | ExecutorActivationPropertyDelete(_)
+        | ExecutorActivationIterableSpread(_) => Undefined
       }
   }
 }
@@ -2157,7 +2235,8 @@ fn executor_construct_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationPropertyDelete(_) => instance
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_) => instance
   }
 }
 
@@ -2182,7 +2261,8 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationPropertyDelete(_) =>
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property get completed with a pending activation step",
@@ -2205,7 +2285,8 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationPropertyDelete(_) =>
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
@@ -2228,7 +2309,8 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationPropertyDelete(_) =>
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
@@ -2251,7 +2333,8 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationPropertyDelete(_) =>
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property delete completed with a pending activation step",

@@ -11,6 +11,8 @@ priv struct BytecodeForInState {
 priv enum BytecodeActivationResultDestination {
   PushValue
   PushReceiverAndValue(Value)
+  AppendArraySpread
+  AppendArgumentSpread
 }
 
 ///|
@@ -278,6 +280,21 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
         PushReceiverAndValue(receiver) => {
           self.stack.push(receiver)
           self.stack.push(value)
+        }
+        AppendArraySpread => {
+          let spread_values = @runtime.executor_iterable_spread_batch_values(
+            value,
+          )
+          @runtime.apply_array_literal_spread(self.peek(), spread_values)
+        }
+        AppendArgumentSpread => {
+          let spread_values = @runtime.executor_iterable_spread_batch_values(
+            value,
+          )
+          let args = self.current_arg_list()
+          for spread_value in spread_values {
+            args.push(spread_value)
+          }
         }
       }
     @runtime.ExecutorActivationCompletionAbrupt(error) => {
@@ -620,6 +637,10 @@ fn run_bytecode_function(
     @runtime.ExecutorActivationPropertyDelete(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property delete",
+      )
+    @runtime.ExecutorActivationIterableSpread(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending iterable spread",
       )
   }
 }
@@ -995,8 +1016,16 @@ fn BytecodeFrame::step_bytecode(
       }
       ArrayPushSpread(loc) => {
         let value = frame.pop()
-        let spread_values = interp.spread_iterable(value, loc)
-        @runtime.apply_array_literal_spread(frame.peek(), spread_values)
+        match @runtime.begin_executor_iterable_spread(value, loc) {
+          @runtime.ExecutorIterableSpreadCompleted(spread_values) =>
+            @runtime.apply_array_literal_spread(frame.peek(), spread_values)
+          @runtime.ExecutorIterableSpreadSuspended(request) => {
+            frame.pending_activation_result = Some(AppendArraySpread)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_iterable_spread_request(request),
+            )
+          }
+        }
       }
       ArrayPushHole => @runtime.apply_array_literal_hole(frame.peek())
       StartArgs => frame.arg_lists.push([])
@@ -1007,10 +1036,19 @@ fn BytecodeFrame::step_bytecode(
       }
       ArgPushSpread(loc) => {
         let value = frame.pop()
-        let spread_values = interp.spread_iterable(value, loc)
-        let args = frame.current_arg_list()
-        for spread_value in spread_values {
-          args.push(spread_value)
+        match @runtime.begin_executor_iterable_spread(value, loc) {
+          @runtime.ExecutorIterableSpreadCompleted(spread_values) => {
+            let args = frame.current_arg_list()
+            for spread_value in spread_values {
+              args.push(spread_value)
+            }
+          }
+          @runtime.ExecutorIterableSpreadSuspended(request) => {
+            frame.pending_activation_result = Some(AppendArgumentSpread)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_iterable_spread_request(request),
+            )
+          }
         }
       }
       MakeObject(keys) => {

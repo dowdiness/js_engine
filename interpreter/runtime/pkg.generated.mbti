@@ -31,6 +31,8 @@ pub fn array_species_create(Interpreter, Value, Int64) -> Value raise
 
 pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
 
+pub fn begin_executor_iterable_spread(Value, @token.Loc) -> ExecutorIterableSpreadStart
+
 pub fn begin_executor_property_delete_computed(Interpreter, Value, Value, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
 
 pub fn begin_executor_property_delete_static(Interpreter, Value, String, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
@@ -113,6 +115,8 @@ pub fn executor_activation_construct(Value, Array[Value], @token.Loc) -> Executo
 
 pub fn executor_activation_continue() -> ExecutorActivationStep
 
+pub fn executor_activation_iterable_spread_request(ExecutorIterableSpreadRequest) -> ExecutorActivationStep
+
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
 
 pub fn executor_activation_property_decrement(Value, String, Bool, @token.Loc, @token.Loc, Bool) -> ExecutorActivationStep
@@ -126,6 +130,8 @@ pub fn executor_activation_property_increment(Value, String, Bool, @token.Loc, @
 pub fn executor_activation_property_set(Value, String, Value, @token.Loc, Bool) -> ExecutorActivationStep
 
 pub fn executor_activation_return(Value) -> ExecutorActivationStep
+
+pub fn executor_iterable_spread_batch_values(Value) -> Array[Value] raise
 
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
@@ -691,6 +697,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
+  ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -717,6 +724,15 @@ pub enum ExecutorCoercingAdditionStart {
 
 pub struct ExecutorConstructRequest {
   // private fields
+}
+
+pub struct ExecutorIterableSpreadRequest {
+  // private fields
+}
+
+pub enum ExecutorIterableSpreadStart {
+  ExecutorIterableSpreadCompleted(Array[Value])
+  ExecutorIterableSpreadSuspended(ExecutorIterableSpreadRequest)
 }
 
 pub struct ExecutorPropertyDeleteRequest {
