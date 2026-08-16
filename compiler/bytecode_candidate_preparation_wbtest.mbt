@@ -640,6 +640,30 @@ test "candidate computed deletion String fallback throws after one pair" {
 }
 
 ///|
+test "candidate computed deletion propagates key getter and call throws" {
+  let source =
+    #|var getterCalls = 0;
+    #|var getterKey = {};
+    #|Object.defineProperty(getterKey, Symbol.toPrimitive, {
+    #|  get: function() { getterCalls = getterCalls + 1; throw new Error("getter"); }
+    #|});
+    #|var callCalls = 0;
+    #|var callKey = {
+    #|  [Symbol.toPrimitive]: function() { callCalls = callCalls + 1; throw new Error("call"); }
+    #|};
+    #|var getterThrew = false;
+    #|try { delete ({ value: 1 })[getterKey]; } catch (error) { getterThrew = true; }
+    #|var callThrew = false;
+    #|try { delete ({ value: 1 })[callKey]; } catch (error) { callThrew = true; }
+    #|getterThrew && callThrew && getterCalls === 1 && callCalls === 1;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate Proxy deletion suspends trap forwarding and invariants" {
   let source =
     #|function remove(target, key) { return delete target[key]; }
