@@ -83,7 +83,7 @@ fn ExecutorToPrimitiveOperation::step(
       }
     ExecutorToPrimitiveHaveToPrimitiveMethod(current, to_primitive) =>
       match to_primitive {
-        Undefined | Null => {
+        Undefined | Null =>
           match self.hint {
             ExecutorToPrimitiveString => self.begin_to_string_lookup(current)
             ExecutorToPrimitiveDefault | ExecutorToPrimitiveNumber => {
@@ -96,7 +96,6 @@ fn ExecutorToPrimitiveOperation::step(
               )
             }
           }
-        }
         _ if is_callable(to_primitive) => {
           self.phase = ExecutorToPrimitiveAwaitToPrimitiveCall
           ExecutorActivationCall(
@@ -172,7 +171,9 @@ fn ExecutorToPrimitiveOperation::step(
           self.phase = ExecutorToPrimitiveAwaitValueOfLookup(current)
           executor_activation_managed_property_get(current, "valueOf", self.loc)
         } else {
-          raise @errors.TypeError(message="Cannot convert object to primitive value")
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
         }
       } else {
         self.phase = ExecutorToPrimitiveComplete(result)
@@ -302,8 +303,7 @@ fn ExecutorToPropertyKeyOperation::deliver_activation_completion(
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
-        ExecutorToPropertyKeyNeedInput(_)
-        | ExecutorToPropertyKeyComplete(_) =>
+        ExecutorToPropertyKeyNeedInput(_) | ExecutorToPropertyKeyComplete(_) =>
           raise @errors.InternalError(
             message="ToPropertyKey received an unexpected child completion",
           )

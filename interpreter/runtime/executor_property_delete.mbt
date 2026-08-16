@@ -26,9 +26,7 @@ priv enum ExecutorDeleteGetOwnPhase {
   ExecutorDeleteGetOwnHaveTrapResult(Value)
   ExecutorDeleteGetOwnAwaitConfigurableLookup
   ExecutorDeleteGetOwnHaveConfigurable(Bool)
-  ExecutorDeleteGetOwnAwaitTargetExtensible(
-    ExecutorDeleteIsExtensibleOperation,
-  )
+  ExecutorDeleteGetOwnAwaitTargetExtensible(ExecutorDeleteIsExtensibleOperation)
   ExecutorDeleteGetOwnComplete(ExecutorDeleteDescriptorInfo?)
 }
 
@@ -46,12 +44,7 @@ fn ExecutorDeleteGetOwnOperation::ExecutorDeleteGetOwnOperation(
   key~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorDeleteGetOwnOperation {
-  {
-    key,
-    loc,
-    contexts: [],
-    phase: ExecutorDeleteGetOwnNeedCurrent(target),
-  }
+  { key, loc, contexts: [], phase: ExecutorDeleteGetOwnNeedCurrent(target) }
 }
 
 ///|
@@ -72,16 +65,14 @@ fn ExecutorDeleteGetOwnOperation::begin_target_extensible(
   let target = self.contexts[self.contexts.length() - 1].target
   let operation = ExecutorDeleteIsExtensibleOperation(target~, loc=self.loc)
   match operation.step(interp) {
-    ExecutorActivationNormal(value) => {
+    ExecutorActivationNormal(value) =>
       match value {
-        Bool(extensible) =>
-          self.consume_target_extensible(extensible, interp)
+        Bool(extensible) => self.consume_target_extensible(extensible, interp)
         _ =>
           raise @errors.InternalError(
             message="delete invariant extensibility returned a non-boolean",
           )
       }
-    }
     step => {
       self.phase = ExecutorDeleteGetOwnAwaitTargetExtensible(operation)
       step
@@ -151,7 +142,7 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
         } else {
           match current {
             None => return self.begin_target_extensible(interp)
-            Some(info) => {
+            Some(info) =>
               match context.reported_configurable {
                 None => {
                   guard info.configurable else {
@@ -177,7 +168,6 @@ fn ExecutorDeleteGetOwnOperation::consume_descriptor(
                   current = Some({ configurable: reported })
                 }
               }
-            }
           }
         }
       }
@@ -220,7 +210,10 @@ fn ExecutorDeleteGetOwnOperation::step(
         }
         _ => {
           let entry = interp.get_own_property(current, self.key)
-          self.consume_descriptor(executor_delete_descriptor_info(entry), interp)
+          self.consume_descriptor(
+            executor_delete_descriptor_info(entry),
+            interp,
+          )
         }
       }
     ExecutorDeleteGetOwnHaveTrap(target, handler, key, trap) =>
@@ -258,10 +251,13 @@ fn ExecutorDeleteGetOwnOperation::step(
       } else if is_js_object(result) {
         let index = self.contexts.length() - 1
         self.contexts[index].trap_undefined = false
-        self.contexts[index].stage =
-          ExecutorDeleteGetOwnAwaitUnderlyingDescriptor
+        self.contexts[index].stage = ExecutorDeleteGetOwnAwaitUnderlyingDescriptor
         self.phase = ExecutorDeleteGetOwnAwaitConfigurableLookup
-        executor_activation_managed_property_get(result, "configurable", self.loc)
+        executor_activation_managed_property_get(
+          result,
+          "configurable",
+          self.loc,
+        )
       } else {
         raise @errors.TypeError(
           message="'getOwnPropertyDescriptor' on proxy: trap returned neither object nor undefined",
@@ -270,9 +266,7 @@ fn ExecutorDeleteGetOwnOperation::step(
     ExecutorDeleteGetOwnHaveConfigurable(configurable) => {
       let index = self.contexts.length() - 1
       self.contexts[index].reported_configurable = Some(configurable)
-      self.phase = ExecutorDeleteGetOwnNeedCurrent(
-        self.contexts[index].target,
-      )
+      self.phase = ExecutorDeleteGetOwnNeedCurrent(self.contexts[index].target)
       ExecutorActivationContinue
     }
     ExecutorDeleteGetOwnAwaitTrapLookup(_, _, _)
@@ -285,9 +279,8 @@ fn ExecutorDeleteGetOwnOperation::step(
       match operation.step(interp) {
         ExecutorActivationNormal(value) =>
           match value {
-            Bool(extensible) => {
+            Bool(extensible) =>
               self.consume_target_extensible(extensible, interp)
-            }
             _ =>
               raise @errors.InternalError(
                 message="delete invariant extensibility returned a non-boolean",
@@ -428,8 +421,14 @@ fn ExecutorDeleteIsExtensibleOperation::step(
           let handler = get_proxy_handler(proxy_data)
           let target = get_proxy_target(proxy_data)
           self.contexts.push({ target, trap_result: None })
-          self.phase = ExecutorDeleteIsExtensibleAwaitTrapLookup(target, handler)
-          executor_activation_managed_property_get(handler, "isExtensible", self.loc)
+          self.phase = ExecutorDeleteIsExtensibleAwaitTrapLookup(
+            target, handler,
+          )
+          executor_activation_managed_property_get(
+            handler,
+            "isExtensible",
+            self.loc,
+          )
         }
         _ => self.consume_result(interp.is_extensible_internal(current))
       }
@@ -487,9 +486,13 @@ fn ExecutorDeleteIsExtensibleOperation::deliver_activation_completion(
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorDeleteIsExtensibleAwaitTrapLookup(target, handler) =>
-          self.phase = ExecutorDeleteIsExtensibleHaveTrap(target, handler, value)
+          self.phase = ExecutorDeleteIsExtensibleHaveTrap(
+            target, handler, value,
+          )
         ExecutorDeleteIsExtensibleAwaitTrapCall =>
-          self.phase = ExecutorDeleteIsExtensibleHaveTrapResult(is_truthy(value))
+          self.phase = ExecutorDeleteIsExtensibleHaveTrapResult(
+            is_truthy(value),
+          )
         ExecutorDeleteIsExtensibleNeedCurrent(_)
         | ExecutorDeleteIsExtensibleHaveTrap(_, _, _)
         | ExecutorDeleteIsExtensibleHaveTrapResult(_)
@@ -523,8 +526,13 @@ priv enum ExecutorPropertyDeletePhase {
   ExecutorPropertyDeleteHaveTrap(Value, Value, Value, Value)
   ExecutorPropertyDeleteAwaitTrapCall(Value, Value)
   ExecutorPropertyDeleteHaveTrapResult(Value, Value, Value)
-  ExecutorPropertyDeleteAwaitTargetDescriptor(Value, ExecutorDeleteGetOwnOperation)
-  ExecutorPropertyDeleteAwaitTargetExtensible(ExecutorDeleteIsExtensibleOperation)
+  ExecutorPropertyDeleteAwaitTargetDescriptor(
+    Value,
+    ExecutorDeleteGetOwnOperation
+  )
+  ExecutorPropertyDeleteAwaitTargetExtensible(
+    ExecutorDeleteIsExtensibleOperation
+  )
   ExecutorPropertyDeleteComplete(Value)
 }
 
@@ -572,7 +580,7 @@ fn ExecutorPropertyDeleteFrame::finish_target_descriptor(
     }
     None => {
       let operation = ExecutorDeleteIsExtensibleOperation(
-        target=target,
+        target~,
         loc=self.request.loc,
       )
       match operation.step(interp) {
@@ -622,10 +630,16 @@ fn ExecutorPropertyDeleteFrame::step_frame(
           ExecutorActivationContinue
         }
         ExecutorComputedPropertyDeleteKey(raw_key) => {
-          let operation = ExecutorToPropertyKeyOperation(raw_key, self.request.loc)
+          let operation = ExecutorToPropertyKeyOperation(
+            raw_key,
+            self.request.loc,
+          )
           match operation.step(interp) {
             ExecutorActivationNormal(key) => {
-              self.phase = ExecutorPropertyDeleteNeedTarget(self.request.target, key)
+              self.phase = ExecutorPropertyDeleteNeedTarget(
+                self.request.target,
+                key,
+              )
               ExecutorActivationContinue
             }
             step => {
@@ -638,7 +652,10 @@ fn ExecutorPropertyDeleteFrame::step_frame(
     ExecutorPropertyDeleteAwaitKey(operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(key) => {
-          self.phase = ExecutorPropertyDeleteNeedTarget(self.request.target, key)
+          self.phase = ExecutorPropertyDeleteNeedTarget(
+            self.request.target,
+            key,
+          )
           ExecutorActivationContinue
         }
         step => {
@@ -652,9 +669,7 @@ fn ExecutorPropertyDeleteFrame::step_frame(
           let handler = get_proxy_handler(proxy_data)
           let target = get_proxy_target(proxy_data)
           self.phase = ExecutorPropertyDeleteAwaitTrapLookup(
-            target,
-            handler,
-            key,
+            target, handler, key,
           )
           executor_activation_managed_property_get(
             handler,
@@ -663,7 +678,11 @@ fn ExecutorPropertyDeleteFrame::step_frame(
           )
         }
         _ => {
-          let result = interp.delete_property_key(current_target, key, strict=self.request.strict)
+          let result = interp.delete_property_key(
+            current_target,
+            key,
+            strict=self.request.strict,
+          )
           self.phase = ExecutorPropertyDeleteComplete(Bool(result))
           ExecutorActivationNormal(Bool(result))
         }
@@ -696,15 +715,17 @@ fn ExecutorPropertyDeleteFrame::step_frame(
         return self.complete_result(false)
       }
       let operation = ExecutorDeleteGetOwnOperation(
-        target=target,
-        key=key,
+        target~,
+        key~,
         loc=self.request.loc,
       )
       match operation.step(interp) {
         ExecutorActivationNormal(_) =>
           self.finish_target_descriptor(target, operation.result(), interp)
         step => {
-          self.phase = ExecutorPropertyDeleteAwaitTargetDescriptor(target, operation)
+          self.phase = ExecutorPropertyDeleteAwaitTargetDescriptor(
+            target, operation,
+          )
           step
         }
       }
@@ -719,7 +740,9 @@ fn ExecutorPropertyDeleteFrame::step_frame(
         ExecutorActivationNormal(_) =>
           self.finish_target_descriptor(target, operation.result(), interp)
         step => {
-          self.phase = ExecutorPropertyDeleteAwaitTargetDescriptor(target, operation)
+          self.phase = ExecutorPropertyDeleteAwaitTargetDescriptor(
+            target, operation,
+          )
           step
         }
       }
@@ -758,7 +781,9 @@ impl ExecutorActivationFrame for ExecutorPropertyDeleteFrame with fn deliver_act
             ExecutorActivationCompletionNormal(value),
           )
         ExecutorPropertyDeleteAwaitTrapLookup(target, handler, key) =>
-          self.phase = ExecutorPropertyDeleteHaveTrap(target, handler, key, value)
+          self.phase = ExecutorPropertyDeleteHaveTrap(
+            target, handler, key, value,
+          )
         ExecutorPropertyDeleteAwaitTrapCall(target, key) =>
           self.phase = ExecutorPropertyDeleteHaveTrapResult(target, key, value)
         ExecutorPropertyDeleteAwaitTargetDescriptor(_, operation) =>

@@ -304,10 +304,12 @@ fn begin_executor_property_delete(
       ExecutorPropertyDeleteSuspended(request)
     ExecutorStaticPropertyDeleteKey(property_name) =>
       ExecutorPropertyDeleteCompleted(
-        Bool(interp.delete_property_key(target, String_(property_name), strict~)),
+        Bool(
+          interp.delete_property_key(target, String_(property_name), strict~),
+        ),
       )
     ExecutorComputedPropertyDeleteKey(raw_key) if target is Proxy(_) ||
-        is_js_object(raw_key) => ExecutorPropertyDeleteSuspended(request)
+      is_js_object(raw_key) => ExecutorPropertyDeleteSuspended(request)
     ExecutorComputedPropertyDeleteKey(raw_key) =>
       ExecutorPropertyDeleteCompleted(
         Bool(interp.delete_property_key(target, raw_key, strict~)),
@@ -1251,12 +1253,10 @@ fn Interpreter::deliver_executor_activation_error(
   if index == 0 {
     raise error
   } else {
-    try {
-      self.complete_executor_child(
-        stack,
-        ExecutorActivationCompletionAbrupt(error),
-      )
-    } catch {
+    self.complete_executor_child(
+      stack,
+      ExecutorActivationCompletionAbrupt(error),
+    ) catch {
       nested_error =>
         self.deliver_executor_activation_error(
           stack,
@@ -1880,9 +1880,9 @@ fn Interpreter::drive_executor_activation_stack(
         Err(error) =>
           self.deliver_executor_activation_error(stack, index, error)
         Ok(step) => {
-          let handled : ExecutorActivationStep? = try {
-            self.handle_executor_activation_step(stack, index, step)
-          } catch {
+          let handled : ExecutorActivationStep? = self.handle_executor_activation_step(
+            stack, index, step,
+          ) catch {
             error => {
               if index < stack.length() {
                 self.deliver_executor_activation_error(stack, index, error)

@@ -757,7 +757,10 @@ test "candidate computed deletion supports finite guest re-entry" {
 
 ///|
 test "candidate non-property deletion remains lowering unsupported" {
-  assert_bytecode_unsupported("function remove() { return delete 1; }", DeleteNonPropertyOperator)
+  assert_bytecode_unsupported(
+    "function remove() { return delete 1; }",
+    DeleteNonPropertyOperator,
+  )
 }
 
 ///|
