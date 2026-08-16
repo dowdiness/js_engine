@@ -8,7 +8,7 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
   self : Interpreter,
   iterable : Value,
   iterator_method : Value,
-) -> Value? {
+) -> Value? raise Error {
   guard iterator_method is Undefined else { return None }
   let iterator_sym = self.realm_state.well_known_symbols.iterator
   match iterable {
@@ -17,9 +17,23 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
         !data.bag.symbol_properties.contains(iterator_sym.id) else {
         return None
       }
+      guard !self.has_property_on_proto(
+        get_array_prototype(self.realm_state, data),
+        Symbol(iterator_sym),
+      ) else {
+        return None
+      }
       Some(self.realm_state.make_array_iterator_value(data))
     }
-    String_(value) => Some(self.realm_state.make_string_iterator_value(value))
+    String_(value) => {
+      guard !self.has_property_on_proto(
+        self.realm_state.get_string_proto(),
+        Symbol(iterator_sym),
+      ) else {
+        return None
+      }
+      Some(self.realm_state.make_string_iterator_value(value))
+    }
     _ => None
   }
 }

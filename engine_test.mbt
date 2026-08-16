@@ -179,6 +179,63 @@ test "Engine iterable spread preserves order and reuse" {
 }
 
 ///|
+test "Engine iterable spread observes inherited iterator overrides" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function prototypeIteratorMatrix() {
+    #|  var result = {};
+    #|  String.prototype[Symbol.iterator] = undefined;
+    #|  try {
+    #|    [..."ab"];
+    #|    result.stringUndefined = "completed";
+    #|  } catch (error) {
+    #|    result.stringUndefined = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var stringCalls = 0;
+    #|  var stringReceiver = false;
+    #|  String.prototype[Symbol.iterator] = function() {
+    #|    "use strict";
+    #|    stringCalls = stringCalls + 1;
+    #|    stringReceiver = typeof this === "string" && this === "ab";
+    #|    return { next: function() { return { done: true }; } };
+    #|  };
+    #|  result.stringCustom = [..."ab"].length;
+    #|  result.stringCalls = stringCalls;
+    #|  result.stringReceiver = stringReceiver;
+    #|  Array.prototype[Symbol.iterator] = undefined;
+    #|  try {
+    #|    [...[1, 2]];
+    #|    result.arrayUndefined = "completed";
+    #|  } catch (error) {
+    #|    result.arrayUndefined = error instanceof TypeError ? "TypeError" : "other";
+    #|  }
+    #|  var arrayCalls = 0;
+    #|  var arrayReceiver = false;
+    #|  Array.prototype[Symbol.iterator] = function() {
+    #|    "use strict";
+    #|    arrayCalls = arrayCalls + 1;
+    #|    arrayReceiver = Array.isArray(this) && this.length === 2;
+    #|    return { next: function() { return { done: true }; } };
+    #|  };
+    #|  result.arrayCustom = [...[1, 2]].length;
+    #|  result.arrayCalls = arrayCalls;
+    #|  result.arrayReceiver = arrayReceiver;
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("prototypeIteratorMatrix", []), content={
+    "stringUndefined": "TypeError",
+    "stringCustom": 0,
+    "stringCalls": 1,
+    "stringReceiver": true,
+    "arrayUndefined": "TypeError",
+    "arrayCustom": 0,
+    "arrayCalls": 1,
+    "arrayReceiver": true,
+  })
+}
+
+///|
 test "Engine Array Symbol.toPrimitive keeps hint and receiver" {
   let engine = @js_engine.Engine()
   engine.eval(

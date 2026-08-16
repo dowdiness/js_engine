@@ -795,17 +795,23 @@ fn Interpreter::get_computed_property_impl(
             }
           }
         }
-        String_(s) => {
-          // Handle Symbol.iterator for strings
+        String_(_) => {
           let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
-            // Return a function that creates a string iterator
-            return make_method_func(
-              name="[Symbol.iterator]",
-              length=0,
-              realm_state=Some(realm_state),
-              fn(_this_val, _args) { realm_state.make_string_iterator_value(s) },
+            // String primitives have no own symbol properties. Resolve the
+            // observable String.prototype/Object.prototype chain first; the
+            // spread fallback supplies the intrinsic only when that chain is
+            // genuinely absent.
+            let inherited = self.get_property_key_with_receiver(
+              self.realm_state.get_string_proto(),
+              Symbol(sym),
+              obj,
+              loc,
             )
+            match inherited {
+              Undefined => ()
+              value => return value
+            }
           }
           return Undefined
         }
