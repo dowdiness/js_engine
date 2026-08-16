@@ -248,3 +248,192 @@ test "managed iterable spread rejects an explicit array iterator override" {
     error => raise error
   }
 }
+
+///|
+test "default symbol lookup honors Map and Set prototype overrides" {
+  let interp = Interpreter::new()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let map_iterator = make_method_func(
+    name="map iterator override",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Undefined },
+  )
+  let set_iterator = make_method_func(
+    name="set iterator override",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Undefined },
+  )
+  let map_proto = make_plain_object()
+  let set_proto = make_plain_object()
+  match map_proto {
+    Object(data) => data.bag.symbol_properties[iterator_sym.id] = map_iterator
+    _ => fail("Map prototype fixture must be an object")
+  }
+  match set_proto {
+    Object(data) => data.bag.symbol_properties[iterator_sym.id] = set_iterator
+    _ => fail("Set prototype fixture must be an object")
+  }
+  let map = Map(MapData([], prototype=Some(map_proto)))
+  let set = Set(SetData([], prototype=Some(set_proto)))
+  let map_result = interp.get_computed_property(
+    map,
+    Symbol(iterator_sym),
+    @token.Loc::default(),
+  )
+  let set_result = interp.get_computed_property(
+    set,
+    Symbol(iterator_sym),
+    @token.Loc::default(),
+  )
+  assert_true(physical_equal(map_result, map_iterator))
+  assert_true(physical_equal(set_result, set_iterator))
+}
+
+///|
+test "default symbol lookup shadows getterless accessors" {
+  let interp = Interpreter::new()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let inherited = make_method_func(
+    name="inherited iterator",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Undefined },
+  )
+  let proto = make_plain_object()
+  match proto {
+    Object(data) => data.bag.symbol_properties[iterator_sym.id] = inherited
+    _ => fail("prototype fixture must be an object")
+  }
+  let setter = make_method_func(
+    name="setter",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Undefined },
+  )
+  let setter_only = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: Some(setter),
+    is_accessor: true,
+  }
+  let getter_undefined = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: true,
+  }
+  let object_setter = make_object(Map([]), proto, None, "Object", Map([]), true)
+  let object_getter_undefined = make_object(
+    Map([]),
+    proto,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let array_setter = make_array([])
+  let array_getter_undefined = make_array([])
+  let map_setter = Map(MapData([]))
+  let map_getter_undefined = Map(MapData([]))
+  let set_setter = Set(SetData([]))
+  let set_getter_undefined = Set(SetData([]))
+  match object_setter {
+    Object(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Object fixture must be an object")
+  }
+  match object_getter_undefined {
+    Object(data) =>
+      data.bag.symbol_descriptors[iterator_sym.id] = getter_undefined
+    _ => fail("Object fixture must be an object")
+  }
+  match array_setter {
+    Array(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Array fixture must be an array")
+  }
+  match array_getter_undefined {
+    Array(data) =>
+      data.bag.symbol_descriptors[iterator_sym.id] = getter_undefined
+    _ => fail("Array fixture must be an array")
+  }
+  match map_setter {
+    Map(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Map fixture must be a Map")
+  }
+  match map_getter_undefined {
+    Map(data) => data.bag.symbol_descriptors[iterator_sym.id] = getter_undefined
+    _ => fail("Map fixture must be a Map")
+  }
+  match set_setter {
+    Set(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Set fixture must be a Set")
+  }
+  match set_getter_undefined {
+    Set(data) => data.bag.symbol_descriptors[iterator_sym.id] = getter_undefined
+    _ => fail("Set fixture must be a Set")
+  }
+  let key = Symbol(iterator_sym)
+  let loc = @token.Loc::default()
+  assert_true(
+    interp.get_computed_property(object_setter, key, loc) is Undefined,
+  )
+  assert_true(
+    interp.get_computed_property(object_getter_undefined, key, loc) is Undefined,
+  )
+  assert_true(interp.get_computed_property(array_setter, key, loc) is Undefined)
+  assert_true(
+    interp.get_computed_property(array_getter_undefined, key, loc) is Undefined,
+  )
+  assert_true(interp.get_computed_property(map_setter, key, loc) is Undefined)
+  assert_true(
+    interp.get_computed_property(map_getter_undefined, key, loc) is Undefined,
+  )
+  assert_true(interp.get_computed_property(set_setter, key, loc) is Undefined)
+  assert_true(
+    interp.get_computed_property(set_getter_undefined, key, loc) is Undefined,
+  )
+}
+
+///|
+test "bare Map and Set fallback cannot bypass getterless own iterators" {
+  let iterator_marker = make_method_func(
+    name="intrinsic fallback marker",
+    realm_state=None,
+    fn(_this_value, _args) { Undefined },
+  )
+  let hooks = {
+    ..default_stdlib_hooks(),
+    get_map_method: fn(_data, _prop, _realm_state) { iterator_marker },
+    get_set_method: fn(_data, _prop, _realm_state) { iterator_marker },
+  }
+  let interp = Interpreter::new(stdlib_hooks=hooks)
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
+  let setter = make_method_func(
+    name="setter",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Undefined },
+  )
+  let setter_only = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: Some(setter),
+    is_accessor: true,
+  }
+  let map = Map(MapData([]))
+  let set = Set(SetData([]))
+  match map {
+    Map(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Map fixture must be a Map")
+  }
+  match set {
+    Set(data) => data.bag.symbol_descriptors[iterator_sym.id] = setter_only
+    _ => fail("Set fixture must be a Set")
+  }
+  let key = Symbol(iterator_sym)
+  let loc = @token.Loc::default()
+  assert_true(interp.get_computed_property(map, key, loc) is Undefined)
+  assert_true(interp.get_computed_property(set, key, loc) is Undefined)
+}

@@ -179,6 +179,47 @@ test "Engine iterable spread preserves order and reuse" {
 }
 
 ///|
+test "Engine iterable spread preserves deep guest re-entry and queued effects" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function makeIterable(level) {
+      #|  return { [Symbol.iterator]: function() {
+      #|    var index = 0;
+      #|    return { next: function() {
+      #|      var current = index;
+      #|      events.push("next:" + level + ":" + current);
+      #|      if (current === 1) return { done: true };
+      #|      index = index + 1;
+      #|      if (level === 3) queueMicrotask(function() { events.push("micro:3:0"); });
+      #|      var nested = level === 0 ? [] : [...makeIterable(level - 1)];
+      #|      return { done: false, value: level + ":" + nested.length };
+      #|    } };
+      #|  } };
+      #|}
+      #|function deepSpread() { return [...makeIterable(3)].join(","); }
+      #|function eventsSnapshot() { return events; }
+    ),
+  )
+  json_inspect(engine.call_json("deepSpread", []), content="3:1")
+  json_inspect(engine.call_json("eventsSnapshot", []), content=[
+    "next:3:0", "next:2:0", "next:1:0", "next:0:0", "next:0:1", "next:1:1", "next:2:1",
+    "next:3:1",
+  ])
+  expect_bool(engine.has_pending_microtasks(), true, "iterable spread queue")
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "iterable spread queue checkpoint",
+  )
+  json_inspect(engine.call_json("eventsSnapshot", []), content=[
+    "next:3:0", "next:2:0", "next:1:0", "next:0:0", "next:0:1", "next:1:1", "next:2:1",
+    "next:3:1", "micro:3:0",
+  ])
+}
+
+///|
 test "Engine iterable spread observes inherited iterator overrides" {
   let engine = @js_engine.Engine()
   let source =
@@ -284,6 +325,152 @@ test "Engine iterable spread does not probe replaced array prototypes" {
     "getCalls": 1,
     "hasCalls": 0,
     "receiverIsArray": true,
+  })
+}
+
+///|
+test "Engine iterable spread honors Map and Set iterator overrides" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function mapSetIteratorMatrix() {
+    #|  var result = {};
+    #|  var map = new Map();
+    #|  map.set(1, "one");
+    #|  var set = new Set();
+    #|  set.add(2);
+    #|  var mapCalls = 0;
+    #|  var setCalls = 0;
+    #|  var mapReceiver = false;
+    #|  var setReceiver = false;
+    #|  var mapProto = {};
+    #|  var setProto = {};
+    #|  Object.defineProperty(mapProto, Symbol.iterator, { value: function() {
+    #|    "use strict";
+    #|    mapCalls = mapCalls + 1;
+    #|    mapReceiver = this === map;
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  Object.defineProperty(setProto, Symbol.iterator, { value: function() {
+    #|    "use strict";
+    #|    setCalls = setCalls + 1;
+    #|    setReceiver = this === set;
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  Object.setPrototypeOf(map, mapProto);
+    #|  Object.setPrototypeOf(set, setProto);
+    #|  try { result.mapCustom = [...map].length; }
+    #|  catch (error) { result.mapCustom = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { result.setCustom = [...set].length; }
+    #|  catch (error) { result.setCustom = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.mapCalls = mapCalls;
+    #|  result.setCalls = setCalls;
+    #|  result.mapReceiver = mapReceiver;
+    #|  result.setReceiver = setReceiver;
+    #|  var mapUndefinedProto = {};
+    #|  var setUndefinedProto = {};
+    #|  Object.defineProperty(mapUndefinedProto, Symbol.iterator, { value: undefined });
+    #|  Object.defineProperty(setUndefinedProto, Symbol.iterator, { value: undefined });
+    #|  Object.setPrototypeOf(map, mapUndefinedProto);
+    #|  Object.setPrototypeOf(set, setUndefinedProto);
+    #|  try { [...map]; result.mapUndefined = "completed"; }
+    #|  catch (error) { result.mapUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...set]; result.setUndefined = "completed"; }
+    #|  catch (error) { result.setUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  var mapGetterCalls = 0;
+    #|  var setGetterCalls = 0;
+    #|  var mapGetterProto = {};
+    #|  var setGetterProto = {};
+    #|  Object.defineProperty(mapGetterProto, Symbol.iterator, { get: function() {
+    #|    mapGetterCalls = mapGetterCalls + 1;
+    #|    throw new TypeError("map getter");
+    #|  } });
+    #|  Object.defineProperty(setGetterProto, Symbol.iterator, { get: function() {
+    #|    setGetterCalls = setGetterCalls + 1;
+    #|    throw new TypeError("set getter");
+    #|  } });
+    #|  Object.setPrototypeOf(map, mapGetterProto);
+    #|  Object.setPrototypeOf(set, setGetterProto);
+    #|  try { [...map]; result.mapGetter = "completed"; }
+    #|  catch (error) { result.mapGetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...set]; result.setGetter = "completed"; }
+    #|  catch (error) { result.setGetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.mapGetterCalls = mapGetterCalls;
+    #|  result.setGetterCalls = setGetterCalls;
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("mapSetIteratorMatrix", []), content={
+    "mapCustom": 0,
+    "setCustom": 0,
+    "mapCalls": 1,
+    "setCalls": 1,
+    "mapReceiver": true,
+    "setReceiver": true,
+    "mapUndefined": "TypeError",
+    "setUndefined": "TypeError",
+    "mapGetter": "TypeError",
+    "setGetter": "TypeError",
+    "mapGetterCalls": 1,
+    "setGetterCalls": 1,
+  })
+}
+
+///|
+test "Engine iterable spread shadows getterless iterator accessors" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function getterlessIteratorMatrix() {
+    #|  var result = {};
+    #|  var inheritedProto = {};
+    #|  Object.defineProperty(inheritedProto, Symbol.iterator, { value: function() {
+    #|    return { next: function() { return { done: true }; } };
+    #|  } });
+    #|  var objectSetter = {};
+    #|  var objectGetterUndefined = {};
+    #|  Object.setPrototypeOf(objectSetter, inheritedProto);
+    #|  Object.setPrototypeOf(objectGetterUndefined, inheritedProto);
+    #|  Object.defineProperty(objectSetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(objectGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  var arraySetter = [1, 2];
+    #|  var arrayGetterUndefined = [1, 2];
+    #|  Object.defineProperty(arraySetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(arrayGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  var mapSetter = new Map();
+    #|  var mapGetterUndefined = new Map();
+    #|  Object.defineProperty(mapSetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(mapGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  var setSetter = new Set();
+    #|  var setGetterUndefined = new Set();
+    #|  Object.defineProperty(setSetter, Symbol.iterator, { set: function(value) {} });
+    #|  Object.defineProperty(setGetterUndefined, Symbol.iterator, { get: undefined });
+    #|  try { [...objectSetter]; result.objectSetter = "completed"; }
+    #|  catch (error) { result.objectSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...objectGetterUndefined]; result.objectGetterUndefined = "completed"; }
+    #|  catch (error) { result.objectGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...arraySetter]; result.arraySetter = "completed"; }
+    #|  catch (error) { result.arraySetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...arrayGetterUndefined]; result.arrayGetterUndefined = "completed"; }
+    #|  catch (error) { result.arrayGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...mapSetter]; result.mapSetter = "completed"; }
+    #|  catch (error) { result.mapSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...mapGetterUndefined]; result.mapGetterUndefined = "completed"; }
+    #|  catch (error) { result.mapGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...setSetter]; result.setSetter = "completed"; }
+    #|  catch (error) { result.setSetter = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...setGetterUndefined]; result.setGetterUndefined = "completed"; }
+    #|  catch (error) { result.setGetterUndefined = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("getterlessIteratorMatrix", []), content={
+    "objectSetter": "TypeError",
+    "objectGetterUndefined": "TypeError",
+    "arraySetter": "TypeError",
+    "arrayGetterUndefined": "TypeError",
+    "mapSetter": "TypeError",
+    "mapGetterUndefined": "TypeError",
+    "setSetter": "TypeError",
+    "setGetterUndefined": "TypeError",
   })
 }
 

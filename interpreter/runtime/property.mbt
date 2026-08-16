@@ -715,7 +715,10 @@ fn Interpreter::get_computed_property_impl(
             Some(desc) =>
               match desc.getter {
                 Some(getter) => return self.call_value(getter, obj, [], loc)
-                None => ()
+                None =>
+                  if desc.is_accessor || desc.setter is Some(_) {
+                    return Undefined
+                  }
               }
             None => ()
           }
@@ -734,7 +737,10 @@ fn Interpreter::get_computed_property_impl(
                         match desc.getter {
                           Some(getter) =>
                             return self.call_value(getter, obj, [], loc)
-                          None => ()
+                          None =>
+                            if desc.is_accessor || desc.setter is Some(_) {
+                              return Undefined
+                            }
                         }
                       None => ()
                     }
@@ -821,7 +827,10 @@ fn Interpreter::get_computed_property_impl(
             Some(desc) =>
               match desc.getter {
                 Some(getter) => return self.call_value(getter, obj, [], loc)
-                None => ()
+                None =>
+                  if desc.is_accessor || desc.setter is Some(_) {
+                    return Undefined
+                  }
               }
             None => ()
           }
@@ -840,7 +849,10 @@ fn Interpreter::get_computed_property_impl(
                 Some(desc) =>
                   match desc.getter {
                     Some(getter) => return self.call_value(getter, obj, [], loc)
-                    None => ()
+                    None =>
+                      if desc.is_accessor || desc.setter is Some(_) {
+                        return Undefined
+                      }
                   }
                 None => ()
               }
@@ -884,7 +896,40 @@ fn Interpreter::get_computed_property_impl(
           return Undefined
         }
         Map(map_data) => {
-          // Check expando symbol properties first (instance fields from subclasses)
+          let iterator_sym = well_known_symbols.iterator
+          if sym.id == iterator_sym.id {
+            // Map @@iterator reads use canonical receiver-aware [[Get]] so
+            // inherited overrides, accessors, and per-instance prototypes
+            // remain observable to both Tree-walker and managed consumers.
+            let resolved = self.get_property_key_with_receiver(
+              obj,
+              Symbol(sym),
+              obj,
+              loc,
+            )
+            match resolved {
+              Undefined => {
+                // A bare runtime has no materialized Map.prototype. Preserve
+                // its callback-free intrinsic fallback without crossing any
+                // property or Proxy dispatch boundary.
+                let bare_prototype = map_data.prototype is None &&
+                  self.realm_state.get_map_proto() is Null &&
+                  map_data.bag.symbol_descriptors.get(sym.id) is None &&
+                  map_data.bag.symbol_properties.get(sym.id) is None
+                if bare_prototype {
+                  return (self.stdlib_hooks.get_map_method)(
+                    map_data,
+                    "entries",
+                    self.realm_state,
+                  )
+                }
+                return Undefined
+              }
+              value => return value
+            }
+          }
+          // Preserve Map's existing non-iterator symbol behavior: expandos
+          // are local and unrecognized inherited symbols remain absent.
           match map_data.bag.symbol_descriptors.get(sym.id) {
             Some(desc) =>
               match desc.getter {
@@ -897,15 +942,6 @@ fn Interpreter::get_computed_property_impl(
             Some(v) => return v
             None => ()
           }
-          // Well-known symbols
-          let iterator_sym = well_known_symbols.iterator
-          if sym.id == iterator_sym.id {
-            return (self.stdlib_hooks.get_map_method)(
-              map_data,
-              "entries",
-              self.realm_state,
-            )
-          }
           let tostringtag_sym = well_known_symbols.to_string_tag
           if sym.id == tostringtag_sym.id {
             return String_("Map")
@@ -913,7 +949,34 @@ fn Interpreter::get_computed_property_impl(
           return Undefined
         }
         Set(set_data) => {
-          // Check expando symbol properties first (instance fields from subclasses)
+          let iterator_sym = well_known_symbols.iterator
+          if sym.id == iterator_sym.id {
+            // Set @@iterator mirrors Map's canonical receiver-aware lookup.
+            let resolved = self.get_property_key_with_receiver(
+              obj,
+              Symbol(sym),
+              obj,
+              loc,
+            )
+            match resolved {
+              Undefined => {
+                let bare_prototype = set_data.prototype is None &&
+                  self.realm_state.get_set_proto() is Null &&
+                  set_data.bag.symbol_descriptors.get(sym.id) is None &&
+                  set_data.bag.symbol_properties.get(sym.id) is None
+                if bare_prototype {
+                  return (self.stdlib_hooks.get_set_method)(
+                    set_data,
+                    "values",
+                    self.realm_state,
+                  )
+                }
+                return Undefined
+              }
+              value => return value
+            }
+          }
+          // Preserve Set's existing non-iterator symbol behavior.
           match set_data.bag.symbol_descriptors.get(sym.id) {
             Some(desc) =>
               match desc.getter {
@@ -925,15 +988,6 @@ fn Interpreter::get_computed_property_impl(
           match set_data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
             None => ()
-          }
-          // Well-known symbols
-          let iterator_sym = well_known_symbols.iterator
-          if sym.id == iterator_sym.id {
-            return (self.stdlib_hooks.get_set_method)(
-              set_data,
-              "values",
-              self.realm_state,
-            )
           }
           let tostringtag_sym = well_known_symbols.to_string_tag
           if sym.id == tostringtag_sym.id {

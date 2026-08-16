@@ -62,6 +62,47 @@ test "candidate external Engine iterable spread remains reusable" {
 }
 
 ///|
+test "candidate Engine iterable spread preserves deep guest re-entry and queue" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function makeIterable(level) {
+      #|  return { [Symbol.iterator]: function() {
+      #|    var index = 0;
+      #|    return { next: function() {
+      #|      var current = index;
+      #|      events.push("next:" + level + ":" + current);
+      #|      if (current === 1) return { done: true };
+      #|      index = index + 1;
+      #|      if (level === 3) queueMicrotask(function() { events.push("micro:3:0"); });
+      #|      var nested = level === 0 ? [] : [...makeIterable(level - 1)];
+      #|      return { done: false, value: level + ":" + nested.length };
+      #|    } };
+      #|  } };
+      #|}
+      #|function deepSpread() { return [...makeIterable(3)].join(","); }
+      #|function eventsSnapshot() { return events; }
+    ),
+  )
+  json_inspect(engine.call_json("deepSpread", []), content="3:1")
+  json_inspect(engine.call_json("eventsSnapshot", []), content=[
+    "next:3:0", "next:2:0", "next:1:0", "next:0:0", "next:0:1", "next:1:1", "next:2:1",
+    "next:3:1",
+  ])
+  expect_bool(engine.has_pending_microtasks(), true, "candidate spread queue")
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "candidate spread queue checkpoint",
+  )
+  json_inspect(engine.call_json("eventsSnapshot", []), content=[
+    "next:3:0", "next:2:0", "next:1:0", "next:0:0", "next:0:1", "next:1:1", "next:2:1",
+    "next:3:1", "micro:3:0",
+  ])
+}
+
+///|
 test "candidate Engine iterable spread observes inherited iterator overrides" {
   let engine = @js_engine.Engine()
   let source =
@@ -152,6 +193,165 @@ test "candidate Engine iterable spread does not probe replaced array prototypes"
     "hasCalls": 0,
     "receiverIsArray": true,
   })
+}
+
+///|
+test "candidate minimal Map iterator prototype probe" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var map = new Map();
+    #|var proto = {};
+    #|var calls = 0;
+    #|var receiver = false;
+    #|Object.defineProperty(proto, Symbol.iterator, { value: function() {
+    #|  calls = calls + 1;
+    #|  receiver = this === map;
+    #|  return { next: function() { return { done: true }; } };
+    #|} });
+    #|Object.setPrototypeOf(map, proto);
+    #|function probe() { return [...map].length + ":" + calls + ":" + receiver; }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="0:1:true")
+}
+
+///|
+test "candidate minimal Set iterator prototype probe" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var set = new Set();
+    #|var proto = {};
+    #|var calls = 0;
+    #|var receiver = false;
+    #|Object.defineProperty(proto, Symbol.iterator, { value: function() {
+    #|  calls = calls + 1;
+    #|  receiver = this === set;
+    #|  return { next: function() { return { done: true }; } };
+    #|} });
+    #|Object.setPrototypeOf(set, proto);
+    #|function probe() { return [...set].length + ":" + calls + ":" + receiver; }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="0:1:true")
+}
+
+///|
+test "candidate minimal Map getter iterator prototype probe" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var map = new Map();
+    #|var proto = {};
+    #|var gets = 0;
+    #|Object.defineProperty(proto, Symbol.iterator, { get: function() {
+    #|  gets = gets + 1;
+    #|  throw new TypeError("getter");
+    #|} });
+    #|Object.setPrototypeOf(map, proto);
+    #|function probe() { try { [...map]; return "completed"; } catch (error) { return error instanceof TypeError ? gets + ":TypeError" : "other"; } }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="1:TypeError")
+}
+
+///|
+test "candidate inherited Map and Set undefined iterators remain errors" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function probe() {
+    #|  var result = {};
+    #|  Map.prototype[Symbol.iterator] = undefined;
+    #|  Set.prototype[Symbol.iterator] = undefined;
+    #|  try { [...new Map()]; result.map = "completed"; }
+    #|  catch (error) { result.map = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  try { [...new Set()]; result.set = "completed"; }
+    #|  catch (error) { result.set = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content={
+    "map": "TypeError",
+    "set": "TypeError",
+  })
+}
+
+///|
+test "candidate inherited Map iterator getter propagates once" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var gets = 0;
+    #|Object.defineProperty(Map.prototype, Symbol.iterator, { get: function() {
+    #|  gets = gets + 1;
+    #|  throw new TypeError("iterator getter");
+    #|} });
+    #|function probe() {
+    #|  try { [...new Map()]; return "completed"; }
+    #|  catch (error) { return error instanceof TypeError ? gets + ":TypeError" : "other"; }
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="1:TypeError")
+}
+
+///|
+test "candidate inherited Set iterator getter propagates once" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var gets = 0;
+    #|Object.defineProperty(Set.prototype, Symbol.iterator, { get: function() {
+    #|  gets = gets + 1;
+    #|  throw new TypeError("iterator getter");
+    #|} });
+    #|function probe() {
+    #|  try { [...new Set()]; return "completed"; }
+    #|  catch (error) { return error instanceof TypeError ? gets + ":TypeError" : "other"; }
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="1:TypeError")
+}
+
+///|
+test "candidate getterless Object iterator accessor shadows its prototype" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var inherited = {};
+    #|Object.defineProperty(inherited, Symbol.iterator, { value: function() {
+    #|  return { next: function() { return { done: true }; } };
+    #|} });
+    #|var object = {};
+    #|Object.setPrototypeOf(object, inherited);
+    #|Object.defineProperty(object, Symbol.iterator, { set: function(value) {} });
+    #|function probe() { try { [...object]; return "completed"; } catch (error) { return error instanceof TypeError ? "TypeError" : "other"; } }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="TypeError")
+}
+
+///|
+test "candidate getterless Array iterator accessor shadows its intrinsic" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var array = [1, 2];
+    #|Object.defineProperty(array, Symbol.iterator, { get: undefined });
+    #|function probe() { try { [...array]; return "completed"; } catch (error) { return error instanceof TypeError ? "TypeError" : "other"; } }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="TypeError")
+}
+
+///|
+test "candidate getterless Map iterator accessor shadows its intrinsic" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var map = new Map();
+    #|Object.defineProperty(map, Symbol.iterator, { set: function(value) {} });
+    #|function probe() { try { [...map]; return "completed"; } catch (error) { return error instanceof TypeError ? "TypeError" : "other"; } }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="TypeError")
+}
+
+///|
+test "candidate getterless Set iterator accessor shadows its intrinsic" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|var set = new Set();
+    #|Object.defineProperty(set, Symbol.iterator, { get: undefined });
+    #|function probe() { try { [...set]; return "completed"; } catch (error) { return error instanceof TypeError ? "TypeError" : "other"; } }
+  engine.eval(source)
+  json_inspect(engine.call_json("probe", []), content="TypeError")
 }
 
 ///|
