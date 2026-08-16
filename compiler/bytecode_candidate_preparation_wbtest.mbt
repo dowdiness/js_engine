@@ -514,6 +514,49 @@ test "candidate computed compound addition stays tree-walker" {
 }
 
 ///|
+// RED: property deletion must eventually admit the called function through
+// the candidate route even when the target is a Proxy.
+test "RED: candidate static Proxy deletion enters bytecode" {
+  let source =
+    #|function remove(target) { return delete target.value; }
+    #|var target = {};
+    #|var proxy = new Proxy(target, {});
+    #|remove(proxy);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 2 else {
+    fail("static Proxy deletion did not start its callable")
+  }
+  match starts[1] {
+    CandidateBytecodeExecutor => ()
+    CandidateTreeWalkerExecutor =>
+      fail("static Proxy deletion remained on the tree walker")
+  }
+}
+
+///|
+// RED: computed deletion must eventually admit the called function through
+// the candidate route while retaining the raw key for runtime coercion.
+test "RED: candidate computed deletion enters bytecode" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var target = {};
+    #|remove(target, "value");
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() >= 2 else {
+    fail("computed deletion did not start its callable")
+  }
+  match starts[1] {
+    CandidateBytecodeExecutor => ()
+    CandidateTreeWalkerExecutor =>
+      fail("computed deletion remained on the tree walker")
+  }
+}
+
+///|
 test "candidate sibling subtraction stays tree-walker" {
   assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
 }
