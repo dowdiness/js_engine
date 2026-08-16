@@ -557,6 +557,163 @@ test "RED: candidate computed deletion enters bytecode" {
 }
 
 ///|
+test "candidate static deletion preserves ordinary descriptor semantics" {
+  let source =
+    #|function remove(target) { return delete target.value; }
+    #|function strictRemove(target) { "use strict"; return delete target.value; }
+    #|var configurable = { value: 1 };
+    #|var absent = {};
+    #|var fixed = {};
+    #|Object.defineProperty(fixed, "value", { value: 1, configurable: false });
+    #|var accessorCalls = 0;
+    #|var accessor = {};
+    #|Object.defineProperty(accessor, "value", {
+    #|  get: function() { accessorCalls = accessorCalls + 1; throw new Error("getter"); },
+    #|  set: function(value) { accessorCalls = accessorCalls + 1; },
+    #|  configurable: true
+    #|});
+    #|var configurableResult = remove(configurable);
+    #|var absentResult = remove(absent);
+    #|var sloppyFixedResult = remove(fixed);
+    #|var strictThrew = false;
+    #|try { strictRemove(fixed); } catch (error) { strictThrew = true; }
+    #|var accessorResult = remove(accessor);
+    #|configurableResult && absentResult && sloppyFixedResult === false &&
+    #|  strictThrew && accessorResult && accessorCalls === 0 &&
+    #|  Object.getOwnPropertyDescriptor(configurable, "value") === undefined &&
+    #|  Object.getOwnPropertyDescriptor(accessor, "value") === undefined;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate computed deletion owns String hint ToPropertyKey" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var target = { value: 1, "7": 2 };
+    #|var symbol = Symbol("value");
+    #|target[symbol] = 3;
+    #|var hint = "";
+    #|var symbolKey = {
+    #|  [Symbol.toPrimitive]: function(value) { hint = hint + value; return symbol; }
+    #|};
+    #|var order = "";
+    #|var fallbackKey = {
+    #|  toString: function() { order = order + "t"; return {}; },
+    #|  valueOf: function() { order = order + "v"; return "7"; }
+    #|};
+    #|var objectResultKey = { toString: function() { return {}; }, valueOf: function() { return {}; } };
+    #|var symbolResult = remove(target, symbolKey);
+    #|var numberResult = remove(target, 7);
+    #|var fallbackResult = remove(target, fallbackKey);
+    #|var objectResultThrew = false;
+    #|try { remove(target, objectResultKey); } catch (error) { objectResultThrew = true; }
+    #|symbolResult && numberResult && fallbackResult && hint === "string" &&
+    #|  order === "tv" && objectResultThrew &&
+    #|  target[symbol] === undefined && target["7"] === undefined;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate Proxy deletion suspends trap forwarding and invariants" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var forwardedTarget = { value: 1 };
+    #|var forwarded = new Proxy(forwardedTarget, {});
+    #|var forwardedResult = remove(forwarded, "value");
+    #|var handler;
+    #|var receiverSeen = false;
+    #|var argsSeen = false;
+    #|handler = {
+    #|  deleteProperty: function(target, key) {
+    #|    receiverSeen = this === handler;
+    #|    argsSeen = target === trappedTarget && key === "value";
+    #|    return false;
+    #|  }
+    #|};
+    #|var trappedTarget = { value: 1 };
+    #|var trapped = new Proxy(trappedTarget, handler);
+    #|var sloppyFalse = remove(trapped, "value");
+    #|var strictThrew = false;
+    #|function strictRemove(target, key) { "use strict"; return delete target[key]; }
+    #|try { strictRemove(trapped, "value"); } catch (error) { strictThrew = true; }
+    #|var trueTarget = { value: 1 };
+    #|var trueProxy = new Proxy(trueTarget, { deleteProperty: function() { return true; } });
+    #|var trueResult = remove(trueProxy, "value");
+    #|var nonCallableThrew = false;
+    #|try { remove(new Proxy({}, { deleteProperty: 1 }), "value"); } catch (error) { nonCallableThrew = true; }
+    #|var getterThrew = false;
+    #|var getterHandler = {};
+    #|Object.defineProperty(getterHandler, "deleteProperty", { get: function() { throw new Error("get"); } });
+    #|try { remove(new Proxy({}, getterHandler), "value"); } catch (error) { getterThrew = true; }
+    #|var callThrew = false;
+    #|try { remove(new Proxy({}, { deleteProperty: function() { throw new Error("call"); } }), "value"); } catch (error) { callThrew = true; }
+    #|var revoked = Proxy.revocable({}, {});
+    #|revoked.revoke();
+    #|var revokedThrew = false;
+    #|try { remove(revoked.proxy, "value"); } catch (error) { revokedThrew = true; }
+    #|var nonConfigTarget = {};
+    #|Object.defineProperty(nonConfigTarget, "value", { value: 1, configurable: false });
+    #|var nonConfigThrew = false;
+    #|try { remove(new Proxy(nonConfigTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { nonConfigThrew = true; }
+    #|var sealedTarget = {};
+    #|Object.preventExtensions(sealedTarget);
+    #|var missingThrew = false;
+    #|try { remove(new Proxy(sealedTarget, { deleteProperty: function() { return true; } }), "value"); } catch (error) { missingThrew = true; }
+    #|forwardedResult && forwardedTarget.value === undefined && sloppyFalse === false &&
+    #|  strictThrew && trueResult && receiverSeen && argsSeen && nonCallableThrew &&
+    #|  getterThrew && callThrew && revokedThrew && nonConfigThrew && missingThrew;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate nested Proxy delete forwarding suspends invariant guest edges" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var forwardingEvents = "";
+    #|var forwardingInner = new Proxy({ value: 1 }, {
+    #|  deleteProperty: function(target, key) { forwardingEvents = forwardingEvents + "i"; return true; }
+    #|});
+    #|var forwardingOuter = new Proxy(forwardingInner, {});
+    #|var forwarded = remove(forwardingOuter, "value");
+    #|var invariantEvents = "";
+    #|var invariantRaw = {};
+    #|var invariantInner = new Proxy(invariantRaw, {
+    #|  isExtensible: function(target) { invariantEvents = invariantEvents + "e"; return true; }
+    #|});
+    #|var invariantMiddle = new Proxy(invariantInner, {
+    #|  getOwnPropertyDescriptor: function(target, key) {
+    #|    invariantEvents = invariantEvents + "a";
+    #|    return undefined;
+    #|  }
+    #|});
+    #|var invariantOuter = new Proxy(invariantMiddle, { deleteProperty: function() { return true; } });
+    #|var invariantResult = remove(invariantOuter, "missing");
+    #|forwarded && forwardingEvents === "i" && invariantResult && invariantEvents === "aee";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate non-property deletion remains lowering unsupported" {
+  assert_bytecode_unsupported("function remove() { return delete 1; }", DeleteNonPropertyOperator)
+}
+
+///|
 test "candidate sibling subtraction stays tree-walker" {
   assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
 }

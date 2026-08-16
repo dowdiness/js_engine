@@ -617,6 +617,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing addition",
       )
+    @runtime.ExecutorActivationPropertyDelete(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending property delete",
+      )
   }
 }
 
@@ -749,14 +753,42 @@ fn BytecodeFrame::step_bytecode(
         stack.push(@runtime.eval_delete_identifier(interp, ctx, env, name))
       DeleteProperty(prop) => {
         let obj = frame.pop()
-        stack.push(@runtime.eval_delete_property(interp, obj, prop, ctx.strict))
+        match
+          @runtime.begin_executor_property_delete_static(
+            interp,
+            obj,
+            prop,
+            ctx.strict,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorPropertyDeleteCompleted(value) => stack.push(value)
+          @runtime.ExecutorPropertyDeleteSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_property_delete_request(request),
+            )
+          }
+        }
       }
       DeleteComputed => {
         let key = frame.pop()
         let obj = frame.pop()
-        stack.push(
-          @runtime.eval_delete_computed_property(interp, obj, key, ctx.strict),
-        )
+        match
+          @runtime.begin_executor_property_delete_computed(
+            interp,
+            obj,
+            key,
+            ctx.strict,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorPropertyDeleteCompleted(value) => stack.push(value)
+          @runtime.ExecutorPropertyDeleteSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_property_delete_request(request),
+            )
+          }
+        }
       }
       AppendTemplate(tail) => {
         let value = frame.pop()

@@ -554,13 +554,13 @@ fn bytecode_instruction_contract(
     BinaryOp(op, origin, _) => bytecode_binary_contract(op, origin)
     UnaryValueOp(op, _) => bytecode_unary_contract(op)
     DeleteProperty(_) =>
-      bytecode_contract(true, UnsupportedBeforeActivation(DeleteProperty), [
+      bytecode_contract(true, ManagedSuspension, [
         MemberAccess,
       ])
     DeleteComputed =>
       bytecode_contract(
         true,
-        UnsupportedBeforeActivation(DeleteComputedProperty),
+        ManagedSuspension,
         [MemberAccess, PropertyKey],
       )
     AppendTemplate(_) =>
