@@ -1298,8 +1298,7 @@ fn executor_iterable_spread_completion(
   step : ExecutorActivationStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value)
-    | ExecutorActivationReturn(value) =>
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
       ExecutorActivationCompletionNormal(value)
     _ =>
       ExecutorActivationCompletionAbrupt(

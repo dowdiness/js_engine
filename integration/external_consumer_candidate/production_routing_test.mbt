@@ -42,6 +42,26 @@ test "candidate override fixture uses the stable Engine contract" {
 }
 
 ///|
+test "candidate external Engine iterable spread remains reusable" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "function arraySpread() { return [0, ...[1, 2], 3].join(','); } " +
+    "function callSpread(left, right) { " +
+    "return (function(a, b, c, d) { return [a, b, c, d].join(','); })(" +
+    "0, ...left, 2, ...right); }",
+  )
+  json_inspect(engine.call_json("arraySpread", []), content="0,1,2,3")
+  json_inspect(
+    engine.call_json("callSpread", [
+      Json::array([Json::number(1.0)]),
+      Json::array([Json::number(3.0)]),
+    ]),
+    content="0,1,2,3",
+  )
+  json_inspect(engine.call_json("arraySpread", []), content="0,1,2,3")
+}
+
+///|
 test "candidate Engine routes plain addition coercion and remains reusable" {
   let engine = @js_engine.Engine()
   engine.eval("function add(left, right) { return left + right; }")

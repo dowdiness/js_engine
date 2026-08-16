@@ -55,9 +55,20 @@ effects and does not append a partial batch. No `IteratorClose` is introduced.
 
 `ArrayPushSpread` and `ArgPushSpread` graduate to `ManagedSuspension` only with
 the request/frame in place. `ConstructSpread` becomes typed
-`UnsupportedBeforeActivation(ConstructSpread)` (or the existing typed
-construction-specific reason); `CallDirectEval`, `ObjectSpread`,
+`UnsupportedBeforeActivation(ConstructSpread)`; `CallDirectEval`, `ObjectSpread`,
 destructuring/rest, `for-of`, async iteration, and default routing remain
 unsupported or unchanged. The explicit own `Array[Symbol.iterator] = undefined`
 case must be handled by the canonical legacy/runtime acquisition owner so it
 raises the ordinary iterable TypeError instead of taking a built-in fast path.
+
+## Landed evidence
+
+The managed frame is `ExecutorIterableSpreadFrame` and the only VM completion
+destinations are `AppendArraySpread` and `AppendArgumentSpread`. Focused
+candidate routing covers array, plain-call, receiver-call, multiple spreads,
+holes, custom iterator protocol order, constructor exclusion, direct-eval
+exclusion, and same-Engine reuse. Runtime whitebox coverage verifies receiver
+identity, abrupt completion without `IteratorClose`, and explicit Array
+`@@iterator = undefined` rejection. The semantic-edge inventory is regenerated
+by `scripts/audit_bytecode_vm_semantic_edges.py` and records the request and
+closed-batch edges.

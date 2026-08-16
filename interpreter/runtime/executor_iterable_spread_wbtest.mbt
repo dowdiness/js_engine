@@ -58,13 +58,14 @@ fn run_executor_iterable_spread_for_wb(
   iterable : Value,
 ) -> Array[Value] raise Error {
   let root = ExecutorIterableSpreadTestRootFrame(
-    iterable~,
-    loc=@token.Loc::default(),
-  ) as &ExecutorActivationFrame
+      iterable~,
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
   match interp.run_executor_activation_coordinator(root) {
-    ExecutorActivationReturn(batch) => executor_iterable_spread_batch_values(batch)
-    _ =>
-      fail("iterable spread root must return its completed batch")
+    ExecutorActivationReturn(batch) =>
+      executor_iterable_spread_batch_values(batch)
+    _ => fail("iterable spread root must return its completed batch")
   }
 }
 
@@ -149,7 +150,14 @@ test "managed iterable spread preserves receivers and protocol order" {
       }
     },
   )
-  let iterator = make_object({ "next": next }, Null, None, "Object", Map([]), true)
+  let iterator = make_object(
+    { "next": next },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
   iterator_ref.val = iterator
   let iterator_method = make_method_func(
     name="@@iterator",
@@ -169,19 +177,9 @@ test "managed iterable spread preserves receivers and protocol order" {
   }
   let values = run_executor_iterable_spread_for_wb(interp, iterable)
   assert_spread_numbers_for_wb(values, [0.0, 1.0])
-  json_inspect(
-    events,
-    content=[
-      "iterator",
-      "next0",
-      "done0",
-      "value0",
-      "next1",
-      "done1",
-      "value1",
-      "next2",
-    ],
-  )
+  json_inspect(events, content=[
+    "iterator", "next0", "done0", "value0", "next1", "done1", "value1", "next2",
+  ])
 }
 
 ///|

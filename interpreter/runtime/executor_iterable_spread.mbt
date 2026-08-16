@@ -101,23 +101,27 @@ fn ExecutorIterableSpreadFrame::step_frame(
             callee=iterator_method,
             this_value=iterable,
             args=[],
-            loc=loc,
+            loc~,
           ),
         )
       } else {
-        match interp.default_iterable_iterator_if_unoverridden(
-          iterable,
-          iterator_method,
-        ) {
+        match
+          interp.default_iterable_iterator_if_unoverridden(
+            iterable, iterator_method,
+          ) {
           Some(iterator) => {
             self.phase = ExecutorIterableSpreadHaveIterator(iterator)
             self.step_frame(interp)
           }
-          None =>
-            raise @errors.TypeError(
-              message=type_of(iterable) +
-                " is not iterable (Symbol.iterator is not a function)",
-            )
+          None => {
+            let message = match iterator_method {
+              Undefined => type_of(iterable) + " is not iterable"
+              _ =>
+                type_of(iterable) +
+                " is not iterable (Symbol.iterator is not a function)"
+            }
+            raise @errors.TypeError(message~)
+          }
         }
       }
     ExecutorIterableSpreadHaveIterator(iterator) => {
@@ -138,7 +142,7 @@ fn ExecutorIterableSpreadFrame::step_frame(
           callee=next_method,
           this_value=iterator,
           args=[],
-          loc=loc,
+          loc~,
         ),
       )
     }
@@ -146,18 +150,12 @@ fn ExecutorIterableSpreadFrame::step_frame(
       guard is_object_value(result) else {
         raise @errors.TypeError(message="Iterator result is not an object")
       }
-      self.phase = ExecutorIterableSpreadNeedDone(
-        iterator,
-        next_method,
-        result,
-      )
+      self.phase = ExecutorIterableSpreadNeedDone(iterator, next_method, result)
       self.step_frame(interp)
     }
     ExecutorIterableSpreadNeedDone(iterator, next_method, result) => {
       self.phase = ExecutorIterableSpreadAwaitDone(
-        iterator,
-        next_method,
-        result,
+        iterator, next_method, result,
       )
       executor_activation_managed_property_get(result, "done", loc)
     }
@@ -169,17 +167,13 @@ fn ExecutorIterableSpreadFrame::step_frame(
         ExecutorActivationNormal(make_array(self.values.copy()))
       } else {
         self.phase = ExecutorIterableSpreadNeedValue(
-          iterator,
-          next_method,
-          result,
+          iterator, next_method, result,
         )
         self.step_frame(interp)
       }
     ExecutorIterableSpreadNeedValue(iterator, next_method, result) => {
       self.phase = ExecutorIterableSpreadAwaitValue(
-        iterator,
-        next_method,
-        result,
+        iterator, next_method, result,
       )
       executor_activation_managed_property_get(result, "value", loc)
     }
@@ -224,20 +218,17 @@ impl ExecutorActivationFrame for ExecutorIterableSpreadFrame with fn deliver_act
           self.phase = ExecutorIterableSpreadHaveNextMethod(iterator, value)
         ExecutorIterableSpreadAwaitNextCall(iterator, next_method) =>
           self.phase = ExecutorIterableSpreadHaveNextResult(
-            iterator,
-            next_method,
-            value,
+            iterator, next_method, value,
           )
         ExecutorIterableSpreadAwaitDone(iterator, next_method, result) =>
           self.phase = ExecutorIterableSpreadHaveDone(
-            iterator,
-            next_method,
-            result,
-            value,
+            iterator, next_method, result, value,
           )
         ExecutorIterableSpreadAwaitValue(iterator, next_method, result) => {
           self.values.push(value)
-          self.phase = ExecutorIterableSpreadHaveNextMethod(iterator, next_method)
+          self.phase = ExecutorIterableSpreadHaveNextMethod(
+            iterator, next_method,
+          )
           ignore(result)
         }
         ExecutorIterableSpreadNeedIteratorMethod(_)

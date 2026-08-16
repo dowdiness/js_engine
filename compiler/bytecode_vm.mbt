@@ -282,13 +282,15 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
           self.stack.push(value)
         }
         AppendArraySpread => {
-          let spread_values =
-            @runtime.executor_iterable_spread_batch_values(value)
+          let spread_values = @runtime.executor_iterable_spread_batch_values(
+            value,
+          )
           @runtime.apply_array_literal_spread(self.peek(), spread_values)
         }
         AppendArgumentSpread => {
-          let spread_values =
-            @runtime.executor_iterable_spread_batch_values(value)
+          let spread_values = @runtime.executor_iterable_spread_batch_values(
+            value,
+          )
           let args = self.current_arg_list()
           for spread_value in spread_values {
             args.push(spread_value)

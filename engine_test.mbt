@@ -159,6 +159,26 @@ test "Engine Array valueOf participates in addition" {
 }
 
 ///|
+test "Engine iterable spread preserves order and reuse" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "function arraySpread() { return [0, ...[1, 2], 3].join(','); } " +
+    "function callSpread(left, right) { " +
+    "return (function(a, b, c, d) { return [a, b, c, d].join(','); })(" +
+    "0, ...left, 2, ...right); }",
+  )
+  json_inspect(engine.call_json("arraySpread", []), content="0,1,2,3")
+  json_inspect(
+    engine.call_json("callSpread", [
+      Json::array([Json::number(1.0)]),
+      Json::array([Json::number(3.0)]),
+    ]),
+    content="0,1,2,3",
+  )
+  json_inspect(engine.call_json("arraySpread", []), content="0,1,2,3")
+}
+
+///|
 test "Engine Array Symbol.toPrimitive keeps hint and receiver" {
   let engine = @js_engine.Engine()
   engine.eval(

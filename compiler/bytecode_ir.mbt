@@ -595,15 +595,9 @@ fn bytecode_instruction_contract(
         Iterator,
       ])
     ArrayPushSpread(_) =>
-      bytecode_contract(true, ManagedSuspension, [
-        Spread,
-        Iterator,
-      ])
+      bytecode_contract(true, ManagedSuspension, [Spread, Iterator])
     ArgPushSpread(_) =>
-      bytecode_contract(true, ManagedSuspension, [
-        Spread,
-        Iterator,
-      ])
+      bytecode_contract(true, ManagedSuspension, [Spread, Iterator])
     ToObjectLiteralPropertyKey =>
       bytecode_contract(true, UnsupportedBeforeActivation(ObjectPropertyKey), [
         PropertyKey,
@@ -686,8 +680,7 @@ fn bytecode_instruction_contract(
     | CallSpread(_)
     | CallSpreadWithReceiver(_) =>
       bytecode_contract(true, ManagedSuspension, [Call])
-    Construct(_, _) =>
-      bytecode_contract(true, ManagedSuspension, [Construct])
+    Construct(_, _) => bytecode_contract(true, ManagedSuspension, [Construct])
     ConstructSpread(_) =>
       bytecode_contract(true, UnsupportedBeforeActivation(ConstructSpread), [
         Construct,
