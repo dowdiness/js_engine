@@ -698,6 +698,11 @@ fn executor_delete_validate_descriptor(
     )
   }
   if !existing_desc.configurable && existing_is_data && reported_is_data {
+    if reported_desc.writable && !existing_desc.writable {
+      raise @errors.TypeError(
+        message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target",
+      )
+    }
     if reported_desc.writable == false && existing_desc.writable {
       raise @errors.TypeError(
         message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and non-writable for property which is writable on the proxy target",

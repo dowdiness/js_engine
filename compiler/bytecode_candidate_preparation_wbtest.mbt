@@ -877,6 +877,31 @@ test "candidate descriptor conversion observes six fields once and completes def
 }
 
 ///|
+test "candidate rejects writable lie for frozen data descriptor" {
+  let source =
+    #|function remove(target, key) { return delete target[key]; }
+    #|var events = "";
+    #|var raw = {};
+    #|Object.defineProperty(raw, "value", { value: 1, writable: false, configurable: false });
+    #|var descriptor = { configurable: false };
+    #|Object.defineProperty(descriptor, "value", { get: function() { events = events + "v"; return 1; } });
+    #|Object.defineProperty(descriptor, "writable", { get: function() { events = events + "w"; return true; } });
+    #|var target = new Proxy(raw, { getOwnPropertyDescriptor: function() { events = events + "t"; return descriptor; } });
+    #|var errorName = "";
+    #|var errorMessage = "";
+    #|try { remove(new Proxy(target, { deleteProperty: function() { return true; } }), "value"); } catch (error) { errorName = error.name; errorMessage = error.message; }
+    #|errorName + ":" + errorMessage + ":" + events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "TypeError:'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target:tvw",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate nested Proxy target precedes descriptor getters and extensibility" {
   let source =
     #|function remove(target, key) { return delete target[key]; }

@@ -1173,6 +1173,15 @@ pub fn proxy_get_own_property(
           if trap_is_data &&
             existing_is_data &&
             !trap_desc.configurable &&
+            trap_desc.writable &&
+            !existing.writable {
+            raise @errors.TypeError(
+              message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target",
+            )
+          }
+          if trap_is_data &&
+            existing_is_data &&
+            !trap_desc.configurable &&
             !trap_desc.writable &&
             existing.writable {
             raise @errors.TypeError(
