@@ -959,59 +959,45 @@ fn partial_desc_to_value(
 
 ///|
 /// Parse a Proxy getOwnPropertyDescriptor trap's result Value into a
-/// PropDescriptor. Approximates §6.2.5.5 CompletePropertyDescriptor:
-/// fill absent writable/enumerable/configurable with false. Trap is
-/// expected to return an object (caller validates non-object rejection).
+/// completed descriptor and its completed data value. ToPropertyDescriptor
+/// observes each field in specification order, with one HasProperty and one
+/// Get for every present field; CompletePropertyDescriptor supplies defaults.
 fn trap_result_to_descriptor(
   trap_result : Value,
   interp : Interpreter,
-) -> PropDescriptor raise Error {
+) -> (PropDescriptor, Value) raise Error {
   let loc = @token.Loc::default()
-  // §6.2.5.5 ToPropertyDescriptor step 4: data and accessor fields are
-  // mutually exclusive. A trap result carrying both shapes is invalid.
-  let has_get = has_property(trap_result, "get", interp=Some(interp))
-  let has_set = has_property(trap_result, "set", interp=Some(interp))
-  let has_value_fld = has_property(trap_result, "value", interp=Some(interp))
-  let has_writable_fld = has_property(
-    trap_result,
-    "writable",
-    interp=Some(interp),
-  )
-  if (has_get || has_set) && (has_value_fld || has_writable_fld) {
-    raise @errors.TypeError(
-      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
-    )
-  }
-  let writable = if has_property(trap_result, "writable", interp=Some(interp)) {
-    is_truthy(interp.get_property(trap_result, "writable", loc))
+  let has_enumerable = interp.has_property(trap_result, "enumerable")
+  let enumerable = if has_enumerable {
+    Some(is_truthy(interp.get_property(trap_result, "enumerable", loc)))
   } else {
-    false
+    None
   }
-  let enumerable = if has_property(
-      trap_result,
-      "enumerable",
-      interp=Some(interp),
-    ) {
-    is_truthy(interp.get_property(trap_result, "enumerable", loc))
+  let has_configurable = interp.has_property(trap_result, "configurable")
+  let configurable = if has_configurable {
+    Some(is_truthy(interp.get_property(trap_result, "configurable", loc)))
   } else {
-    false
+    None
   }
-  let configurable = if has_property(
-      trap_result,
-      "configurable",
-      interp=Some(interp),
-    ) {
-    is_truthy(interp.get_property(trap_result, "configurable", loc))
+  let has_value = interp.has_property(trap_result, "value")
+  let value = if has_value {
+    Some(interp.get_property(trap_result, "value", loc))
   } else {
-    false
+    None
   }
-  // §6.2.5.5 step 7 / 9: get/set must be callable when present and non-undefined.
-  let getter = if has_property(trap_result, "get", interp=Some(interp)) {
+  let has_writable = interp.has_property(trap_result, "writable")
+  let writable = if has_writable {
+    Some(is_truthy(interp.get_property(trap_result, "writable", loc)))
+  } else {
+    None
+  }
+  let has_get = interp.has_property(trap_result, "get")
+  let getter = if has_get {
     let g = interp.get_property(trap_result, "get", loc)
     match g {
       Undefined => None
       _ => {
-        if !is_callable(g) {
+        guard is_callable(g) else {
           raise @errors.TypeError(
             message="Getter must be a function: \{g.to_string()}",
           )
@@ -1022,12 +1008,13 @@ fn trap_result_to_descriptor(
   } else {
     None
   }
-  let setter = if has_property(trap_result, "set", interp=Some(interp)) {
+  let has_set = interp.has_property(trap_result, "set")
+  let setter = if has_set {
     let s = interp.get_property(trap_result, "set", loc)
     match s {
       Undefined => None
       _ => {
-        if !is_callable(s) {
+        guard is_callable(s) else {
           raise @errors.TypeError(
             message="Setter must be a function: \{s.to_string()}",
           )
@@ -1038,27 +1025,27 @@ fn trap_result_to_descriptor(
   } else {
     None
   }
-  {
-    writable,
-    enumerable,
-    configurable,
+  let is_accessor = has_get || has_set
+  let is_data = has_value || has_writable
+  guard !(is_accessor && is_data) else {
+    raise @errors.TypeError(
+      message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
+    )
+  }
+  let descriptor : PropDescriptor = {
+    writable: writable.unwrap_or(false),
+    enumerable: enumerable.unwrap_or(false),
+    configurable: configurable.unwrap_or(false),
     getter,
     setter,
-    is_accessor: has_get || has_set,
+    is_accessor,
   }
-}
-
-///|
-/// Extract the value field from a trap result, if present.
-fn trap_result_value(
-  trap_result : Value,
-  interp : Interpreter,
-) -> Value? raise Error {
-  if has_property(trap_result, "value", interp=Some(interp)) {
-    Some(interp.get_property(trap_result, "value", @token.Loc::default()))
+  let completed_value = if is_accessor {
+    Undefined
   } else {
-    None
+    value.unwrap_or(Undefined)
   }
+  (descriptor, completed_value)
 }
 
 ///|
@@ -1146,12 +1133,9 @@ pub fn proxy_get_own_property(
       // extensibility before ToPropertyDescriptor can run guest getters.
       let target_extensible = interp.is_extensible_internal(target)
       // §10.5.5 step 12+: parse trap descriptor; run invariants.
-      let trap_desc = trap_result_to_descriptor(trap_result, interp)
-      let trap_value_opt = if !trap_desc.is_accessor {
-        trap_result_value(trap_result, interp)
-      } else {
-        None
-      }
+      let (trap_desc, trap_value) = trap_result_to_descriptor(
+        trap_result, interp,
+      )
       match target_desc {
         None => {
           // §10.5.5 step 17.c: target has no own desc; target must be
@@ -1206,11 +1190,7 @@ pub fn proxy_get_own_property(
               Some((_, value)) => value
               None => Undefined
             }
-            let trap_val = match trap_value_opt {
-              Some(v) => v
-              None => Undefined
-            }
-            if !same_value(trap_val, cur_val) {
+            if !same_value(trap_value, cur_val) {
               raise @errors.TypeError(
                 message="'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target",
               )
@@ -1244,10 +1224,6 @@ pub fn proxy_get_own_property(
             }
           }
         }
-      }
-      let trap_value = match trap_value_opt {
-        Some(v) => v
-        None => Undefined
       }
       Some((trap_desc, trap_value))
     }

@@ -2,10 +2,6 @@
 priv struct ExecutorDeleteDescriptorInfo {
   descriptor : PropDescriptor
   value : Value
-  has_value : Bool
-  has_writable : Bool
-  has_getter : Bool
-  has_setter : Bool
 }
 
 ///|
@@ -51,15 +47,7 @@ fn executor_delete_descriptor_info(
   entry : (PropDescriptor, Value)?,
 ) -> ExecutorDeleteDescriptorInfo? {
   match entry {
-    Some((descriptor, value)) =>
-      Some({
-        descriptor,
-        value,
-        has_value: !descriptor.is_accessor,
-        has_writable: !descriptor.is_accessor,
-        has_getter: descriptor.is_accessor,
-        has_setter: descriptor.is_accessor,
-      })
+    Some((descriptor, value)) => Some({ descriptor, value })
     None => None
   }
 }
@@ -499,8 +487,6 @@ fn ExecutorDeleteDescriptorParseOperation::finish_descriptor(
     },
     is_accessor,
   }
-  let has_value = self.value is Some(_)
-  let has_writable = self.writable is Some(_)
   let info = {
     descriptor,
     value: if is_accessor {
@@ -508,10 +494,6 @@ fn ExecutorDeleteDescriptorParseOperation::finish_descriptor(
     } else {
       self.value.unwrap_or(Undefined)
     },
-    has_value,
-    has_writable,
-    has_getter: self.has_getter,
-    has_setter: self.has_setter,
   }
   self.phase = ExecutorDeleteDescriptorComplete(info)
   ExecutorActivationNormal(Undefined)
@@ -708,65 +690,45 @@ fn executor_delete_validate_descriptor(
       message="'getOwnPropertyDescriptor' on proxy: trap reported different enumerable for non-configurable property on proxy target",
     )
   }
-  let existing_is_data = existing.has_value || existing.has_writable
-  let existing_is_accessor = existing.has_getter || existing.has_setter
-  let reported_is_data = reported.has_value || reported.has_writable
-  let reported_is_accessor = reported.has_getter || reported.has_setter
-  guard existing_desc.configurable ||
-    !(reported_is_data && reported_is_accessor) else {
-    raise @errors.TypeError(
-      message="'getOwnPropertyDescriptor' on proxy: trap reported both data and accessor fields",
-    )
-  }
-  if !existing_desc.configurable &&
-    (
-      (reported_is_data && !existing_is_data) ||
-      (reported_is_accessor && !existing_is_accessor)
-    ) {
+  let existing_is_data = !existing_desc.is_accessor
+  let reported_is_data = !reported_desc.is_accessor
+  if !existing_desc.configurable && existing_is_data != reported_is_data {
     raise @errors.TypeError(
       message="'getOwnPropertyDescriptor' on proxy: trap reported descriptor kind (data/accessor) mismatch for non-configurable property on proxy target",
     )
   }
   if !existing_desc.configurable && existing_is_data && reported_is_data {
-    if reported.has_writable &&
-      reported_desc.writable &&
-      !existing_desc.writable {
+    if reported_desc.writable == false && existing_desc.writable {
       raise @errors.TypeError(
-        message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and writable for property which is non-writable on the proxy target",
+        message="'getOwnPropertyDescriptor' on proxy: trap reported non-configurable and non-writable for property which is writable on the proxy target",
       )
     }
-    if reported.has_value &&
-      !existing_desc.writable &&
-      !same_value(reported.value, existing.value) {
+    if !existing_desc.writable && !same_value(reported.value, existing.value) {
       raise @errors.TypeError(
         message="'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target",
       )
     }
   }
-  if !existing_desc.configurable && existing_is_accessor && reported_is_accessor {
-    if reported.has_getter {
-      let getter_ok = match (existing_desc.getter, reported_desc.getter) {
-        (None, None) => true
-        (Some(a), Some(b)) => strict_equal(a, b)
-        _ => false
-      }
-      guard getter_ok else {
-        raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched getter for non-configurable accessor on proxy target",
-        )
-      }
+  if !existing_desc.configurable && !existing_is_data && !reported_is_data {
+    let getter_ok = match (existing_desc.getter, reported_desc.getter) {
+      (None, None) => true
+      (Some(a), Some(b)) => strict_equal(a, b)
+      _ => false
     }
-    if reported.has_setter {
-      let setter_ok = match (existing_desc.setter, reported_desc.setter) {
-        (None, None) => true
-        (Some(a), Some(b)) => strict_equal(a, b)
-        _ => false
-      }
-      guard setter_ok else {
-        raise @errors.TypeError(
-          message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched setter for non-configurable accessor on proxy target",
-        )
-      }
+    guard getter_ok else {
+      raise @errors.TypeError(
+        message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched getter for non-configurable accessor on proxy target",
+      )
+    }
+    let setter_ok = match (existing_desc.setter, reported_desc.setter) {
+      (None, None) => true
+      (Some(a), Some(b)) => strict_equal(a, b)
+      _ => false
+    }
+    guard setter_ok else {
+      raise @errors.TypeError(
+        message="'getOwnPropertyDescriptor' on proxy: trap reported mismatched setter for non-configurable accessor on proxy target",
+      )
     }
   }
 }
