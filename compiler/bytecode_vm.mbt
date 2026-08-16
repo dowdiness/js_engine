@@ -11,6 +11,7 @@ priv struct BytecodeForInState {
 priv enum BytecodeActivationResultDestination {
   PushValue
   PushReceiverAndValue(Value)
+  NoStackChange
   AppendArraySpread
   AppendArgumentSpread
 }
@@ -281,6 +282,7 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
           self.stack.push(receiver)
           self.stack.push(value)
         }
+        NoStackChange => ()
         AppendArraySpread => {
           let spread_values = @runtime.executor_iterable_spread_batch_values(
             value,
@@ -641,6 +643,10 @@ fn run_bytecode_function(
     @runtime.ExecutorActivationIterableSpread(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending iterable spread",
+      )
+    @runtime.ExecutorActivationCopyDataProperties(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending CopyDataProperties",
       )
   }
 }
@@ -1143,7 +1149,23 @@ fn BytecodeFrame::step_bytecode(
       }
       ObjectSpread(loc) => {
         let source = frame.pop()
-        interp.copy_object_spread_properties(frame.peek(), source, loc)
+        match @runtime.begin_executor_copy_data_properties(
+          interp,
+          frame.peek(),
+          source,
+          [],
+          loc,
+        ) {
+          @runtime.ExecutorCopyDataPropertiesCompleted => ()
+          @runtime.ExecutorCopyDataPropertiesSuspended(request) => {
+            frame.pending_activation_result = Some(NoStackChange)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_copy_data_properties_request(
+                request,
+              ),
+            )
+          }
+        }
       }
       ObjectSetProto => {
         let value = frame.pop()

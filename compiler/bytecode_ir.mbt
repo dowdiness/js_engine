@@ -603,9 +603,7 @@ fn bytecode_instruction_contract(
         PropertyKey,
       ])
     ObjectSpread(_) =>
-      bytecode_contract(true, UnsupportedBeforeActivation(ObjectSpread), [
-        Spread,
-      ])
+      bytecode_contract(true, ManagedSuspension, [Spread])
     MakeFunction(_)
     | MakeNamedFunction(_, _)
     | MakeMethodFunction(_)
