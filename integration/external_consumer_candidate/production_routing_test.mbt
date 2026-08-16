@@ -111,6 +111,50 @@ test "candidate Engine iterable spread observes inherited iterator overrides" {
 }
 
 ///|
+test "candidate Engine iterable spread does not probe replaced array prototypes" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function replacedArrayPrototypeMatrix() {
+    #|  var result = {};
+    #|  var array = [1, 2];
+    #|  Object.setPrototypeOf(array, {});
+    #|  try { [...array]; result.replaced = "completed"; }
+    #|  catch (error) { result.replaced = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  var getCalls = 0;
+    #|  var hasCalls = 0;
+    #|  var receiverIsArray = false;
+    #|  var proxyPrototype = new Proxy({}, {
+    #|    get: function(target, key, receiver) {
+    #|      if (key === Symbol.iterator) {
+    #|        getCalls = getCalls + 1;
+    #|        receiverIsArray = Array.isArray(receiver) && receiver === array;
+    #|      }
+    #|      return undefined;
+    #|    },
+    #|    has: function(target, key) {
+    #|      hasCalls = hasCalls + 1;
+    #|      return false;
+    #|    }
+    #|  });
+    #|  Object.setPrototypeOf(array, proxyPrototype);
+    #|  try { [...array]; result.proxy = "completed"; }
+    #|  catch (error) { result.proxy = error instanceof TypeError ? "TypeError" : "other"; }
+    #|  result.getCalls = getCalls;
+    #|  result.hasCalls = hasCalls;
+    #|  result.receiverIsArray = receiverIsArray;
+    #|  return result;
+    #|}
+  engine.eval(source)
+  json_inspect(engine.call_json("replacedArrayPrototypeMatrix", []), content={
+    "replaced": "TypeError",
+    "proxy": "TypeError",
+    "getCalls": 1,
+    "hasCalls": 0,
+    "receiverIsArray": true,
+  })
+}
+
+///|
 test "candidate Engine routes plain addition coercion and remains reusable" {
   let engine = @js_engine.Engine()
   engine.eval("function add(left, right) { return left + right; }")

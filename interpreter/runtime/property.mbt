@@ -874,7 +874,12 @@ fn Interpreter::get_computed_property_impl(
             }
             Null | Undefined => ()
             proto_val =>
-              return self.get_computed_property(proto_val, Symbol(sym), loc)
+              return self.get_property_key_with_receiver(
+                proto_val,
+                Symbol(sym),
+                obj,
+                loc,
+              )
           }
           return Undefined
         }

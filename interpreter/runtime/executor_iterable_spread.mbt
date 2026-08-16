@@ -8,7 +8,7 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
   self : Interpreter,
   iterable : Value,
   iterator_method : Value,
-) -> Value? raise Error {
+) -> Value? {
   guard iterator_method is Undefined else { return None }
   let iterator_sym = self.realm_state.well_known_symbols.iterator
   match iterable {
@@ -17,21 +17,20 @@ fn Interpreter::default_iterable_iterator_if_unoverridden(
         !data.bag.symbol_properties.contains(iterator_sym.id) else {
         return None
       }
-      guard !self.has_property_on_proto(
-        get_array_prototype(self.realm_state, data),
-        Symbol(iterator_sym),
-      ) else {
-        return None
-      }
+      // An initialized realm materializes Array.prototype[@@iterator], so an
+      // undefined lookup there is authoritative. Only a bare RealmState lacks
+      // that observable prototype representation and may use this legacy
+      // intrinsic fallback. Per-array prototype overrides are representation
+      // facts and must suppress fallback without probing a Proxy with `has`.
+      guard get_array_prototype_override(data) is None else { return None }
+      guard self.realm_state.get_array_proto() is Null else { return None }
       Some(self.realm_state.make_array_iterator_value(data))
     }
     String_(value) => {
-      guard !self.has_property_on_proto(
-        self.realm_state.get_string_proto(),
-        Symbol(iterator_sym),
-      ) else {
-        return None
-      }
+      // As with Array, only an uninitialized realm may use the intrinsic
+      // fallback. Initialized String.prototype lookup owns even an undefined
+      // result, including observable inherited overrides.
+      guard self.realm_state.get_string_proto() is Null else { return None }
       Some(self.realm_state.make_string_iterator_value(value))
     }
     _ => None
