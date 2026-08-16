@@ -17,6 +17,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
+  ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
 }
 
 ///|
@@ -253,6 +254,106 @@ pub fn executor_activation_coercing_addition_request(
   request : ExecutorCoercingAdditionRequest,
 ) -> ExecutorActivationStep {
   ExecutorActivationCoercingAddition(request)
+}
+
+///|
+// A closed property-delete request. Runtime owns ToPropertyKey, Proxy trap
+// lookup/call, forwarding, invariants, and strict-result normalization. The
+// compiler supplies only an already-evaluated target and either a static key
+// or the raw computed key value.
+pub struct ExecutorPropertyDeleteRequest {
+  priv target : Value
+  priv key : ExecutorPropertyDeleteKey
+  priv strict : Bool
+  priv loc : @token.Loc
+}
+
+///|
+priv enum ExecutorPropertyDeleteKey {
+  ExecutorStaticPropertyDeleteKey(String)
+  ExecutorComputedPropertyDeleteKey(Value)
+}
+
+///|
+fn ExecutorPropertyDeleteRequest::ExecutorPropertyDeleteRequest(
+  target~ : Value,
+  key~ : ExecutorPropertyDeleteKey,
+  strict~ : Bool,
+  loc~ : @token.Loc,
+) -> ExecutorPropertyDeleteRequest {
+  { target, key, strict, loc }
+}
+
+///|
+pub enum ExecutorPropertyDeleteStart {
+  ExecutorPropertyDeleteCompleted(Value)
+  ExecutorPropertyDeleteSuspended(ExecutorPropertyDeleteRequest)
+}
+
+///|
+fn begin_executor_property_delete(
+  interp : Interpreter,
+  target : Value,
+  key : ExecutorPropertyDeleteKey,
+  strict : Bool,
+  loc : @token.Loc,
+) -> ExecutorPropertyDeleteStart raise Error {
+  let request = ExecutorPropertyDeleteRequest(target~, key~, strict~, loc~)
+  match key {
+    ExecutorStaticPropertyDeleteKey(_) if target is Proxy(_) =>
+      ExecutorPropertyDeleteSuspended(request)
+    ExecutorStaticPropertyDeleteKey(property_name) =>
+      ExecutorPropertyDeleteCompleted(
+        Bool(interp.delete_property_key(target, String_(property_name), strict~)),
+      )
+    ExecutorComputedPropertyDeleteKey(raw_key) if target is Proxy(_) ||
+        is_js_object(raw_key) => ExecutorPropertyDeleteSuspended(request)
+    ExecutorComputedPropertyDeleteKey(raw_key) =>
+      ExecutorPropertyDeleteCompleted(
+        Bool(interp.delete_property_key(target, raw_key, strict~)),
+      )
+  }
+}
+
+///|
+pub fn begin_executor_property_delete_static(
+  interp : Interpreter,
+  target : Value,
+  property_name : String,
+  strict : Bool,
+  loc : @token.Loc,
+) -> ExecutorPropertyDeleteStart raise Error {
+  begin_executor_property_delete(
+    interp,
+    target,
+    ExecutorStaticPropertyDeleteKey(property_name),
+    strict,
+    loc,
+  )
+}
+
+///|
+pub fn begin_executor_property_delete_computed(
+  interp : Interpreter,
+  target : Value,
+  raw_key : Value,
+  strict : Bool,
+  loc : @token.Loc,
+) -> ExecutorPropertyDeleteStart raise Error {
+  begin_executor_property_delete(
+    interp,
+    target,
+    ExecutorComputedPropertyDeleteKey(raw_key),
+    strict,
+    loc,
+  )
+}
+
+///|
+pub fn executor_activation_property_delete_request(
+  request : ExecutorPropertyDeleteRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertyDelete(request)
 }
 
 ///|
@@ -568,6 +669,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertySet(Value)
   ExecutorChildPropertyUpdate
   ExecutorChildCoercingAddition
+  ExecutorChildPropertyDelete
 }
 
 ///|
@@ -1132,6 +1234,8 @@ fn Interpreter::complete_executor_step(
       executor_property_update_completion(step)
     Some(ExecutorChildCoercingAddition) =>
       executor_coercing_addition_completion(step)
+    Some(ExecutorChildPropertyDelete) =>
+      executor_property_delete_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -1147,10 +1251,19 @@ fn Interpreter::deliver_executor_activation_error(
   if index == 0 {
     raise error
   } else {
-    self.complete_executor_child(
-      stack,
-      ExecutorActivationCompletionAbrupt(error),
-    )
+    try {
+      self.complete_executor_child(
+        stack,
+        ExecutorActivationCompletionAbrupt(error),
+      )
+    } catch {
+      nested_error =>
+        self.deliver_executor_activation_error(
+          stack,
+          stack.length() - 1,
+          nested_error,
+        )
+    }
   }
 }
 
@@ -1731,6 +1844,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationPropertyDelete(request) => {
+      let delete_frame = ExecutorPropertyDeleteFrame(request)
+      stack.push({
+        frame: delete_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildPropertyDelete),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
   }
 }
 
@@ -1756,8 +1879,16 @@ fn Interpreter::drive_executor_activation_stack(
       match stepped {
         Err(error) =>
           self.deliver_executor_activation_error(stack, index, error)
-        Ok(step) =>
-          match self.handle_executor_activation_step(stack, index, step) {
+        Ok(step) => {
+          let handled : ExecutorActivationStep? = try {
+            self.handle_executor_activation_step(stack, index, step)
+          } catch {
+            error => {
+              self.deliver_executor_activation_error(stack, index, error)
+              None
+            }
+          }
+          match handled {
             Some(result) => {
               let root = stack.pop().unwrap()
               match root.cleanup {
@@ -1768,6 +1899,7 @@ fn Interpreter::drive_executor_activation_stack(
             }
             None => ()
           }
+        }
       }
     }
   } catch {
@@ -1986,7 +2118,8 @@ fn executor_call_completion(
         | ExecutorActivationPropertyGet(_)
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
-        | ExecutorActivationCoercingAddition(_) => Undefined
+        | ExecutorActivationCoercingAddition(_)
+        | ExecutorActivationPropertyDelete(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
@@ -1998,7 +2131,8 @@ fn executor_call_completion(
         | ExecutorActivationPropertyGet(_)
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
-        | ExecutorActivationCoercingAddition(_) => Undefined
+        | ExecutorActivationCoercingAddition(_)
+        | ExecutorActivationPropertyDelete(_) => Undefined
       }
   }
 }
@@ -2020,7 +2154,8 @@ fn executor_construct_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationCoercingAddition(_) => instance
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationPropertyDelete(_) => instance
   }
 }
 
@@ -2044,7 +2179,8 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationCoercingAddition(_) =>
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationPropertyDelete(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property get completed with a pending activation step",
@@ -2066,7 +2202,8 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationCoercingAddition(_) =>
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationPropertyDelete(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
@@ -2088,10 +2225,34 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationCoercingAddition(_) =>
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationPropertyDelete(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_property_delete_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    ExecutorActivationContinue
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationPropertySet(_)
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationPropertyDelete(_) =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="property delete completed with a pending activation step",
         ),
       )
   }
