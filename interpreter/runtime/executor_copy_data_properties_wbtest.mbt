@@ -87,6 +87,25 @@ fn run_executor_copy_data_properties_for_wb_excluded(
 }
 
 ///|
+fn expect_copy_data_properties_error_for_wb(
+  interp : Interpreter,
+  target : Value,
+  source : Value,
+  expected : Error,
+) -> Unit raise Error {
+  let caught : Error? = try {
+    run_executor_copy_data_properties_for_wb(interp, target, source)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(error) => assert_true(physical_equal(error, expected))
+    None => fail("CopyDataProperties unexpectedly completed")
+  }
+}
+
+///|
 test "RED managed CopyDataProperties copies one enumerable own property" {
   let interp = Interpreter::new()
   let target = make_object(Map([]), Null, None, "Object", Map([]), true)
@@ -609,4 +628,415 @@ test "managed CopyDataProperties creates data properties for proto-named and sym
     Some((descriptor, _)) => assert_true(!descriptor.is_accessor)
     None => fail("proto-named source key must become an own data property")
   }
+}
+
+///|
+test "managed CopyDataProperties preserves abrupt ownKeys failure without replay" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel = @errors.TypeError(message="ownKeys failed")
+  let target = make_object(
+    { "a": Number(0.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let own_keys = make_native_func(name="throwing ownKeys", fn(_args) raise {
+    events.push("ownKeys")
+    raise sentinel
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  expect_copy_data_properties_error_for_wb(interp, output, source, sentinel)
+  json_inspect(events, content=["ownKeys"])
+  assert_true(interp.get_own_property(output, String_("a")) is None)
+}
+
+///|
+test "managed CopyDataProperties preserves abrupt trap-result Get failure" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel = @errors.TypeError(message="trap result length failed")
+  let target = make_object(
+    { "a": Number(0.0), "b": Number(0.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let length_getter = make_method_func(
+    name="throwing ownKeys length",
+    realm_state=Some(interp.realm_state),
+    fn(_this, _args) raise {
+      events.push("length")
+      raise sentinel
+    },
+  )
+  let trap_result = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(length_getter),
+        setter: None,
+        is_accessor: true,
+      },
+    },
+    true,
+  )
+  let own_keys = make_native_func(name="array-like ownKeys", fn(_args) {
+    events.push("ownKeys")
+    trap_result
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  expect_copy_data_properties_error_for_wb(interp, output, source, sentinel)
+  json_inspect(events, content=["ownKeys", "length"])
+  assert_true(interp.get_own_property(output, String_("a")) is None)
+  assert_true(interp.get_own_property(output, String_("b")) is None)
+}
+
+///|
+test "managed CopyDataProperties preserves abrupt trap-result index Get failure" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel = @errors.TypeError(message="trap result index failed")
+  let target = make_object(
+    { "a": Number(7.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let index_getter = make_method_func(
+    name="throwing ownKeys index",
+    realm_state=Some(interp.realm_state),
+    fn(_this, _args) raise {
+      events.push("index")
+      raise sentinel
+    },
+  )
+  let trap_result = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    {
+      "length": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(
+          make_method_func(
+            name="ownKeys length",
+            realm_state=Some(interp.realm_state),
+            fn(_this, _args) {
+              events.push("length")
+              Number(1.0)
+            },
+          ),
+        ),
+        setter: None,
+        is_accessor: true,
+      },
+      "0": {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(index_getter),
+        setter: None,
+        is_accessor: true,
+      },
+    },
+    true,
+  )
+  let own_keys = make_native_func(name="array-like ownKeys", fn(_args) {
+    events.push("ownKeys")
+    trap_result
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  expect_copy_data_properties_error_for_wb(interp, output, source, sentinel)
+  json_inspect(events, content=["ownKeys", "length", "index"])
+  assert_true(interp.get_own_property(output, String_("a")) is None)
+}
+
+///|
+test "managed CopyDataProperties retains a after descriptor trap failure on b" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel = @errors.TypeError(message="descriptor trap failed on b")
+  let target = make_object(
+    { "a": Number(1.0), "b": Number(2.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let own_keys = make_native_func(name="ownKeys", fn(_args) {
+    events.push("ownKeys")
+    make_array([String_("a"), String_("b")])
+  })
+  let get_own = make_native_func(name="descriptor trap", fn(args) raise {
+    let key = match args[1] {
+      String_(name) => name
+      _ => "?"
+    }
+    events.push("descriptor:" + key)
+    if key == "b" {
+      raise sentinel
+    }
+    make_object(
+      { "enumerable": Bool(true), "configurable": Bool(true) },
+      Null,
+      None,
+      "Object",
+      Map([]),
+      true,
+    )
+  })
+  let get = make_native_func(name="source get", fn(args) {
+    let key = match args[1] {
+      String_(name) => name
+      _ => "?"
+    }
+    events.push("get:" + key)
+    Number(10.0)
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys, "getOwnPropertyDescriptor": get_own, "get": get },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  expect_copy_data_properties_error_for_wb(interp, output, source, sentinel)
+  json_inspect(events, content=[
+    "ownKeys", "descriptor:a", "get:a", "descriptor:b",
+  ])
+  inspect(
+    interp.get_computed_property(output, String_("a"), @token.Loc::default()),
+    content="10",
+  )
+  assert_true(interp.get_own_property(output, String_("b")) is None)
+}
+
+///|
+test "managed CopyDataProperties retains a after descriptor getter failure on b" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel = @errors.TypeError(message="descriptor getter failed on b")
+  let target = make_object(
+    { "a": Number(1.0), "b": Number(2.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let own_keys = make_native_func(name="ownKeys", fn(_args) {
+    events.push("ownKeys")
+    make_array([String_("a"), String_("b")])
+  })
+  let enumerable_getter = make_method_func(
+    name="descriptor enumerable getter",
+    realm_state=Some(interp.realm_state),
+    fn(_this, _args) raise {
+      events.push("enumerable:b")
+      raise sentinel
+    },
+  )
+  let get_own = make_native_func(name="descriptor trap", fn(args) {
+    let key = match args[1] {
+      String_(name) => name
+      _ => "?"
+    }
+    events.push("descriptor:" + key)
+    if key == "b" {
+      make_object(
+        Map([]),
+        Null,
+        None,
+        "Object",
+        {
+          "enumerable": {
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: Some(enumerable_getter),
+            setter: None,
+            is_accessor: true,
+          },
+        },
+        true,
+      )
+    } else {
+      make_object(
+        { "enumerable": Bool(true), "configurable": Bool(true) },
+        Null,
+        None,
+        "Object",
+        Map([]),
+        true,
+      )
+    }
+  })
+  let get = make_native_func(name="source get", fn(args) {
+    let key = match args[1] {
+      String_(name) => name
+      _ => "?"
+    }
+    events.push("get:" + key)
+    Number(10.0)
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys, "getOwnPropertyDescriptor": get_own, "get": get },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  expect_copy_data_properties_error_for_wb(interp, output, source, sentinel)
+  json_inspect(events, content=[
+    "ownKeys", "descriptor:a", "get:a", "descriptor:b", "enumerable:b",
+  ])
+  inspect(
+    interp.get_computed_property(output, String_("a"), @token.Loc::default()),
+    content="10",
+  )
+  assert_true(interp.get_own_property(output, String_("b")) is None)
+}
+
+///|
+test "managed CopyDataProperties retains a after source Proxy get failure on b" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let sentinel = @errors.TypeError(message="source get failed on b")
+  let target = make_object(
+    { "a": Number(1.0), "b": Number(2.0) },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let own_keys = make_native_func(name="ownKeys", fn(_args) {
+    events.push("ownKeys")
+    make_array([String_("a"), String_("b")])
+  })
+  let get_own = make_native_func(name="descriptor trap", fn(args) {
+    let key = match args[1] {
+      String_(name) => name
+      _ => "?"
+    }
+    events.push("descriptor:" + key)
+    make_object(
+      { "enumerable": Bool(true), "configurable": Bool(true) },
+      Null,
+      None,
+      "Object",
+      Map([]),
+      true,
+    )
+  })
+  let get = make_native_func(name="source get", fn(args) raise {
+    let key = match args[1] {
+      String_(name) => name
+      _ => "?"
+    }
+    events.push("get:" + key)
+    if key == "b" {
+      raise sentinel
+    }
+    Number(10.0)
+  })
+  let handler = make_object(
+    { "ownKeys": own_keys, "getOwnPropertyDescriptor": get_own, "get": get },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let source = Proxy({
+    target: Some(target),
+    handler: Some(handler),
+    is_callable: false,
+    is_constructor: false,
+  })
+  let output = make_object(Map([]), Null, None, "Object", Map([]), true)
+  expect_copy_data_properties_error_for_wb(interp, output, source, sentinel)
+  json_inspect(events, content=[
+    "ownKeys", "descriptor:a", "get:a", "descriptor:b", "get:b",
+  ])
+  inspect(
+    interp.get_computed_property(output, String_("a"), @token.Loc::default()),
+    content="10",
+  )
+  assert_true(interp.get_own_property(output, String_("b")) is None)
 }

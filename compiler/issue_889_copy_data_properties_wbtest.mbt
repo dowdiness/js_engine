@@ -76,6 +76,28 @@ test "issue 889 candidate preserves object spread source order" {
 }
 
 ///|
+test "issue 889 candidate object spread abrupt completion retains lifecycle evidence" {
+  let source =
+    #|var events = [];
+    #|function failSpread() {
+    #|  var source = {
+    #|    get a() { events.push("a"); queueMicrotask(function() { events.push("m"); }); return 1; },
+    #|    get b() { events.push("b"); throw new Error("spread"); }
+    #|  };
+    #|  return { ...source };
+    #|}
+    #|var kind = "none";
+    #|try { failSpread(); } catch (error) { kind = error instanceof Error ? "Error" : "other"; }
+    #|events.join("") + ":" + kind;
+  let (value, evidence) = issue889_candidate_route_for_wb(source)
+  assert_eq(value.to_string(), "ab:Error")
+  assert_true(evidence.val.summary.abrupt_completions > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 889 candidate object spread supports finite getter re-entry" {
   let source =
     #|function recurse(n) {
@@ -89,6 +111,46 @@ test "issue 889 candidate object spread supports finite getter re-entry" {
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 889 object rest stays on the pre-start TreeWalker route" {
+  let source =
+    #|var { x, ...rest } = { x: 1, y: 2 };
+    #|rest.y;
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  match root.selection {
+    UseTreeWalker(CandidateActivationUnsupported(_)) => ()
+    UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+    UseBytecode(_) => fail("object rest unexpectedly selected bytecode")
+  }
+  let (value, evidence) = issue889_candidate_route_for_wb(source)
+  assert_eq(value.to_string(), "2")
+  assert_eq(evidence.val.summary.tree_starts, 1)
+  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() >= 3 else {
+    fail("object rest route evidence is incomplete")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseTreeWalker(CandidateActivationUnsupported(_)) => ()
+        UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+        UseBytecode(_) => fail("object rest prepared bytecode")
+      }
+    _ => fail("object rest started before its route decision")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateTreeWalkerExecutor => ()
+        CandidateBytecodeExecutor => fail("object rest started bytecode")
+      }
+    _ => fail("object rest route did not start after preparation")
+  }
 }
 
 ///|

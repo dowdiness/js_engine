@@ -1003,6 +1003,46 @@ test "Engine default object spread preserves CopyDataProperties order" {
 }
 
 ///|
+test "Engine default object spread abrupt queue checkpoint and reuse" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function failSpread() {
+      #|  var source = {
+      #|    get a() {
+      #|      events.push("a");
+      #|      queueMicrotask(function() { events.push("m"); });
+      #|      return 1;
+      #|    },
+      #|    get b() {
+      #|      events.push("b");
+      #|      throw new Error("spread");
+      #|    }
+      #|  };
+      #|  return { ...source };
+      #|}
+      #|function successSpread() { return ({ ...{ value: 1 } }).value; }
+      #|function eventsSnapshot() { return events.join(""); }
+    ),
+  )
+  let failed = try {
+    ignore(engine.call_json("failSpread", []))
+    false
+  } catch {
+    error => error.to_string().contains("Error: spread")
+  }
+  assert_true(failed)
+  json_inspect(engine.call_json("eventsSnapshot", []), content="ab")
+  assert_true(engine.has_pending_microtasks())
+  assert_false(engine.run_microtask_checkpoint())
+  json_inspect(engine.call_json("eventsSnapshot", []), content="abm")
+  assert_false(engine.has_pending_microtasks())
+  json_inspect(engine.call_json("successSpread", []), content=1)
+  json_inspect(engine.call_json("successSpread", []), content=1)
+}
+
+///|
 test "Engine detailed eval reports retained effects and pending jobs" {
   let engine = @js_engine.Engine()
   let diagnostic = expect_engine_diagnostic(

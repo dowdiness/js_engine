@@ -756,3 +756,55 @@ test "candidate mode reuses an eligible function after abrupt completion" {
   expect_bool(failed, true, "candidate repeated guest throw")
   json_inspect(engine.call_json("maybeFail", [false]), content=7)
 }
+
+///|
+test "candidate Engine object spread abrupt queue checkpoint and reuse" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function failSpread() {
+      #|  var source = {
+      #|    get a() {
+      #|      events.push("a");
+      #|      queueMicrotask(function() { events.push("m"); });
+      #|      return 1;
+      #|    },
+      #|    get b() {
+      #|      events.push("b");
+      #|      throw new Error("spread");
+      #|    }
+      #|  };
+      #|  return { ...source };
+      #|}
+      #|function successSpread() { return ({ ...{ value: 1 } }).value; }
+      #|function eventsSnapshot() { return events.join(""); }
+    ),
+  )
+  let failed = try {
+    ignore(engine.call_json("failSpread", []))
+    false
+  } catch {
+    error => error.to_string().contains("Error: spread")
+  }
+  expect_bool(failed, true, "candidate object spread Error")
+  json_inspect(engine.call_json("eventsSnapshot", []), content="ab")
+  expect_bool(
+    engine.has_pending_microtasks(),
+    true,
+    "candidate object spread queued one microtask",
+  )
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "candidate object spread checkpoint",
+  )
+  json_inspect(engine.call_json("eventsSnapshot", []), content="abm")
+  expect_bool(
+    engine.has_pending_microtasks(),
+    false,
+    "candidate object spread queue drained",
+  )
+  json_inspect(engine.call_json("successSpread", []), content=1)
+  json_inspect(engine.call_json("successSpread", []), content=1)
+}
