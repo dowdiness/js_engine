@@ -986,6 +986,23 @@ test "Engine detailed operations preserve success values" {
 }
 
 ///|
+test "Engine default object spread preserves CopyDataProperties order" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|function copySpread() {
+      #|  var log = [];
+      #|  var source = { get z() { log.push("z"); return 2; }, get a() { log.push("a"); return 1; } };
+      #|  var copy = { before: 0, ...source, after: 3 };
+      #|  return log.join(",") + ":" + copy.before + ":" + copy.z + ":" + copy.a + ":" + copy.after;
+      #|}
+    ),
+  )
+  json_inspect(engine.call_json("copySpread", []), content="z,a:0:2:1:3")
+  json_inspect(engine.call_json("copySpread", []), content="z,a:0:2:1:3")
+}
+
+///|
 test "Engine detailed eval reports retained effects and pending jobs" {
   let engine = @js_engine.Engine()
   let diagnostic = expect_engine_diagnostic(
