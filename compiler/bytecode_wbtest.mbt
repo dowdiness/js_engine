@@ -1503,8 +1503,32 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
   assert_instruction_contract_for_wb(
     LoadName("binding"),
     true,
-    SynchronousLeaf,
+    ManagedSuspension,
     [BindingAccess],
+  )
+  assert_instruction_contract_for_wb(
+    LoadAssignmentName("binding"),
+    true,
+    ManagedSuspension,
+    [BindingAccess],
+  )
+  assert_instruction_contract_for_wb(
+    StoreName("binding"),
+    true,
+    ManagedSuspension,
+    [BindingAccess],
+  )
+  assert_instruction_contract_for_wb(
+    TypeofName("binding"),
+    true,
+    ManagedSuspension,
+    [BindingAccess],
+  )
+  assert_instruction_contract_for_wb(
+    LoadDirectEvalCallee,
+    true,
+    ManagedSuspension,
+    [BindingAccess, DirectEval],
   )
   assert_instruction_contract_for_wb(
     MakeRegExp("a", ""),
