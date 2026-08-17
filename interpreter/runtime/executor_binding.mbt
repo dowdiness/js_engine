@@ -443,6 +443,11 @@ fn ExecutorBindingFrame::after_recheck(
         )
       }
       ExecutorBindingTypeof => {
+        if self.request.ctx.strict {
+          raise @errors.ReferenceError(
+            message="{self.request.name} is not defined",
+          )
+        }
         let result = String_("undefined")
         self.phase = ExecutorBindingComplete(result)
         ExecutorActivationNormal(result)
