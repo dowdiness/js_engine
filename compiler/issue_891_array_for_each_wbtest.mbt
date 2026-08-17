@@ -1,7 +1,5 @@
 ///|
-fn issue891_default_run_for_wb(
-  source : String,
-) -> @runtime.Value raise Error {
+fn issue891_default_run_for_wb(source : String) -> @runtime.Value raise Error {
   let interp = @interpreter.new_interpreter()
   interp.run(@parser.parse(source).stmts)
 }
@@ -31,10 +29,7 @@ test "issue 891 candidate forEach preserves Proxy has abrupt completion" {
     #|catch (error) { result = error instanceof Error ? error.message : "other"; }
     #|(each === Array.prototype.forEach) + ":" + result + ":" + events.join(",");
   let default_value = issue891_default_run_for_wb(source)
-  assert_eq(
-    default_value.to_string(),
-    "true:none:get:length,has",
-  )
+  assert_eq(default_value.to_string(), "true:none:get:length,has")
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(value.to_string(), "true:has:get:length,has")
   issue891_assert_evidence_for_wb(evidence)
@@ -123,10 +118,7 @@ test "issue 891 candidate forEach preserves Proxy length has get callback order"
     #|run();
   let default_value = issue891_default_run_for_wb(source)
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(
-    value.to_string(),
-    "get:length,has:0,get:0,callback:v:0:true",
-  )
+  assert_eq(value.to_string(), "get:length,has:0,get:0,callback:v:0:true")
   assert_eq(default_value.to_string(), value.to_string())
   issue891_assert_evidence_for_wb(evidence)
 }

@@ -54,10 +54,7 @@ priv enum ExecutorArrayForEachPhase {
   ExecutorArrayForEachNeedObject
   ExecutorArrayForEachAwaitLength(Value)
   ExecutorArrayForEachHaveLengthValue(Value, Value)
-  ExecutorArrayForEachAwaitLengthPrimitive(
-    Value,
-    ExecutorToPrimitiveOperation,
-  )
+  ExecutorArrayForEachAwaitLengthPrimitive(Value, ExecutorToPrimitiveOperation)
   ExecutorArrayForEachNeedCallback(Value, Int64)
   ExecutorArrayForEachNeedIndex(Value, Int64, Value, Int64)
   ExecutorArrayForEachAwaitHasProperty(
@@ -65,7 +62,7 @@ priv enum ExecutorArrayForEachPhase {
     Int64,
     Value,
     Int64,
-    ExecutorDeleteHasPropertyOperation,
+    ExecutorDeleteHasPropertyOperation
   )
   ExecutorArrayForEachAwaitGet(Value, Int64, Value, Int64)
   ExecutorArrayForEachHaveGetValue(Value, Int64, Value, Int64, Value)
@@ -198,7 +195,9 @@ fn ExecutorArrayForEachFrame::step_frame(
           self.step_frame(interp)
         }
         step => {
-          self.phase = ExecutorArrayForEachAwaitLengthPrimitive(object, operation)
+          self.phase = ExecutorArrayForEachAwaitLengthPrimitive(
+            object, operation,
+          )
           step
         }
       }
@@ -217,7 +216,7 @@ fn ExecutorArrayForEachFrame::step_frame(
       self.phase = ExecutorArrayForEachNeedIndex(object, length, callback, 0L)
       self.step_frame(interp)
     }
-    ExecutorArrayForEachNeedIndex(object, length, callback, index) => {
+    ExecutorArrayForEachNeedIndex(object, length, callback, index) =>
       if index >= length {
         self.phase = ExecutorArrayForEachComplete
         ExecutorActivationNormal(Undefined)
@@ -233,50 +232,31 @@ fn ExecutorArrayForEachFrame::step_frame(
         match operation.step(interp) {
           ExecutorActivationNormal(Bool(has_property)) =>
             self.finish_has_property(
-              object,
-              length,
-              callback,
-              index,
-              has_property,
-              interp,
+              object, length, callback, index, has_property, interp,
             )
           step => {
             self.phase = ExecutorArrayForEachAwaitHasProperty(
-              object,
-              length,
-              callback,
-              index,
-              operation,
+              object, length, callback, index, operation,
             )
             step
           }
         }
       }
-    }
     ExecutorArrayForEachAwaitHasProperty(
       object,
       length,
       callback,
       index,
-      operation,
+      operation
     ) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
           self.finish_has_property(
-            object,
-            length,
-            callback,
-            index,
-            has_property,
-            interp,
+            object, length, callback, index, has_property, interp,
           )
         step => {
           self.phase = ExecutorArrayForEachAwaitHasProperty(
-            object,
-            length,
-            callback,
-            index,
-            operation,
+            object, length, callback, index, operation,
           )
           step
         }
@@ -292,10 +272,7 @@ fn ExecutorArrayForEachFrame::step_frame(
         Undefined
       }
       self.phase = ExecutorArrayForEachAwaitCallback(
-        object,
-        length,
-        callback,
-        index,
+        object, length, callback, index,
       )
       ExecutorActivationCall(
         ExecutorCallRequest(
@@ -346,13 +323,9 @@ impl ExecutorActivationFrame for ExecutorArrayForEachFrame with fn deliver_activ
           )
         ExecutorArrayForEachAwaitGet(object, length, callback, index) =>
           self.phase = ExecutorArrayForEachHaveGetValue(
-            object,
-            length,
-            callback,
-            index,
-            value,
+            object, length, callback, index, value,
           )
-        ExecutorArrayForEachAwaitCallback(object, length, callback, index) => {
+        ExecutorArrayForEachAwaitCallback(object, length, callback, index) =>
           // The callback result is intentionally discarded exactly once.
           self.phase = ExecutorArrayForEachNeedIndex(
             object,
@@ -360,7 +333,6 @@ impl ExecutorActivationFrame for ExecutorArrayForEachFrame with fn deliver_activ
             callback,
             index + 1L,
           )
-        }
         ExecutorArrayForEachNeedObject
         | ExecutorArrayForEachHaveLengthValue(_, _)
         | ExecutorArrayForEachNeedCallback(_, _)

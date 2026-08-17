@@ -1382,8 +1382,7 @@ fn Interpreter::complete_executor_step(
   let completion = match stack[stack.length() - 1].completion {
     Some(ExecutorChildCall(kind)) =>
       ExecutorActivationCompletionNormal(executor_call_completion(kind, step))
-    Some(ExecutorChildArrayForEach) =>
-      executor_array_for_each_completion(step)
+    Some(ExecutorChildArrayForEach) => executor_array_for_each_completion(step)
     Some(ExecutorChildConstruct(instance)) =>
       ExecutorActivationCompletionNormal(
         executor_construct_completion(step, instance),
@@ -1416,9 +1415,7 @@ fn executor_array_for_each_completion(
       ExecutorActivationCompletionNormal(Undefined)
     _ =>
       ExecutorActivationCompletionAbrupt(
-        @errors.InternalError(
-          message="forEach frame completed without a value",
-        ),
+        @errors.InternalError(message="forEach frame completed without a value"),
       )
   }
 }
@@ -1767,13 +1764,14 @@ fn Interpreter::handle_executor_activation_step(
             request.this_value,
             request.args,
           )
-          match executor_array_for_each_request(
-            self,
-            forwarded_callee,
-            forwarded_this_value,
-            forwarded_args,
-            request.loc,
-          ) {
+          match
+            executor_array_for_each_request(
+              self,
+              forwarded_callee,
+              forwarded_this_value,
+              forwarded_args,
+              request.loc,
+            ) {
             Some(array_request) => {
               let array_frame = ExecutorArrayForEachFrame(array_request)
               stack.push({
