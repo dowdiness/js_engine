@@ -43,12 +43,11 @@ test "issue 891 forEach non-callable callback does not coerce after length" {
     #|var events = [];
     #|var target = { length: 1 };
     #|var receiver = new Proxy(target, { get: function(t,k,r) { events.push("get:" + k); return Reflect.get(t,k,r); }, has: function(t,k) { events.push("has:" + k); return Reflect.has(t,k); } });
-    #|var callbackTarget = {
-    #|  [Symbol.toPrimitive]: function() { events.push("primitive-call"); throw new Error("primitive"); },
-    #|  toString: function() { events.push("toString-call"); throw new Error("toString"); },
-    #|  valueOf: function() { events.push("valueOf-call"); throw new Error("valueOf"); }
-    #|};
-    #|var callback = new Proxy(callbackTarget, { get: function(t,k,r) { events.push(k === Symbol.toPrimitive ? "primitive-get" : k + "-get"); return Reflect.get(t,k,r); } });
+    #|var callbackTarget = {};
+    #|Object.defineProperty(callbackTarget, Symbol.toPrimitive, { get: function() { events.push("primitive-get"); throw new Error("primitive"); } });
+    #|Object.defineProperty(callbackTarget, "toString", { get: function() { events.push("toString-get"); throw new Error("toString"); } });
+    #|Object.defineProperty(callbackTarget, "valueOf", { get: function() { events.push("valueOf-get"); throw new Error("valueOf"); } });
+    #|var callback = new Proxy(callbackTarget, { get: function(t,k,r) { events.push(k === Symbol.toPrimitive ? "primitive-proxy-get" : k + "-proxy-get"); return Reflect.get(t,k,r); } });
     #|var run = function() { return Array.prototype.forEach.call(receiver, callback); };
     #|var result = "none";
     #|try { run(); }
