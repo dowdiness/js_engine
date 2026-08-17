@@ -273,10 +273,23 @@ fn make_promise_resolving_functions(
 }
 
 ///|
+fn promise_thenable_job_realm_protos(
+  interp : Interpreter,
+  then_method : Value,
+) -> FunctionRealmProtos {
+  let selected = get_function_realm_protos(then_method) catch { _ => None }
+  match selected {
+    Some(protos) => protos
+    None => active_realm_protos(interp.realm_state)
+  }
+}
+
+///|
 priv struct PromiseThenableJobExecutorCode {
   promise_data : PromiseData
   thenable : Value
   then_method : Value
+  realm_protos : FunctionRealmProtos
   consumed : Ref[Bool]
 }
 
@@ -285,9 +298,10 @@ fn PromiseThenableJobExecutorCode::PromiseThenableJobExecutorCode(
   promise_data~ : PromiseData,
   thenable~ : Value,
   then_method~ : Value,
+  realm_protos~ : FunctionRealmProtos,
   consumed~ : Ref[Bool],
 ) -> PromiseThenableJobExecutorCode {
-  { promise_data, thenable, then_method, consumed }
+  { promise_data, thenable, then_method, realm_protos, consumed }
 }
 
 ///|
@@ -304,6 +318,7 @@ priv struct PromiseThenableJobExecutorFrame {
   promise_data : PromiseData
   thenable : Value
   then_method : Value
+  realm_protos : FunctionRealmProtos
   global : Environment
   mut reject : Value
   mut phase : PromiseThenableJobPhase
@@ -314,12 +329,14 @@ fn PromiseThenableJobExecutorFrame::PromiseThenableJobExecutorFrame(
   promise_data~ : PromiseData,
   thenable~ : Value,
   then_method~ : Value,
+  realm_protos~ : FunctionRealmProtos,
   global~ : Environment,
 ) -> PromiseThenableJobExecutorFrame {
   {
     promise_data,
     thenable,
     then_method,
+    realm_protos,
     global,
     reject: Undefined,
     phase: PromiseThenableJobNeedStart,
@@ -335,9 +352,10 @@ fn PromiseThenableJobExecutorFrame::step_frame(
     PromiseThenableJobNeedStart => {
       // The resolving pair is created at job activation, not when the
       // original resolve function merely schedules this job.
-      let (resolve, reject) = make_promise_resolving_functions(
-        interp,
-        self.promise_data,
+      let (resolve, reject) = with_active_realm_protos(
+        interp.realm_state,
+        self.realm_protos,
+        () => make_promise_resolving_functions(interp, self.promise_data),
       )
       self.reject = reject
       self.phase = PromiseThenableJobAwaitThenCall
@@ -424,6 +442,7 @@ impl ExecutorCode for PromiseThenableJobExecutorCode with fn start(
     promise_data=self.promise_data,
     thenable=self.thenable,
     then_method=self.then_method,
+    realm_protos=self.realm_protos,
     global=interp.global,
   )
   as &ExecutorActivationFrame
@@ -436,14 +455,19 @@ fn make_promise_thenable_job(
   thenable : Value,
   then_method : Value,
 ) -> Value {
+  let realm_protos = promise_thenable_job_realm_protos(interp, then_method)
   make_executor_function(
     Some("PromiseResolveThenableJob"),
     [],
     interp.global,
     true,
-    PromiseThenableJobExecutorCode(promise_data~, thenable~, then_method~, consumed={
-      val: false,
-    }),
+    PromiseThenableJobExecutorCode(
+      promise_data~,
+      thenable~,
+      then_method~,
+      realm_protos~,
+      consumed={ val: false },
+    ),
     constructable=false,
     define_arguments_object=false,
   )
