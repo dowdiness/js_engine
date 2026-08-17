@@ -2418,3 +2418,70 @@ test "Engine checkpoint failure matrix: interval callback throw drops the interv
   inspect(engine.has_pending_microtasks(), content="false")
   inspect(engine.has_pending_timers(), content="false")
 }
+
+///|
+test "issue 892 stable Engine handler throw retains mutation and dependent enqueue" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|Promise.resolve().then(function() { events.push("before"); throw "boom"; }).catch(function(error) { events.push("caught:" + error); });
+      #|Promise.resolve().then(function() { events.push("sibling"); });
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_true(engine.has_pending_microtasks())
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "before", "sibling", "caught:boom",
+  ])
+  assert_false(engine.has_pending_microtasks())
+  engine.eval("events.push('reuse');")
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "before", "sibling", "caught:boom", "reuse",
+  ])
+}
+
+///|
+test "issue 892 stable Engine custom resolve failure consumes selected job and retains suffix" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = [];
+      #|function Species(executor) {
+      #|  executor(
+      #|    function(value) { events.push("resolve"); throw "resolve-failure"; },
+      #|    function(reason) { events.push("reject"); }
+      #|  );
+      #|  return {};
+      #|}
+      #|var holder = {};
+      #|holder[Symbol.species] = Species;
+      #|var p = Promise.resolve(1);
+      #|p.constructor = holder;
+      #|p.then(function(value) { events.push("handler"); return value; });
+      #|queueMicrotask(function() { events.push("suffix"); });
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_engine_diagnostic(
+    expect_engine_diagnostic(engine.run_microtask_checkpoint_diagnostic()),
+    "javascript-exception",
+    "microtask-checkpoint",
+    "microtask-dispatch",
+    None,
+    "discard",
+    "may-remain",
+    "present",
+  )
+  json_inspect(engine.call_json("snapshot", []), content=["handler", "resolve"])
+  assert_true(engine.has_pending_microtasks())
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "handler", "resolve", "suffix",
+  ])
+  engine.eval("events.push('reuse');")
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "handler", "resolve", "suffix", "reuse",
+  ])
+}

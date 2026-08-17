@@ -37,6 +37,18 @@ fn issue892_candidate_run_and_drain_for_wb(
 }
 
 ///|
+fn issue892_candidate_run_without_drain_for_wb(
+  source : String,
+) -> (@runtime.Interpreter, Ref[CandidateRouteEvidence]) raise Error {
+  let interp = @interpreter.new_interpreter()
+  let (_, evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse(source).stmts,
+  )
+  (interp, evidence)
+}
+
+///|
 fn issue892_global_string_for_wb(
   interp : @runtime.Interpreter,
   name : String,
@@ -45,6 +57,49 @@ fn issue892_global_string_for_wb(
     @runtime.String_(value) => value
     value => fail("expected global string, got " + value.to_string())
   }
+}
+
+///|
+test "issue 892 candidate thenable jobs run after the current script" {
+  let source =
+    #|var log = "";
+    #|var thenable = { then: function(resolve) { log = log + "t"; resolve(); } };
+    #|Promise.resolve(thenable);
+    #|log = log + "s";
+  let (interp, evidence) = issue892_candidate_run_without_drain_for_wb(source)
+  assert_eq(issue892_global_string_for_wb(interp, "log"), "s")
+  assert_eq(interp.host.microtask_queue.length(), 1)
+  let task = interp.host.microtask_queue[0]
+  match task.callback {
+    @runtime.Object({ callable: Some(@runtime.ExecutorCallable(_)), .. }) =>
+      ()
+    _ => fail("thenable job must be a private executor callable")
+  }
+  assert_eq(task.args.length(), 0)
+  interp.run_microtasks()
+  assert_eq(issue892_global_string_for_wb(interp, "log"), "st")
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 892 candidate thenable job preserves sibling FIFO" {
+  let source =
+    #|var log = "";
+    #|var thenable = { then: function(resolve) { log = log + "t"; resolve(); } };
+    #|Promise.resolve(thenable).then(function() { log = log + "r"; });
+    #|Promise.resolve().then(function() { log = log + "s"; });
+  let (interp, evidence) = issue892_candidate_run_without_drain_for_wb(source)
+  assert_eq(issue892_global_string_for_wb(interp, "log"), "")
+  assert_eq(interp.host.microtask_queue.length(), 2)
+  interp.run_microtasks()
+  assert_eq(issue892_global_string_for_wb(interp, "log"), "tsr")
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
 }
 
 ///|
@@ -101,6 +156,37 @@ test "issue 892 candidate managed resolution assimilates thenable failures" {
 }
 
 ///|
+test "issue 892 candidate managed resolution settles thenables once" {
+  let source =
+    #|var twice = "";
+    #|var resolveReject = "";
+    #|var resolveThrow = "";
+    #|var getterCount = 0;
+    #|var callCount = 0;
+    #|Promise.resolve({ then: function(resolve, reject) { resolve(1); resolve(2); reject(3); } }).then(function(value) { twice = "value:" + value; }, function(error) { twice = "error:" + error; });
+    #|Promise.resolve({ then: function(resolve, reject) { resolve(4); reject(5); } }).then(function(value) { resolveReject = "value:" + value; }, function(error) { resolveReject = "error:" + error; });
+    #|Promise.resolve({ then: function(resolve) { resolve(6); throw "ignored"; } }).then(function(value) { resolveThrow = "value:" + value; }, function(error) { resolveThrow = "error:" + error; });
+    #|var thenable = { get then() { getterCount += 1; return function(resolve) { callCount += 1; resolve(7); }; } };
+    #|Promise.resolve(thenable);
+  let (interp, evidence) = issue892_candidate_run_and_drain_for_wb(source)
+  assert_eq(issue892_global_string_for_wb(interp, "twice"), "value:1")
+  assert_eq(issue892_global_string_for_wb(interp, "resolveReject"), "value:4")
+  assert_eq(issue892_global_string_for_wb(interp, "resolveThrow"), "value:6")
+  match interp.global.get("getterCount") {
+    @runtime.Number(value) => assert_eq(value, 1.0)
+    value => fail("expected one then getter, got " + value.to_string())
+  }
+  match interp.global.get("callCount") {
+    @runtime.Number(value) => assert_eq(value, 1.0)
+    value => fail("expected one then call, got " + value.to_string())
+  }
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 892 candidate managed resolution handles self and callable Proxy" {
   let source =
     #|var resolve;
@@ -133,6 +219,152 @@ test "issue 892 candidate reaction frame covers missing handlers and throws" {
   assert_eq(issue892_global_string_for_wb(interp, "fulfilled"), "4")
   assert_eq(issue892_global_string_for_wb(interp, "rejected"), "bad")
   assert_eq(issue892_global_string_for_wb(interp, "thrown"), "handler")
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 892 candidate custom species capabilities receive normal and abrupt jobs" {
+  let source =
+    #|var calls = "";
+    #|function Species(executor) {
+    #|  executor(
+    #|    function(value) { calls = calls + "resolve:" + value + ";"; },
+    #|    function(reason) { calls = calls + "reject:" + reason + ";"; }
+    #|  );
+    #|  return {};
+    #|}
+    #|var holder = {};
+    #|holder[Symbol.species] = Species;
+    #|var normal = Promise.resolve(1);
+    #|normal.constructor = holder;
+    #|normal.then(function(value) { return value + 1; });
+    #|var abrupt = Promise.resolve(2);
+    #|abrupt.constructor = holder;
+    #|abrupt.then(function() { throw "handler"; });
+  let (interp, evidence) = issue892_candidate_run_and_drain_for_wb(source)
+  assert_eq(
+    issue892_global_string_for_wb(interp, "calls"),
+    "resolve:2;reject:handler;",
+  )
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 892 candidate custom resolve failure consumes only the selected job" {
+  let source =
+    #|var events = [];
+    #|function Species(executor) {
+    #|  executor(
+    #|    function(value) { events.push("resolve"); throw "resolve-failure"; },
+    #|    function(reason) { events.push("reject"); }
+    #|  );
+    #|  return {};
+    #|}
+    #|var holder = {};
+    #|holder[Symbol.species] = Species;
+    #|var p = Promise.resolve(1);
+    #|p.constructor = holder;
+    #|p.then(function(value) { events.push("handler"); return value; });
+    #|queueMicrotask(function() { events.push("suffix"); });
+  let (interp, evidence) = issue892_candidate_run_without_drain_for_wb(source)
+  let failure = try {
+    interp.run_microtasks()
+    "no failure"
+  } catch {
+    @runtime.JsException(_) => "guest"
+    error => "runtime:" + error.to_string()
+  }
+  assert_eq(failure, "guest")
+  match interp.global.get("events") {
+    @runtime.Array(events) =>
+      assert_eq(events.elements.map(value => value.to_string()), ["handler", "resolve"])
+    value => fail("expected event array, got " + value.to_string())
+  }
+  assert_eq(interp.host.microtask_queue.length(), 1)
+  interp.run_microtasks()
+  match interp.global.get("events") {
+    @runtime.Array(events) =>
+      assert_eq(
+        events.elements.map(value => value.to_string()),
+        ["handler", "resolve", "suffix"],
+      )
+    value => fail("expected retained suffix array, got " + value.to_string())
+  }
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 892 candidate custom reject failure remains a guest throw" {
+  let source =
+    #|var events = [];
+    #|function Species(executor) {
+    #|  executor(
+    #|    function(value) { events.push("resolve"); },
+    #|    function(reason) { events.push("reject"); throw "reject-failure"; }
+    #|  );
+    #|  return {};
+    #|}
+    #|var holder = {};
+    #|holder[Symbol.species] = Species;
+    #|var p = Promise.resolve(1);
+    #|p.constructor = holder;
+    #|p.then(function(value) { events.push("handler"); throw "handler-failure"; });
+    #|queueMicrotask(function() { events.push("suffix"); });
+  let (interp, evidence) = issue892_candidate_run_without_drain_for_wb(source)
+  let failure = try {
+    interp.run_microtasks()
+    "no failure"
+  } catch {
+    @runtime.JsException(_) => "guest"
+    error => "runtime:" + error.to_string()
+  }
+  assert_eq(failure, "guest")
+  match interp.global.get("events") {
+    @runtime.Array(events) =>
+      assert_eq(events.elements.map(value => value.to_string()), ["handler", "reject"])
+    value => fail("expected custom reject effects, got " + value.to_string())
+  }
+  assert_eq(interp.host.microtask_queue.length(), 1)
+  interp.run_microtasks()
+  match interp.global.get("events") {
+    @runtime.Array(events) =>
+      assert_eq(
+        events.elements.map(value => value.to_string()),
+        ["handler", "reject", "suffix"],
+      )
+    value => fail("expected retained suffix, got " + value.to_string())
+  }
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 892 candidate handler throw retains mutation and dependent enqueue" {
+  let source =
+    #|var events = [];
+    #|Promise.resolve().then(function() { events.push("before"); throw "boom"; }).catch(function(error) { events.push("caught:" + error); });
+    #|Promise.resolve().then(function() { events.push("sibling"); });
+  let (interp, evidence) = issue892_candidate_run_and_drain_for_wb(source)
+  match interp.global.get("events") {
+    @runtime.Array(events) =>
+      assert_eq(
+        events.elements.map(value => value.to_string()),
+        ["before", "sibling", "caught:boom"],
+      )
+    value => fail("expected retained handler effects, got " + value.to_string())
+  }
+  assert_eq(interp.host.microtask_queue.length(), 0)
   assert_true(evidence.val.summary.bytecode_starts > 1)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
