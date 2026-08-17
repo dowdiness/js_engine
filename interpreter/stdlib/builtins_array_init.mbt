@@ -385,7 +385,7 @@ fn setup_array_builtins(
       let callback = if args.length() > 0 { args[0] } else { Undefined }
       if !@runtime.is_callable(callback) {
         raise @errors.TypeError(
-          message=@runtime.to_js_string(callback) + " is not a function",
+          message="callback is not a function",
         )
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }

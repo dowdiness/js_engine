@@ -210,8 +210,7 @@ fn ExecutorArrayForEachFrame::step_frame(
       }
       guard is_callable(callback) else {
         raise @errors.TypeError(
-          message=to_js_string(callback, interp=Some(interp)) +
-            " is not a function",
+          message="callback is not a function",
         )
       }
       self.phase = ExecutorArrayForEachNeedIndex(object, length, callback, 0L)

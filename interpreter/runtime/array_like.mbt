@@ -395,7 +395,7 @@ pub fn has_array_like_element(
   interp : Interpreter,
   val : Value,
   index : Int64,
-) -> Bool {
+) -> Bool raise Error {
   let key = index.to_string()
   match val {
     Array(data) =>
@@ -446,7 +446,7 @@ pub fn has_array_like_element(
     }
     String_(s) =>
       index >= 0L && index <= 0x7FFFFFFFL && index.to_int() < s.length()
-    Proxy(_) => interp.has_property(val, key) catch { _ => false }
+    Proxy(_) => interp.has_property(val, key)
     _ => false
   }
 }

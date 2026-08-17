@@ -1440,12 +1440,18 @@ fn PrimitiveProgramDispatchShell::perform_array_map_decision(
           "array map receiver drifted before HasProperty",
         )
       }
-      self.perform_array_map_event(
-        state,
-        MapHasProperty(
-          has_array_like_element(self.interp, state.receiver, index),
-        ),
-      )
+      let present : Result[Bool, Error] = Ok(
+        has_array_like_element(self.interp, state.receiver, index),
+      ) catch {
+        error => Err(error)
+      }
+      match present {
+        Ok(value) => self.perform_array_map_event(
+          state,
+          MapHasProperty(value),
+        )
+        Err(error) => self.perform_array_map_event(state, MapAbrupt(error))
+      }
     }
     MapRequestGet(index) => {
       guard state.phase is MapAwaitingGet && index == state.index else {
