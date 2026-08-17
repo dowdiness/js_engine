@@ -153,7 +153,7 @@ test "candidate tree separates parent and child outcomes" {
 test "candidate selection keeps activation unsupported local to a function" {
   let source =
     #|function parent() { return 1; }
-    #|function child() { return 1 - 2; }
+    #|function child() { return 1 * 2; }
   let root = (prepare_candidate_program(@parser.parse(source).stmts) catch {
       error => {
         debug_inspect(error.to_string())
@@ -184,7 +184,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
-    #|  function child() { return 1 - 2; }
+    #|  function child() { return 1 * 2; }
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
@@ -210,7 +210,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
 
 ///|
 test "candidate root selection distinguishes activation fallback" {
-  let program = prepare_candidate_program(@parser.parse("1 - 2;").stmts)
+  let program = prepare_candidate_program(@parser.parse("1 * 2;").stmts)
   match program.root.selection {
     UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
       match unsupported.reason {
@@ -1238,8 +1238,28 @@ test "candidate non-property deletion remains lowering unsupported" {
 }
 
 ///|
-test "candidate sibling subtraction stays tree-walker" {
-  assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
+test "candidate plain subtraction selects managed bytecode" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb("1 - 2;")
+  assert_eq(value.to_string(), "-1")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() == 1 else {
+    fail("plain subtraction started an unexpected number of executors")
+  }
+  if starts[0] != CandidateBytecodeExecutor {
+    fail("plain subtraction did not select bytecode")
+  }
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate compound subtraction remains tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 3; value -= 1; value;",
+    "2",
+  )
 }
 
 ///|
@@ -1856,7 +1876,7 @@ test "candidate tree separates same-name same-signature siblings" {
   guard starts.length() >= 5 else {
     fail("same-name sibling route did not start both activations")
   }
-  if starts[0] != CandidateTreeWalkerExecutor ||
+  if starts[0] != CandidateBytecodeExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor ||
     starts[3] != CandidateTreeWalkerExecutor ||
@@ -2352,7 +2372,7 @@ test "candidate preparation is deterministic across repeated calls" {
     "declare:same", "declare:same", "method", "arrow",
   ])
   json_inspect(selections(second.root.children), content=[
-    "bytecode", "activation", "bytecode", "bytecode",
+    "bytecode", "bytecode", "bytecode", "bytecode",
   ])
 }
 

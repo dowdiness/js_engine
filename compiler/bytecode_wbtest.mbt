@@ -1495,6 +1495,12 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     [Operator],
   )
   assert_instruction_contract_for_wb(
+    BinaryOp(Sub, BinaryExpression, loc),
+    true,
+    ManagedSuspension,
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
     AssignDestructure(@runtime.destructure_plan_bind_name("binding")),
     true,
     UnsupportedBeforeActivation(DestructuringAssignment),
@@ -1654,6 +1660,37 @@ test "bytecode primitive addition bypasses child activation" {
 }
 
 ///|
+test "bytecode primitive subtraction bypasses child activation" {
+  let interp = @interpreter.new_interpreter()
+  let primitive = parse_bytecode_for_wb("5 - 2;")
+  let primitive_frame = BytecodeFrame(primitive.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match primitive_frame.step_bytecode(interp) {
+    BytecodeFrameNormal(Number(value)) => inspect(value, content="3")
+    BytecodeFrameReturn(Number(value)) => inspect(value, content="3")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("primitive subtraction must complete with a number")
+    BytecodeFrameSuspended(_) =>
+      fail("primitive subtraction must not create a child activation")
+  }
+  let object = parse_bytecode_for_wb("({}) - 1;")
+  let object_frame = BytecodeFrame(object.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match object_frame.step_bytecode(interp) {
+    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingSubtraction(_)) =>
+      ()
+    BytecodeFrameSuspended(_) =>
+      fail("object subtraction must request coercing subtraction")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("object subtraction must suspend for guest conversion")
+  }
+}
+
+///|
 test "activation selection is per function and precedes frame construction" {
   let src =
     #|function child() { return 1 - 2; }
@@ -1672,15 +1709,9 @@ test "activation selection is per function and precedes frame construction" {
   }
   let child = bytecode.verified_main.child(0)
   match select_bytecode_function_activation(child, [0]) {
-    Err(unsupported) => {
-      assert_eq(unsupported.function_path, [0])
-      match unsupported.reason {
-        BinaryOperation => ()
-        _ => fail("child must retain its own binary-operation reason")
-      }
-      assert_true(unsupported.instruction_index >= 0)
-    }
-    Ok(_) => fail("unsupported child must be rejected at its own activation")
+    Ok(ManagedSuspension) => ()
+    Ok(_) => fail("subtraction child must be admitted as managed")
+    Err(_) => fail("plain subtraction must not remain unsupported")
   }
 }
 
@@ -1694,12 +1725,9 @@ test "activation selection recomputes typed reasons without a cached summary" {
   }
   bytecode.main_for_wb().code.push(BinaryOp(Sub, BinaryExpression, loc))
   match select_bytecode_function_activation(bytecode.verified_main, []) {
-    Err(unsupported) =>
-      match unsupported.reason {
-        BinaryOperation => ()
-        _ => fail("recomputed reason must identify binary operation")
-      }
-    Ok(_) => fail("stale eligibility must not remain accepted")
+    Ok(ManagedSuspension) => ()
+    Ok(_) => fail("plain subtraction must use managed suspension")
+    Err(_) => fail("plain subtraction must be admitted")
   }
 }
 
@@ -1712,14 +1740,25 @@ test "verified program carrier gates activation selection before frame construct
   }
   let child = bytecode.verified_main.child(0)
   match select_bytecode_function_activation(child, [0]) {
-    Err(unsupported) => {
-      assert_eq(unsupported.function_path, [0])
+    Ok(ManagedSuspension) => ()
+    Ok(_) => fail("verified subtraction child must use managed suspension")
+    Err(_) => fail("verified plain subtraction must be admitted")
+  }
+}
+
+///|
+test "bytecode compound subtraction remains unsupported" {
+  let bytecode = parse_bytecode_for_wb(
+    "function update() { var value = 3; value -= 1; return value; } 1;",
+  )
+  let child = bytecode.verified_main.child(0)
+  match select_bytecode_function_activation(child, [0]) {
+    Err(unsupported) =>
       match unsupported.reason {
         BinaryOperation => ()
-        _ => fail("verified child must retain its own unsupported reason")
+        _ => fail("compound subtraction must retain binary-operation reason")
       }
-    }
-    Ok(_) => fail("verified child must be rejected before frame construction")
+    Ok(_) => fail("compound subtraction must remain unsupported")
   }
 }
 
