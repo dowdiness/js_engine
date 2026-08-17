@@ -508,3 +508,53 @@ test "issue 918 sloppy typeof stays undefined after selected binding disappears"
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
 }
+
+///|
+test "issue 918 strict with binding shadows immutable undefined" {
+  let source =
+    #|var events = [];
+    #|var target = { undefined: 1 };
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "undefined") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { if (key === "undefined") events.push("s"); return Reflect.set(t, key, value, receiver); }
+    #|});
+    #|var write;
+    #|with (scope) { write = function(value) { "use strict"; undefined = value; }; }
+    #|events = [];
+    #|var errorName = "";
+    #|try { write(9); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + String(target.undefined) + ":" + (typeof undefined) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), ":9:undefined:h,u,h,s")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 918 sloppy with binding shadows immutable globals" {
+  let source =
+    #|var events = [];
+    #|var target = { undefined: 1, NaN: 2, Infinity: 3 };
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "undefined" || key === "NaN" || key === "Infinity") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { if (key === "undefined" || key === "NaN" || key === "Infinity") events.push("s"); return Reflect.set(t, key, value, receiver); }
+    #|});
+    #|var write;
+    #|with (scope) { write = function() { undefined = 9; NaN = 8; Infinity = 7; }; }
+    #|events = [];
+    #|var errorName = "";
+    #|try { write(); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + String(target.undefined) + ":" + String(target.NaN) + ":" + String(target.Infinity) + ":" + (typeof undefined) + ":" + String(NaN) + ":" + String(Infinity) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), ":9:8:7:undefined:NaN:Infinity:h,u,h,s,h,u,h,s,h,u,h,s")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
