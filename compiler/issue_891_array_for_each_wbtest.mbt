@@ -20,18 +20,45 @@ fn issue891_assert_evidence_for_wb(
 test "issue 891 candidate forEach preserves Proxy has abrupt completion" {
   let source =
     #|var events = [];
-    #|var target = [1];
-    #|var receiver = new Proxy(target, { get: function(t,k,r) { events.push("get:" + k); return Reflect.get(t,k,r); }, has: function() { events.push("has"); throw new Error("has"); } });
+    #|var callbacks = 0;
+    #|var target = [1, 2];
+    #|var receiver = new Proxy(target, { get: function(t,k,r) { events.push("get:" + k); return Reflect.get(t,k,r); }, has: function(t,k) { events.push("has:" + k); throw new Error("has"); } });
     #|var each = Array.prototype.forEach;
-    #|var run = function() { each.call(receiver, function() { events.push("callback"); }); };
+    #|var run = function() { each.call(receiver, function() { callbacks = callbacks + 1; events.push("callback"); }); };
     #|var result = "none";
     #|try { run(); }
-    #|catch (error) { result = error instanceof Error ? error.message : "other"; }
-    #|(each === Array.prototype.forEach) + ":" + result + ":" + events.join(",");
+    #|catch (error) { result = error instanceof Error ? "Error:" + error.message : "other"; }
+    #|(each === Array.prototype.forEach) + ":" + result + ":" + events.join(",") + ":" + callbacks;
   let default_value = issue891_default_run_for_wb(source)
-  assert_eq(default_value.to_string(), "true:none:get:length,has")
+  assert_eq(default_value.to_string(), "true:Error:has:get:length,has:0:0")
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "true:has:get:length,has")
+  assert_eq(value.to_string(), "true:Error:has:get:length,has:0:0")
+  assert_eq(default_value.to_string(), value.to_string())
+  issue891_assert_evidence_for_wb(evidence)
+}
+
+///|
+test "issue 891 forEach non-callable callback does not coerce after length" {
+  let source =
+    #|var events = [];
+    #|var target = { length: 1 };
+    #|var receiver = new Proxy(target, { get: function(t,k,r) { events.push("get:" + k); return Reflect.get(t,k,r); }, has: function(t,k) { events.push("has:" + k); return Reflect.has(t,k); } });
+    #|var callbackTarget = {
+    #|  [Symbol.toPrimitive]: function() { events.push("primitive-call"); throw new Error("primitive"); },
+    #|  toString: function() { events.push("toString-call"); throw new Error("toString"); },
+    #|  valueOf: function() { events.push("valueOf-call"); throw new Error("valueOf"); }
+    #|};
+    #|var callback = new Proxy(callbackTarget, { get: function(t,k,r) { events.push(k === Symbol.toPrimitive ? "primitive-get" : k + "-get"); return Reflect.get(t,k,r); } });
+    #|var run = function() { return Array.prototype.forEach.call(receiver, callback); };
+    #|var result = "none";
+    #|try { run(); }
+    #|catch (error) { result = error instanceof TypeError ? "TypeError:" + error.message : "other"; }
+    #|result + ":" + events.join(",");
+  let default_value = issue891_default_run_for_wb(source)
+  assert_eq(default_value.to_string(), "TypeError:callback is not a function:get:length")
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "TypeError:callback is not a function:get:length")
+  assert_eq(default_value.to_string(), value.to_string())
   issue891_assert_evidence_for_wb(evidence)
 }
 
