@@ -134,8 +134,7 @@ fn ExecutorArrayForEachFrame::finish_has_property(
   callback : Value,
   index : Int64,
   has_property : Bool,
-  interp : Interpreter,
-) -> ExecutorActivationStep raise Error {
+) -> ExecutorActivationStep {
   if has_property {
     self.phase = ExecutorArrayForEachAwaitGet(object, length, callback, index)
     executor_activation_managed_property_get(
@@ -150,7 +149,9 @@ fn ExecutorArrayForEachFrame::finish_has_property(
       callback,
       index + 1L,
     )
-    self.step_frame(interp)
+    // Yield the next k to the activation coordinator. In particular, a
+    // sparse hole must not recurse through step_frame on the host stack.
+    ExecutorActivationContinue
   }
 }
 
@@ -232,7 +233,7 @@ fn ExecutorArrayForEachFrame::step_frame(
         match operation.step(interp) {
           ExecutorActivationNormal(Bool(has_property)) =>
             self.finish_has_property(
-              object, length, callback, index, has_property, interp,
+              object, length, callback, index, has_property,
             )
           step => {
             self.phase = ExecutorArrayForEachAwaitHasProperty(
@@ -252,7 +253,7 @@ fn ExecutorArrayForEachFrame::step_frame(
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
           self.finish_has_property(
-            object, length, callback, index, has_property, interp,
+            object, length, callback, index, has_property,
           )
         step => {
           self.phase = ExecutorArrayForEachAwaitHasProperty(
