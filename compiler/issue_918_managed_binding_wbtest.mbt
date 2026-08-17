@@ -458,3 +458,53 @@ test "issue 918 strict write accepts an inherited binding after own deletion" {
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
 }
+
+///|
+test "issue 918 strict typeof does not restart after selected binding disappears" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var target = { captured: 1 };
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete target.captured; return undefined; }
+    #|});
+    #|var scope = target;
+    #|var read;
+    #|with (scope) { read = function() { "use strict"; return typeof captured; }; }
+    #|events = [];
+    #|var result = "";
+    #|try { result = read(); } catch (error) { result = error.name; }
+    #|result + ":" + String(captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "ReferenceError:3:u")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 918 sloppy typeof stays undefined after selected binding disappears" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var target = { captured: 1 };
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete target.captured; return undefined; }
+    #|});
+    #|var scope = target;
+    #|var read;
+    #|with (scope) { read = function() { return typeof captured; }; }
+    #|events = [];
+    #|var result = "";
+    #|try { result = read(); } catch (error) { result = error.name; }
+    #|result + ":" + String(captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "undefined:3:u")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
