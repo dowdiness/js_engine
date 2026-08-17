@@ -316,3 +316,118 @@ test "issue 918 rechecks inherited binding before strict write" {
   assert_true(evidence.val.summary.replay_violations == 0)
   assert_true(evidence.val.summary.active_activations == 0)
 }
+
+///|
+test "issue 918 strict read does not restart after selected binding disappears" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var inherited = { captured: 7 };
+    #|var target = Object.create(inherited);
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete inherited.captured; return undefined; }
+    #|});
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "captured") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); if (key === "captured") events.push("g"); return Reflect.get(t, key, receiver); }
+    #|});
+    #|var read;
+    #|with (scope) { read = function() { "use strict"; return captured; }; }
+    #|events = [];
+    #|var result = "";
+    #|try { result = String(read()); } catch (error) { result = error.name; }
+    #|result + ":" + String(captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "ReferenceError:3:h,u,u,h")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 918 strict write does not restart after selected binding disappears" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var inherited = { captured: 7 };
+    #|var target = Object.create(inherited);
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete inherited.captured; return undefined; }
+    #|});
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "captured") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { if (key === "captured") events.push("s"); return Reflect.set(t, key, value, receiver); }
+    #|});
+    #|var write;
+    #|with (scope) { write = function(value) { "use strict"; captured = value; }; }
+    #|events = [];
+    #|var result = "";
+    #|try { write(9); } catch (error) { result = error.name; }
+    #|result + ":" + String(captured) + ":" + String(target.captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "ReferenceError:3:undefined:h,u,u,h")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 918 non-strict read stays on selected binding after deletion" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var inherited = { captured: 7 };
+    #|var target = Object.create(inherited);
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete inherited.captured; return undefined; }
+    #|});
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "captured") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); if (key === "captured") events.push("g"); return Reflect.get(t, key, receiver); }
+    #|});
+    #|var read;
+    #|with (scope) { read = function() { return captured; }; }
+    #|events = [];
+    #|String(read()) + ":" + String(captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "undefined:3:h,u,u,h")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 918 non-strict write sets selected object after deletion" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var inherited = { captured: 7 };
+    #|var target = Object.create(inherited);
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete inherited.captured; return undefined; }
+    #|});
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "captured") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { if (key === "captured") events.push("s"); return Reflect.set(t, key, value, receiver); }
+    #|});
+    #|var write;
+    #|with (scope) { write = function(value) { captured = value; }; }
+    #|events = [];
+    #|write(9);
+    #|String(captured) + ":" + String(target.captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "3:9:h,u,u,h,s")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
