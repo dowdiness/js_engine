@@ -241,7 +241,7 @@ pub fn get_typedarray_byte_offset(ObjectData) -> Value?
 
 pub fn get_typedarray_viewed_buffer(ObjectData) -> Value?
 
-pub fn has_array_like_element(Interpreter, Value, Int64) -> Bool
+pub fn has_array_like_element(Interpreter, Value, Int64) -> Bool raise
 
 pub fn has_brand(Value, Value) -> Bool
 
