@@ -10,6 +10,18 @@ fn issue918_default_run_for_wb(source : String) -> @runtime.Value raise Error {
 }
 
 ///|
+fn issue918_candidate_run_on_interpreter_for_wb(
+  interp : @interpreter.Interpreter,
+  source : String,
+) -> (@runtime.Value, Ref[CandidateRouteEvidence]) raise Error {
+  run_candidate_program_with_evidence(interp, @parser.parse(source).stmts) catch {
+    @runtime.JsException(value) =>
+      fail("candidate execution threw: " + value.to_string())
+    error => fail("candidate execution failed: " + error.to_string())
+  }
+}
+
+///|
 test "issue 918 candidate child resolves a Proxy-backed with binding" {
   let source =
     #|var events = [];
@@ -184,6 +196,38 @@ test "issue 918 candidate with binding abrupt completion cleans for reuse" {
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 918 binding guest entry preserves queue state" {
+  let source =
+    #|var phase = 0;
+    #|var queued = 0;
+    #|var target = { captured: 7 };
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) {
+    #|    if (phase === 1 && key === "captured") queueMicrotask(function() { queued = queued + 1; });
+    #|    return Reflect.get(t, key, receiver);
+    #|  }
+    #|});
+    #|var child;
+    #|with (scope) { child = function() { return captured; }; }
+    #|phase = 1;
+    #|child();
+  let interp = @interpreter.new_interpreter()
+  let (value, evidence) = issue918_candidate_run_on_interpreter_for_wb(
+    interp,
+    source,
+  )
+  assert_eq(value.to_string(), "7")
+  assert_eq(interp.host.microtask_queue.length(), 1)
+  interp.run_microtasks()
+  assert_eq(interp.global.get("queued").to_string(), "1")
+  assert_eq(interp.host.microtask_queue.length(), 0)
+  assert_true(evidence.val.summary.fallback_violations == 0)
+  assert_true(evidence.val.summary.replay_violations == 0)
+  assert_true(evidence.val.summary.active_activations == 0)
 }
 
 ///|
