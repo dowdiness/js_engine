@@ -527,15 +527,21 @@ fn Environment::assign_with_strict(
     Some(obj) => {
       let had_own = with_object_has_own_direct(obj, name)
       if with_object_has(self.interpreter_context, obj, name) {
-        match self.interpreter_context {
-          Some(_) =>
-            if strict && had_own && !with_object_has_own_direct(obj, name) {
-              raise @errors.ReferenceError(message="\{name} is not defined")
-            }
-          None => ()
+        let still_present = match self.interpreter_context {
+          Some(interp) => interp.has_property_key(obj, String_(name))
+          None => true
         }
-        with_object_set(self.interpreter_context, obj, name, value, strict~)
-        return
+        if still_present {
+          match self.interpreter_context {
+            Some(_) =>
+              if strict && had_own && !with_object_has_own_direct(obj, name) {
+                raise @errors.ReferenceError(message="\{name} is not defined")
+              }
+            None => ()
+          }
+          with_object_set(self.interpreter_context, obj, name, value, strict~)
+          return
+        }
       }
     }
     None => ()
@@ -685,17 +691,19 @@ fn with_object_get(
         // effect. Use non-trapping direct-bag check for this.
         let had_own = with_object_has_own_direct(obj, name)
         if !is_blocked_by_unscopables(interp, obj, name) {
-          // The property is not blocked. If the unscopables getter
-          // deleted an own property, check whether the prototype
-          // chain still provides it (non-proxy path).
-          let still_own = with_object_has_own_direct(obj, name)
-          if had_own &&
-            !still_own &&
-            !interp.has_property_key(obj, String_(name)) {
-            return if strict {
-              raise @errors.ReferenceError(message="\{name} is not defined")
+          // HasBinding and GetBindingValue are separate spec steps. The
+          // unscopables lookup may delete the binding, so re-check
+          // HasProperty without running @@unscopables a second time.
+          let still_present = interp.has_property_key(obj, String_(name))
+          if !still_present {
+            return if had_own {
+              if strict {
+                raise @errors.ReferenceError(message="\{name} is not defined")
+              } else {
+                Some(Undefined)
+              }
             } else {
-              Some(Undefined)
+              None
             }
           }
           return Some(interp.get_property(obj, name, @token.Loc::default()))

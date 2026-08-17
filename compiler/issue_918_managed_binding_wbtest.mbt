@@ -35,7 +35,7 @@ test "issue 918 candidate child resolves a Proxy-backed with binding" {
     #|events = [];
     #|child() + ":" + events.join(",");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "7:has:c,get:u,get:c")
+  assert_eq(value.to_string(), "7:has:c,get:u,has:c,get:c")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -78,7 +78,7 @@ test "issue 918 candidate child stores through a Proxy-backed with binding" {
     #|events = [];
     #|child(9) + ":" + target.captured + ":" + events.join(",");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "9:9:has,unscopables,set,has,unscopables,get")
+  assert_eq(value.to_string(), "9:9:has,unscopables,has,set,has,unscopables,has,get")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -100,7 +100,7 @@ test "issue 918 binding seam survives a native callback activation" {
     #|[1].forEach(callback, target);
     #|String(target.seen) + ":" + events.join(",");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "8:has,unscopables,get")
+  assert_eq(value.to_string(), "8:has,unscopables,has,get")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -121,7 +121,7 @@ test "issue 918 candidate child resolves typeof through a Proxy-backed with bind
     #|events = [];
     #|child() + ":" + events.join(",");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "number:has,unscopables,get")
+  assert_eq(value.to_string(), "number:has,unscopables,has,get")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -169,7 +169,7 @@ test "issue 918 default and candidate with binding paths stay equivalent" {
   let default_value = issue918_default_run_for_wb(source)
   let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(default_value.to_string(), candidate_value.to_string())
-  assert_eq(candidate_value.to_string(), "7:has,unscopables,get")
+  assert_eq(candidate_value.to_string(), "7:has,unscopables,has,get")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -250,7 +250,7 @@ test "issue 918 candidate with binding traps terminate exactly once" {
     #|mode = 3; try { store(9); } catch (error) { errors.push(error.name); }
     #|errors.join(",") + ":" + events.join("");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "Error,Error,Error:hhuhus")
+  assert_eq(value.to_string(), "Error,Error,Error:hhuhuhs")
   assert_true(evidence.val.summary.abrupt_completions > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -279,7 +279,7 @@ test "issue 918 rechecks inherited binding before strict read" {
   let default_value = issue918_default_run_for_wb(source)
   let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(default_value.to_string(), candidate_value.to_string())
-  assert_eq(candidate_value.to_string(), "ReferenceError:h,u,h:undefined")
+  assert_eq(candidate_value.to_string(), "ReferenceError:h,u,u,h:undefined")
   assert_true(evidence.val.summary.fallback_violations == 0)
   assert_true(evidence.val.summary.replay_violations == 0)
   assert_true(evidence.val.summary.active_activations == 0)
@@ -308,7 +308,7 @@ test "issue 918 rechecks inherited binding before strict write" {
   let default_value = issue918_default_run_for_wb(source)
   let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(default_value.to_string(), candidate_value.to_string())
-  assert_eq(candidate_value.to_string(), "ReferenceError:h,u,h:undefined")
+  assert_eq(candidate_value.to_string(), "ReferenceError:h,u,u,h:undefined")
   assert_true(evidence.val.summary.fallback_violations == 0)
   assert_true(evidence.val.summary.replay_violations == 0)
   assert_true(evidence.val.summary.active_activations == 0)

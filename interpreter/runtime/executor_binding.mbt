@@ -266,6 +266,12 @@ priv enum ExecutorBindingPhase {
     Bool,
     ExecutorDeleteHasPropertyOperation
   )
+  ExecutorBindingAwaitRecheck(
+    Environment,
+    Value,
+    Bool,
+    ExecutorDeleteHasPropertyOperation
+  )
   ExecutorBindingAwaitUnscopables(Environment, Value, Bool)
   ExecutorBindingHaveUnscopables(Environment, Value, Bool, Value)
   ExecutorBindingAwaitUnscopablesName(Environment, Value, Bool)
@@ -371,6 +377,7 @@ fn ExecutorBindingFrame::after_unscopables(
   obj : Value,
   had_own : Bool,
   unscopables : Value,
+  interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   if is_object_value(unscopables) {
     self.phase = ExecutorBindingAwaitUnscopablesName(env, obj, had_own)
@@ -380,7 +387,7 @@ fn ExecutorBindingFrame::after_unscopables(
       self.request.loc,
     )
   }
-  self.finish_with_object(obj, had_own)
+  self.begin_recheck(env, obj, had_own, interp)
 }
 
 ///|
@@ -393,6 +400,49 @@ fn ExecutorBindingFrame::after_unscopables_name(
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   if is_truthy(unscopables_value) {
+    self.parent_or_unresolved(env, interp)
+  } else {
+    self.begin_recheck(env, obj, had_own, interp)
+  }
+}
+
+///|
+fn ExecutorBindingFrame::begin_recheck(
+  self : ExecutorBindingFrame,
+  env : Environment,
+  obj : Value,
+  had_own : Bool,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  let operation = ExecutorDeleteHasPropertyOperation(
+    target=obj,
+    key=String_(self.request.name),
+    loc=self.request.loc,
+  )
+  match operation.step(interp) {
+    ExecutorActivationNormal(Bool(has_property)) =>
+      self.after_recheck(env, obj, had_own, has_property, interp)
+    ExecutorActivationNormal(_) =>
+      raise @errors.InternalError(
+        message="binding HasProperty recheck returned a non-boolean",
+      )
+    step => {
+      self.phase = ExecutorBindingAwaitRecheck(env, obj, had_own, operation)
+      step
+    }
+  }
+}
+
+///|
+fn ExecutorBindingFrame::after_recheck(
+  self : ExecutorBindingFrame,
+  env : Environment,
+  obj : Value,
+  had_own : Bool,
+  has_property : Bool,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  if !has_property {
     self.parent_or_unresolved(env, interp)
   } else {
     self.finish_with_object(obj, had_own)
@@ -462,12 +512,30 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn step(self, interp)
           step
         }
       }
+    ExecutorBindingAwaitRecheck(env, obj, had_own, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          self.after_recheck(env, obj, had_own, has_property, interp)
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="binding HasProperty recheck returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingAwaitRecheck(
+            env,
+            obj,
+            had_own,
+            operation,
+          )
+          step
+        }
+      }
     ExecutorBindingAwaitUnscopables(_, _, _) =>
       raise @errors.InternalError(
         message="binding frame stepped while awaiting unscopables",
       )
     ExecutorBindingHaveUnscopables(env, obj, had_own, value) =>
-      self.after_unscopables(env, obj, had_own, value)
+      self.after_unscopables(env, obj, had_own, value, interp)
     ExecutorBindingAwaitUnscopablesName(_, _, _) =>
       raise @errors.InternalError(
         message="binding frame stepped while awaiting unscopables name",
@@ -511,6 +579,10 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn deliver_activation
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorBindingAwaitHas(_, _, _, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorBindingAwaitRecheck(_, _, _, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
