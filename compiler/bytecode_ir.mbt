@@ -708,7 +708,6 @@ fn bytecode_binary_contract(
     (Add, BinaryExpression) =>
       bytecode_contract(true, ManagedSuspension, [Operator])
     (Add, CompoundAssignment)
-    | (Sub, BinaryExpression)
     | (Sub, CompoundAssignment)
     | (Mul, BinaryExpression)
     | (Mul, CompoundAssignment)
@@ -749,6 +748,8 @@ fn bytecode_binary_contract(
       bytecode_contract(true, UnsupportedBeforeActivation(BinaryOperation), [
         Operator,
       ])
+    (Sub, BinaryExpression) =>
+      bytecode_contract(true, ManagedSuspension, [Operator])
   }
 }
 

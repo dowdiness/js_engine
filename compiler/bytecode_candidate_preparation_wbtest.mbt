@@ -153,7 +153,7 @@ test "candidate tree separates parent and child outcomes" {
 test "candidate selection keeps activation unsupported local to a function" {
   let source =
     #|function parent() { return 1; }
-    #|function child() { return 1 - 2; }
+    #|function child() { return 1 * 2; }
   let root = (prepare_candidate_program(@parser.parse(source).stmts) catch {
       error => {
         debug_inspect(error.to_string())
@@ -184,7 +184,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
-    #|  function child() { return 1 - 2; }
+    #|  function child() { return 1 * 2; }
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
@@ -210,7 +210,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
 
 ///|
 test "candidate root selection distinguishes activation fallback" {
-  let program = prepare_candidate_program(@parser.parse("1 - 2;").stmts)
+  let program = prepare_candidate_program(@parser.parse("1 * 2;").stmts)
   match program.root.selection {
     UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
       match unsupported.reason {
@@ -330,6 +330,63 @@ test "candidate plain addition resumes through guest ToPrimitive" {
   guard starts.contains(CandidateBytecodeExecutor) else {
     fail("plain addition did not enter the bytecode route")
   }
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate plain subtraction resumes through guest ToPrimitive" {
+  let source =
+    #|var events = "";
+    #|var object = {};
+    #|object[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + hint;
+    #|  return 2;
+    #|};
+    #|function subtract(value) { return value - 1; }
+    #|subtract(object);
+    #|events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "number")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.contains(CandidateBytecodeExecutor) else {
+    fail("plain subtraction did not enter the bytecode route")
+  }
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate equality Fibonacci 30 stays entirely bytecode" {
+  let source =
+    #|function fib(n) {
+    #|  if (n === 0 || n === 1) return n;
+    #|  return fib(n - 1) + fib(n - 2);
+    #|}
+    #|fib(30);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "832040")
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate equality descend 100000 stays entirely bytecode" {
+  let source =
+    #|function descend(n) {
+    #|  if (n === 0) return 0;
+    #|  return descend(n - 1);
+    #|}
+    #|descend(100000);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "0")
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
@@ -1238,8 +1295,326 @@ test "candidate non-property deletion remains lowering unsupported" {
 }
 
 ///|
-test "candidate sibling subtraction stays tree-walker" {
-  assert_candidate_tree_route_evidence_for_wb("1 - 2;", "-1")
+test "candidate plain subtraction selects managed bytecode" {
+  let (value, evidence) = candidate_run_with_evidence_for_wb("1 - 2;")
+  assert_eq(value.to_string(), "-1")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.length() == 1 else {
+    fail("plain subtraction started an unexpected number of executors")
+  }
+  if starts[0] != CandidateBytecodeExecutor {
+    fail("plain subtraction did not select bytecode")
+  }
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 924 default and candidate Array subtraction hooks stay equivalent" {
+  let source =
+    #|var events = "";
+    #|var ownSymbol = [1];
+    #|ownSymbol[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "own-symbol:" + hint + ":" + (this === ownSymbol) + ";";
+    #|  return 11;
+    #|};
+    #|var ownValue = [1];
+    #|ownValue.valueOf = function() {
+    #|  events = events + "own-value:" + (this === ownValue) + ";";
+    #|  return 10;
+    #|};
+    #|var ownString = [1];
+    #|ownString.valueOf = function() {
+    #|  events = events + "own-string-value:" + (this === ownString) + ";";
+    #|  return {};
+    #|};
+    #|ownString.toString = function() {
+    #|  events = events + "own-string-toString:" + (this === ownString) + ";";
+    #|  return "9";
+    #|};
+    #|var inheritedSymbol = [1];
+    #|var inheritedSymbolProto = {};
+    #|inheritedSymbolProto[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "inherited-symbol:" + hint + ":" + (this === inheritedSymbol) + ";";
+    #|  return 8;
+    #|};
+    #|Object.setPrototypeOf(inheritedSymbol, inheritedSymbolProto);
+    #|var inheritedValue = [1];
+    #|var inheritedValueProto = { valueOf: function() {
+    #|  events = events + "inherited-value:" + (this === inheritedValue) + ";";
+    #|  return 7;
+    #|} };
+    #|Object.setPrototypeOf(inheritedValue, inheritedValueProto);
+    #|var inheritedString = [1];
+    #|var inheritedStringProto = {
+    #|  valueOf: function() {
+    #|    events = events + "inherited-string-value:" + (this === inheritedString) + ";";
+    #|    return {};
+    #|  },
+    #|  toString: function() {
+    #|    events = events + "inherited-string-toString:" + (this === inheritedString) + ";";
+    #|    return "6";
+    #|  }
+    #|};
+    #|Object.setPrototypeOf(inheritedString, inheritedStringProto);
+    #|function arraySubtractionMatrix() {
+    #|  var results = [
+    #|    ownSymbol - 1,
+    #|    ownValue - 1,
+    #|    ownString - 1,
+    #|    inheritedSymbol - 1,
+    #|    inheritedValue - 1,
+    #|    inheritedString - 1
+    #|  ];
+    #|  return results.join(",") + "|" + events;
+    #|}
+    #|arraySubtractionMatrix();
+  let expected = "10,9,8,7,6,5|" +
+    "own-symbol:number:true;own-value:true;" +
+    "own-string-value:true;own-string-toString:true;" +
+    "inherited-symbol:number:true;inherited-value:true;" +
+    "inherited-string-value:true;inherited-string-toString:true;"
+  let default_interp = @interpreter.new_interpreter()
+  let default_value = default_interp.run(@parser.parse(source).stmts)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), expected)
+  assert_eq(candidate_value.to_string(), expected)
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let matrix_candidates = root.children.filter(child => {
+    child.name == Some("arraySubtractionMatrix")
+  })
+  guard matrix_candidates.length() == 1 else {
+    fail("Array subtraction matrix function was not retained exactly once")
+  }
+  issue924_assert_candidate_function_route_for_wb(
+    matrix_candidates[0],
+    evidence,
+    CandidateRouteNormal,
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 924 candidate throwing Array subtraction stays bytecode and cleans up" {
+  let source =
+    #|var events = "";
+    #|var throwing = [1];
+    #|throwing.valueOf = function() { events = events + "throw;"; throw "guest"; };
+    #|function arraySubtractionThrowing() { return throwing - 1; }
+  let default_interp = @interpreter.new_interpreter()
+  let _ = default_interp.run(@parser.parse(source).stmts)
+  let default_error = try {
+    ignore(
+      default_interp.call_value(
+        default_interp.global.get("arraySubtractionThrowing"),
+        @runtime.Undefined,
+        [],
+        @token.Loc::default(),
+      ),
+    )
+    "no error"
+  } catch {
+    @runtime.JsException(value) => value.to_string()
+    error => error.to_string()
+  }
+  let interp = @interpreter.new_interpreter()
+  let (_, evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse(source).stmts,
+  )
+  let candidate_error = try {
+    ignore(
+      interp.call_value(
+        interp.global.get("arraySubtractionThrowing"),
+        @runtime.Undefined,
+        [],
+        @token.Loc::default(),
+      ),
+    )
+    "no error"
+  } catch {
+    @runtime.JsException(value) => value.to_string()
+    error => error.to_string()
+  }
+  assert_eq(default_error, "guest")
+  assert_eq(candidate_error, default_error)
+  assert_eq(interp.global.get("events").to_string(), "throw;")
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let throwing_candidates = root.children.filter(child => {
+    child.name == Some("arraySubtractionThrowing")
+  })
+  guard throwing_candidates.length() == 1 else {
+    fail("throwing Array subtraction function was not retained exactly once")
+  }
+  issue924_assert_candidate_function_route_for_wb(
+    throwing_candidates[0],
+    evidence,
+    CandidateRouteAbrupt,
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 924 candidate subtraction keeps queue and route evidence reusable" {
+  let source =
+    #|var events = "";
+    #|var left = {};
+    #|left[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "left:" + hint + ";";
+    #|  return 8;
+    #|};
+    #|function subtractLeft() { return left - 2; }
+    #|var right = {};
+    #|right[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "right:" + hint + ";";
+    #|  queueMicrotask(function() { events = events + "micro;"; });
+    #|  throw new Error("right");
+    #|};
+    #|function subtractRight() { return left - right; }
+  let interp = @interpreter.new_interpreter()
+  let (_, evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse(source).stmts,
+  )
+  let first = interp.call_value(
+    interp.global.get("subtractLeft"),
+    @runtime.Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  assert_eq(first.to_string(), "6")
+  assert_eq(interp.global.get("events").to_string(), "left:number;")
+  let right_failed = try {
+    let _ = interp.call_value(
+      interp.global.get("subtractRight"),
+      @runtime.Undefined,
+      [],
+      @token.Loc::default(),
+    )
+    false
+  } catch {
+    @runtime.JsException(value) => value.to_string().contains("right")
+    _ => false
+  }
+  assert_true(right_failed)
+  assert_eq(
+    interp.global.get("events").to_string(),
+    "left:number;left:number;right:number;",
+  )
+  assert_eq(interp.host.microtask_queue.length(), 1)
+  interp.run_microtasks()
+  assert_eq(interp.host.microtask_queue.length(), 0)
+  assert_eq(
+    interp.global.get("events").to_string(),
+    "left:number;left:number;right:number;micro;",
+  )
+  let second = interp.call_value(
+    interp.global.get("subtractLeft"),
+    @runtime.Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  assert_eq(second.to_string(), "6")
+  assert_eq(
+    interp.global.get("events").to_string(),
+    "left:number;left:number;right:number;micro;left:number;",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+fn issue924_assert_candidate_function_route_for_wb(
+  candidate : CandidateFunction,
+  evidence : Ref[CandidateRouteEvidence],
+  expected_completion : CandidateRouteCompletion,
+) -> Unit raise Error {
+  let source_identity = candidate.source_identity
+  let mut prepared_count = 0
+  let mut bytecode_starts = 0
+  let mut tree_starts = 0
+  let mut completed_count = 0
+  for event in evidence.val.events {
+    match event {
+      CandidateRoutePreparedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
+          item.source_identity,
+          source_identity,
+        ) => {
+        prepared_count += 1
+        match item.decision {
+          UseBytecode(_) => ()
+          UseTreeWalker(_) =>
+            fail("issue 924 Array subtraction function selected Tree-walker")
+        }
+      }
+      CandidateRouteStartedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
+          item.source_identity,
+          source_identity,
+        ) =>
+        match item.executor {
+          CandidateBytecodeExecutor => bytecode_starts += 1
+          CandidateTreeWalkerExecutor => tree_starts += 1
+        }
+      CandidateRouteCompletedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
+          item.source_identity,
+          source_identity,
+        ) => {
+        completed_count += 1
+        match (expected_completion, item.completion) {
+          (CandidateRouteNormal, CandidateRouteNormal)
+          | (CandidateRouteAbrupt, CandidateRouteAbrupt) => ()
+          _ => fail("issue 924 Array subtraction completion mismatched")
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_eq(prepared_count, 1)
+  assert_eq(bytecode_starts, 1)
+  assert_eq(tree_starts, 0)
+  assert_eq(completed_count, 1)
+}
+
+///|
+test "candidate compound subtraction remains tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 3; value -= 1; value;", "2",
+  )
+}
+
+///|
+test "candidate local identifier compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "for (var unused of [0]) {}; function local() { var x = 3; x -= 1; return x; } local();",
+    "2",
+    child=true,
+  )
+}
+
+///|
+test "candidate environment or global compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb("var x = 3; x -= 1; x;", "2")
+}
+
+///|
+test "candidate property compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 3 }; o.x -= 1; o.x;", "2",
+  )
+}
+
+///|
+test "candidate computed compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 3 }; var k = 'x'; o[k] -= 1; o[k];", "2",
+  )
 }
 
 ///|
@@ -1856,7 +2231,7 @@ test "candidate tree separates same-name same-signature siblings" {
   guard starts.length() >= 5 else {
     fail("same-name sibling route did not start both activations")
   }
-  if starts[0] != CandidateTreeWalkerExecutor ||
+  if starts[0] != CandidateBytecodeExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor ||
     starts[3] != CandidateTreeWalkerExecutor ||
@@ -2352,7 +2727,7 @@ test "candidate preparation is deterministic across repeated calls" {
     "declare:same", "declare:same", "method", "arrow",
   ])
   json_inspect(selections(second.root.children), content=[
-    "bytecode", "activation", "bytecode", "bytecode",
+    "bytecode", "bytecode", "bytecode", "bytecode",
   ])
 }
 

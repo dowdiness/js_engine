@@ -636,6 +636,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing addition",
       )
+    @runtime.ExecutorActivationCoercingSubtraction(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending coercing subtraction",
+      )
     @runtime.ExecutorActivationPropertyDelete(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property delete",
@@ -817,6 +821,20 @@ fn BytecodeFrame::step_bytecode(
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(
               @runtime.executor_activation_coercing_addition_request(request),
+            )
+          }
+        }
+      }
+      BinaryOp(Sub, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match @runtime.begin_executor_coercing_subtraction(left, right, loc) {
+          @runtime.ExecutorCoercingSubtractionCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingSubtractionSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_subtraction_request(request),
             )
           }
         }

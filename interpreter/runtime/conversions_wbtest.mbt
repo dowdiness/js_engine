@@ -359,6 +359,198 @@ test "to_number - symbol raises TypeError" {
   }
 }
 
+///|
+test "subtraction observes an Array own valueOf hook" {
+  let interp = Interpreter::new()
+  let result = interp.run(
+    @parser.parse("let array=[1];array.valueOf=()=>2;array-1;").stmts,
+  )
+  match result {
+    Number(value) => inspect(value, content="1")
+    _ => fail("expected Array subtraction to produce Number(1)")
+  }
+}
+
+///|
+test "subtraction uses Number coercion for primitive operands" {
+  let interp = Interpreter::new()
+  let result = interp.run(
+    @parser.parse(
+      "5-2===3&&'7'-'2'===5&&true-null===1&&" + "(undefined-1)!==(undefined-1);",
+    ).stmts,
+  )
+  inspect(result, content="true")
+}
+
+///|
+test "subtraction passes the number hint through Array @@toPrimitive" {
+  let interp = Interpreter::new()
+  let array = make_array([Number(1.0)])
+  let hook = make_method_func(
+    name="array @@toPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, args) raise {
+      match args {
+        [String_(hint)] => inspect(hint, content="number")
+        _ => fail("expected the number hint argument")
+      }
+      Number(3.0)
+    },
+  )
+  match array {
+    Array(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+    _ => fail("expected an array fixture")
+  }
+  let result = eval_binary_op(
+    @ast.BinOp::Sub,
+    array,
+    Number(1.0),
+    @token.Loc::default(),
+    interp=Some(interp),
+  )
+  inspect(result.to_string(), content="2")
+}
+
+///|
+test "subtraction falls back from Array valueOf to its toString hook" {
+  let interp = Interpreter::new()
+  let result = interp.run(
+    @parser.parse(
+      "let array=[1];array.valueOf=()=>({});array.toString=()=>\"3\";" +
+      "array-1===2;",
+    ).stmts,
+  )
+  inspect(result, content="true")
+}
+
+///|
+test "subtraction observes inherited Array conversion hooks" {
+  let interp = Interpreter::new()
+  let receiver : Ref[Value] = { val: Undefined }
+  let value_of = make_method_func(
+    name="inheritedValueOf",
+    realm_state=Some(interp.realm_state),
+    fn(this_value, _args) raise {
+      assert_true(physical_equal(this_value, receiver.val))
+      Number(4.0)
+    },
+  )
+  let proto = make_object(
+    { "valueOf": value_of },
+    Null,
+    None,
+    "ArrayPrototype",
+    Map([]),
+    true,
+  )
+  let array = make_array_with_prototype([Number(1.0)], proto)
+  receiver.val = array
+  let result = eval_binary_op(
+    @ast.BinOp::Sub,
+    array,
+    Number(1.0),
+    @token.Loc::default(),
+    interp=Some(interp),
+  )
+  inspect(result.to_string(), content="3")
+
+  let fallback = make_object(Map([]), Null, None, "Fallback", Map([]), true)
+  let inherited_value_of = make_method_func(
+    name="inheritedObjectValueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { fallback },
+  )
+  let inherited_to_string = make_method_func(
+    name="inheritedToString",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { String_("5") },
+  )
+  let fallback_proto = make_object(
+    { "valueOf": inherited_value_of, "toString": inherited_to_string },
+    Null,
+    None,
+    "ArrayPrototype",
+    Map([]),
+    true,
+  )
+  let fallback_array = make_array_with_prototype([Number(1.0)], fallback_proto)
+  let fallback_result = eval_binary_op(
+    @ast.BinOp::Sub,
+    fallback_array,
+    Number(1.0),
+    @token.Loc::default(),
+    interp=Some(interp),
+  )
+  inspect(fallback_result.to_string(), content="4")
+}
+
+///|
+test "subtraction observes inherited Array @@toPrimitive" {
+  let interp = Interpreter::new()
+  let hook = make_method_func(
+    name="inherited@@toPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, args) raise {
+      match args {
+        [String_(hint)] => inspect(hint, content="number")
+        _ => fail("expected the number hint argument")
+      }
+      Number(6.0)
+    },
+  )
+  let proto = make_object(Map([]), Null, None, "ArrayPrototype", Map([]), true)
+  match proto {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+    _ => fail("expected an array prototype fixture")
+  }
+  let array = make_array_with_prototype([Number(1.0)], proto)
+  let result = eval_binary_op(
+    @ast.BinOp::Sub,
+    array,
+    Number(1.0),
+    @token.Loc::default(),
+    interp=Some(interp),
+  )
+  inspect(result.to_string(), content="5")
+}
+
+///|
+test "subtraction observes valueOf hooks on Map Set and Promise" {
+  let interp = Interpreter::new()
+  let value_of = make_method_func(
+    name="collectionValueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) { Number(4.0) },
+  )
+  let map = Map(MapData([]))
+  match map {
+    Map(data) => data.bag.properties["valueOf"] = value_of
+    _ => fail("expected a Map fixture")
+  }
+  let set = Set(SetData([]))
+  match set {
+    Set(data) => data.bag.properties["valueOf"] = value_of
+    _ => fail("expected a Set fixture")
+  }
+  let promise = Promise(new_promise_data())
+  match promise {
+    Promise(data) => data.bag.properties["valueOf"] = value_of
+    _ => fail("expected a Promise fixture")
+  }
+  for value in [map, set, promise] {
+    let result = eval_binary_op(
+      @ast.BinOp::Sub,
+      value,
+      Number(1.0),
+      @token.Loc::default(),
+      interp=Some(interp),
+    )
+    inspect(result.to_string(), content="3")
+  }
+}
+
 // ── to_js_string ─────────────────────────────────────────────────────────────
 
 ///|

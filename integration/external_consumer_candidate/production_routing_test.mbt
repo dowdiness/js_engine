@@ -530,6 +530,73 @@ test "candidate Engine routes plain addition coercion and remains reusable" {
 }
 
 ///|
+test "candidate Engine plain subtraction preserves queue state and reuse" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var events = ''; " +
+    "var left = {}; " +
+    "left[Symbol.toPrimitive] = function(hint) { " +
+    "events = events + 'left:' + hint + ';'; return 8; }; " +
+    "function subtractLeft() { return left - 2; } " +
+    "function eventSnapshot() { return events; }",
+  )
+  json_inspect(engine.call_json("subtractLeft", []), content=6)
+  json_inspect(engine.call_json("eventSnapshot", []), content="left:number;")
+  engine.eval(
+    "var right = {}; " +
+    "right[Symbol.toPrimitive] = function(hint) { " +
+    "events = events + 'right:' + hint + ';'; " +
+    "queueMicrotask(function() { events = events + 'micro;'; }); " +
+    "throw new Error('right'); }; " +
+    "function subtractRight() { return left - right; }",
+  )
+  let failed = try {
+    ignore(engine.call_json("subtractRight", []))
+    false
+  } catch {
+    error => error.to_string().contains("right")
+  }
+  expect_bool(failed, true, "candidate subtraction right conversion error")
+  json_inspect(
+    engine.call_json("eventSnapshot", []),
+    content="left:number;left:number;right:number;",
+  )
+  expect_bool(
+    engine.has_pending_microtasks(),
+    true,
+    "candidate subtraction pending queue",
+  )
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "candidate subtraction queue checkpoint",
+  )
+  json_inspect(
+    engine.call_json("eventSnapshot", []),
+    content="left:number;left:number;right:number;micro;",
+  )
+  expect_bool(
+    engine.has_pending_microtasks(),
+    false,
+    "candidate subtraction drained queue",
+  )
+  expect_bool(
+    engine.run_microtask_checkpoint(),
+    false,
+    "candidate subtraction second checkpoint",
+  )
+  json_inspect(
+    engine.call_json("eventSnapshot", []),
+    content="left:number;left:number;right:number;micro;",
+  )
+  json_inspect(engine.call_json("subtractLeft", []), content=6)
+  json_inspect(
+    engine.call_json("eventSnapshot", []),
+    content="left:number;left:number;right:number;micro;left:number;",
+  )
+}
+
+///|
 test "candidate Engine Array valueOf participates in addition" {
   let engine = @js_engine.Engine()
   engine.eval(

@@ -17,6 +17,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
+  ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
@@ -407,6 +408,43 @@ pub fn executor_activation_coercing_addition_request(
   request : ExecutorCoercingAdditionRequest,
 ) -> ExecutorActivationStep {
   ExecutorActivationCoercingAddition(request)
+}
+
+///|
+// A closed subtraction request. Runtime owns ToPrimitive(number) ordering,
+// Number conversion, and abrupt completion; executors supply only the already-
+// evaluated operands and source location.
+pub struct ExecutorCoercingSubtractionRequest {
+  priv left : Value
+  priv right : Value
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorCoercingSubtractionRequest::ExecutorCoercingSubtractionRequest(
+  left~ : Value,
+  right~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorCoercingSubtractionRequest {
+  { left, right, loc }
+}
+
+///|
+pub fn executor_activation_coercing_subtraction(
+  left : Value,
+  right : Value,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingSubtraction(
+    ExecutorCoercingSubtractionRequest(left~, right~, loc~),
+  )
+}
+
+///|
+pub fn executor_activation_coercing_subtraction_request(
+  request : ExecutorCoercingSubtractionRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingSubtraction(request)
 }
 
 ///|
@@ -825,6 +863,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertySet(Value)
   ExecutorChildPropertyUpdate
   ExecutorChildCoercingAddition
+  ExecutorChildCoercingSubtraction
   ExecutorChildPropertyDelete
   ExecutorChildIterableSpread
   ExecutorChildCopyDataProperties
@@ -1394,6 +1433,8 @@ fn Interpreter::complete_executor_step(
       executor_property_update_completion(step)
     Some(ExecutorChildCoercingAddition) =>
       executor_coercing_addition_completion(step)
+    Some(ExecutorChildCoercingSubtraction) =>
+      executor_coercing_subtraction_completion(step)
     Some(ExecutorChildPropertyDelete) =>
       executor_property_delete_completion(step)
     Some(ExecutorChildIterableSpread) =>
@@ -2135,6 +2176,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationCoercingSubtraction(request) => {
+      let subtraction_frame = ExecutorCoercingSubtractionFrame(request)
+      stack.push({
+        frame: subtraction_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildCoercingSubtraction),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
     ExecutorActivationPropertyDelete(request) => {
       let delete_frame = ExecutorPropertyDeleteFrame(request)
       stack.push({
@@ -2422,6 +2473,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
+        | ExecutorActivationCoercingSubtraction(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
         | ExecutorActivationCopyDataProperties(_)
@@ -2438,6 +2490,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
+        | ExecutorActivationCoercingSubtraction(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
         | ExecutorActivationCopyDataProperties(_)
@@ -2464,6 +2517,7 @@ fn executor_construct_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -2492,6 +2546,7 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -2518,6 +2573,7 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -2544,6 +2600,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -2551,6 +2608,33 @@ fn executor_coercing_addition_completion(
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_coercing_subtraction_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    ExecutorActivationContinue
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationPropertySet(_)
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="coercing subtraction completed with a pending activation step",
         ),
       )
   }
@@ -2570,6 +2654,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
