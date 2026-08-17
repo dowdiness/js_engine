@@ -1317,7 +1317,7 @@ test "Stage B.3: Proxy has trap via prototype and with" {
     #|with (proxy) { console.log(attr); }
     #|console.log(log.join(","));
   let output = run_output(src)
-  json_inspect(output, content=["true", "42", "1,attr"])
+  json_inspect(output, content=["true", "42", "1,attr,attr"])
 }
 
 ///|
@@ -19995,7 +19995,7 @@ test "simple UserFunc setup failure restores nested parameter-default gates" {
     #|console.log(log.join("|"));
   let output = run_output(src)
   json_inspect(output, content=[
-    "has:TTE|get:@@unscopables|has:TTE|get:@@unscopables|get:TTE|caught:tte-boom|gate:SyntaxError|after:restored",
+    "has:TTE|get:@@unscopables|has:TTE|get:@@unscopables|has:TTE|get:TTE|caught:tte-boom|gate:SyntaxError|after:restored",
   ])
 }
 
