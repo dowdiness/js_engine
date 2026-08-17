@@ -431,3 +431,30 @@ test "issue 918 non-strict write sets selected object after deletion" {
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
 }
+
+///|
+test "issue 918 strict write accepts an inherited binding after own deletion" {
+  let source =
+    #|var captured = 3;
+    #|var events = [];
+    #|var inherited = { captured: 7 };
+    #|var target = Object.create(inherited);
+    #|target.captured = 1;
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete target.captured; return undefined; }
+    #|});
+    #|var scope = target;
+    #|var write;
+    #|with (scope) { write = function(value) { "use strict"; captured = value; }; }
+    #|events = [];
+    #|var errorName = "";
+    #|try { write(9); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + String(captured) + ":" + String(target.captured) + ":" + String(inherited.captured) + ":" + events.join(",");
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), ":3:9:7:u")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
