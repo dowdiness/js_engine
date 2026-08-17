@@ -217,8 +217,7 @@ test "issue 918 binding guest entry preserves queue state" {
     #|child();
   let interp = @interpreter.new_interpreter()
   let (value, evidence) = issue918_candidate_run_on_interpreter_for_wb(
-    interp,
-    source,
+    interp, source,
   )
   assert_eq(value.to_string(), "7")
   assert_eq(interp.host.microtask_queue.length(), 1)
