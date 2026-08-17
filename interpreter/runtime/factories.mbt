@@ -1273,6 +1273,29 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
 }
 
 ///|
+// GetFunctionRealm-style metadata lookup.  Bound functions recurse through
+// their target and revoked proxies raise so callers can apply the spec's
+// current-realm fallback for an abrupt GetFunctionRealm completion.
+fn get_function_realm_protos(
+  callee : Value,
+) -> FunctionRealmProtos? raise Error {
+  match callee {
+    Proxy(proxy_data) => get_function_realm_protos(get_proxy_target(proxy_data))
+    Object(data) =>
+      match data.callable {
+        Some(BoundFunc(target, _, _)) => get_function_realm_protos(target)
+        Some(_) =>
+          match get_callee_function_metadata(Object(data)) {
+            Some(_) => Some(object_data_function_realm_protos(data))
+            None => None
+          }
+        None => None
+      }
+    _ => None
+  }
+}
+
+///|
 /// Resolve the intrinsic prototype selected by GetPrototypeFromConstructor's
 /// primitive-prototype fallback. Proxy and bound-function traversal mirrors
 /// GetFunctionRealm; revoked proxies therefore raise before any fallback.
@@ -1281,22 +1304,10 @@ pub fn constructor_realm_intrinsic_prototype(
   intrinsic_name : String,
   default_prototype : Value,
 ) -> Value raise Error {
-  fn realm_protos_of(
-    constructor_value : Value,
-  ) -> FunctionRealmProtos raise Error {
-    match constructor_value {
-      Proxy(proxy_data) => realm_protos_of(get_proxy_target(proxy_data))
-      Object(data) =>
-        match data.callable {
-          Some(BoundFunc(target, _, _)) => realm_protos_of(target)
-          Some(_) => object_data_function_realm_protos(data)
-          None => empty_function_realm_protos()
-        }
-      _ => empty_function_realm_protos()
-    }
+  let protos = match get_function_realm_protos(new_target) {
+    Some(protos) => protos
+    None => empty_function_realm_protos()
   }
-
-  let protos = realm_protos_of(new_target)
   let registered_prototype = match protos.constructor_prototype_registry {
     Some(Object(registry)) => registry.bag.properties.get(intrinsic_name)
     _ => None
@@ -1507,6 +1518,29 @@ fn with_active_callee_realm_value(
     e => {
       finish_active_callee_realm_value(realm_state, scope, failure=Some(e))
       raise e
+    }
+  }
+}
+
+///|
+// Temporarily install a selected function realm while runtime-owned objects
+// are created.  The caller supplies already-resolved metadata; this scope
+// never performs guest lookup or call work.
+fn[T] with_active_realm_protos(
+  realm_state : RealmState,
+  protos : FunctionRealmProtos,
+  eval : () -> T raise Error,
+) -> T raise Error {
+  let previous_realm_protos = active_realm_protos(realm_state)
+  apply_active_realm_protos(realm_state, protos)
+  try {
+    let result = eval()
+    apply_active_realm_protos(realm_state, previous_realm_protos)
+    result
+  } catch {
+    error => {
+      apply_active_realm_protos(realm_state, previous_realm_protos)
+      raise error
     }
   }
 }
