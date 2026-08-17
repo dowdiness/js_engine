@@ -29,6 +29,16 @@ pub fn apply_object_literal_static_data_property(Value, String, Value) -> Unit r
 
 pub fn array_species_create(Interpreter, Value, Int64) -> Value raise
 
+pub fn begin_executor_binding_assignment_load(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingStart raise
+
+pub fn begin_executor_binding_direct_eval(Interpreter, ExecContext, Environment, @token.Loc) -> ExecutorBindingStart raise
+
+pub fn begin_executor_binding_load(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingStart raise
+
+pub fn begin_executor_binding_store(Interpreter, ExecContext, Environment, String, Value, @token.Loc) -> ExecutorBindingStart raise
+
+pub fn begin_executor_binding_typeof(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingStart raise
+
 pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
 
 pub fn begin_executor_copy_data_properties(Interpreter, Value, Value, Array[Value], @token.Loc) -> ExecutorCopyDataPropertiesStart
@@ -98,6 +108,8 @@ pub fn eval_this_value(Environment) -> Value raise
 pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
 pub fn execution_control_failure_code(Error) -> String?
+
+pub fn executor_activation_binding_request(ExecutorBindingRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
@@ -703,6 +715,16 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
+  ExecutorActivationBinding(ExecutorBindingRequest)
+}
+
+pub struct ExecutorBindingRequest {
+  // private fields
+}
+
+pub enum ExecutorBindingStart {
+  ExecutorBindingCompleted(Value)
+  ExecutorBindingSuspended(ExecutorBindingRequest)
 }
 
 pub struct ExecutorCallRequest {

@@ -525,19 +525,16 @@ fn bytecode_instruction_contract(
     | DropPropertyAssignReference
     | DropComputedAssignReference
     | Return => bytecode_contract(false, SynchronousLeaf, [])
-    LoadThis
-    | LoadName(_)
-    | LoadAssignmentName(_)
-    | StoreName(_)
-    | LoadEnvSlot(_)
-    | StoreEnvSlot(_)
-    | TypeofName(_) => bytecode_contract(true, SynchronousLeaf, [BindingAccess])
+    LoadThis | LoadEnvSlot(_) | StoreEnvSlot(_) =>
+      bytecode_contract(true, SynchronousLeaf, [BindingAccess])
+    LoadName(_) | LoadAssignmentName(_) | StoreName(_) | TypeofName(_) =>
+      bytecode_contract(true, ManagedSuspension, [BindingAccess])
     DeleteName(_) =>
       bytecode_contract(true, UnsupportedBeforeActivation(DeleteName), [
         BindingAccess,
       ])
     LoadDirectEvalCallee =>
-      bytecode_contract(true, SynchronousLeaf, [BindingAccess, DirectEval])
+      bytecode_contract(true, ManagedSuspension, [BindingAccess, DirectEval])
     LoadConsoleMember(_) =>
       bytecode_contract(true, SynchronousLeaf, [MemberAccess])
     LoadSuperProperty(_, _) =>
