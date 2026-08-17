@@ -78,7 +78,10 @@ test "issue 918 candidate child stores through a Proxy-backed with binding" {
     #|events = [];
     #|child(9) + ":" + target.captured + ":" + events.join(",");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "9:9:has,unscopables,has,set,has,unscopables,has,get")
+  assert_eq(
+    value.to_string(),
+    "9:9:has,unscopables,has,set,has,unscopables,has,get",
+  )
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)

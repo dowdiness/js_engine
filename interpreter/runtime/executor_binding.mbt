@@ -521,12 +521,7 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn step(self, interp)
             message="binding HasProperty recheck returned a non-boolean",
           )
         step => {
-          self.phase = ExecutorBindingAwaitRecheck(
-            env,
-            obj,
-            had_own,
-            operation,
-          )
+          self.phase = ExecutorBindingAwaitRecheck(env, obj, had_own, operation)
           step
         }
       }
