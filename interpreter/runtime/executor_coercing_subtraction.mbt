@@ -19,9 +19,7 @@ pub fn begin_executor_coercing_subtraction(
       ExecutorCoercingSubtractionRequest(left~, right~, loc~),
     )
   } else {
-    ExecutorCoercingSubtractionCompleted(
-      finish_subtraction(left, right, loc),
-    )
+    ExecutorCoercingSubtractionCompleted(finish_subtraction(left, right, loc))
   }
 }
 
@@ -30,10 +28,7 @@ priv enum ExecutorCoercingSubtractionPhase {
   ExecutorCoercingSubtractionNeedLeft
   ExecutorCoercingSubtractionAwaitLeft(ExecutorToPrimitiveOperation)
   ExecutorCoercingSubtractionHaveLeft(Double)
-  ExecutorCoercingSubtractionAwaitRight(
-    Double,
-    ExecutorToPrimitiveOperation,
-  )
+  ExecutorCoercingSubtractionAwaitRight(Double, ExecutorToPrimitiveOperation)
   ExecutorCoercingSubtractionComplete(Value)
 }
 
@@ -114,8 +109,7 @@ fn ExecutorCoercingSubtractionFrame::step_frame(
           self.finish_right(interp, left_number, value)
         step => {
           self.phase = ExecutorCoercingSubtractionAwaitRight(
-            left_number,
-            operation,
+            left_number, operation,
           )
           step
         }
@@ -127,8 +121,7 @@ fn ExecutorCoercingSubtractionFrame::step_frame(
           self.finish_right(interp, left_number, value)
         step => {
           self.phase = ExecutorCoercingSubtractionAwaitRight(
-            left_number,
-            operation,
+            left_number, operation,
           )
           step
         }

@@ -86,6 +86,27 @@ test "startup/tiny_program" (b : @bench.T) {
 }
 
 ///|
+/// Issue #924 microbenchmark: primitive subtraction through the bytecode VM.
+/// Parsing, lowering, verification, interpreter setup, and the correctness
+/// check are deliberately outside the timed section so the measurement covers
+/// only repeated execution of the already-prepared instruction path.
+test "issue924/bytecode_primitive_subtraction" (b : @bench.T) {
+  let source = "5 - 2;"
+  let program = @parser.parse(source)
+  let bytecode = @compiler.compile_script_to_bytecode(program.stmts)
+  let interp = @interpreter.new_interpreter()
+  let result = bytecode.run(interp)
+  guard result.to_string() == "3" else {
+    abort("[issue924/bytecode_primitive_subtraction] correctness check failed")
+  }
+  b.bench(fn() {
+    b.keep(bytecode.run(interp)) catch {
+      _ => abort("bytecode subtraction raised")
+    }
+  })
+}
+
+///|
 /// Lexer throughput on a small (~130-token) realistic JS snippet.
 ///
 /// What it measures: @lexer.tokenize() per-call cost on a short source.

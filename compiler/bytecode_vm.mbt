@@ -834,9 +834,7 @@ fn BytecodeFrame::step_bytecode(
           @runtime.ExecutorCoercingSubtractionSuspended(request) => {
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_subtraction_request(
-                request,
-              ),
+              @runtime.executor_activation_coercing_subtraction_request(request),
             )
           }
         }

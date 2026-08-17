@@ -630,6 +630,20 @@ fn run_executor_coercing_subtraction_root_for_wb(
 }
 
 ///|
+fn coercing_subtraction_error_for_wb(
+  interp : Interpreter,
+  left : Value,
+  right : Value,
+) -> Error? {
+  try {
+    let _ = run_executor_coercing_subtraction_root_for_wb(interp, left, right)
+    None
+  } catch {
+    error => Some(error)
+  }
+}
+
+///|
 fn make_coercing_addition_object_for_wb(
   to_primitive_id : Int,
   symbol_value : Value?,
@@ -4590,8 +4604,7 @@ test "coercing subtraction uses number hint and original receiver" {
   receiver.val = object
   match object {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
     _ => fail("expected an object fixture")
   }
   let result = run_executor_coercing_subtraction_root_for_wb(
@@ -4630,22 +4643,63 @@ test "coercing subtraction converts left before right without duplicates" {
   let right = make_object(Map([]), Null, None, "Object", Map([]), true)
   match left {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        left_hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
     _ => fail("expected left object fixture")
   }
   match right {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        right_hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
     _ => fail("expected right object fixture")
   }
-  let result = run_executor_coercing_subtraction_root_for_wb(interp, left, right)
+  let result = run_executor_coercing_subtraction_root_for_wb(
+    interp, left, right,
+  )
   match result {
     Number(value) => inspect(value, content="5")
     _ => fail("object subtraction must return a number")
   }
   json_inspect(events, content=["left", "right"])
+}
+
+///|
+test "coercing subtraction uses valueOf then toString fallback" {
+  let interp = Interpreter::new()
+  let events : Array[String] = []
+  let fallback = make_object(Map([]), Null, None, "Fallback", Map([]), true)
+  let value_of = make_method_func(
+    name="valueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      events.push("valueOf")
+      fallback
+    },
+  )
+  let to_string = make_method_func(
+    name="toString",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      events.push("toString")
+      String_("7")
+    },
+  )
+  let object = make_object(
+    { "valueOf": value_of, "toString": to_string },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let result = run_executor_coercing_subtraction_root_for_wb(
+    interp,
+    object,
+    Number(2.0),
+  )
+  match result {
+    Number(value) => inspect(value, content="5")
+    _ => fail("toString fallback must feed numeric subtraction")
+  }
+  json_inspect(events, content=["valueOf", "toString"])
 }
 
 ///|
@@ -4671,14 +4725,12 @@ test "coercing subtraction leaves right untouched after left throw" {
   let right = make_object(Map([]), Null, None, "Object", Map([]), true)
   match left {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        left_hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
     _ => fail("expected left object fixture")
   }
   match right {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        right_hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
     _ => fail("expected right object fixture")
   }
   let caught : Error? = try {
@@ -4691,6 +4743,37 @@ test "coercing subtraction leaves right untouched after left throw" {
     Some(@errors.TypeError(_)) => ()
     Some(error) => fail("expected left TypeError, got " + error.to_string())
     None => fail("left conversion must throw")
+  }
+  inspect(right_calls.val, content="0")
+}
+
+///|
+test "coercing subtraction leaves right untouched after left Symbol TypeError" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let right = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match right {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object fixture")
+  }
+  match
+    coercing_subtraction_error_for_wb(
+      interp,
+      Symbol({ id: 9003, description: None }),
+      right,
+    ) {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected Symbol TypeError, got " + error.to_string())
+    None => fail("Symbol conversion must throw")
   }
   inspect(right_calls.val, content="0")
 }
@@ -4719,14 +4802,12 @@ test "coercing subtraction retains left effects when right throws" {
   let right = make_object(Map([]), Null, None, "Object", Map([]), true)
   match left {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        left_hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
     _ => fail("expected left object fixture")
   }
   match right {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        right_hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
     _ => fail("expected right object fixture")
   }
   let caught : Error? = try {
@@ -4755,8 +4836,7 @@ test "coercing subtraction rejects an object ToPrimitive result" {
   let object = make_object(Map([]), Null, None, "Object", Map([]), true)
   match object {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
-        hook
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
     _ => fail("expected object fixture")
   }
   let caught : Error? = try {
@@ -4775,6 +4855,91 @@ test "coercing subtraction rejects an object ToPrimitive result" {
       fail("expected object-result TypeError, got " + error.to_string())
     None => fail("object ToPrimitive result must throw")
   }
+}
+
+///|
+test "coercing subtraction propagates conversion getter and call errors" {
+  let interp = Interpreter::new()
+  let symbol_getter = make_method_func(
+    name="throwing@@toPrimitive getter",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) raise {
+      raise @errors.TypeError(message="symbol getter failed")
+    },
+  )
+  let getter_object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    Some(symbol_getter),
+    None,
+    None,
+    None,
+    None,
+  )
+  match coercing_subtraction_error_for_wb(interp, getter_object, Number(1.0)) {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("getter error changed type: " + error.to_string())
+    None => fail("@@toPrimitive getter must throw")
+  }
+
+  let value_of = make_method_func(
+    name="throwing valueOf",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) raise {
+      raise @errors.TypeError(message="valueOf call failed")
+    },
+  )
+  let call_object = make_coercing_addition_object_for_wb(
+    interp.realm_state.well_known_symbols.to_primitive.id,
+    None,
+    None,
+    Some(value_of),
+    None,
+    None,
+    None,
+  )
+  match coercing_subtraction_error_for_wb(interp, call_object, Number(1.0)) {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("call error changed type: " + error.to_string())
+    None => fail("valueOf call must throw")
+  }
+}
+
+///|
+test "coercing subtraction reuses one interpreter after a suspended run" {
+  let interp = Interpreter::new()
+  let make_numeric_object = value => {
+    let hook = make_method_func(
+      name="reused@@toPrimitive",
+      realm_state=Some(interp.realm_state),
+      fn(_this_value, args) raise {
+        match args {
+          [String_(hint)] => inspect(hint, content="number")
+          _ => fail("expected the number hint argument")
+        }
+        value
+      },
+    )
+    let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+    match object {
+      Object(data) =>
+        data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+      _ => fail("expected an object fixture")
+    }
+    object
+  }
+  let first = run_executor_coercing_subtraction_root_for_wb(
+    interp,
+    make_numeric_object(Number(7.0)),
+    Number(2.0),
+  )
+  let second = run_executor_coercing_subtraction_root_for_wb(
+    interp,
+    make_numeric_object(Number(8.0)),
+    Number(3.0),
+  )
+  inspect(first.to_string(), content="5")
+  inspect(second.to_string(), content="5")
 }
 
 ///|

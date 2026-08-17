@@ -336,6 +336,63 @@ test "candidate plain addition resumes through guest ToPrimitive" {
 }
 
 ///|
+test "candidate plain subtraction resumes through guest ToPrimitive" {
+  let source =
+    #|var events = "";
+    #|var object = {};
+    #|object[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + hint;
+    #|  return 2;
+    #|};
+    #|function subtract(value) { return value - 1; }
+    #|subtract(object);
+    #|events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "number")
+  let starts = candidate_started_executors_for_wb(evidence)
+  guard starts.contains(CandidateBytecodeExecutor) else {
+    fail("plain subtraction did not enter the bytecode route")
+  }
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate equality Fibonacci 30 stays entirely bytecode" {
+  let source =
+    #|function fib(n) {
+    #|  if (n === 0 || n === 1) return n;
+    #|  return fib(n - 1) + fib(n - 2);
+    #|}
+    #|fib(30);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "832040")
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate equality descend 100000 stays entirely bytecode" {
+  let source =
+    #|function descend(n) {
+    #|  if (n === 0) return 0;
+    #|  return descend(n - 1);
+    #|}
+    #|descend(100000);
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "0")
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate plain addition supports finite guest re-entry" {
   let source =
     #|var depth = 0;
@@ -1257,8 +1314,35 @@ test "candidate plain subtraction selects managed bytecode" {
 ///|
 test "candidate compound subtraction remains tree-walker" {
   assert_candidate_tree_route_evidence_for_wb(
-    "var value = 3; value -= 1; value;",
+    "var value = 3; value -= 1; value;", "2",
+  )
+}
+
+///|
+test "candidate local identifier compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "for (var unused of [0]) {}; function local() { var x = 3; x -= 1; return x; } local();",
     "2",
+    child=true,
+  )
+}
+
+///|
+test "candidate environment or global compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb("var x = 3; x -= 1; x;", "2")
+}
+
+///|
+test "candidate property compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 3 }; o.x -= 1; o.x;", "2",
+  )
+}
+
+///|
+test "candidate computed compound subtraction stays tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var o = { x: 3 }; var k = 'x'; o[k] -= 1; o[k];", "2",
   )
 }
 
