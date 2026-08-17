@@ -167,6 +167,29 @@ fn pin_realm_cache_and_register_builtin(
 }
 
 ///|
+// Capture the callback-bearing Array intrinsic while builtin setup still owns
+// the prototype object. The property remains mutable to guest code; this
+// private capability is the immutable identity seam for managed admission.
+fn remember_array_for_each_intrinsic(
+  env : Environment,
+  ctor_name : String,
+  proto : Value,
+) -> Unit {
+  guard ctor_name == "Array" else { return }
+  match env.realm_state {
+    Some(realm_state) =>
+      match proto {
+        Object(data) =>
+          realm_state.canonical_array_for_each.val = data.bag.properties.get(
+            "forEach",
+          )
+        _ => ()
+      }
+    None => ()
+  }
+}
+
+///|
 fn install_registered_proto_constructor(
   env : Environment,
   ctor_name : String,
@@ -274,6 +297,7 @@ pub fn install_realm_pinned_builtin_constructor(
   pin_realm_cache_and_register_builtin(
     env, realm_proto_cache, ctor_name, ctor, proto,
   )
+  remember_array_for_each_intrinsic(env, ctor_name, proto)
   if wire_proto_constructor {
     install_registered_proto_constructor(env, ctor_name, proto)
   }

@@ -52,6 +52,10 @@ pub(all) struct RealmState {
   // Exact native Proxy constructor registered by the runtime factory. Managed
   // execution compares identity against this private per-realm capability.
   priv canonical_proxy_constructor : Ref[Value?]
+  // Exact Array.prototype.forEach function captured before user mutation.
+  // Managed execution compares identity against this private per-realm
+  // capability rather than the mutable property currently exposed to JS.
+  priv canonical_array_for_each : Ref[Value?]
   // Detailed operations enable this only while atomically observing a failure.
   // The error object distinguishes unhandled propagation from a later throw.
   observing_source_failure : Ref[Bool]
@@ -108,6 +112,7 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     active_source_identity: { val: None },
     constructor_prototype_registry,
     canonical_proxy_constructor: { val: None },
+    canonical_array_for_each: { val: None },
     observing_source_failure: { val: false },
     observed_source_failure: { val: None },
     observed_source_identity: { val: None },

@@ -21,17 +21,14 @@ fn ExecutorArrayForEachRequest::ExecutorArrayForEachRequest(
 }
 
 ///|
-// The current realm's materialized property is used only as an identity
-// witness. No property lookup or name admission is performed on the call
-// operand, so a replacement, sibling, or user-created "forEach" is excluded.
+// The setup-time realm capability is used only as an identity witness. No
+// property lookup or name admission is performed on the call operand, so a
+// replacement, sibling, or user-created "forEach" is excluded.
 fn executor_array_for_each_identity_matches(
   interp : Interpreter,
   callee : Value,
 ) -> Bool {
-  let intrinsic = match interp.realm_state.get_array_proto() {
-    Object(data) => data.bag.properties.get("forEach")
-    _ => None
-  }
+  let intrinsic = interp.realm_state.canonical_array_for_each.val
   match (intrinsic, callee) {
     (Some(Object(expected)), Object(actual)) => physical_equal(expected, actual)
     _ => false
