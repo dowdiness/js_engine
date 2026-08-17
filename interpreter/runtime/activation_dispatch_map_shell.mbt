@@ -1446,10 +1446,7 @@ fn PrimitiveProgramDispatchShell::perform_array_map_decision(
         error => Err(error)
       }
       match present {
-        Ok(value) => self.perform_array_map_event(
-          state,
-          MapHasProperty(value),
-        )
+        Ok(value) => self.perform_array_map_event(state, MapHasProperty(value))
         Err(error) => self.perform_array_map_event(state, MapAbrupt(error))
       }
     }

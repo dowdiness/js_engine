@@ -209,9 +209,7 @@ fn ExecutorArrayForEachFrame::step_frame(
         Undefined
       }
       guard is_callable(callback) else {
-        raise @errors.TypeError(
-          message="callback is not a function",
-        )
+        raise @errors.TypeError(message="callback is not a function")
       }
       self.phase = ExecutorArrayForEachNeedIndex(object, length, callback, 0L)
       self.step_frame(interp)

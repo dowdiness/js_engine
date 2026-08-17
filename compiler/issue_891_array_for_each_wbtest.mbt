@@ -55,9 +55,15 @@ test "issue 891 forEach non-callable callback does not coerce after length" {
     #|catch (error) { result = error instanceof TypeError ? "TypeError:" + error.message : "other"; }
     #|result + ":" + events.join(",");
   let default_value = issue891_default_run_for_wb(source)
-  assert_eq(default_value.to_string(), "TypeError:callback is not a function:get:length")
+  assert_eq(
+    default_value.to_string(),
+    "TypeError:callback is not a function:get:length",
+  )
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "TypeError:callback is not a function:get:length")
+  assert_eq(
+    value.to_string(),
+    "TypeError:callback is not a function:get:length",
+  )
   assert_eq(default_value.to_string(), value.to_string())
   issue891_assert_evidence_for_wb(evidence)
 }
