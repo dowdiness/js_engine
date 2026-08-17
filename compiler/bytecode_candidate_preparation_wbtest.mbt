@@ -1359,8 +1359,6 @@ test "issue 924 default and candidate Array subtraction hooks stay equivalent" {
     #|  }
     #|};
     #|Object.setPrototypeOf(inheritedString, inheritedStringProto);
-    #|var throwing = [1];
-    #|throwing.valueOf = function() { events = events + "throw;"; throw "guest"; };
     #|function arraySubtractionMatrix() {
     #|  var results = [
     #|    ownSymbol - 1,
@@ -1370,22 +1368,93 @@ test "issue 924 default and candidate Array subtraction hooks stay equivalent" {
     #|    inheritedValue - 1,
     #|    inheritedString - 1
     #|  ];
-    #|  var thrown = "none";
-    #|  try { throwing - 1; } catch (error) { thrown = error; }
-    #|  return results.join(",") + "|" + thrown + "|" + events;
+    #|  return results.join(",") + "|" + events;
     #|}
     #|arraySubtractionMatrix();
-  let expected = "10,9,8,7,6,5|guest|" +
+  let expected = "10,9,8,7,6,5|" +
     "own-symbol:number:true;own-value:true;" +
     "own-string-value:true;own-string-toString:true;" +
     "inherited-symbol:number:true;inherited-value:true;" +
-    "inherited-string-value:true;inherited-string-toString:true;throw;"
+    "inherited-string-value:true;inherited-string-toString:true;"
   let default_interp = @interpreter.new_interpreter()
   let default_value = default_interp.run(@parser.parse(source).stmts)
   let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(default_value.to_string(), expected)
   assert_eq(candidate_value.to_string(), expected)
-  assert_true(evidence.val.summary.bytecode_starts > 0)
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let matrix_candidates = root.children.filter(child => {
+    child.name == Some("arraySubtractionMatrix")
+  })
+  guard matrix_candidates.length() == 1 else {
+    fail("Array subtraction matrix function was not retained exactly once")
+  }
+  issue924_assert_candidate_function_route_for_wb(
+    matrix_candidates[0],
+    evidence,
+    CandidateRouteNormal,
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 924 candidate throwing Array subtraction stays bytecode and cleans up" {
+  let source =
+    #|var events = "";
+    #|var throwing = [1];
+    #|throwing.valueOf = function() { events = events + "throw;"; throw "guest"; };
+    #|function arraySubtractionThrowing() { return throwing - 1; }
+  let default_interp = @interpreter.new_interpreter()
+  let _ = default_interp.run(@parser.parse(source).stmts)
+  let default_error = try {
+    ignore(
+      default_interp.call_value(
+        default_interp.global.get("arraySubtractionThrowing"),
+        @runtime.Undefined,
+        [],
+        @token.Loc::default(),
+      ),
+    )
+    "no error"
+  } catch {
+    @runtime.JsException(value) => value.to_string()
+    error => error.to_string()
+  }
+  let interp = @interpreter.new_interpreter()
+  let (_, evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse(source).stmts,
+  )
+  let candidate_error = try {
+    ignore(
+      interp.call_value(
+        interp.global.get("arraySubtractionThrowing"),
+        @runtime.Undefined,
+        [],
+        @token.Loc::default(),
+      ),
+    )
+    "no error"
+  } catch {
+    @runtime.JsException(value) => value.to_string()
+    error => error.to_string()
+  }
+  assert_eq(default_error, "guest")
+  assert_eq(candidate_error, default_error)
+  assert_eq(interp.global.get("events").to_string(), "throw;")
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  let throwing_candidates = root.children.filter(child => {
+    child.name == Some("arraySubtractionThrowing")
+  })
+  guard throwing_candidates.length() == 1 else {
+    fail("throwing Array subtraction function was not retained exactly once")
+  }
+  issue924_assert_candidate_function_route_for_wb(
+    throwing_candidates[0],
+    evidence,
+    CandidateRouteAbrupt,
+  )
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
@@ -1459,6 +1528,58 @@ test "issue 924 candidate subtraction keeps queue and route evidence reusable" {
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+fn issue924_assert_candidate_function_route_for_wb(
+  candidate : CandidateFunction,
+  evidence : Ref[CandidateRouteEvidence],
+  expected_completion : CandidateRouteCompletion,
+) -> Unit raise Error {
+  let source_identity = candidate.source_identity
+  let mut prepared_count = 0
+  let mut bytecode_starts = 0
+  let mut tree_starts = 0
+  let mut completed_count = 0
+  for event in evidence.val.events {
+    match event {
+      CandidateRoutePreparedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
+          item.source_identity,
+          source_identity,
+        ) => {
+        prepared_count += 1
+        match item.decision {
+          UseBytecode(_) => ()
+          UseTreeWalker(_) =>
+            fail("issue 924 Array subtraction function selected Tree-walker")
+        }
+      }
+      CandidateRouteStartedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
+          item.source_identity,
+          source_identity,
+        ) =>
+        match item.executor {
+          CandidateBytecodeExecutor => bytecode_starts += 1
+          CandidateTreeWalkerExecutor => tree_starts += 1
+        }
+      CandidateRouteCompletedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
+          item.source_identity,
+          source_identity,
+        ) => {
+        completed_count += 1
+        match (expected_completion, item.completion) {
+          (CandidateRouteNormal, CandidateRouteNormal)
+          | (CandidateRouteAbrupt, CandidateRouteAbrupt) => ()
+          _ => fail("issue 924 Array subtraction completion mismatched")
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_eq(prepared_count, 1)
+  assert_eq(bytecode_starts, 1)
+  assert_eq(tree_starts, 0)
+  assert_eq(completed_count, 1)
 }
 
 ///|
