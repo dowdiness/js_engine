@@ -256,3 +256,60 @@ test "issue 918 candidate with binding traps terminate exactly once" {
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
 }
+
+///|
+test "issue 918 rechecks inherited binding before strict read" {
+  let source =
+    #|var events = [];
+    #|var inherited = { captured: 7 };
+    #|var target = Object.create(inherited);
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete inherited.captured; return undefined; }
+    #|});
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "captured") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); if (key === "captured") events.push("g"); return Reflect.get(t, key, receiver); }
+    #|});
+    #|var read;
+    #|with (scope) { read = function() { "use strict"; return captured; }; }
+    #|events = [];
+    #|var errorName = "";
+    #|try { read(); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events.join(",") + ":" + String(target.captured);
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "ReferenceError:h,u,h:undefined")
+  assert_true(evidence.val.summary.fallback_violations == 0)
+  assert_true(evidence.val.summary.replay_violations == 0)
+  assert_true(evidence.val.summary.active_activations == 0)
+}
+
+///|
+test "issue 918 rechecks inherited binding before strict write" {
+  let source =
+    #|var events = [];
+    #|var inherited = { captured: 1 };
+    #|var target = Object.create(inherited);
+    #|Object.defineProperty(target, Symbol.unscopables, {
+    #|  get: function() { events.push("u"); delete inherited.captured; return undefined; }
+    #|});
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { if (key === "captured") events.push("h"); return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { if (key === Symbol.unscopables) events.push("u"); return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { if (key === "captured") events.push("s"); return Reflect.set(t, key, value, receiver); }
+    #|});
+    #|var write;
+    #|with (scope) { write = function(value) { "use strict"; captured = value; return "done"; }; }
+    #|events = [];
+    #|var errorName = "";
+    #|try { write(9); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + events.join(",") + ":" + String(target.captured);
+  let default_value = issue918_default_run_for_wb(source)
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), candidate_value.to_string())
+  assert_eq(candidate_value.to_string(), "ReferenceError:h,u,h:undefined")
+  assert_true(evidence.val.summary.fallback_violations == 0)
+  assert_true(evidence.val.summary.replay_violations == 0)
+  assert_true(evidence.val.summary.active_activations == 0)
+}
