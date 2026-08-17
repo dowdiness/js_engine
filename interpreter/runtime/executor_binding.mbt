@@ -90,6 +90,14 @@ fn executor_binding_unresolved(
         _ => String_("undefined")
       }
     ExecutorBindingStore(value) => {
+      if interp.is_immutable_global(request.name) {
+        if request.ctx.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '{request.name}' of object '[object global]'",
+          )
+        }
+        return value
+      }
       if request.ctx.strict {
         raise @errors.ReferenceError(message="{request.name} is not defined")
       }
@@ -123,20 +131,11 @@ fn begin_executor_binding_operation(
   request : ExecutorBindingRequest,
 ) -> ExecutorBindingStart raise Error {
   match request.operation {
-    ExecutorBindingStore(value) => {
+    ExecutorBindingStore(_) =>
       @static_semantics.validate_strict_assignment_target_name(
         request.ctx.strict,
         request.name,
       )
-      if interp.is_immutable_global(request.name) {
-        if request.ctx.strict {
-          raise @errors.TypeError(
-            message="Cannot assign to read only property '{request.name}' of object '[object global]'",
-          )
-        }
-        return ExecutorBindingCompleted(value)
-      }
-    }
     ExecutorBindingAssignmentLoad =>
       @static_semantics.validate_strict_assignment_target_name(
         request.ctx.strict,
@@ -150,6 +149,17 @@ fn begin_executor_binding_operation(
     _ => ()
   }
   if !environment_requires_managed_binding(request.env, request.name) {
+    match request.operation {
+      ExecutorBindingStore(value) if interp.is_immutable_global(request.name) => {
+        if request.ctx.strict {
+          raise @errors.TypeError(
+            message="Cannot assign to read only property '{request.name}' of object '[object global]'",
+          )
+        }
+        return ExecutorBindingCompleted(value)
+      }
+      _ => ()
+    }
     return ExecutorBindingCompleted(
       executor_binding_synchronous(interp, request),
     )

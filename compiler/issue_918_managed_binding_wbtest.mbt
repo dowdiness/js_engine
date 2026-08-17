@@ -553,7 +553,10 @@ test "issue 918 sloppy with binding shadows immutable globals" {
   let default_value = issue918_default_run_for_wb(source)
   let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(default_value.to_string(), candidate_value.to_string())
-  assert_eq(candidate_value.to_string(), ":9:8:7:undefined:NaN:Infinity:h,u,h,s,h,u,h,s,h,u,h,s")
+  assert_eq(
+    candidate_value.to_string(),
+    ":9:8:7:undefined:NaN:Infinity:h,u,h,s,h,u,h,s,h,u,h,s",
+  )
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
