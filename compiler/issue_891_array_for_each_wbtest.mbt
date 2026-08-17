@@ -266,6 +266,42 @@ test "issue 891 candidate forEach sibling map keeps its existing result path" {
 }
 
 ///|
+test "issue 891 candidate forEach excludes sibling some" {
+  let source =
+    #|var run = function() { return [1, 2].some(function(value) { return value === 1; }); };
+    #|run();
+  let default_value = issue891_default_run_for_wb(source)
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(default_value.to_string(), value.to_string())
+  issue891_assert_evidence_for_wb(evidence)
+}
+
+///|
+test "issue 891 candidate forEach excludes sibling every" {
+  let source =
+    #|var run = function() { return [1, 2].every(function(value) { return value === 1; }); };
+    #|run();
+  let default_value = issue891_default_run_for_wb(source)
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "false")
+  assert_eq(default_value.to_string(), value.to_string())
+  issue891_assert_evidence_for_wb(evidence)
+}
+
+///|
+test "issue 891 candidate forEach excludes sibling filter" {
+  let source =
+    #|var run = function() { return [1, 2].filter(function(value) { return value === 1; }).length; };
+    #|run();
+  let default_value = issue891_default_run_for_wb(source)
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "1")
+  assert_eq(default_value.to_string(), value.to_string())
+  issue891_assert_evidence_for_wb(evidence)
+}
+
+///|
 test "issue 891 callback depth rejection precedes callback body" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
@@ -335,6 +371,21 @@ test "issue 891 sparse loop budget rejects before any callback" {
     None => fail("sparse loop budget must be rejected")
   }
   assert_eq(interp.global.get("callbacks").to_string(), "0")
+}
+
+///|
+test "issue 891 large finite sparse array-like yields without host recursion" {
+  let source =
+    #|var callbacks = 0;
+    #|var receiver = { length: 1000000 };
+    #|var run = function() {
+    #|  Array.prototype.forEach.call(receiver, function() { callbacks = callbacks + 1; });
+    #|  return callbacks;
+    #|};
+    #|run();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "0")
+  issue891_assert_evidence_for_wb(evidence)
 }
 
 ///|
