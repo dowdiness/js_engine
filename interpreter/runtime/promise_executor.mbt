@@ -30,10 +30,7 @@ fn PromiseResolutionExecutorCode::PromiseResolutionExecutorCode(
 priv enum PromiseResolutionPhase {
   PromiseResolutionNeedStart
   PromiseResolutionAwaitThenGet
-  PromiseResolutionNeedThenCall
-  PromiseResolutionAwaitThenCall
-  PromiseResolutionNeedThenableReject(Value)
-  PromiseResolutionAwaitThenableReject
+  PromiseResolutionNeedThenableJob
   PromiseResolutionNeedFulfill(Value)
   PromiseResolutionNeedReject(Value)
   PromiseResolutionComplete
@@ -47,7 +44,6 @@ priv struct PromiseResolutionExecutorFrame {
   global : Environment
   resolution : Value
   mut then_value : Value
-  mut then_reject : Value
   mut phase : PromiseResolutionPhase
 }
 
@@ -66,7 +62,6 @@ fn PromiseResolutionExecutorFrame::PromiseResolutionExecutorFrame(
     global,
     resolution,
     then_value: Undefined,
-    then_reject: Undefined,
     phase: PromiseResolutionNeedStart,
   }
 }
@@ -152,33 +147,18 @@ fn PromiseResolutionExecutorFrame::step_frame(
       self.phase = PromiseResolutionComplete
       ExecutorActivationReturn(Undefined)
     }
-    PromiseResolutionNeedThenCall => {
-      let (resolve, reject) = make_promise_resolving_functions(
+    PromiseResolutionNeedThenableJob => {
+      enqueue_promise_thenable_job(
         interp,
         self.promise_data,
-      )
-      self.then_reject = reject
-      self.phase = PromiseResolutionAwaitThenCall
-      executor_activation_call(
-        self.then_value,
         self.resolution,
-        [resolve, reject],
-        @token.Loc::default(),
+        self.then_value,
       )
-    }
-    PromiseResolutionNeedThenableReject(reason) => {
-      self.phase = PromiseResolutionAwaitThenableReject
-      executor_activation_call(
-        self.then_reject,
-        Undefined,
-        [reason],
-        @token.Loc::default(),
-      )
+      self.phase = PromiseResolutionComplete
+      ExecutorActivationReturn(Undefined)
     }
     PromiseResolutionComplete => ExecutorActivationReturn(Undefined)
-    PromiseResolutionAwaitThenGet
-    | PromiseResolutionAwaitThenCall
-    | PromiseResolutionAwaitThenableReject =>
+    PromiseResolutionAwaitThenGet =>
       raise @errors.InternalError(
         message="Promise resolution frame stepped while awaiting a child",
       )
@@ -204,16 +184,12 @@ impl ExecutorActivationFrame for PromiseResolutionExecutorFrame with fn deliver_
         PromiseResolutionAwaitThenGet =>
           if is_callable(value) {
             self.then_value = value
-            self.phase = PromiseResolutionNeedThenCall
+            self.phase = PromiseResolutionNeedThenableJob
           } else {
             self.phase = PromiseResolutionNeedFulfill(self.resolution)
           }
-        PromiseResolutionAwaitThenCall => self.phase = PromiseResolutionComplete
-        PromiseResolutionAwaitThenableReject =>
-          self.phase = PromiseResolutionComplete
         PromiseResolutionNeedStart
-        | PromiseResolutionNeedThenCall
-        | PromiseResolutionNeedThenableReject(_)
+        | PromiseResolutionNeedThenableJob
         | PromiseResolutionNeedFulfill(_)
         | PromiseResolutionNeedReject(_)
         | PromiseResolutionComplete =>
@@ -228,16 +204,8 @@ impl ExecutorActivationFrame for PromiseResolutionExecutorFrame with fn deliver_
             Some(reason) => self.phase = PromiseResolutionNeedReject(reason)
             None => raise error
           }
-        PromiseResolutionAwaitThenCall =>
-          match promise_guest_error_value(error, self.global) {
-            Some(reason) =>
-              self.phase = PromiseResolutionNeedThenableReject(reason)
-            None => raise error
-          }
-        PromiseResolutionAwaitThenableReject => raise error
         PromiseResolutionNeedStart
-        | PromiseResolutionNeedThenCall
-        | PromiseResolutionNeedThenableReject(_)
+        | PromiseResolutionNeedThenableJob
         | PromiseResolutionNeedFulfill(_)
         | PromiseResolutionNeedReject(_)
         | PromiseResolutionComplete =>
@@ -302,6 +270,201 @@ fn make_promise_resolving_functions(
     define_arguments_object=false,
   )
   (resolve, reject)
+}
+
+///|
+priv struct PromiseThenableJobExecutorCode {
+  promise_data : PromiseData
+  thenable : Value
+  then_method : Value
+  consumed : Ref[Bool]
+}
+
+///|
+fn PromiseThenableJobExecutorCode::PromiseThenableJobExecutorCode(
+  promise_data~ : PromiseData,
+  thenable~ : Value,
+  then_method~ : Value,
+  consumed~ : Ref[Bool],
+) -> PromiseThenableJobExecutorCode {
+  { promise_data, thenable, then_method, consumed }
+}
+
+///|
+priv enum PromiseThenableJobPhase {
+  PromiseThenableJobNeedStart
+  PromiseThenableJobAwaitThenCall
+  PromiseThenableJobNeedReject(Value)
+  PromiseThenableJobAwaitReject
+  PromiseThenableJobComplete
+}
+
+///|
+priv struct PromiseThenableJobExecutorFrame {
+  promise_data : PromiseData
+  thenable : Value
+  then_method : Value
+  global : Environment
+  mut reject : Value
+  mut phase : PromiseThenableJobPhase
+}
+
+///|
+fn PromiseThenableJobExecutorFrame::PromiseThenableJobExecutorFrame(
+  promise_data~ : PromiseData,
+  thenable~ : Value,
+  then_method~ : Value,
+  global~ : Environment,
+) -> PromiseThenableJobExecutorFrame {
+  {
+    promise_data,
+    thenable,
+    then_method,
+    global,
+    reject: Undefined,
+    phase: PromiseThenableJobNeedStart,
+  }
+}
+
+///|
+fn PromiseThenableJobExecutorFrame::step_frame(
+  self : PromiseThenableJobExecutorFrame,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match self.phase {
+    PromiseThenableJobNeedStart => {
+      // The resolving pair is created at job activation, not when the
+      // original resolve function merely schedules this job.
+      let (resolve, reject) = make_promise_resolving_functions(
+        interp,
+        self.promise_data,
+      )
+      self.reject = reject
+      self.phase = PromiseThenableJobAwaitThenCall
+      executor_activation_call(
+        self.then_method,
+        self.thenable,
+        [resolve, reject],
+        @token.Loc::default(),
+      )
+    }
+    PromiseThenableJobNeedReject(reason) => {
+      self.phase = PromiseThenableJobAwaitReject
+      executor_activation_call(
+        self.reject,
+        Undefined,
+        [reason],
+        @token.Loc::default(),
+      )
+    }
+    PromiseThenableJobComplete => ExecutorActivationReturn(Undefined)
+    PromiseThenableJobAwaitThenCall | PromiseThenableJobAwaitReject =>
+      raise @errors.InternalError(
+        message="Promise thenable job stepped while awaiting a child",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for PromiseThenableJobExecutorFrame with fn step(
+  self,
+  interp,
+) {
+  self.step_frame(interp)
+}
+
+///|
+impl ExecutorActivationFrame for PromiseThenableJobExecutorFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionNormal(_) =>
+      match self.phase {
+        PromiseThenableJobAwaitThenCall | PromiseThenableJobAwaitReject =>
+          self.phase = PromiseThenableJobComplete
+        PromiseThenableJobNeedStart
+        | PromiseThenableJobNeedReject(_)
+        | PromiseThenableJobComplete =>
+          raise @errors.InternalError(
+            message="Promise thenable job received an unexpected completion",
+          )
+      }
+    ExecutorActivationCompletionAbrupt(error) =>
+      match self.phase {
+        PromiseThenableJobAwaitThenCall =>
+          match promise_guest_error_value(error, self.global) {
+            Some(reason) => self.phase = PromiseThenableJobNeedReject(reason)
+            None => raise error
+          }
+        PromiseThenableJobAwaitReject => raise error
+        PromiseThenableJobNeedStart
+        | PromiseThenableJobNeedReject(_)
+        | PromiseThenableJobComplete =>
+          raise @errors.InternalError(
+            message="Promise thenable job received an unexpected abrupt completion",
+          )
+      }
+  }
+}
+
+///|
+impl ExecutorCode for PromiseThenableJobExecutorCode with fn start(
+  self,
+  interp,
+  _prepared,
+) {
+  guard !self.consumed.val else {
+    raise @errors.InternalError(
+      message="Promise thenable job executor callable was invoked twice",
+    )
+  }
+  self.consumed.val = true
+  PromiseThenableJobExecutorFrame(
+    promise_data=self.promise_data,
+    thenable=self.thenable,
+    then_method=self.then_method,
+    global=interp.global,
+  ) as &ExecutorActivationFrame
+}
+
+///|
+fn make_promise_thenable_job(
+  interp : Interpreter,
+  promise_data : PromiseData,
+  thenable : Value,
+  then_method : Value,
+) -> Value {
+  make_executor_function(
+    Some("PromiseResolveThenableJob"),
+    [],
+    interp.global,
+    true,
+    PromiseThenableJobExecutorCode(
+      promise_data~,
+      thenable~,
+      then_method~,
+      consumed={ val: false },
+    ),
+    constructable=false,
+    define_arguments_object=false,
+  )
+}
+
+///|
+fn enqueue_promise_thenable_job(
+  interp : Interpreter,
+  promise_data : PromiseData,
+  thenable : Value,
+  then_method : Value,
+) -> Unit {
+  let job = make_promise_thenable_job(
+    interp,
+    promise_data,
+    thenable,
+    then_method,
+  )
+  interp.enqueue_microtask(job, [])
 }
 
 ///|
