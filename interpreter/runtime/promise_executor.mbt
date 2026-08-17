@@ -425,7 +425,8 @@ impl ExecutorCode for PromiseThenableJobExecutorCode with fn start(
     thenable=self.thenable,
     then_method=self.then_method,
     global=interp.global,
-  ) as &ExecutorActivationFrame
+  )
+  as &ExecutorActivationFrame
 }
 
 ///|
@@ -440,12 +441,9 @@ fn make_promise_thenable_job(
     [],
     interp.global,
     true,
-    PromiseThenableJobExecutorCode(
-      promise_data~,
-      thenable~,
-      then_method~,
-      consumed={ val: false },
-    ),
+    PromiseThenableJobExecutorCode(promise_data~, thenable~, then_method~, consumed={
+      val: false,
+    }),
     constructable=false,
     define_arguments_object=false,
   )
@@ -459,10 +457,7 @@ fn enqueue_promise_thenable_job(
   then_method : Value,
 ) -> Unit {
   let job = make_promise_thenable_job(
-    interp,
-    promise_data,
-    thenable,
-    then_method,
+    interp, promise_data, thenable, then_method,
   )
   interp.enqueue_microtask(job, [])
 }

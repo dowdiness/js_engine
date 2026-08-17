@@ -71,8 +71,7 @@ test "issue 892 candidate thenable jobs run after the current script" {
   assert_eq(interp.host.microtask_queue.length(), 1)
   let task = interp.host.microtask_queue[0]
   match task.callback {
-    @runtime.Object({ callable: Some(@runtime.ExecutorCallable(_)), .. }) =>
-      ()
+    @runtime.Object({ callable: Some(@runtime.ExecutorCallable(_)), .. }) => ()
     _ => fail("thenable job must be a private executor callable")
   }
   assert_eq(task.args.length(), 0)
@@ -283,17 +282,18 @@ test "issue 892 candidate custom resolve failure consumes only the selected job"
   assert_eq(failure, "guest")
   match interp.global.get("events") {
     @runtime.Array(events) =>
-      assert_eq(events.elements.map(value => value.to_string()), ["handler", "resolve"])
+      assert_eq(events.elements.map(value => value.to_string()), [
+        "handler", "resolve",
+      ])
     value => fail("expected event array, got " + value.to_string())
   }
   assert_eq(interp.host.microtask_queue.length(), 1)
   interp.run_microtasks()
   match interp.global.get("events") {
     @runtime.Array(events) =>
-      assert_eq(
-        events.elements.map(value => value.to_string()),
-        ["handler", "resolve", "suffix"],
-      )
+      assert_eq(events.elements.map(value => value.to_string()), [
+        "handler", "resolve", "suffix",
+      ])
     value => fail("expected retained suffix array, got " + value.to_string())
   }
   assert_true(evidence.val.summary.bytecode_starts > 1)
@@ -330,17 +330,18 @@ test "issue 892 candidate custom reject failure remains a guest throw" {
   assert_eq(failure, "guest")
   match interp.global.get("events") {
     @runtime.Array(events) =>
-      assert_eq(events.elements.map(value => value.to_string()), ["handler", "reject"])
+      assert_eq(events.elements.map(value => value.to_string()), [
+        "handler", "reject",
+      ])
     value => fail("expected custom reject effects, got " + value.to_string())
   }
   assert_eq(interp.host.microtask_queue.length(), 1)
   interp.run_microtasks()
   match interp.global.get("events") {
     @runtime.Array(events) =>
-      assert_eq(
-        events.elements.map(value => value.to_string()),
-        ["handler", "reject", "suffix"],
-      )
+      assert_eq(events.elements.map(value => value.to_string()), [
+        "handler", "reject", "suffix",
+      ])
     value => fail("expected retained suffix, got " + value.to_string())
   }
   assert_true(evidence.val.summary.bytecode_starts > 1)
@@ -358,10 +359,9 @@ test "issue 892 candidate handler throw retains mutation and dependent enqueue" 
   let (interp, evidence) = issue892_candidate_run_and_drain_for_wb(source)
   match interp.global.get("events") {
     @runtime.Array(events) =>
-      assert_eq(
-        events.elements.map(value => value.to_string()),
-        ["before", "sibling", "caught:boom"],
-      )
+      assert_eq(events.elements.map(value => value.to_string()), [
+        "before", "sibling", "caught:boom",
+      ])
     value => fail("expected retained handler effects, got " + value.to_string())
   }
   assert_eq(interp.host.microtask_queue.length(), 0)

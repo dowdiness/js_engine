@@ -24,7 +24,9 @@ test "issue 892 runtime activation failure consumes selected reaction and retain
   let interp = Interpreter::new()
   let events : Array[String] = []
   let failure : Error = ExecutionControlError(ExecutionLimit)
-  let handler = make_native_func(name="runtime-failure-handler", fn(_args) raise {
+  let handler = make_native_func(name="runtime-failure-handler", fn(
+    _args,
+  ) raise {
     raise failure
   })
   let noop = make_native_func(name="promise-reaction-noop", _args => Undefined)
@@ -86,12 +88,10 @@ test "issue 892 preselection failure retains the full Promise suffix" {
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
-  let observed = try {
-    interp.with_execution_control(control, () => {
-      interp.run_microtasks()
-      "normal"
-    })
-  } catch {
+  let observed = interp.with_execution_control(control, () => {
+    interp.run_microtasks()
+    "normal"
+  }) catch {
     ExecutionControlError(ExecutionLimit) => "execution-control"
     error => "unexpected:" + error.to_string()
   }
