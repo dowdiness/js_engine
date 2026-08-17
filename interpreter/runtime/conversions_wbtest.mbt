@@ -359,6 +359,75 @@ test "to_number - symbol raises TypeError" {
   }
 }
 
+///|
+test "subtraction observes an Array own valueOf hook" {
+  let interp = Interpreter::new()
+  let result = interp.run(
+    @parser.parse(
+      "let array=[1];array.valueOf=()=>2;array-1;",
+    ).stmts,
+  )
+  match result {
+    Number(value) => inspect(value, content="1")
+    _ => fail("expected Array subtraction to produce Number(1)")
+  }
+}
+
+///|
+test "subtraction uses Number coercion for primitive operands" {
+  let interp = Interpreter::new()
+  let result = interp.run(
+    @parser.parse(
+      "5-2===3&&'7'-'2'===5&&true-null===1&&" +
+      "(undefined-1)!==(undefined-1);",
+    ).stmts,
+  )
+  inspect(result, content="true")
+}
+
+///|
+test "subtraction passes the number hint through Array @@toPrimitive" {
+  let interp = Interpreter::new()
+  let array = make_array([Number(1.0)])
+  let hook = make_method_func(
+    name="array @@toPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, args) raise {
+      match args {
+        [String_(hint)] => inspect(hint, content="number")
+        _ => fail("expected the number hint argument")
+      }
+      Number(3.0)
+    },
+  )
+  match array {
+    Array(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] =
+        hook
+    _ => fail("expected an array fixture")
+  }
+  let result = eval_binary_op(
+    @ast.BinOp::Sub,
+    array,
+    Number(1.0),
+    @token.Loc::default(),
+    interp=Some(interp),
+  )
+  inspect(result.to_string(), content="2")
+}
+
+///|
+test "subtraction falls back from Array valueOf to its toString hook" {
+  let interp = Interpreter::new()
+  let result = interp.run(
+    @parser.parse(
+      "let array=[1];array.valueOf=()=>({});array.toString=()=>\"3\";" +
+      "array-1===2;",
+    ).stmts,
+  )
+  inspect(result, content="true")
+}
+
 // ── to_js_string ─────────────────────────────────────────────────────────────
 
 ///|

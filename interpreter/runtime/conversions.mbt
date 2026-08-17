@@ -591,6 +591,7 @@ pub fn to_primitive_default(
 /// plain arrays that have neither hook.
 fn to_primitive_default_array(
   arr_val : Value,
+  hint : String,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
   let effective = resolve_effective_interp(interp)
@@ -614,7 +615,7 @@ fn to_primitive_default_array(
           let result = call_callable_direct(
             exotic_fn,
             arr_val,
-            [String_("default")],
+            [String_(hint)],
             interp=effective,
           )
           if is_js_object(result) {
@@ -808,26 +809,17 @@ pub fn to_number(
       let prim = to_primitive_number(Object(data), data, interp~)
       to_number(prim, interp~)
     }
-    Array(arr_data) => {
-      let s = arr_data.elements
-        .map(fn(v) {
-          match v {
-            Undefined | Null => ""
-            _ => v.to_string()
-          }
-        })
-        .join(",")
-      if s.length() == 0 {
-        0.0
-      } else {
-        @string.parse_double(s) catch {
-          _ => 0.0 / 0.0
-        }
-      }
+    Array(_) => {
+      let prim = to_primitive_default_array(val, "number", interp~)
+      to_number(prim, interp~)
     }
     Proxy(_) =>
       to_number(to_primitive_via_dispatch(val, "number", interp~), interp~)
-    Undefined | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
+    Undefined => 0.0 / 0.0
+    Map(_) | Set(_) | Promise(_) => {
+      let prim = to_primitive_via_dispatch(val, "number", interp~)
+      to_number(prim, interp~)
+    }
     Symbol(_) =>
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",

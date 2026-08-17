@@ -2364,6 +2364,19 @@ pub fn eval_unary_value_op(
 }
 
 ///|
+// Canonical Number-domain subtraction owner. Both tree execution and managed
+// bytecode execution must enter this helper so all current Value variants use
+// the same ToPrimitive(number) and Number conversion semantics.
+fn finish_subtraction(
+  left : Value,
+  right : Value,
+  _loc : @token.Loc,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  Number(to_number(left, interp~) - to_number(right, interp~))
+}
+
+///|
 pub fn eval_binary_op(
   op : @ast.BinOp,
   left : Value,
@@ -2383,7 +2396,7 @@ pub fn eval_binary_op(
       None =>
         match v {
           Object(data) => to_primitive_default(v, data, interp~)
-          Array(_) => to_primitive_default_array(v, interp~)
+          Array(_) => to_primitive_default_array(v, "default", interp~)
           Map(_) | Set(_) | Promise(_) | Proxy(_) =>
             to_primitive_via_dispatch(v, "default", interp~)
           _ => v
@@ -2403,7 +2416,6 @@ pub fn eval_binary_op(
     (Add, Undefined, String_(b)) => String_("undefined" + b)
     // Numeric operations
     (Add, Number(a), Number(b)) => Number(a + b)
-    (Sub, Number(a), Number(b)) => Number(a - b)
     (Mul, Number(a), Number(b)) => Number(a * b)
     (Div, Number(a), Number(b)) => Number(a / b)
     (Mod, Number(a), Number(b)) => Number(a % b)
@@ -2433,7 +2445,7 @@ pub fn eval_binary_op(
       let rp = p_default(r)
       finish_primitive_addition(interp, lp, rp, _loc)
     }
-    (Sub, l, r) => Number(n(l) - n(r))
+    (Sub, l, r) => finish_subtraction(l, r, _loc, interp~)
     (Mul, l, r) => Number(n(l) * n(r))
     (Div, l, r) => Number(n(l) / n(r))
     (Mod, l, r) => Number(n(l) % n(r))
@@ -2629,11 +2641,11 @@ fn loose_equal(
     }
     // Array == primitive: ToPrimitive with hint "default" (§7.2.14 steps 10-11)
     (Array(_), Number(_)) | (Array(_), String_(_)) | (Array(_), Symbol(_)) => {
-      let prim = to_primitive_default_array(a, interp~)
+      let prim = to_primitive_default_array(a, "default", interp~)
       loose_equal(prim, b, interp~)
     }
     (Number(_), Array(_)) | (String_(_), Array(_)) | (Symbol(_), Array(_)) => {
-      let prim = to_primitive_default_array(b, interp~)
+      let prim = to_primitive_default_array(b, "default", interp~)
       loose_equal(a, prim, interp~)
     }
     // Symbols don't coerce to other primitive types
