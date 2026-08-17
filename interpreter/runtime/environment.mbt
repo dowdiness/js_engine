@@ -524,8 +524,7 @@ fn Environment::assign_with_strict(
 ) -> Unit raise Error {
   // Check with_object first for 'with' statement environments
   match self.with_object {
-    Some(obj) => {
-      let had_own = with_object_has_own_direct(obj, name)
+    Some(obj) =>
       if with_object_has(self.interpreter_context, obj, name) {
         let still_present = match self.interpreter_context {
           Some(interp) => interp.has_property_key(obj, String_(name))
@@ -538,17 +537,9 @@ fn Environment::assign_with_strict(
           with_object_set(self.interpreter_context, obj, name, value, strict~)
           return
         }
-        match self.interpreter_context {
-          Some(_) =>
-            if strict && had_own && !with_object_has_own_direct(obj, name) {
-              raise @errors.ReferenceError(message="\{name} is not defined")
-            }
-          None => ()
-        }
         with_object_set(self.interpreter_context, obj, name, value, strict~)
         return
       }
-    }
     None => ()
   }
   match self.bindings.get(name) {
@@ -668,16 +659,6 @@ fn with_object_has(
     }
   }
   false
-}
-
-///|
-/// Get a property from a with-object (walking prototype chain)
-fn with_object_has_own_direct(obj : Value, name : String) -> Bool {
-  match obj {
-    Object(data) =>
-      data.bag.properties.contains(name) || data.bag.descriptors.contains(name)
-    _ => false
-  }
 }
 
 ///|

@@ -263,19 +263,17 @@ priv enum ExecutorBindingPhase {
   ExecutorBindingAwaitHas(
     Environment,
     Value,
-    Bool,
     ExecutorDeleteHasPropertyOperation
   )
   ExecutorBindingAwaitRecheck(
     Environment,
     Value,
-    Bool,
     ExecutorDeleteHasPropertyOperation
   )
-  ExecutorBindingAwaitUnscopables(Environment, Value, Bool)
-  ExecutorBindingHaveUnscopables(Environment, Value, Bool, Value)
-  ExecutorBindingAwaitUnscopablesName(Environment, Value, Bool)
-  ExecutorBindingHaveUnscopablesName(Environment, Value, Bool, Value)
+  ExecutorBindingAwaitUnscopables(Environment, Value)
+  ExecutorBindingHaveUnscopables(Environment, Value, Value)
+  ExecutorBindingAwaitUnscopablesName(Environment, Value)
+  ExecutorBindingHaveUnscopablesName(Environment, Value, Value)
   ExecutorBindingAwaitGet
   ExecutorBindingHaveGet(Value)
   ExecutorBindingAwaitSet
@@ -319,17 +317,9 @@ fn ExecutorBindingFrame::parent_or_unresolved(
 fn ExecutorBindingFrame::finish_with_object(
   self : ExecutorBindingFrame,
   obj : Value,
-  had_own : Bool,
-) -> ExecutorActivationStep raise Error {
+) -> ExecutorActivationStep {
   match self.request.operation {
     ExecutorBindingStore(value) => {
-      if self.request.ctx.strict &&
-        had_own &&
-        !with_object_has_own_direct(obj, self.request.name) {
-        raise @errors.ReferenceError(
-          message="{self.request.name} is not defined",
-        )
-      }
       self.phase = ExecutorBindingAwaitSet
       executor_activation_managed_property_set(
         obj,
@@ -355,14 +345,13 @@ fn ExecutorBindingFrame::after_has(
   self : ExecutorBindingFrame,
   env : Environment,
   obj : Value,
-  had_own : Bool,
   has_property : Bool,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   if !has_property {
     return self.parent_or_unresolved(env, interp)
   }
-  self.phase = ExecutorBindingAwaitUnscopables(env, obj, had_own)
+  self.phase = ExecutorBindingAwaitUnscopables(env, obj)
   executor_activation_symbol_property_get(
     obj,
     interp.realm_state.well_known_symbols.unscopables,
@@ -375,19 +364,18 @@ fn ExecutorBindingFrame::after_unscopables(
   self : ExecutorBindingFrame,
   env : Environment,
   obj : Value,
-  had_own : Bool,
   unscopables : Value,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   if is_object_value(unscopables) {
-    self.phase = ExecutorBindingAwaitUnscopablesName(env, obj, had_own)
+    self.phase = ExecutorBindingAwaitUnscopablesName(env, obj)
     return executor_activation_managed_property_get(
       unscopables,
       self.request.name,
       self.request.loc,
     )
   }
-  self.begin_recheck(env, obj, had_own, interp)
+  self.begin_recheck(env, obj, interp)
 }
 
 ///|
@@ -395,14 +383,13 @@ fn ExecutorBindingFrame::after_unscopables_name(
   self : ExecutorBindingFrame,
   env : Environment,
   obj : Value,
-  had_own : Bool,
   unscopables_value : Value,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   if is_truthy(unscopables_value) {
     self.parent_or_unresolved(env, interp)
   } else {
-    self.begin_recheck(env, obj, had_own, interp)
+    self.begin_recheck(env, obj, interp)
   }
 }
 
@@ -411,7 +398,6 @@ fn ExecutorBindingFrame::begin_recheck(
   self : ExecutorBindingFrame,
   env : Environment,
   obj : Value,
-  had_own : Bool,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   let operation = ExecutorDeleteHasPropertyOperation(
@@ -421,13 +407,13 @@ fn ExecutorBindingFrame::begin_recheck(
   )
   match operation.step(interp) {
     ExecutorActivationNormal(Bool(has_property)) =>
-      self.after_recheck(obj, had_own, has_property)
+      self.after_recheck(obj, has_property)
     ExecutorActivationNormal(_) =>
       raise @errors.InternalError(
         message="binding HasProperty recheck returned a non-boolean",
       )
     step => {
-      self.phase = ExecutorBindingAwaitRecheck(env, obj, had_own, operation)
+      self.phase = ExecutorBindingAwaitRecheck(env, obj, operation)
       step
     }
   }
@@ -437,7 +423,6 @@ fn ExecutorBindingFrame::begin_recheck(
 fn ExecutorBindingFrame::after_recheck(
   self : ExecutorBindingFrame,
   obj : Value,
-  had_own : Bool,
   has_property : Bool,
 ) -> ExecutorActivationStep raise Error {
   if !has_property {
@@ -473,7 +458,7 @@ fn ExecutorBindingFrame::after_recheck(
       }
     }
   } else {
-    self.finish_with_object(obj, had_own)
+    self.finish_with_object(obj)
   }
 }
 
@@ -485,11 +470,6 @@ fn ExecutorBindingFrame::step_environment(
 ) -> ExecutorActivationStep raise Error {
   match env.with_object {
     Some(obj) => {
-      let had_own = match self.request.operation {
-        ExecutorBindingStore(_) =>
-          with_object_has_own_direct(obj, self.request.name)
-        _ => false
-      }
       let operation = ExecutorDeleteHasPropertyOperation(
         target=obj,
         key=String_(self.request.name),
@@ -497,13 +477,13 @@ fn ExecutorBindingFrame::step_environment(
       )
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
-          self.after_has(env, obj, had_own, has_property, interp)
+          self.after_has(env, obj, has_property, interp)
         ExecutorActivationNormal(_) =>
           raise @errors.InternalError(
             message="binding HasProperty returned a non-boolean",
           )
         step => {
-          self.phase = ExecutorBindingAwaitHas(env, obj, had_own, operation)
+          self.phase = ExecutorBindingAwaitHas(env, obj, operation)
           step
         }
       }
@@ -527,44 +507,44 @@ fn ExecutorBindingFrame::step_environment(
 impl ExecutorActivationFrame for ExecutorBindingFrame with fn step(self, interp) {
   match self.phase {
     ExecutorBindingNeedEnvironment(env) => self.step_environment(env, interp)
-    ExecutorBindingAwaitHas(env, obj, had_own, operation) =>
+    ExecutorBindingAwaitHas(env, obj, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
-          self.after_has(env, obj, had_own, has_property, interp)
+          self.after_has(env, obj, has_property, interp)
         ExecutorActivationNormal(_) =>
           raise @errors.InternalError(
             message="binding HasProperty returned a non-boolean",
           )
         step => {
-          self.phase = ExecutorBindingAwaitHas(env, obj, had_own, operation)
+          self.phase = ExecutorBindingAwaitHas(env, obj, operation)
           step
         }
       }
-    ExecutorBindingAwaitRecheck(env, obj, had_own, operation) =>
+    ExecutorBindingAwaitRecheck(env, obj, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
-          self.after_recheck(obj, had_own, has_property)
+          self.after_recheck(obj, has_property)
         ExecutorActivationNormal(_) =>
           raise @errors.InternalError(
             message="binding HasProperty recheck returned a non-boolean",
           )
         step => {
-          self.phase = ExecutorBindingAwaitRecheck(env, obj, had_own, operation)
+          self.phase = ExecutorBindingAwaitRecheck(env, obj, operation)
           step
         }
       }
-    ExecutorBindingAwaitUnscopables(_, _, _) =>
+    ExecutorBindingAwaitUnscopables(_, _) =>
       raise @errors.InternalError(
         message="binding frame stepped while awaiting unscopables",
       )
-    ExecutorBindingHaveUnscopables(env, obj, had_own, value) =>
-      self.after_unscopables(env, obj, had_own, value, interp)
-    ExecutorBindingAwaitUnscopablesName(_, _, _) =>
+    ExecutorBindingHaveUnscopables(env, obj, value) =>
+      self.after_unscopables(env, obj, value, interp)
+    ExecutorBindingAwaitUnscopablesName(_, _) =>
       raise @errors.InternalError(
         message="binding frame stepped while awaiting unscopables name",
       )
-    ExecutorBindingHaveUnscopablesName(env, obj, had_own, value) =>
-      self.after_unscopables_name(env, obj, had_own, value, interp)
+    ExecutorBindingHaveUnscopablesName(env, obj, value) =>
+      self.after_unscopables_name(env, obj, value, interp)
     ExecutorBindingAwaitGet =>
       raise @errors.InternalError(
         message="binding frame stepped while awaiting get",
@@ -601,20 +581,18 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn deliver_activation
     ExecutorActivationCompletionAbrupt(error) => raise error
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
-        ExecutorBindingAwaitHas(_, _, _, operation) =>
+        ExecutorBindingAwaitHas(_, _, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
-        ExecutorBindingAwaitRecheck(_, _, _, operation) =>
+        ExecutorBindingAwaitRecheck(_, _, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
-        ExecutorBindingAwaitUnscopables(env, obj, had_own) =>
-          self.phase = ExecutorBindingHaveUnscopables(env, obj, had_own, value)
-        ExecutorBindingAwaitUnscopablesName(env, obj, had_own) =>
-          self.phase = ExecutorBindingHaveUnscopablesName(
-            env, obj, had_own, value,
-          )
+        ExecutorBindingAwaitUnscopables(env, obj) =>
+          self.phase = ExecutorBindingHaveUnscopables(env, obj, value)
+        ExecutorBindingAwaitUnscopablesName(env, obj) =>
+          self.phase = ExecutorBindingHaveUnscopablesName(env, obj, value)
         ExecutorBindingAwaitGet => self.phase = ExecutorBindingHaveGet(value)
         ExecutorBindingAwaitSet => {
           let result = match self.request.operation {
@@ -627,8 +605,8 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn deliver_activation
           self.phase = ExecutorBindingComplete(result)
         }
         ExecutorBindingNeedEnvironment(_)
-        | ExecutorBindingHaveUnscopables(_, _, _, _)
-        | ExecutorBindingHaveUnscopablesName(_, _, _, _)
+        | ExecutorBindingHaveUnscopables(_, _, _)
+        | ExecutorBindingHaveUnscopablesName(_, _, _)
         | ExecutorBindingHaveGet(_)
         | ExecutorBindingComplete(_)
         | ExecutorBindingDone =>
