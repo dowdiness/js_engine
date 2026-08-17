@@ -192,52 +192,10 @@ pub fn enqueue_promise_reaction_job(
   reaction : PromiseReaction,
   argument : Value,
 ) -> Unit {
-  // Create a job that will execute the reaction handler
-  let job_callback = make_interp_method_func(
-    name="PromiseReactionJob",
-    length=0,
-    realm_state=Some(interp.realm_state),
-    fn(i, _this, args) raise {
-      let value = if args.length() > 0 { args[0] } else { Undefined }
-      let loc = @token.Loc::default()
-
-      // If handler is None, use identity (fulfill) or thrower (reject)
-      match reaction.handler {
-        Some(handler) => {
-          // Try to call the handler
-          let result = i.call_value(handler, Undefined, [value], loc) catch {
-            e => {
-              guard is_js_catchable_error(e) else { raise e }
-              // Handler threw - reject the dependent promise
-              let error_value = js_error_to_value_with_env(e, Some(i.global))
-              let _ = i.call_value(
-                reaction.reject,
-                Undefined,
-                [error_value],
-                loc,
-              )
-              return Undefined
-            }
-          }
-          // Resolve the dependent promise with handler result
-          let _ = i.call_value(reaction.resolve, Undefined, [result], loc)
-          Undefined
-        }
-        None =>
-          // No handler - pass through value/reason
-          match reaction.reaction_type {
-            Fulfill => {
-              let _ = i.call_value(reaction.resolve, Undefined, [value], loc)
-              Undefined
-            }
-            Reject => {
-              let _ = i.call_value(reaction.reject, Undefined, [value], loc)
-              Undefined
-            }
-          }
-      }
-    },
-  )
+  // #745 still owns observation, selection, consumption, and FIFO. The
+  // selected callback is a private one-shot executor callable; the queued
+  // argument remains in the generic Microtask carrier.
+  let job_callback = make_promise_reaction_job(interp, reaction)
   interp.enqueue_microtask(job_callback, [argument])
 }
 
@@ -248,111 +206,7 @@ pub fn create_resolving_functions(
   interp : Interpreter,
   promise_data : PromiseData,
 ) -> (Value, Value) {
-  // Track whether already resolved (prevents multiple resolution)
-  let already_resolved : Ref[Bool] = { val: false }
-
-  // Create resolve function
-  let resolve_func = make_interp_method_func(
-    name="",
-    length=1,
-    realm_state=Some(interp.realm_state),
-    fn(i, _this, args) raise {
-      if already_resolved.val {
-        return Undefined
-      }
-      already_resolved.val = true
-      let resolution = if args.length() > 0 { args[0] } else { Undefined }
-
-      // Check for self-resolution (ECMAScript spec requirement)
-      match resolution {
-        Promise(pd) =>
-          if physical_equal(pd, promise_data) {
-            // Self-resolution: reject with TypeError
-            let error = js_error_to_value_with_env(
-              @errors.TypeError(message="Chaining cycle detected for promise"),
-              Some(i.global),
-            )
-            reject_promise(i, promise_data, error)
-            return Undefined
-          }
-        _ => ()
-      }
-
-      // Thenable assimilation (ECMAScript §25.6.1.3.2 steps 8-13)
-      // If resolution is not an object, fulfill directly.
-      // Otherwise, perform Get(resolution, "then") and check if callable.
-      // This applies uniformly to both native Promises and plain objects
-      // — the spec has no fast-path for native promises.
-      if is_thenable_object_candidate(resolution) {
-        // Get(resolution, "then") walks the prototype chain and
-        // invokes accessors per ECMAScript spec
-        let loc = @token.Loc::default()
-        let then_val = i.get_property(resolution, "then", loc) catch {
-          e => {
-            guard is_js_catchable_error(e) else { raise e }
-            // If Get throws, reject the promise with the error
-            let err = js_error_to_value_with_env(e, Some(i.global))
-            reject_promise(i, promise_data, err)
-            return Undefined
-          }
-        }
-        match then_val {
-          Object(then_od) =>
-            match then_od.callable {
-              Some(_) => {
-                // Thenable: enqueue PromiseResolveThenableJob
-                let (res, rej) = create_resolving_functions(i, promise_data)
-                let job = make_interp_method_func(
-                  name="PromiseResolveThenableJob",
-                  length=0,
-                  realm_state=Some(i.realm_state),
-                  fn(i2, _t, _a) raise {
-                    try {
-                      let _ = i2.call_value(
-                        then_val,
-                        resolution,
-                        [res, rej],
-                        loc,
-                      )
-                    } catch {
-                      e => {
-                        guard is_js_catchable_error(e) else { raise e }
-                        let err = js_error_to_value_with_env(e, Some(i2.global))
-                        let _ = i2.call_value(rej, Undefined, [err], loc)
-                      }
-                    }
-                    Undefined
-                  },
-                )
-                i.enqueue_microtask(job, [])
-              }
-              None => fulfill_promise(i, promise_data, resolution)
-            }
-          _ => fulfill_promise(i, promise_data, resolution)
-        }
-      } else {
-        fulfill_promise(i, promise_data, resolution)
-      }
-      Undefined
-    },
-  )
-
-  // Create reject function
-  let reject_func = make_interp_method_func(
-    name="",
-    length=1,
-    realm_state=Some(interp.realm_state),
-    fn(i, _this, args) {
-      if already_resolved.val {
-        return Undefined
-      }
-      already_resolved.val = true
-      let reason = if args.length() > 0 { args[0] } else { Undefined }
-      reject_promise(i, promise_data, reason)
-      Undefined
-    },
-  )
-  (resolve_func, reject_func)
+  make_promise_resolving_functions(interp, promise_data)
 }
 
 ///|
