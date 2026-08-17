@@ -1198,7 +1198,9 @@ fn Interpreter::eval_identifier_reference(
   @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
   env.get_with_strict(name, ctx.strict) catch {
     @errors.ReferenceError(message~) =>
-      if message == "\{name} is not defined" {
+      if message == with_object_binding_missing_message(name) {
+        raise @errors.ReferenceError(message="\{name} is not defined")
+      } else if message == "\{name} is not defined" {
         // Fallback: check global object (globalThis) for properties set via this.x = y
         match self.global_this {
           Object(data) =>

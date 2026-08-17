@@ -421,7 +421,7 @@ fn ExecutorBindingFrame::begin_recheck(
   )
   match operation.step(interp) {
     ExecutorActivationNormal(Bool(has_property)) =>
-      self.after_recheck(env, obj, had_own, has_property, interp)
+      self.after_recheck(obj, had_own, has_property)
     ExecutorActivationNormal(_) =>
       raise @errors.InternalError(
         message="binding HasProperty recheck returned a non-boolean",
@@ -436,14 +436,42 @@ fn ExecutorBindingFrame::begin_recheck(
 ///|
 fn ExecutorBindingFrame::after_recheck(
   self : ExecutorBindingFrame,
-  env : Environment,
   obj : Value,
   had_own : Bool,
   has_property : Bool,
-  interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   if !has_property {
-    self.parent_or_unresolved(env, interp)
+    match self.request.operation {
+      ExecutorBindingStore(value) => {
+        if self.request.ctx.strict {
+          raise @errors.ReferenceError(
+            message="{self.request.name} is not defined",
+          )
+        }
+        self.phase = ExecutorBindingAwaitSet
+        executor_activation_managed_property_set(
+          obj,
+          self.request.name,
+          value,
+          self.request.loc,
+          false,
+        )
+      }
+      ExecutorBindingTypeof => {
+        let result = String_("undefined")
+        self.phase = ExecutorBindingComplete(result)
+        ExecutorActivationNormal(result)
+      }
+      _ => {
+        if self.request.ctx.strict {
+          raise @errors.ReferenceError(
+            message="{self.request.name} is not defined",
+          )
+        }
+        self.phase = ExecutorBindingComplete(Undefined)
+        ExecutorActivationNormal(Undefined)
+      }
+    }
   } else {
     self.finish_with_object(obj, had_own)
   }
@@ -515,7 +543,7 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn step(self, interp)
     ExecutorBindingAwaitRecheck(env, obj, had_own, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
-          self.after_recheck(env, obj, had_own, has_property, interp)
+          self.after_recheck(obj, had_own, has_property)
         ExecutorActivationNormal(_) =>
           raise @errors.InternalError(
             message="binding HasProperty recheck returned a non-boolean",

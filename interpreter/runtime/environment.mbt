@@ -531,17 +531,22 @@ fn Environment::assign_with_strict(
           Some(interp) => interp.has_property_key(obj, String_(name))
           None => true
         }
-        if still_present {
-          match self.interpreter_context {
-            Some(_) =>
-              if strict && had_own && !with_object_has_own_direct(obj, name) {
-                raise @errors.ReferenceError(message="\{name} is not defined")
-              }
-            None => ()
+        if !still_present {
+          if strict {
+            raise @errors.ReferenceError(message="\{name} is not defined")
           }
           with_object_set(self.interpreter_context, obj, name, value, strict~)
           return
         }
+        match self.interpreter_context {
+          Some(_) =>
+            if strict && had_own && !with_object_has_own_direct(obj, name) {
+              raise @errors.ReferenceError(message="\{name} is not defined")
+            }
+          None => ()
+        }
+        with_object_set(self.interpreter_context, obj, name, value, strict~)
+        return
       }
     }
     None => ()
@@ -566,10 +571,12 @@ fn Environment::assign_resolved(
   match self.with_object {
     Some(obj) => {
       match self.interpreter_context {
-        Some(interp) =>
-          if strict && !interp.has_property_key(obj, String_(name)) {
+        Some(interp) => {
+          let still_present = interp.has_property_key(obj, String_(name))
+          if strict && !still_present {
             raise @errors.ReferenceError(message="\{name} is not defined")
           }
+        }
         None => ()
       }
       with_object_set(self.interpreter_context, obj, name, value, strict~)
@@ -674,6 +681,14 @@ fn with_object_has_own_direct(obj : Value, name : String) -> Bool {
 }
 
 ///|
+/// Internal marker for a selected with binding that disappeared before its
+/// value was read. The identifier-reference boundary normalizes it to the
+/// user-visible ReferenceError without falling back to globalThis.
+fn with_object_binding_missing_message(name : String) -> String {
+  "__js_engine_with_binding_missing__:" + name
+}
+
+///|
 fn with_object_get(
   interp_context : Interpreter?,
   obj : Value,
@@ -686,24 +701,18 @@ fn with_object_get(
       // this triggers the has trap exactly once.
       let has_prop = interp.has_property_key(obj, String_(name))
       if has_prop {
-        // Record own-property status BEFORE the @@unscopables getter
-        // runs, since the getter may delete own properties as a side
-        // effect. Use non-trapping direct-bag check for this.
-        let had_own = with_object_has_own_direct(obj, name)
         if !is_blocked_by_unscopables(interp, obj, name) {
           // HasBinding and GetBindingValue are separate spec steps. The
           // unscopables lookup may delete the binding, so re-check
           // HasProperty without running @@unscopables a second time.
           let still_present = interp.has_property_key(obj, String_(name))
           if !still_present {
-            return if had_own {
-              if strict {
-                raise @errors.ReferenceError(message="\{name} is not defined")
-              } else {
-                Some(Undefined)
-              }
+            return if strict {
+              raise @errors.ReferenceError(
+                message=with_object_binding_missing_message(name),
+              )
             } else {
-              None
+              Some(Undefined)
             }
           }
           return Some(interp.get_property(obj, name, @token.Loc::default()))
