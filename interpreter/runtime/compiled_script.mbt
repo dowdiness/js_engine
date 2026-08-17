@@ -26,9 +26,10 @@ pub fn Interpreter::get_compiled_name(
 }
 
 ///|
-/// Resolve `typeof name` for compiled execution using the same identifier
-/// reference special case as the tree-walking interpreter: unresolved names
-/// produce "undefined", while TDZ bindings still raise.
+/// Resolve `typeof name` for compiled and tree-walking execution using the
+/// same identifier-reference semantics: unresolved names produce
+/// "undefined", while TDZ bindings and a selected dynamic binding that
+/// disappears during resolution still raise.
 pub fn Interpreter::typeof_compiled_name(
   self : Interpreter,
   ctx : ExecContext,
@@ -36,18 +37,25 @@ pub fn Interpreter::typeof_compiled_name(
   name : String,
 ) -> Value raise Error {
   @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
-  if env.has(name) {
-    String_(type_of(env.get(name)))
-  } else {
-    match self.global_this {
-      Value::Object(data) =>
-        match data.bag.properties.get(name) {
-          Some(value) => String_(type_of(value))
-          None => String_("undefined")
+  let value = env.get_with_strict(name, ctx.strict) catch {
+    @errors.ReferenceError(message~) =>
+      if message == with_object_binding_missing_message(name) {
+        raise @errors.ReferenceError(message="\{name} is not defined")
+      } else if message == "\{name} is not defined" {
+        match self.global_this {
+          Value::Object(data) =>
+            match data.bag.properties.get(name) {
+              Some(value) => value
+              None => Undefined
+            }
+          _ => Undefined
         }
-      _ => String_("undefined")
-    }
+      } else {
+        raise @errors.ReferenceError(message~)
+      }
+    other => raise other
   }
+  String_(type_of(value))
 }
 
 ///|

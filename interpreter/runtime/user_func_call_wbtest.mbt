@@ -291,7 +291,7 @@ test "simple UserFunc setup failure preserves error and restores parameter gate"
     Some(error) => inspect(physical_equal(error, sentinel), content="true")
     None => fail("expected setup to raise")
   }
-  inspect(has_calls.val, content="2")
+  inspect(has_calls.val, content="3")
   inspect(get_calls.val, content="1")
   inspect(body_calls.val, content="0")
   assert_user_func_call_test_gate_restored(interp, saved_conflicts)

@@ -3974,7 +3974,7 @@ test "tree admission rejects with proxy closures without preflight traps" {
     ExecutorActivationReturn(Number(value)) => inspect(value, content="1")
     _ => fail("with proxy closures must stay on legacy execution")
   }
-  inspect(has_calls.val, content="1")
+  inspect(has_calls.val, content="2")
   inspect(get_calls.val, content="1")
   inspect(control.active_depth(), content="0")
 }

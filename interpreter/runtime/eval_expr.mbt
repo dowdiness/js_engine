@@ -1198,7 +1198,9 @@ fn Interpreter::eval_identifier_reference(
   @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
   env.get_with_strict(name, ctx.strict) catch {
     @errors.ReferenceError(message~) =>
-      if message == "\{name} is not defined" {
+      if message == with_object_binding_missing_message(name) {
+        raise @errors.ReferenceError(message="\{name} is not defined")
+      } else if message == "\{name} is not defined" {
         // Fallback: check global object (globalThis) for properties set via this.x = y
         match self.global_this {
           Object(data) =>
@@ -2940,25 +2942,7 @@ fn Interpreter::eval_unary(
   match op {
     Typeof =>
       match operand {
-        Ident(name, _) => {
-          @static_semantics.validate_strict_identifier_reference(
-            ctx.strict,
-            name,
-          )
-          if env.has(name) {
-            String_(type_of(env.get(name)))
-          } else {
-            // Also check global object for properties
-            match self.global_this {
-              Object(data) =>
-                match data.bag.properties.get(name) {
-                  Some(v) => String_(type_of(v))
-                  None => String_("undefined")
-                }
-              _ => String_("undefined")
-            }
-          }
-        }
+        Ident(name, _) => self.typeof_compiled_name(ctx, env, name)
         _ => String_(type_of(self.eval_expr(ctx, operand, env)))
       }
     Void => {

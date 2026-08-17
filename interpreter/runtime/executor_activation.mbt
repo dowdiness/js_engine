@@ -20,6 +20,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
+  ExecutorActivationBinding(ExecutorBindingRequest)
 }
 
 ///|
@@ -297,8 +298,10 @@ pub struct ExecutorPropertySetRequest {
   priv target : Value
   priv property_name : String
   priv value : Value
+  priv receiver : Value
   priv loc : @token.Loc
   priv strict : Bool
+  priv manage_proxy : Bool
 }
 
 ///|
@@ -306,10 +309,12 @@ fn ExecutorPropertySetRequest::ExecutorPropertySetRequest(
   target~ : Value,
   property_name~ : String,
   value~ : Value,
+  receiver~ : Value,
   loc~ : @token.Loc,
   strict~ : Bool,
+  manage_proxy? : Bool = false,
 ) -> ExecutorPropertySetRequest {
-  { target, property_name, value, loc, strict }
+  { target, property_name, value, receiver, loc, strict, manage_proxy }
 }
 
 ///|
@@ -321,7 +326,49 @@ pub fn executor_activation_property_set(
   strict : Bool,
 ) -> ExecutorActivationStep {
   ExecutorActivationPropertySet(
-    ExecutorPropertySetRequest(target~, property_name~, value~, loc~, strict~),
+    ExecutorPropertySetRequest(
+      target~,
+      property_name~,
+      value~,
+      receiver=target,
+      loc~,
+      strict~,
+    ),
+  )
+}
+
+///|
+fn executor_activation_managed_property_set(
+  target : Value,
+  property_name : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> ExecutorActivationStep {
+  executor_activation_managed_property_set_with_receiver(
+    target, property_name, value, target, loc, strict,
+  )
+}
+
+///|
+fn executor_activation_managed_property_set_with_receiver(
+  target : Value,
+  property_name : String,
+  value : Value,
+  receiver : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertySet(
+    ExecutorPropertySetRequest(
+      target~,
+      property_name~,
+      value~,
+      receiver~,
+      loc~,
+      strict~,
+      manage_proxy=true,
+    ),
   )
 }
 
@@ -780,6 +827,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertyDelete
   ExecutorChildIterableSpread
   ExecutorChildCopyDataProperties
+  ExecutorChildBinding
 }
 
 ///|
@@ -1350,6 +1398,7 @@ fn Interpreter::complete_executor_step(
       executor_iterable_spread_completion(step)
     Some(ExecutorChildCopyDataProperties) =>
       executor_copy_data_properties_completion(step)
+    Some(ExecutorChildBinding) => executor_binding_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -1681,6 +1730,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationBinding(request) => {
+      let binding_frame = ExecutorBindingFrame(request)
+      stack.push({
+        frame: binding_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildBinding),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
     ExecutorActivationCall(request) => {
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         {
@@ -1939,6 +1998,47 @@ fn Interpreter::handle_executor_activation_step(
       None
     }
     ExecutorActivationPropertySet(request) => {
+      if request.manage_proxy {
+        let proxy_boundary = direct_executor_proxy_boundary_in_plain_chain(
+          request.target,
+          ExecutorStringPropertyGetKey(request.property_name),
+        )
+        match proxy_boundary {
+          Some(Proxy(proxy_data)) => {
+            let handler = match proxy_data.handler {
+              Some(handler) => handler
+              None =>
+                raise @errors.TypeError(
+                  message="Cannot perform 'set' on a proxy that has been revoked",
+                )
+            }
+            let target = match proxy_data.target {
+              Some(target) => target
+              None =>
+                raise @errors.TypeError(
+                  message="Cannot perform 'set' on a proxy that has been revoked",
+                )
+            }
+            let proxy_frame = ExecutorProxyPropertySetFrame(
+              target~,
+              handler~,
+              property_name=request.property_name,
+              value=request.value,
+              receiver=request.target,
+              strict=request.strict,
+              loc=request.loc,
+            )
+            stack.push({
+              frame: proxy_frame as &ExecutorActivationFrame,
+              completion: Some(ExecutorChildPropertySet(request.value)),
+              cleanup: None,
+              graph_cursor: None,
+            })
+            return None
+          }
+          _ => ()
+        }
+      }
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         match
           direct_executor_property_setter(request.target, request.property_name) {
@@ -1948,7 +2048,7 @@ fn Interpreter::handle_executor_activation_step(
             )
             let call_request = ExecutorCallRequest(
               callee=setter,
-              this_value=request.target,
+              this_value=request.receiver,
               args=[request.value],
               loc=request.loc,
             )
@@ -1969,6 +2069,7 @@ fn Interpreter::handle_executor_activation_step(
                 request.value,
                 request.loc,
                 strict=request.strict,
+                receiver=request.receiver,
               ),
             )
         },
@@ -2287,7 +2388,8 @@ fn executor_call_completion(
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
-        | ExecutorActivationCopyDataProperties(_) => Undefined
+        | ExecutorActivationCopyDataProperties(_)
+        | ExecutorActivationBinding(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
@@ -2302,7 +2404,8 @@ fn executor_call_completion(
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
-        | ExecutorActivationCopyDataProperties(_) => Undefined
+        | ExecutorActivationCopyDataProperties(_)
+        | ExecutorActivationBinding(_) => Undefined
       }
   }
 }
@@ -2327,7 +2430,8 @@ fn executor_construct_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_) => instance
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) => instance
   }
 }
 
@@ -2354,7 +2458,8 @@ fn executor_property_get_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_) =>
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property get completed with a pending activation step",
@@ -2379,7 +2484,8 @@ fn executor_property_update_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_) =>
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
@@ -2404,7 +2510,8 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_) =>
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
@@ -2429,7 +2536,8 @@ fn executor_property_delete_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_) =>
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property delete completed with a pending activation step",

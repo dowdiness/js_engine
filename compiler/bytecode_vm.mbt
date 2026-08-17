@@ -648,6 +648,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending CopyDataProperties",
       )
+    @runtime.ExecutorActivationBinding(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending binding resolution",
+      )
   }
 }
 
@@ -684,13 +688,75 @@ fn BytecodeFrame::step_bytecode(
         stack.push(interp.eval_super_computed_property(env, key, loc))
       }
       LoadConsoleMember(prop) => stack.push(interp.get_console_member(prop))
-      LoadDirectEvalCallee => stack.push(@runtime.load_direct_eval_callee(env))
-      LoadName(name) => stack.push(interp.get_compiled_name(env, name))
+      LoadDirectEvalCallee =>
+        match
+          @runtime.begin_executor_binding_direct_eval(
+            interp,
+            ctx,
+            env,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorBindingCompleted(value) => stack.push(value)
+          @runtime.ExecutorBindingSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_binding_request(request),
+            )
+          }
+        }
+      LoadName(name) =>
+        match
+          @runtime.begin_executor_binding_load(
+            interp,
+            ctx,
+            env,
+            name,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorBindingCompleted(value) => stack.push(value)
+          @runtime.ExecutorBindingSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_binding_request(request),
+            )
+          }
+        }
       LoadAssignmentName(name) =>
-        stack.push(@runtime.get_assignment_name_value(ctx, env, name))
+        match
+          @runtime.begin_executor_binding_assignment_load(
+            interp,
+            ctx,
+            env,
+            name,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorBindingCompleted(value) => stack.push(value)
+          @runtime.ExecutorBindingSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_binding_request(request),
+            )
+          }
+        }
       StoreName(name) => {
         let value = frame.pop()
-        stack.push(interp.assign_compiled_name(ctx, env, name, value))
+        match
+          @runtime.begin_executor_binding_store(
+            interp,
+            ctx,
+            env,
+            name,
+            value,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorBindingCompleted(result) => stack.push(result)
+          @runtime.ExecutorBindingSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_binding_request(request),
+            )
+          }
+        }
       }
       LoadLocal(slot) => stack.push(locals[slot])
       StoreLocal(slot) => {
@@ -775,7 +841,22 @@ fn BytecodeFrame::step_bytecode(
         stack.push(@runtime.eval_unary_value_op(op, value, loc))
       }
       TypeofName(name) =>
-        stack.push(interp.typeof_compiled_name(ctx, env, name))
+        match
+          @runtime.begin_executor_binding_typeof(
+            interp,
+            ctx,
+            env,
+            name,
+            @token.Loc::default(),
+          ) {
+          @runtime.ExecutorBindingCompleted(value) => stack.push(value)
+          @runtime.ExecutorBindingSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_binding_request(request),
+            )
+          }
+        }
       DeleteName(name) =>
         stack.push(@runtime.eval_delete_identifier(interp, ctx, env, name))
       DeleteProperty(prop) => {
