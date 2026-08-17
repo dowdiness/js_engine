@@ -102,6 +102,56 @@ test "issue 892 candidate thenable job preserves sibling FIFO" {
 }
 
 ///|
+test "issue 892 candidate thenable job creates resolving functions in the then realm" {
+  let source =
+    #|var r = $262.createRealm();
+    #|var foreignFunctionProto = r.evalScript("Function.prototype");
+    #|var localFunctionProto = Function.prototype;
+    #|var thenable = r.evalScript("({ calls: 0, then: function(resolve, reject) { this.calls += 1; this.resolve = resolve; this.reject = reject; resolve('ok'); resolve('late'); reject('bad'); } })");
+    #|var settled = "";
+    #|Promise.resolve(thenable).then(function(value) { settled = "fulfilled:" + value; }, function(reason) { settled = "rejected:" + reason; });
+    #|var snapshot = "";
+    #|queueMicrotask(function() { queueMicrotask(function() { snapshot = thenable.calls + ":" + (Object.getPrototypeOf(thenable.resolve) === foreignFunctionProto) + ":" + (Object.getPrototypeOf(thenable.resolve) === localFunctionProto) + ":" + (Object.getPrototypeOf(thenable.reject) === foreignFunctionProto) + ":" + (Object.getPrototypeOf(thenable.reject) === localFunctionProto) + ":" + settled; }); });
+  let (interp, evidence) = issue892_candidate_run_and_drain_for_wb(source)
+  assert_eq(
+    issue892_global_string_for_wb(interp, "snapshot"),
+    "1:true:false:true:false:fulfilled:ok",
+  )
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 892 candidate thenable job follows proxy and revoked realm rules" {
+  let source =
+    #|var r = $262.createRealm();
+    #|var foreignFunctionProto = r.evalScript("Function.prototype");
+    #|var localFunctionProto = Function.prototype;
+    #|var foreignThen = r.evalScript("(function(resolve) { this.resolve = resolve; resolve('proxy'); })");
+    #|var proxiedThenable = { then: new Proxy(foreignThen, {}) };
+    #|var proxied = "";
+    #|Promise.resolve(proxiedThenable).then(function(value) { proxied = (Object.getPrototypeOf(proxiedThenable.resolve) === foreignFunctionProto) + ":" + (Object.getPrototypeOf(proxiedThenable.resolve) === localFunctionProto) + ":" + value; });
+    #|var revocable = Proxy.revocable(foreignThen, {});
+    #|var revokedThenable = { then: revocable.proxy };
+    #|revocable.revoke();
+    #|var revoked = "";
+    #|Promise.resolve(revokedThenable).catch(function(error) { revoked = error instanceof TypeError ? "type-error" : "wrong"; });
+    #|var snapshot = "";
+    #|queueMicrotask(function() { queueMicrotask(function() { snapshot = proxied + ":" + revoked; }); });
+  let (interp, evidence) = issue892_candidate_run_and_drain_for_wb(source)
+  assert_eq(
+    issue892_global_string_for_wb(interp, "snapshot"),
+    "true:false:proxy:type-error",
+  )
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 892 candidate reaction frame preserves FIFO and deep chaining" {
   let source =
     #|var events = "";
