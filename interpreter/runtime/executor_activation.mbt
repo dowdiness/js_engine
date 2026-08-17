@@ -819,6 +819,7 @@ priv struct ExecutorActivationCleanup {
 ///|
 priv enum ExecutorChildCompletion {
   ExecutorChildCall(ExecutorCallableKind)
+  ExecutorChildArrayForEach
   ExecutorChildConstruct(Value)
   ExecutorChildPropertyGet
   ExecutorChildPropertySet(Value)
@@ -1381,6 +1382,8 @@ fn Interpreter::complete_executor_step(
   let completion = match stack[stack.length() - 1].completion {
     Some(ExecutorChildCall(kind)) =>
       ExecutorActivationCompletionNormal(executor_call_completion(kind, step))
+    Some(ExecutorChildArrayForEach) =>
+      executor_array_for_each_completion(step)
     Some(ExecutorChildConstruct(instance)) =>
       ExecutorActivationCompletionNormal(
         executor_construct_completion(step, instance),
@@ -1402,6 +1405,22 @@ fn Interpreter::complete_executor_step(
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
+}
+
+///|
+fn executor_array_for_each_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(_) | ExecutorActivationReturn(_) =>
+      ExecutorActivationCompletionNormal(Undefined)
+    _ =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="forEach frame completed without a value",
+        ),
+      )
+  }
 }
 
 ///|
@@ -1748,47 +1767,46 @@ fn Interpreter::handle_executor_activation_step(
             request.this_value,
             request.args,
           )
-          match stack[index].graph_cursor {
-            Some(graph_cursor) => {
-              let edge = match
-                tree_executor_graph_select_edge(
-                  graph_cursor,
-                  forwarded_callee,
-                  forwarded_args.length(),
-                ) {
-                Some(edge) => edge
-                None =>
-                  raise @errors.InternalError(
-                    message="executor activation graph proof was violated by an unmatched call",
-                  )
-              }
-              let admission = match
-                tree_executor_graph_target(graph_cursor, edge) {
-                Some(admission) => admission
-                None =>
-                  raise @errors.InternalError(
-                    message="executor activation graph target was invalid",
-                  )
-              }
-              let forwarded_request = ExecutorCallRequest(
-                callee=forwarded_callee,
-                this_value=forwarded_this_value,
-                args=forwarded_args,
-                loc=request.loc,
-              )
-              stack.push(
-                self.start_executor_activation(
-                  admission.executable,
-                  ExecutorStartCall(forwarded_request),
-                  None,
-                  graph_cursor=Some(admission.cursor),
-                ),
-              )
+          match executor_array_for_each_request(
+            self,
+            forwarded_callee,
+            forwarded_this_value,
+            forwarded_args,
+            request.loc,
+          ) {
+            Some(array_request) => {
+              let array_frame = ExecutorArrayForEachFrame(array_request)
+              stack.push({
+                frame: array_frame as &ExecutorActivationFrame,
+                completion: Some(ExecutorChildArrayForEach),
+                cleanup: None,
+                graph_cursor: None,
+              })
               ExecutorActivationRequestChild
             }
             None =>
-              match forwarded_callee {
-                Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
+              match stack[index].graph_cursor {
+                Some(graph_cursor) => {
+                  let edge = match
+                    tree_executor_graph_select_edge(
+                      graph_cursor,
+                      forwarded_callee,
+                      forwarded_args.length(),
+                    ) {
+                    Some(edge) => edge
+                    None =>
+                      raise @errors.InternalError(
+                        message="executor activation graph proof was violated by an unmatched call",
+                      )
+                  }
+                  let admission = match
+                    tree_executor_graph_target(graph_cursor, edge) {
+                    Some(admission) => admission
+                    None =>
+                      raise @errors.InternalError(
+                        message="executor activation graph target was invalid",
+                      )
+                  }
                   let forwarded_request = ExecutorCallRequest(
                     callee=forwarded_callee,
                     this_value=forwarded_this_value,
@@ -1797,19 +1815,17 @@ fn Interpreter::handle_executor_activation_step(
                   )
                   stack.push(
                     self.start_executor_activation(
-                      executable,
+                      admission.executable,
                       ExecutorStartCall(forwarded_request),
                       None,
+                      graph_cursor=Some(admission.cursor),
                     ),
                   )
                   ExecutorActivationRequestChild
                 }
-                Object({ callable: Some(UserFunc(data)), .. }) =>
-                  match
-                    tree_executor_callable_admission(
-                      forwarded_callee, data, forwarded_args,
-                    ) {
-                    Some(admission) => {
+                None =>
+                  match forwarded_callee {
+                    Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
                       let forwarded_request = ExecutorCallRequest(
                         callee=forwarded_callee,
                         this_value=forwarded_this_value,
@@ -1818,15 +1834,44 @@ fn Interpreter::handle_executor_activation_step(
                       )
                       stack.push(
                         self.start_executor_activation(
-                          admission.executable,
+                          executable,
                           ExecutorStartCall(forwarded_request),
                           None,
-                          graph_cursor=Some(admission.cursor),
                         ),
                       )
                       ExecutorActivationRequestChild
                     }
-                    None =>
+                    Object({ callable: Some(UserFunc(data)), .. }) =>
+                      match
+                        tree_executor_callable_admission(
+                          forwarded_callee, data, forwarded_args,
+                        ) {
+                        Some(admission) => {
+                          let forwarded_request = ExecutorCallRequest(
+                            callee=forwarded_callee,
+                            this_value=forwarded_this_value,
+                            args=forwarded_args,
+                            loc=request.loc,
+                          )
+                          stack.push(
+                            self.start_executor_activation(
+                              admission.executable,
+                              ExecutorStartCall(forwarded_request),
+                              None,
+                              graph_cursor=Some(admission.cursor),
+                            ),
+                          )
+                          ExecutorActivationRequestChild
+                        }
+                        None =>
+                          self.executor_activation_fallback_call(
+                            forwarded_callee,
+                            forwarded_this_value,
+                            forwarded_args,
+                            request.loc,
+                          )
+                      }
+                    _ =>
                       self.executor_activation_fallback_call(
                         forwarded_callee,
                         forwarded_this_value,
@@ -1834,13 +1879,6 @@ fn Interpreter::handle_executor_activation_step(
                         request.loc,
                       )
                   }
-                _ =>
-                  self.executor_activation_fallback_call(
-                    forwarded_callee,
-                    forwarded_this_value,
-                    forwarded_args,
-                    request.loc,
-                  )
               }
           }
         },
