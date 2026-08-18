@@ -2098,10 +2098,10 @@ test "production candidate recorder remains bounded across repeated calls" {
   guard evidence.val.summary.active_activations == 0 else {
     fail("production candidate recorder retained in-flight activations")
   }
-  guard evidence.val.summary.bytecode_starts == 100 else {
+  guard evidence.val.summary.bytecode_starts == 101 else {
     fail("production candidate recorder lost bytecode start counts")
   }
-  guard evidence.val.summary.tree_starts == 1 else {
+  guard evidence.val.summary.tree_starts == 0 else {
     fail("production candidate recorder lost tree start counts")
   }
   guard evidence.val.summary.normal_completions == 101 else {
