@@ -302,7 +302,8 @@ fn ExecutorCoercingLessThanFrame::step_frame(
         self.request.loc,
       )
       match operation.step(interp) {
-        ExecutorActivationNormal(value) => self.finish_right(interp, left, value)
+        ExecutorActivationNormal(value) =>
+          self.finish_right(interp, left, value)
         step => {
           self.phase = ExecutorCoercingLessThanAwaitRight(left, operation)
           step
@@ -311,7 +312,8 @@ fn ExecutorCoercingLessThanFrame::step_frame(
     }
     ExecutorCoercingLessThanAwaitRight(left, operation) =>
       match operation.step(interp) {
-        ExecutorActivationNormal(value) => self.finish_right(interp, left, value)
+        ExecutorActivationNormal(value) =>
+          self.finish_right(interp, left, value)
         step => {
           self.phase = ExecutorCoercingLessThanAwaitRight(left, operation)
           step

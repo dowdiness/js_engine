@@ -131,8 +131,7 @@ test "coercing less-than start completes primitives and suspends objects" {
   let loc = @token.Loc::default()
   match begin_executor_coercing_less_than(Number(0.0), Number(1.0), loc) {
     ExecutorCoercingLessThanCompleted(Bool(true)) => ()
-    ExecutorCoercingLessThanCompleted(_) =>
-      fail("number < must complete true")
+    ExecutorCoercingLessThanCompleted(_) => fail("number < must complete true")
     ExecutorCoercingLessThanSuspended(_) =>
       fail("primitive < must not create a child frame")
   }
