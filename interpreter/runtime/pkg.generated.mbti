@@ -718,6 +718,7 @@ pub struct ExecutorActivationCapabilitySummary {
 pub enum ExecutorActivationCompletion {
   ExecutorActivationCompletionNormal(Value)
   ExecutorActivationCompletionAbrupt(Error)
+  ExecutorActivationCompletionReference(ResolvedBindingReference)
 }
 
 pub enum ExecutorActivationStep {
@@ -736,6 +737,12 @@ pub enum ExecutorActivationStep {
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
   ExecutorActivationBinding(ExecutorBindingRequest)
+  ExecutorActivationBindingReference(ExecutorBindingReferenceRequest)
+  ExecutorActivationReference(ResolvedBindingReference)
+}
+
+pub struct ExecutorBindingReferenceRequest {
+  // private fields
 }
 
 pub struct ExecutorBindingRequest {
@@ -1291,6 +1298,10 @@ pub fn RealmState::make_array_values_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_string_iterator_value(Self, String) -> Value
 pub fn RealmState::register_constructor_prototype(Self, String, Value) -> Unit
 pub fn RealmState::set_array_proto_values_intrinsic(Self, Value) -> Unit
+
+pub struct ResolvedBindingReference {
+  // private fields
+}
 
 pub(all) enum ResumeAction {
   NextAction

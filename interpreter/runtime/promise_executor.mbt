@@ -179,6 +179,10 @@ impl ExecutorActivationFrame for PromiseResolutionExecutorFrame with fn deliver_
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="Promise resolution frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         PromiseResolutionAwaitThenGet =>
@@ -397,6 +401,10 @@ impl ExecutorActivationFrame for PromiseThenableJobExecutorFrame with fn deliver
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="Promise thenable job received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(_) =>
       match self.phase {
         PromiseThenableJobAwaitThenCall | PromiseThenableJobAwaitReject =>
@@ -601,6 +609,10 @@ impl ExecutorActivationFrame for PromiseReactionExecutorFrame with fn deliver_ac
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="Promise reaction frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         PromiseReactionAwaitHandler =>

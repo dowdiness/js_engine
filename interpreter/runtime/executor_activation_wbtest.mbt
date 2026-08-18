@@ -461,6 +461,10 @@ impl ExecutorActivationFrame for ExecutorActivationCoercingAdditionRootFrame wit
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="test coercing addition frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }
@@ -491,6 +495,10 @@ impl ExecutorActivationFrame for ExecutorActivationCoercingSubtractionRootFrame 
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="test coercing subtraction frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }
@@ -1335,6 +1343,10 @@ impl ExecutorActivationFrame for ExecutorActivationCallFrame with fn deliver_act
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="test call frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }
@@ -1370,6 +1382,10 @@ impl ExecutorActivationFrame for ExecutorActivationConstructFrame with fn delive
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="test construct frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }
@@ -1410,6 +1426,10 @@ impl ExecutorActivationFrame for ExecutorActivationRecoverFrame with fn deliver_
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="recovering frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => self.abrupt = Some(error)
   }
@@ -1457,6 +1477,10 @@ impl ExecutorActivationFrame for ExecutorActivationRecoverRequestFrame with fn d
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="request recovering frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => self.abrupt = Some(error)
   }
@@ -1491,6 +1515,10 @@ impl ExecutorActivationFrame for ExecutorActivationDeliveryErrorFrame with fn de
 ) {
   self.delivery_count.val += 1
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="delivery error frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(_) => raise self.expected
     ExecutorActivationCompletionAbrupt(_) =>
       raise @errors.InternalError(
@@ -1523,6 +1551,10 @@ impl ExecutorActivationFrame for ExecutorActivationCleanupObservationFrame with 
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="cleanup observation frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionAbrupt(error) => {
       guard physical_equal(error, self.expected) else {
         raise @errors.InternalError(
@@ -1575,6 +1607,10 @@ impl ExecutorActivationFrame for ExecutorActivationPropertyGetFrame with fn deli
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="test property frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }
@@ -1616,6 +1652,10 @@ impl ExecutorActivationFrame for ExecutorActivationPropertySetFrame with fn deli
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="test property-set frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }
@@ -1649,6 +1689,10 @@ impl ExecutorActivationFrame for ExecutorActivationPropertySetDeliveryErrorFrame
 ) {
   self.delivery_count.val += 1
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="property-set delivery error frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(_) => raise self.expected
     ExecutorActivationCompletionAbrupt(_) =>
       raise @errors.InternalError(
@@ -1698,6 +1742,10 @@ impl ExecutorActivationFrame for ExecutorActivationRecursivePropertySetFrame wit
     )
   }
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="recursive property-set frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }

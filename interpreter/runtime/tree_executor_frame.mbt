@@ -865,6 +865,10 @@ impl ExecutorActivationFrame for TreeExecutorFrame with fn deliver_activation_co
   }
   self.awaiting_child = false
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="tree executor received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.values.push(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }

@@ -275,6 +275,10 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
   }
   self.pending_activation_result = None
   match completion {
+    @runtime.ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="bytecode frame received an unexpected binding reference completion",
+      )
     @runtime.ExecutorActivationCompletionNormal(value) =>
       match destination {
         PushValue => self.stack.push(value)
@@ -659,6 +663,11 @@ fn run_bytecode_function(
     @runtime.ExecutorActivationBinding(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending binding resolution",
+      )
+    @runtime.ExecutorActivationBindingReference(_)
+    | @runtime.ExecutorActivationReference(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending binding reference",
       )
   }
 }

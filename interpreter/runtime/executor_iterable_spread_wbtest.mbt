@@ -47,6 +47,10 @@ impl ExecutorActivationFrame for ExecutorIterableSpreadTestRootFrame with fn del
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="iterable spread root received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }

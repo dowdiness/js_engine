@@ -594,6 +594,10 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn deliver_activation
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="binding frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorBindingAwaitHas(_, _, operation) =>
@@ -794,6 +798,10 @@ impl ExecutorActivationFrame for ExecutorProxyPropertySetFrame with fn deliver_a
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="proxy set frame received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorProxyPropertySetAwaitTrapLookup =>

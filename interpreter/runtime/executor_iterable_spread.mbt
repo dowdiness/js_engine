@@ -286,6 +286,10 @@ impl ExecutorActivationFrame for ExecutorIterableSpreadFrame with fn deliver_act
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="iterable spread received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorIterableSpreadAwaitIteratorMethod(iterable) =>

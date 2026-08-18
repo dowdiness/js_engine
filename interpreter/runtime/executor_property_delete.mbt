@@ -341,6 +341,10 @@ impl ExecutorActivationFrame for ExecutorDeleteHasPropertyOperation with fn deli
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="delete operation received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorDeleteHasPropertyAwaitTrapLookup(target, handler) =>
@@ -636,6 +640,10 @@ impl ExecutorActivationFrame for ExecutorDeleteDescriptorParseOperation with fn 
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="descriptor parser received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorDeleteDescriptorAwaitHasProperty(_, operation) =>
@@ -1065,6 +1073,10 @@ impl ExecutorActivationFrame for ExecutorDeleteGetOwnOperation with fn deliver_a
 ) -> Unit raise Error {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="delete [[GetOwnProperty]] received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorDeleteGetOwnAwaitTrapLookup(target, handler, key) =>
@@ -1248,6 +1260,10 @@ fn ExecutorDeleteIsExtensibleOperation::deliver_activation_completion(
 ) -> Unit raise Error {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="delete [[IsExtensible]] received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorDeleteIsExtensibleAwaitTrapLookup(target, handler) =>
@@ -1537,6 +1553,10 @@ impl ExecutorActivationFrame for ExecutorPropertyDeleteFrame with fn deliver_act
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="property delete received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorPropertyDeleteAwaitKey(operation) =>
