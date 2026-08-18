@@ -52,6 +52,10 @@ impl ExecutorActivationFrame for ExecutorCopyDataPropertiesTestRootFrame with fn
 ) {
   ignore(self)
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="copy data properties root received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(_) => ()
     ExecutorActivationCompletionAbrupt(error) => raise error
   }

@@ -45,6 +45,10 @@ impl ExecutorActivationFrame for ExecutorCoercingLessThanOrEqualRootFrame with f
   completion,
 ) {
   match completion {
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="relational root received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) => self.result = Some(value)
     ExecutorActivationCompletionAbrupt(error) => raise error
   }

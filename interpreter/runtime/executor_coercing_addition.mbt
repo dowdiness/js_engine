@@ -307,6 +307,10 @@ fn ExecutorToPropertyKeyOperation::deliver_activation_completion(
 ) -> Unit raise Error {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="ToPropertyKey received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorToPropertyKeyAwaitToPrimitive(operation) =>
@@ -328,6 +332,10 @@ fn ExecutorToPrimitiveOperation::deliver_activation_completion(
 ) -> Unit raise Error {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="ToPrimitive received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorToPrimitiveAwaitToPrimitiveLookup(current) =>

@@ -23,6 +23,8 @@ pub enum ExecutorActivationStep {
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
   ExecutorActivationBinding(ExecutorBindingRequest)
+  ExecutorActivationBindingReference(ExecutorBindingReferenceRequest)
+  ExecutorActivationReference(ResolvedBindingReference)
 }
 
 ///|
@@ -32,6 +34,7 @@ pub enum ExecutorActivationStep {
 pub enum ExecutorActivationCompletion {
   ExecutorActivationCompletionNormal(Value)
   ExecutorActivationCompletionAbrupt(Error)
+  ExecutorActivationCompletionReference(ResolvedBindingReference)
 }
 
 ///|
@@ -914,6 +917,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildIterableSpread
   ExecutorChildCopyDataProperties
   ExecutorChildBinding
+  ExecutorChildBindingReference
 }
 
 ///|
@@ -962,6 +966,10 @@ fn reduce_executor_proxy_property_get_completion(
 ) -> ExecutorProxyPropertyGetPhase raise Error {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="proxy property get received a binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match phase {
         ExecutorProxyPropertyGetAwaitTrapLookup =>
@@ -1106,6 +1114,10 @@ fn reduce_executor_property_update_completion(
 ) -> ExecutorPropertyUpdatePhase raise Error {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="property update received a binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match phase {
         ExecutorPropertyUpdateAwaitGet =>
@@ -1449,6 +1461,7 @@ fn Interpreter::complete_executor_child(
   let failure = match completion {
     ExecutorActivationCompletionAbrupt(error) => Some(error)
     ExecutorActivationCompletionNormal(_) => None
+    ExecutorActivationCompletionReference(_) => None
   }
   match entry.cleanup {
     Some(cleanup) => self.finish_executor_activation(cleanup, failure)
@@ -1490,6 +1503,8 @@ fn Interpreter::complete_executor_step(
     Some(ExecutorChildCopyDataProperties) =>
       executor_copy_data_properties_completion(step)
     Some(ExecutorChildBinding) => executor_binding_completion(step)
+    Some(ExecutorChildBindingReference) =>
+      executor_binding_reference_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -1505,6 +1520,22 @@ fn executor_array_for_each_completion(
     _ =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(message="forEach frame completed without a value"),
+      )
+  }
+}
+
+///|
+fn executor_binding_reference_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationReference(reference) =>
+      ExecutorActivationCompletionReference(reference)
+    _ =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="binding reference frame completed without a reference",
+        ),
       )
   }
 }
@@ -1825,6 +1856,16 @@ fn Interpreter::handle_executor_activation_step(
         self.complete_executor_step(stack, ExecutorActivationReturn(value))
         None
       }
+    ExecutorActivationReference(reference) =>
+      if index == 0 {
+        Some(ExecutorActivationReference(reference))
+      } else {
+        self.complete_executor_step(
+          stack,
+          ExecutorActivationReference(reference),
+        )
+        None
+      }
     ExecutorActivationCopyDataProperties(request) => {
       let copy_frame = ExecutorCopyDataPropertiesFrame(request)
       stack.push({
@@ -1840,6 +1881,16 @@ fn Interpreter::handle_executor_activation_step(
       stack.push({
         frame: binding_frame as &ExecutorActivationFrame,
         completion: Some(ExecutorChildBinding),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
+    ExecutorActivationBindingReference(request) => {
+      let binding_frame = ExecutorBindingReferenceFrame(request)
+      stack.push({
+        frame: binding_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildBindingReference),
         cleanup: None,
         graph_cursor: None,
       })
@@ -2518,7 +2569,7 @@ fn Interpreter::prepare_executor_activation(
 fn executor_call_completion(
   kind : ExecutorCallableKind,
   step : ExecutorActivationStep,
-) -> Value {
+) -> Value raise Error {
   match kind {
     OrdinaryExecutorCallable =>
       match step {
@@ -2537,6 +2588,11 @@ fn executor_call_completion(
         | ExecutorActivationIterableSpread(_)
         | ExecutorActivationCopyDataProperties(_)
         | ExecutorActivationBinding(_) => Undefined
+        ExecutorActivationBindingReference(_)
+        | ExecutorActivationReference(_) =>
+          raise @errors.InternalError(
+            message="executor call completed with a binding reference",
+          )
       }
     ArrowExecutorCallable =>
       match step {
@@ -2555,6 +2611,11 @@ fn executor_call_completion(
         | ExecutorActivationIterableSpread(_)
         | ExecutorActivationCopyDataProperties(_)
         | ExecutorActivationBinding(_) => Undefined
+        ExecutorActivationBindingReference(_)
+        | ExecutorActivationReference(_) =>
+          raise @errors.InternalError(
+            message="executor arrow call completed with a binding reference",
+          )
       }
   }
 }
@@ -2563,7 +2624,7 @@ fn executor_call_completion(
 fn executor_construct_completion(
   step : ExecutorActivationStep,
   instance : Value,
-) -> Value {
+) -> Value raise Error {
   match step {
     ExecutorActivationReturn(value) if is_object_like_for_constructor_return(
         value,
@@ -2583,6 +2644,10 @@ fn executor_construct_completion(
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_) => instance
+    ExecutorActivationBindingReference(_) | ExecutorActivationReference(_) =>
+      raise @errors.InternalError(
+        message="executor construct completed with a binding reference",
+      )
   }
 }
 
@@ -2612,7 +2677,9 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property get completed with a pending activation step",
@@ -2640,7 +2707,9 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
@@ -2668,7 +2737,9 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
@@ -2696,7 +2767,9 @@ fn executor_coercing_relational_completion(
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing relational completed with a pending activation step",
@@ -2724,7 +2797,9 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing subtraction completed with a pending activation step",
@@ -2752,7 +2827,9 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property delete completed with a pending activation step",

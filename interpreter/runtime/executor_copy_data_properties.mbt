@@ -583,6 +583,10 @@ impl ExecutorActivationFrame for ExecutorOwnPropertyKeysOperation with fn delive
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="own property keys received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorOwnPropertyKeysAwaitTrapLookup(target, handler) =>
@@ -882,6 +886,10 @@ impl ExecutorActivationFrame for ExecutorCopyDataPropertiesFrame with fn deliver
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="CopyDataProperties received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorCopyDataPropertiesAwaitOwnKeys(operation) =>

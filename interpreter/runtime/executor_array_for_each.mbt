@@ -307,6 +307,10 @@ impl ExecutorActivationFrame for ExecutorArrayForEachFrame with fn deliver_activ
 ) {
   match completion {
     ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="array forEach received an unexpected binding reference completion",
+      )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
         ExecutorArrayForEachAwaitLength(object) =>
