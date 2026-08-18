@@ -78,6 +78,41 @@ test "relational less-than-or-equal compares object String primitives lexicograp
 }
 
 ///|
+test "relational less-than-or-equal leaves right untouched on left Symbol failure" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let right_object = make_object(Map([]), Null, None, "Right", Map([]), true)
+  match right_object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object")
+  }
+  let raised = try {
+    let _ = eval_binary_op(
+      @ast.BinOp::LtEq,
+      Symbol({ id: 9012, description: None }),
+      right_object,
+      @token.Loc::default(),
+      interp=Some(interp),
+    )
+    false
+  } catch {
+    @errors.TypeError(_) => true
+    _ => false
+  }
+  assert_true(raised)
+  inspect(right_calls.val, content="0")
+}
+
+///|
 test "relational less-than-or-equal uses numeric and String primitive semantics" {
   let interp = Interpreter::new()
   fn evaluate(left : Value, right : Value) -> Value raise {

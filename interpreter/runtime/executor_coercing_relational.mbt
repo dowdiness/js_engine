@@ -82,21 +82,6 @@ fn ExecutorCoercingLessThanOrEqualFrame::finish_right(
 }
 
 ///|
-// IsLessThan must surface an abrupt Number conversion of the original source
-// left before beginning the source-right ToPrimitive phase. String conversion
-// is deferred until both primitives are known because String/String compares
-// lexicographically.
-fn relational_preflight_left_primitive(
-  value : Value,
-  interp : Interpreter,
-) -> Unit raise Error {
-  match value {
-    String_(_) => ()
-    _ => ignore(to_number(value, interp=Some(interp)))
-  }
-}
-
-///|
 fn ExecutorCoercingLessThanOrEqualFrame::step_frame(
   self : ExecutorCoercingLessThanOrEqualFrame,
   interp : Interpreter,
