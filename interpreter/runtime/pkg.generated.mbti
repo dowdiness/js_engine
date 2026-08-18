@@ -35,12 +35,6 @@ pub fn begin_executor_binding_direct_eval(Interpreter, ExecContext, Environment,
 
 pub fn begin_executor_binding_load(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingStart raise
 
-pub fn begin_executor_binding_reference(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingReferenceStart raise
-
-pub fn begin_executor_binding_reference_get(Interpreter, ResolvedBindingReference) -> ExecutorBindingReferenceGetStart raise
-
-pub fn begin_executor_binding_reference_put(Interpreter, ResolvedBindingReference, Value) -> ExecutorBindingReferencePutStart raise
-
 pub fn begin_executor_binding_store(Interpreter, ExecContext, Environment, String, Value, @token.Loc) -> ExecutorBindingStart raise
 
 pub fn begin_executor_binding_typeof(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingStart raise
@@ -120,8 +114,6 @@ pub fn eval_this_value(Environment) -> Value raise
 pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
 pub fn execution_control_failure_code(Error) -> String?
-
-pub fn executor_activation_binding_reference_request(ExecutorBindingReferenceRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_binding_request(ExecutorBindingRequest) -> ExecutorActivationStep
 
@@ -749,23 +741,8 @@ pub enum ExecutorActivationStep {
   ExecutorActivationReference(ResolvedBindingReference)
 }
 
-pub enum ExecutorBindingReferenceGetStart {
-  ExecutorBindingReferenceGetCompleted(Value)
-  ExecutorBindingReferenceGetSuspended(ExecutorActivationStep)
-}
-
-pub enum ExecutorBindingReferencePutStart {
-  ExecutorBindingReferencePutCompleted(Value)
-  ExecutorBindingReferencePutSuspended(ExecutorActivationStep)
-}
-
 pub struct ExecutorBindingReferenceRequest {
   // private fields
-}
-
-pub enum ExecutorBindingReferenceStart {
-  ExecutorBindingReferenceCompleted(ResolvedBindingReference)
-  ExecutorBindingReferenceSuspended(ExecutorBindingReferenceRequest)
 }
 
 pub struct ExecutorBindingRequest {

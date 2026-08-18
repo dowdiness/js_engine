@@ -36,19 +36,22 @@ fn ExecutorBindingReferenceRequest::ExecutorBindingReferenceRequest(
 }
 
 ///|
-pub enum ExecutorBindingReferenceStart {
+#warnings("-unused_constructor")
+priv enum ExecutorBindingReferenceStart {
   ExecutorBindingReferenceCompleted(ResolvedBindingReference)
   ExecutorBindingReferenceSuspended(ExecutorBindingReferenceRequest)
 }
 
 ///|
-pub enum ExecutorBindingReferenceGetStart {
+#warnings("-unused_constructor")
+priv enum ExecutorBindingReferenceGetStart {
   ExecutorBindingReferenceGetCompleted(Value)
   ExecutorBindingReferenceGetSuspended(ExecutorActivationStep)
 }
 
 ///|
-pub enum ExecutorBindingReferencePutStart {
+#warnings("-unused_constructor")
+priv enum ExecutorBindingReferencePutStart {
   ExecutorBindingReferencePutCompleted(Value)
   ExecutorBindingReferencePutSuspended(ExecutorActivationStep)
 }
@@ -107,14 +110,15 @@ fn executor_binding_reference_plain(
 }
 
 ///|
-pub fn begin_executor_binding_reference(
+#warnings("-unused_value")
+fn begin_executor_binding_reference(
   interp : Interpreter,
   ctx : ExecContext,
   env : Environment,
   name : String,
   loc : @token.Loc,
 ) -> ExecutorBindingReferenceStart raise Error {
-  @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
+  @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
   let request = ExecutorBindingReferenceRequest(ctx~, env~, name~, loc~)
   if !environment_requires_managed_binding(env, name) {
     return ExecutorBindingReferenceCompleted(
@@ -125,7 +129,8 @@ pub fn begin_executor_binding_reference(
 }
 
 ///|
-pub fn begin_executor_binding_reference_get(
+#warnings("-unused_value")
+fn begin_executor_binding_reference_get(
   interp : Interpreter,
   reference : ResolvedBindingReference,
 ) -> ExecutorBindingReferenceGetStart raise Error {
@@ -176,11 +181,16 @@ fn executor_binding_reference_put_unresolved(
 }
 
 ///|
-pub fn begin_executor_binding_reference_put(
+#warnings("-unused_value")
+fn begin_executor_binding_reference_put(
   interp : Interpreter,
   reference : ResolvedBindingReference,
   value : Value,
 ) -> ExecutorBindingReferencePutStart raise Error {
+  @static_semantics.validate_strict_assignment_target_name(
+    reference.strict,
+    reference.name,
+  )
   match reference.kind {
     ResolvedBindingLexical(slot) => {
       slot.assign(value, strict=reference.strict)
@@ -516,7 +526,8 @@ impl ExecutorActivationFrame for ExecutorBindingReferenceFrame with fn deliver_a
 }
 
 ///|
-pub fn executor_activation_binding_reference_request(
+#warnings("-unused_value")
+fn executor_activation_binding_reference_request(
   request : ExecutorBindingReferenceRequest,
 ) -> ExecutorActivationStep {
   ExecutorActivationBindingReference(request)
