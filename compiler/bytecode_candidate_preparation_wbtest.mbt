@@ -467,15 +467,15 @@ test "candidate plain subtraction resumes through guest ToPrimitive" {
 }
 
 ///|
-test "candidate equality Fibonacci 30 stays entirely bytecode" {
+test "candidate equality Fibonacci 20 keeps bounded full route evidence" {
   let source =
     #|function fib(n) {
     #|  if (n === 0 || n === 1) return n;
     #|  return fib(n - 1) + fib(n - 2);
     #|}
-    #|fib(30);
+    #|fib(20);
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "832040")
+  assert_eq(value.to_string(), "6765")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.tree_starts, 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
@@ -530,6 +530,12 @@ test "issue 925 Fibonacci 30 uses bounded aggregate route evidence" {
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.summary.maximum_concurrent_activations <= 64 else {
+    fail(
+      "Fibonacci 30 active depth grew beyond its recursive source depth: " +
+      evidence.val.summary.maximum_concurrent_activations.to_string(),
+    )
+  }
   guard evidence.val.events.length() == 0 &&
     evidence.val.lifecycles.length() == 0 else {
     fail("Fibonacci 30 retained full per-activation route trace")
