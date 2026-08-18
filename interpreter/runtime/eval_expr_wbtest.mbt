@@ -38,14 +38,7 @@ test "relational less-than-or-equal compares object String primitives lexicograp
   let interp = Interpreter::new()
   let events : Ref[Array[String]] = { val: [] }
   fn object_to_string_primitive(name : String) -> Value {
-    make_object(
-      Map([]),
-      Null,
-      None,
-      name,
-      Map([]),
-      true,
-    )
+    make_object(Map([]), Null, None, name, Map([]), true)
   }
   let left = object_to_string_primitive("left")
   let right = object_to_string_primitive("right")

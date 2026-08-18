@@ -1742,8 +1742,9 @@ test "bytecode primitive less-than-or-equal bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingLessThanOrEqual(_)) =>
-      ()
+    BytecodeFrameSuspended(
+      @runtime.ExecutorActivationCoercingLessThanOrEqual(_)
+    ) => ()
     BytecodeFrameSuspended(_) =>
       fail("object less-than-or-equal must request its runtime operation")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>

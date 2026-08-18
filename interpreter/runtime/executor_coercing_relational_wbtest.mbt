@@ -57,10 +57,11 @@ fn run_executor_coercing_less_than_or_equal_root_for_wb(
   right : Value,
 ) -> Value raise Error {
   let root = ExecutorCoercingLessThanOrEqualRootFrame(
-    left~,
-    right~,
-    loc=@token.Loc::default(),
-  ) as &ExecutorActivationFrame
+      left~,
+      right~,
+      loc=@token.Loc::default(),
+    )
+    as &ExecutorActivationFrame
   match interp.run_executor_activation_coordinator(root) {
     ExecutorActivationReturn(result) => result
     _ => fail("coercing less-than-or-equal root must return its result")
@@ -75,9 +76,7 @@ fn coercing_less_than_or_equal_error_for_wb(
 ) -> Error? {
   try {
     let _ = run_executor_coercing_less_than_or_equal_root_for_wb(
-      interp,
-      left,
-      right,
+      interp, left, right,
     )
     None
   } catch {
@@ -88,18 +87,16 @@ fn coercing_less_than_or_equal_error_for_wb(
 ///|
 test "coercing less-than-or-equal start completes primitives and suspends objects" {
   let loc = @token.Loc::default()
-  match begin_executor_coercing_less_than_or_equal(Number(0.0), Number(1.0), loc) {
+  match
+    begin_executor_coercing_less_than_or_equal(Number(0.0), Number(1.0), loc) {
     ExecutorCoercingLessThanOrEqualCompleted(Bool(true)) => ()
     ExecutorCoercingLessThanOrEqualCompleted(_) =>
       fail("number <= must complete true")
     ExecutorCoercingLessThanOrEqualSuspended(_) =>
       fail("primitive <= must not create a child frame")
   }
-  match begin_executor_coercing_less_than_or_equal(
-    String_("2"),
-    String_("10"),
-    loc,
-  ) {
+  match
+    begin_executor_coercing_less_than_or_equal(String_("2"), String_("10"), loc) {
     ExecutorCoercingLessThanOrEqualCompleted(Bool(false)) => ()
     ExecutorCoercingLessThanOrEqualCompleted(_) =>
       fail("String <= must use ECMAScript lexicographic order")
@@ -176,9 +173,7 @@ test "coercing less-than-or-equal completes object String primitives in source o
   left_receiver.val = left
   right_receiver.val = right
   let result = run_executor_coercing_less_than_or_equal_root_for_wb(
-    interp,
-    left,
-    right,
+    interp, left, right,
   )
   inspect(result, content="false")
   json_inspect(events, content=["left", "right"])
@@ -240,7 +235,14 @@ test "coercing less-than-or-equal uses object Number and ordinary fallback" {
   )
   inspect(fallback_result, content="true")
 
-  let mixed_object = make_object(Map([]), Null, None, "MixedObject", Map([]), true)
+  let mixed_object = make_object(
+    Map([]),
+    Null,
+    None,
+    "MixedObject",
+    Map([]),
+    true,
+  )
   match mixed_object {
     Object(data) =>
       data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = make_method_func(
@@ -283,7 +285,8 @@ test "coercing less-than-or-equal preserves left-before-right abrupt effects" {
   )
   match left_symbol_error {
     Some(@errors.TypeError(_)) => ()
-    Some(error) => fail("expected left Symbol TypeError, got " + error.to_string())
+    Some(error) =>
+      fail("expected left Symbol TypeError, got " + error.to_string())
     None => fail("left Symbol <= must throw")
   }
   inspect(right_calls.val, content="0")
@@ -306,7 +309,14 @@ test "coercing less-than-or-equal preserves left-before-right abrupt effects" {
     },
   )
   let left_object = make_object(Map([]), Null, None, "Left", Map([]), true)
-  let throwing_right = make_object(Map([]), Null, None, "ThrowingRight", Map([]), true)
+  let throwing_right = make_object(
+    Map([]),
+    Null,
+    None,
+    "ThrowingRight",
+    Map([]),
+    true,
+  )
   match left_object {
     Object(data) =>
       data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
@@ -318,9 +328,7 @@ test "coercing less-than-or-equal preserves left-before-right abrupt effects" {
     _ => fail("expected throwing right object")
   }
   let right_error = coercing_less_than_or_equal_error_for_wb(
-    interp,
-    left_object,
-    throwing_right,
+    interp, left_object, throwing_right,
   )
   match right_error {
     Some(@errors.TypeError(_)) => ()
@@ -333,15 +341,26 @@ test "coercing less-than-or-equal preserves left-before-right abrupt effects" {
 ///|
 test "coercing less-than-or-equal propagates conversion hook errors" {
   let interp = Interpreter::new()
-  let non_callable = make_object(Map([]), Null, None, "NonCallable", Map([]), true)
+  let non_callable = make_object(
+    Map([]),
+    Null,
+    None,
+    "NonCallable",
+    Map([]),
+    true,
+  )
   match non_callable {
     Object(data) =>
-      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = Number(1.0)
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = Number(
+        1.0,
+      )
     _ => fail("expected non-callable object")
   }
-  match coercing_less_than_or_equal_error_for_wb(interp, non_callable, Number(1.0)) {
+  match
+    coercing_less_than_or_equal_error_for_wb(interp, non_callable, Number(1.0)) {
     Some(@errors.TypeError(_)) => ()
-    Some(error) => fail("non-callable @@toPrimitive changed error: " + error.to_string())
+    Some(error) =>
+      fail("non-callable @@toPrimitive changed error: " + error.to_string())
     None => fail("non-callable @@toPrimitive must throw")
   }
 
@@ -352,7 +371,14 @@ test "coercing less-than-or-equal propagates conversion hook errors" {
       raise @errors.TypeError(message="@@toPrimitive getter failed")
     },
   )
-  let getter_object = make_object(Map([]), Null, None, "GetterObject", Map([]), true)
+  let getter_object = make_object(
+    Map([]),
+    Null,
+    None,
+    "GetterObject",
+    Map([]),
+    true,
+  )
   match getter_object {
     Object(data) =>
       data.bag.symbol_descriptors[interp.realm_state.well_known_symbols.to_primitive.id] = {
@@ -365,7 +391,8 @@ test "coercing less-than-or-equal propagates conversion hook errors" {
       }
     _ => fail("expected getter object")
   }
-  match coercing_less_than_or_equal_error_for_wb(interp, getter_object, Number(1.0)) {
+  match
+    coercing_less_than_or_equal_error_for_wb(interp, getter_object, Number(1.0)) {
     Some(@errors.TypeError(_)) => ()
     Some(error) => fail("getter error changed type: " + error.to_string())
     None => fail("@@toPrimitive getter must throw")
@@ -378,28 +405,52 @@ test "coercing less-than-or-equal propagates conversion hook errors" {
       raise @errors.TypeError(message="valueOf call failed")
     },
   )
-  let call_object = make_object({ "valueOf": value_of_throw }, Null, None, "CallObject", Map([]), true)
-  match coercing_less_than_or_equal_error_for_wb(interp, call_object, Number(1.0)) {
+  let call_object = make_object(
+    { "valueOf": value_of_throw },
+    Null,
+    None,
+    "CallObject",
+    Map([]),
+    true,
+  )
+  match
+    coercing_less_than_or_equal_error_for_wb(interp, call_object, Number(1.0)) {
     Some(@errors.TypeError(_)) => ()
     Some(error) => fail("valueOf error changed type: " + error.to_string())
     None => fail("valueOf call must throw")
   }
 
-  let result_object = make_object(Map([]), Null, None, "ResultObject", Map([]), true)
+  let result_object = make_object(
+    Map([]),
+    Null,
+    None,
+    "ResultObject",
+    Map([]),
+    true,
+  )
   let object_result_hook = make_method_func(
     name="object @@toPrimitive result",
     realm_state=Some(interp.realm_state),
     fn(_this_value, _args) { result_object },
   )
-  let object_result = make_object(Map([]), Null, None, "ObjectResult", Map([]), true)
+  let object_result = make_object(
+    Map([]),
+    Null,
+    None,
+    "ObjectResult",
+    Map([]),
+    true,
+  )
   match object_result {
     Object(data) =>
       data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = object_result_hook
     _ => fail("expected object-result fixture")
   }
-  match coercing_less_than_or_equal_error_for_wb(interp, object_result, Number(1.0)) {
+  match
+    coercing_less_than_or_equal_error_for_wb(interp, object_result, Number(1.0)) {
     Some(@errors.TypeError(_)) => ()
-    Some(error) => fail("object result error changed type: " + error.to_string())
+    Some(error) =>
+      fail("object result error changed type: " + error.to_string())
     None => fail("object @@toPrimitive result must throw")
   }
 }
@@ -414,7 +465,14 @@ test "coercing less-than-or-equal propagates ordinary fallback errors" {
       raise @errors.TypeError(message="toString getter failed")
     },
   )
-  let getter_object = make_object(Map([]), Null, None, "ToStringGetter", Map([]), true)
+  let getter_object = make_object(
+    Map([]),
+    Null,
+    None,
+    "ToStringGetter",
+    Map([]),
+    true,
+  )
   match getter_object {
     Object(data) =>
       data.bag.descriptors["toString"] = {
@@ -427,13 +485,22 @@ test "coercing less-than-or-equal propagates ordinary fallback errors" {
       }
     _ => fail("expected toString getter object")
   }
-  match coercing_less_than_or_equal_error_for_wb(interp, getter_object, Number(1.0)) {
+  match
+    coercing_less_than_or_equal_error_for_wb(interp, getter_object, Number(1.0)) {
     Some(@errors.TypeError(_)) => ()
-    Some(error) => fail("toString getter error changed type: " + error.to_string())
+    Some(error) =>
+      fail("toString getter error changed type: " + error.to_string())
     None => fail("toString getter must throw")
   }
 
-  let fallback_object = make_object(Map([]), Null, None, "FallbackResult", Map([]), true)
+  let fallback_object = make_object(
+    Map([]),
+    Null,
+    None,
+    "FallbackResult",
+    Map([]),
+    true,
+  )
   let value_of = make_method_func(
     name="object valueOf",
     realm_state=Some(interp.realm_state),
@@ -454,9 +521,11 @@ test "coercing less-than-or-equal propagates ordinary fallback errors" {
     Map([]),
     true,
   )
-  match coercing_less_than_or_equal_error_for_wb(interp, call_object, Number(1.0)) {
+  match
+    coercing_less_than_or_equal_error_for_wb(interp, call_object, Number(1.0)) {
     Some(@errors.TypeError(_)) => ()
-    Some(error) => fail("toString call error changed type: " + error.to_string())
+    Some(error) =>
+      fail("toString call error changed type: " + error.to_string())
     None => fail("toString call must throw")
   }
 }
@@ -541,7 +610,9 @@ test "coercing less-than-or-equal routes Proxy conversion through get" {
       match args {
         [_, Symbol(symbol), proxy_receiver] => {
           assert_true(physical_equal(proxy_receiver, receiver.val))
-          assert_true(symbol.id == interp.realm_state.well_known_symbols.to_primitive.id)
+          assert_true(
+            symbol.id == interp.realm_state.well_known_symbols.to_primitive.id,
+          )
           events.push("get:@@toPrimitive")
           Undefined
         }
@@ -559,7 +630,14 @@ test "coercing less-than-or-equal routes Proxy conversion through get" {
     },
   )
   let target = make_object(Map([]), Null, None, "Target", Map([]), true)
-  let handler = make_object({ "get": get_trap }, Null, None, "Handler", Map([]), true)
+  let handler = make_object(
+    { "get": get_trap },
+    Null,
+    None,
+    "Handler",
+    Map([]),
+    true,
+  )
   let proxy = Proxy({
     target: Some(target),
     handler: Some(handler),
@@ -573,5 +651,7 @@ test "coercing less-than-or-equal routes Proxy conversion through get" {
     Number(10.0),
   )
   inspect(result, content="true")
-  json_inspect(events, content=["get:@@toPrimitive", "get:valueOf", "call:valueOf"])
+  json_inspect(events, content=[
+    "get:@@toPrimitive", "get:valueOf", "call:valueOf",
+  ])
 }

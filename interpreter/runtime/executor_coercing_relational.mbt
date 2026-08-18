@@ -6,7 +6,7 @@
 pub enum ExecutorCoercingLessThanOrEqualStart {
   ExecutorCoercingLessThanOrEqualCompleted(Value)
   ExecutorCoercingLessThanOrEqualSuspended(
-    ExecutorCoercingLessThanOrEqualRequest,
+    ExecutorCoercingLessThanOrEqualRequest
   )
 }
 
@@ -48,10 +48,7 @@ priv enum ExecutorCoercingLessThanOrEqualPhase {
   ExecutorCoercingLessThanOrEqualNeedLeft
   ExecutorCoercingLessThanOrEqualAwaitLeft(ExecutorToPrimitiveOperation)
   ExecutorCoercingLessThanOrEqualHaveLeft(Value)
-  ExecutorCoercingLessThanOrEqualAwaitRight(
-    Value,
-    ExecutorToPrimitiveOperation,
-  )
+  ExecutorCoercingLessThanOrEqualAwaitRight(Value, ExecutorToPrimitiveOperation)
   ExecutorCoercingLessThanOrEqualComplete(Value)
 }
 
@@ -65,10 +62,7 @@ priv struct ExecutorCoercingLessThanOrEqualFrame {
 fn ExecutorCoercingLessThanOrEqualFrame::ExecutorCoercingLessThanOrEqualFrame(
   request : ExecutorCoercingLessThanOrEqualRequest,
 ) -> ExecutorCoercingLessThanOrEqualFrame {
-  {
-    request,
-    phase: ExecutorCoercingLessThanOrEqualNeedLeft,
-  }
+  { request, phase: ExecutorCoercingLessThanOrEqualNeedLeft }
 }
 
 ///|
@@ -149,8 +143,7 @@ fn ExecutorCoercingLessThanOrEqualFrame::step_frame(
           self.finish_right(interp, left, value)
         step => {
           self.phase = ExecutorCoercingLessThanOrEqualAwaitRight(
-            left,
-            operation,
+            left, operation,
           )
           step
         }
@@ -162,8 +155,7 @@ fn ExecutorCoercingLessThanOrEqualFrame::step_frame(
           self.finish_right(interp, left, value)
         step => {
           self.phase = ExecutorCoercingLessThanOrEqualAwaitRight(
-            left,
-            operation,
+            left, operation,
           )
           step
         }

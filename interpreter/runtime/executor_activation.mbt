@@ -18,7 +18,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationCoercingLessThanOrEqual(
-    ExecutorCoercingLessThanOrEqualRequest,
+    ExecutorCoercingLessThanOrEqualRequest
   )
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
@@ -2201,7 +2201,9 @@ fn Interpreter::handle_executor_activation_step(
       None
     }
     ExecutorActivationCoercingLessThanOrEqual(request) => {
-      let less_than_or_equal_frame = ExecutorCoercingLessThanOrEqualFrame(request)
+      let less_than_or_equal_frame = ExecutorCoercingLessThanOrEqualFrame(
+        request,
+      )
       stack.push({
         frame: less_than_or_equal_frame as &ExecutorActivationFrame,
         completion: Some(ExecutorChildCoercingLessThanOrEqual),

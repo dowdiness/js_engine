@@ -107,6 +107,37 @@ test "issue924/bytecode_primitive_subtraction" (b : @bench.T) {
 }
 
 ///|
+/// Issue #925 microbenchmark: primitive Number/Number <= through the managed
+/// bytecode route. Parsing, lowering, verification, interpreter setup, and
+/// the correctness check are outside the timed regions. The direct control
+/// shows the cost of the comparison without runtime dispatch.
+test "issue925/bytecode_primitive_relational_comparison" (b : @bench.T) {
+  let source = "1 <= 2;"
+  let program = @parser.parse(source)
+  let bytecode = @compiler.compile_script_to_bytecode(program.stmts)
+  let interp = @interpreter.new_interpreter()
+  let result = bytecode.run(interp) catch {
+    _ =>
+      abort(
+        "[issue925/bytecode_primitive_relational_comparison] bytecode comparison raised",
+      )
+  }
+  guard result.to_string() == "true" else {
+    abort(
+      "[issue925/bytecode_primitive_relational_comparison] correctness check failed",
+    )
+  }
+  b.bench(name="bytecode managed Number/Number <=", fn() {
+    b.keep(bytecode.run(interp)) catch {
+      _ => abort("bytecode comparison raised")
+    }
+  })
+  b.bench(name="direct Number/Number <= control", fn() {
+    b.keep(@runtime.Value::Bool(1.0 <= 2.0))
+  })
+}
+
+///|
 /// Lexer throughput on a small (~130-token) realistic JS snippet.
 ///
 /// What it measures: @lexer.tokenize() per-call cost on a short source.
