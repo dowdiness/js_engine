@@ -120,7 +120,9 @@ test "issue 931 candidate propagates Symbol conversion TypeError" {
   let interp = @interpreter.new_interpreter()
   let source = "var value = Symbol('value'); value++;"
   let result : String = try {
-    ignore(run_candidate_program_with_evidence(interp, @parser.parse(source).stmts))
+    ignore(
+      run_candidate_program_with_evidence(interp, @parser.parse(source).stmts),
+    )
     "no error"
   } catch {
     @runtime.JsException(value) => value.to_string()
@@ -221,7 +223,10 @@ test "issue 931 candidate preserves TDZ const unresolved and immutable rules" {
     #|(function() { "use strict"; try { undefined++; } catch (error) { results.push("strict:" + error.name); } })();
     #|results.join(",");
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "ReferenceError,TypeError,ReferenceError,sloppy:NaN,strict:TypeError")
+  assert_eq(
+    value.to_string(),
+    "ReferenceError,TypeError,ReferenceError,sloppy:NaN,strict:TypeError",
+  )
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
@@ -251,8 +256,7 @@ test "issue 931 leaves excluded UpdateEnvSlot typed" {
   let mut completed = 0
   for event in evidence.val.events {
     match event {
-      CandidateRoutePreparedEvent(item) if
-        bytecode_source_identity_coordinates_equal_for_wb(
+      CandidateRoutePreparedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
           item.source_identity,
           outer.source_identity,
         ) => {
@@ -264,8 +268,7 @@ test "issue 931 leaves excluded UpdateEnvSlot typed" {
           UseBytecode(_) => fail("captured UpdateEnvSlot prepared bytecode")
         }
       }
-      CandidateRouteStartedEvent(item) if
-        bytecode_source_identity_coordinates_equal_for_wb(
+      CandidateRouteStartedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
           item.source_identity,
           outer.source_identity,
         ) =>
@@ -273,15 +276,15 @@ test "issue 931 leaves excluded UpdateEnvSlot typed" {
           CandidateTreeWalkerExecutor => tree_starts += 1
           CandidateBytecodeExecutor => bytecode_starts += 1
         }
-      CandidateRouteCompletedEvent(item) if
-        bytecode_source_identity_coordinates_equal_for_wb(
+      CandidateRouteCompletedEvent(item) if bytecode_source_identity_coordinates_equal_for_wb(
           item.source_identity,
           outer.source_identity,
         ) => {
         completed += 1
         match item.completion {
           CandidateRouteNormal => ()
-          CandidateRouteAbrupt => fail("captured UpdateEnvSlot completed abruptly")
+          CandidateRouteAbrupt =>
+            fail("captured UpdateEnvSlot completed abruptly")
         }
       }
       _ => ()

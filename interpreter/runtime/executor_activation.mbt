@@ -628,7 +628,7 @@ priv enum ExecutorBindingUpdatePhase {
   ExecutorBindingUpdateAwaitToPrimitive(
     ResolvedBindingReference,
     Value,
-    ExecutorToPrimitiveOperation,
+    ExecutorToPrimitiveOperation
   )
   ExecutorBindingUpdateAwaitPut(ResolvedBindingReference, Value)
   ExecutorBindingUpdateComplete(Value)
@@ -673,7 +673,12 @@ pub fn begin_executor_binding_update(
   prefix : Bool,
   loc : @token.Loc,
 ) -> ExecutorBindingUpdateStart raise Error {
-  let reference_request = ExecutorBindingReferenceRequest(ctx~, env~, name~, loc~)
+  let reference_request = ExecutorBindingReferenceRequest(
+    ctx~,
+    env~,
+    name~,
+    loc~,
+  )
   let request = ExecutorBindingUpdateRequest(
     ctx~,
     env~,
@@ -688,7 +693,7 @@ pub fn begin_executor_binding_update(
       request.phase = ExecutorBindingUpdateNeedReference(reference_request)
       ExecutorBindingUpdateSuspended(request)
     }
-    ExecutorBindingReferenceCompleted(reference) => {
+    ExecutorBindingReferenceCompleted(reference) =>
       match begin_executor_binding_reference_get(interp, reference) {
         ExecutorBindingReferenceGetSuspended(_) => {
           request.phase = ExecutorBindingUpdateNeedGet(reference)
@@ -698,10 +703,12 @@ pub fn begin_executor_binding_update(
           request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
           ExecutorBindingUpdateSuspended(request)
         }
-        ExecutorBindingReferenceGetCompleted(current) => {
+        ExecutorBindingReferenceGetCompleted(current) =>
           match reference.kind {
             ResolvedBindingWithObject(_, _) => {
-              request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
+              request.phase = ExecutorBindingUpdateHaveCurrent(
+                reference, current,
+              )
               ExecutorBindingUpdateSuspended(request)
             }
             _ => {
@@ -715,21 +722,24 @@ pub fn begin_executor_binding_update(
               } else {
                 Number(old_number)
               }
-              match begin_executor_binding_reference_put(interp, reference, next_value) {
+              match
+                begin_executor_binding_reference_put(
+                  interp, reference, next_value,
+                ) {
                 ExecutorBindingReferencePutCompleted(value) => {
                   ignore(value)
                   ExecutorBindingUpdateCompleted(result)
                 }
                 ExecutorBindingReferencePutSuspended(_) => {
-                  request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
+                  request.phase = ExecutorBindingUpdateHaveCurrent(
+                    reference, current,
+                  )
                   ExecutorBindingUpdateSuspended(request)
                 }
               }
             }
           }
-        }
       }
-    }
   }
 }
 
@@ -794,9 +804,7 @@ fn ExecutorBindingUpdateFrame::begin_to_primitive(
       self.begin_put(interp, reference, to_number(value, interp=Some(interp)))
     step => {
       self.request.phase = ExecutorBindingUpdateAwaitToPrimitive(
-        reference,
-        current,
-        operation,
+        reference, current, operation,
       )
       step
     }
@@ -816,7 +824,9 @@ fn ExecutorBindingUpdateFrame::step_frame(
     ExecutorBindingUpdateNeedGet(reference) =>
       match begin_executor_binding_reference_get(interp, reference) {
         ExecutorBindingReferenceGetCompleted(value) => {
-          self.request.phase = ExecutorBindingUpdateHaveCurrent(reference, value)
+          self.request.phase = ExecutorBindingUpdateHaveCurrent(
+            reference, value,
+          )
           self.step_frame(interp)
         }
         ExecutorBindingReferenceGetSuspended(step) => {
@@ -828,17 +838,23 @@ fn ExecutorBindingUpdateFrame::step_frame(
       if is_js_object(current) {
         self.begin_to_primitive(interp, reference, current)
       } else {
-        self.begin_put(interp, reference, to_number(current, interp=Some(interp)))
+        self.begin_put(
+          interp,
+          reference,
+          to_number(current, interp=Some(interp)),
+        )
       }
     ExecutorBindingUpdateAwaitToPrimitive(reference, current, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(value) =>
-          self.begin_put(interp, reference, to_number(value, interp=Some(interp)))
+          self.begin_put(
+            interp,
+            reference,
+            to_number(value, interp=Some(interp)),
+          )
         step => {
           self.request.phase = ExecutorBindingUpdateAwaitToPrimitive(
-            reference,
-            current,
-            operation,
+            reference, current, operation,
           )
           step
         }
@@ -880,7 +896,9 @@ impl ExecutorActivationFrame for ExecutorBindingUpdateFrame with fn deliver_acti
     ExecutorActivationCompletionNormal(value) =>
       match self.request.phase {
         ExecutorBindingUpdateAwaitGet(reference) =>
-          self.request.phase = ExecutorBindingUpdateHaveCurrent(reference, value)
+          self.request.phase = ExecutorBindingUpdateHaveCurrent(
+            reference, value,
+          )
         ExecutorBindingUpdateAwaitToPrimitive(_, _, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
@@ -1808,8 +1826,7 @@ fn Interpreter::complete_executor_step(
     Some(ExecutorChildBinding) => executor_binding_completion(step)
     Some(ExecutorChildBindingReference) =>
       executor_binding_reference_completion(step)
-    Some(ExecutorChildBindingUpdate) =>
-      executor_binding_update_completion(step)
+    Some(ExecutorChildBindingUpdate) => executor_binding_update_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)

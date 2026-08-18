@@ -1050,13 +1050,7 @@ fn BytecodeFrame::step_bytecode(
       UpdateName(name, op, prefix, loc) =>
         match
           @runtime.begin_executor_binding_update(
-            interp,
-            ctx,
-            env,
-            name,
-            op,
-            prefix,
-            loc,
+            interp, ctx, env, name, op, prefix, loc,
           ) {
           @runtime.ExecutorBindingUpdateCompleted(value) => stack.push(value)
           @runtime.ExecutorBindingUpdateSuspended(request) => {
