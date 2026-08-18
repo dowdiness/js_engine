@@ -255,6 +255,114 @@ test "candidate plain addition selects bytecode before frame construction" {
 }
 
 ///|
+test "candidate plain less-than-or-equal selects bytecode before frame construction" {
+  let source = "1 <= 2;"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) =>
+      fail("plain less-than-or-equal lost its managed disposition")
+    UseTreeWalker(_) => fail("plain less-than-or-equal selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() == 3 else {
+    fail("plain less-than-or-equal did not close exactly one route")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseBytecode(ManagedSuspension) => ()
+        _ =>
+          fail(
+            "plain less-than-or-equal route was not prepared as managed bytecode",
+          )
+      }
+    _ => fail("plain less-than-or-equal did not prepare before starting")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateBytecodeExecutor => ()
+        CandidateTreeWalkerExecutor =>
+          fail("plain less-than-or-equal started Tree-walker")
+      }
+    _ => fail("plain less-than-or-equal did not start after preparation")
+  }
+  match evidence.val.events[2] {
+    CandidateRouteCompletedEvent(completed) =>
+      match completed.completion {
+        CandidateRouteNormal => ()
+        CandidateRouteAbrupt =>
+          fail("plain less-than-or-equal completed abruptly")
+      }
+    _ => fail("plain less-than-or-equal did not complete exactly once")
+  }
+}
+
+///|
+test "candidate less-than-or-equal preserves UTF-16 String ordering" {
+  let source =
+    #|"\u{10000}" <= "\u{E000}";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate less-than-or-equal resumes through guest conversion" {
+  let source =
+    #|var events = "";
+    #|var left = {};
+    #|var right = {};
+    #|left[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "left:" + hint + ";";
+    #|  return "2";
+    #|};
+    #|right[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "right:" + hint + ";";
+    #|  return "10";
+    #|};
+    #|function compare() { return left <= right; }
+    #|compare();
+    #|events;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "left:number;right:number;")
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate relational siblings stay Tree-walker before effects" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 1; value < 2;", "true",
+  )
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 1; value > 2;", "false",
+  )
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 1; value >= 2;", "false",
+  )
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 1; value == 1;", "true",
+  )
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 1; value += 1; value;", "2",
+  )
+}
+
+///|
 test "candidate benchmark fixed-unroll shape selects managed bytecode" {
   let source =
     #|function issue886NumberAdd(left, right) {
@@ -373,6 +481,59 @@ test "candidate equality Fibonacci 30 stays entirely bytecode" {
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+fn issue925_assert_fibonacci_candidates_bytecode_for_wb(
+  program : CandidateProgram,
+) -> Unit raise Error {
+  match program.root.selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("Fibonacci root selected Tree-walker")
+  }
+  let fib_candidates = program.root.children.filter(child => {
+    child.name == Some("fib")
+  })
+  guard fib_candidates.length() == 1 else {
+    fail("Fibonacci candidate did not retain exactly one fib function")
+  }
+  match fib_candidates[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("fib activation selected Tree-walker")
+  }
+}
+
+///|
+test "issue 925 Fibonacci 10 keeps full route evidence on bytecode" {
+  let source = @benchmark_workloads.FIBONACCI_SMALL_SRC
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  issue925_assert_fibonacci_candidates_bytecode_for_wb(program)
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "55")
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_true(evidence.val.events.length() > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 925 Fibonacci 30 uses bounded aggregate route evidence" {
+  let source = @benchmark_workloads.FIBONACCI_SRC
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  issue925_assert_fibonacci_candidates_bytecode_for_wb(program)
+  let (value, evidence) = candidate_run_with_summary_for_wb(source)
+  assert_eq(value.to_string(), "832040")
+  assert_true(evidence.val.summary.bytecode_starts > 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() == 0 &&
+    evidence.val.lifecycles.length() == 0 else {
+    fail("Fibonacci 30 retained full per-activation route trace")
+  }
 }
 
 ///|
@@ -1521,6 +1682,76 @@ test "issue 924 candidate subtraction keeps queue and route evidence reusable" {
     @token.Loc::default(),
   )
   assert_eq(second.to_string(), "6")
+  assert_eq(
+    interp.global.get("events").to_string(),
+    "left:number;left:number;right:number;micro;left:number;",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 925 candidate less-than-or-equal keeps queue and route evidence reusable" {
+  let source =
+    #|var events = "";
+    #|var left = {};
+    #|left[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "left:" + hint + ";";
+    #|  return 8;
+    #|};
+    #|function compareLeft() { return left <= 10; }
+    #|var right = {};
+    #|right[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "right:" + hint + ";";
+    #|  queueMicrotask(function() { events = events + "micro;"; });
+    #|  throw new Error("right");
+    #|};
+    #|function compareRight() { return left <= right; }
+  let interp = @interpreter.new_interpreter()
+  let (_, evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse(source).stmts,
+  )
+  let first = interp.call_value(
+    interp.global.get("compareLeft"),
+    @runtime.Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  assert_eq(first.to_string(), "true")
+  assert_eq(interp.global.get("events").to_string(), "left:number;")
+  let right_failed = try {
+    let _ = interp.call_value(
+      interp.global.get("compareRight"),
+      @runtime.Undefined,
+      [],
+      @token.Loc::default(),
+    )
+    false
+  } catch {
+    @runtime.JsException(value) => value.to_string().contains("right")
+    _ => false
+  }
+  assert_true(right_failed)
+  assert_eq(
+    interp.global.get("events").to_string(),
+    "left:number;left:number;right:number;",
+  )
+  assert_eq(interp.host.microtask_queue.length(), 1)
+  interp.run_microtasks()
+  assert_eq(interp.host.microtask_queue.length(), 0)
+  assert_eq(
+    interp.global.get("events").to_string(),
+    "left:number;left:number;right:number;micro;",
+  )
+  let second = interp.call_value(
+    interp.global.get("compareLeft"),
+    @runtime.Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  assert_eq(second.to_string(), "true")
   assert_eq(
     interp.global.get("events").to_string(),
     "left:number;left:number;right:number;micro;left:number;",

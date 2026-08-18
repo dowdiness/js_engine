@@ -340,8 +340,8 @@ priv enum BytecodeActivationUnsupportedReason {
 ///|
 // The origin is retained in the instruction itself because admission must
 // never infer compound-assignment syntax from neighboring stack operations.
-// Both origins currently share the pre-activation binary-operation contract;
-// #886 later admits only the plain Add origin.
+// Admission is intentionally per-origin: managed operators are admitted only
+// for the exact plain expression forms listed below.
 priv enum BytecodeBinaryOrigin {
   BinaryExpression
   CompoundAssignment
@@ -723,7 +723,6 @@ fn bytecode_binary_contract(
     | (Lt, CompoundAssignment)
     | (Gt, BinaryExpression)
     | (Gt, CompoundAssignment)
-    | (LtEq, BinaryExpression)
     | (LtEq, CompoundAssignment)
     | (GtEq, BinaryExpression)
     | (GtEq, CompoundAssignment)
@@ -749,6 +748,8 @@ fn bytecode_binary_contract(
         Operator,
       ])
     (Sub, BinaryExpression) =>
+      bytecode_contract(true, ManagedSuspension, [Operator])
+    (LtEq, BinaryExpression) =>
       bytecode_contract(true, ManagedSuspension, [Operator])
   }
 }

@@ -2377,6 +2377,130 @@ fn finish_subtraction(
 }
 
 ///|
+// IsLessThan's closed result keeps NaN/undefined distinct from an ordinary
+// non-less comparison. The <= operator maps Unordered to false.
+priv enum RelationalLessThanResult {
+  RelationalLess
+  RelationalNotLess
+  RelationalUnordered
+}
+
+///|
+fn relational_string_less_than(left : String, right : String) -> Bool {
+  let left_units = string_to_utf16(left)
+  let right_units = string_to_utf16(right)
+  let limit = if left_units.length() < right_units.length() {
+    left_units.length()
+  } else {
+    right_units.length()
+  }
+  for i in 0..<limit {
+    if left_units[i] < right_units[i] {
+      return true
+    }
+    if left_units[i] > right_units[i] {
+      return false
+    }
+  }
+  left_units.length() < right_units.length()
+}
+
+///|
+fn relational_to_primitive(
+  value : Value,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match interp {
+    Some(ip) => ip.to_primitive_value(value, "number")
+    None =>
+      match value {
+        Object(data) => to_primitive_number(value, data)
+        Array(_) => to_primitive_default_array(value, "number")
+        Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+          to_primitive_via_dispatch(value, "number")
+        _ => value
+      }
+  }
+}
+
+///|
+fn relational_is_less_than_primitives(
+  left : Value,
+  right : Value,
+  interp? : Interpreter? = None,
+) -> RelationalLessThanResult raise Error {
+  match (left, right) {
+    (String_(left_string), String_(right_string)) =>
+      if relational_string_less_than(left_string, right_string) {
+        RelationalLess
+      } else {
+        RelationalNotLess
+      }
+    _ => {
+      let left_number = to_number(left, interp~)
+      let right_number = to_number(right, interp~)
+      if left_number.is_nan() || right_number.is_nan() {
+        RelationalUnordered
+      } else if left_number < right_number {
+        RelationalLess
+      } else {
+        RelationalNotLess
+      }
+    }
+  }
+}
+
+///|
+fn relational_less_than_or_equal_primitives(
+  left : Value,
+  right : Value,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match relational_is_less_than_primitives(right, left, interp~) {
+    RelationalLess => Bool(false)
+    RelationalNotLess => Bool(true)
+    RelationalUnordered => Bool(false)
+  }
+}
+
+///|
+// Runtime-owned Abstract Relational Comparison. `left_first` controls the
+// observable ToPrimitive order; comparison itself is always left < right.
+fn relational_is_less_than(
+  left : Value,
+  right : Value,
+  left_first : Bool,
+  interp? : Interpreter? = None,
+) -> RelationalLessThanResult raise Error {
+  if left_first {
+    let left_primitive = relational_to_primitive(left, interp~)
+    let right_primitive = relational_to_primitive(right, interp~)
+    relational_is_less_than_primitives(left_primitive, right_primitive, interp~)
+  } else {
+    let right_primitive = relational_to_primitive(right, interp~)
+    let left_primitive = relational_to_primitive(left, interp~)
+    relational_is_less_than_primitives(left_primitive, right_primitive, interp~)
+  }
+}
+
+///|
+fn finish_less_than_or_equal(
+  left : Value,
+  right : Value,
+  _loc : @token.Loc,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  // ECMAScript specifies x <= y as IsLessThan(y, x, false). With the
+  // semantic operands reversed, false makes ToPrimitive visit source x
+  // (the semantic right operand) before source y, preserving source order.
+  match relational_is_less_than(right, left, false, interp~) {
+    RelationalLess => Bool(false)
+    RelationalNotLess => Bool(true)
+    RelationalUnordered => Bool(false)
+  }
+}
+
+///|
 pub fn eval_binary_op(
   op : @ast.BinOp,
   left : Value,
@@ -2422,12 +2546,10 @@ pub fn eval_binary_op(
     // Comparison (numeric)
     (Lt, Number(a), Number(b)) => Bool(a < b)
     (Gt, Number(a), Number(b)) => Bool(a > b)
-    (LtEq, Number(a), Number(b)) => Bool(a <= b)
     (GtEq, Number(a), Number(b)) => Bool(a >= b)
     // Comparison (string — lexicographic)
     (Lt, String_(a), String_(b)) => Bool(a < b)
     (Gt, String_(a), String_(b)) => Bool(a > b)
-    (LtEq, String_(a), String_(b)) => Bool(a <= b)
     (GtEq, String_(a), String_(b)) => Bool(a >= b)
     // Equality
     (EqEqEq, l, r) => Bool(strict_equal(l, r))
@@ -2452,7 +2574,7 @@ pub fn eval_binary_op(
     // Comparison fallbacks (type coercion)
     (Lt, l, r) => Bool(n(l) < n(r))
     (Gt, l, r) => Bool(n(l) > n(r))
-    (LtEq, l, r) => Bool(n(l) <= n(r))
+    (LtEq, l, r) => finish_less_than_or_equal(l, r, _loc, interp~)
     (GtEq, l, r) => Bool(n(l) >= n(r))
     // Bitwise operations
     (BitAnd, l, r) => Number((to_int32(n(l)) & to_int32(n(r))).to_double())
