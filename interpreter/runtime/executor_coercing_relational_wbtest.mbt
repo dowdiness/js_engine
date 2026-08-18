@@ -261,7 +261,49 @@ test "coercing less-than-or-equal uses object Number and ordinary fallback" {
 }
 
 ///|
-test "coercing less-than-or-equal preserves left-before-right abrupt effects" {
+test "coercing less-than-or-equal leaves right untouched on left ToPrimitive throw" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let right_hook = make_method_func(
+    name="right @@toPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let right_object = make_object(Map([]), Null, None, "Right", Map([]), true)
+  match right_object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object")
+  }
+  let left_hook = make_method_func(
+    name="left @@toPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) raise {
+      raise @errors.TypeError(message="left conversion failed")
+    },
+  )
+  let left_object = make_object(Map([]), Null, None, "Left", Map([]), true)
+  match left_object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
+    _ => fail("expected left object")
+  }
+  let left_error = coercing_less_than_or_equal_error_for_wb(
+    interp, left_object, right_object,
+  )
+  match left_error {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected left TypeError, got " + error.to_string())
+    None => fail("left ToPrimitive must throw")
+  }
+  inspect(right_calls.val, content="0")
+}
+
+///|
+test "coercing less-than-or-equal converts right before left Symbol numeric failure" {
   let interp = Interpreter::new()
   let right_calls : Ref[Int] = { val: 0 }
   let right_hook = make_method_func(
@@ -289,7 +331,7 @@ test "coercing less-than-or-equal preserves left-before-right abrupt effects" {
       fail("expected left Symbol TypeError, got " + error.to_string())
     None => fail("left Symbol <= must throw")
   }
-  inspect(right_calls.val, content="0")
+  inspect(right_calls.val, content="1")
 
   let events : Array[String] = []
   let left_hook = make_method_func(

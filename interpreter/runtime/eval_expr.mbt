@@ -2464,21 +2464,6 @@ fn relational_less_than_or_equal_primitives(
 }
 
 ///|
-// IsLessThan must surface an abrupt Number conversion of the first source
-// primitive before beginning the second source ToPrimitive phase. String
-// conversion is deferred until both primitives are known because String/String
-// compares lexicographically.
-fn relational_preflight_left_primitive(
-  value : Value,
-  interp : Interpreter,
-) -> Unit raise Error {
-  match value {
-    String_(_) => ()
-    _ => ignore(to_number(value, interp=Some(interp)))
-  }
-}
-
-///|
 // Runtime-owned Abstract Relational Comparison. `left_first` controls the
 // observable ToPrimitive order; comparison itself is always left < right.
 fn relational_is_less_than(
@@ -2489,18 +2474,10 @@ fn relational_is_less_than(
 ) -> RelationalLessThanResult raise Error {
   if left_first {
     let left_primitive = relational_to_primitive(left, interp~)
-    match interp {
-      Some(ip) => relational_preflight_left_primitive(left_primitive, ip)
-      None => ()
-    }
     let right_primitive = relational_to_primitive(right, interp~)
     relational_is_less_than_primitives(left_primitive, right_primitive, interp~)
   } else {
     let right_primitive = relational_to_primitive(right, interp~)
-    match interp {
-      Some(ip) => relational_preflight_left_primitive(right_primitive, ip)
-      None => ()
-    }
     let left_primitive = relational_to_primitive(left, interp~)
     relational_is_less_than_primitives(left_primitive, right_primitive, interp~)
   }

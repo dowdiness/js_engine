@@ -78,7 +78,55 @@ test "relational less-than-or-equal compares object String primitives lexicograp
 }
 
 ///|
-test "relational less-than-or-equal leaves right untouched on left Symbol failure" {
+test "relational less-than-or-equal leaves right untouched on left ToPrimitive throw" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let right_object = make_object(Map([]), Null, None, "Right", Map([]), true)
+  match right_object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object")
+  }
+  let left_hook = make_method_func(
+    name="leftToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) raise {
+      raise @errors.TypeError(message="left conversion failed")
+    },
+  )
+  let left_object = make_object(Map([]), Null, None, "Left", Map([]), true)
+  match left_object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = left_hook
+    _ => fail("expected left object")
+  }
+  let raised = try {
+    let _ = eval_binary_op(
+      @ast.BinOp::LtEq,
+      left_object,
+      right_object,
+      @token.Loc::default(),
+      interp=Some(interp),
+    )
+    false
+  } catch {
+    @errors.TypeError(_) => true
+    _ => false
+  }
+  assert_true(raised)
+  inspect(right_calls.val, content="0")
+}
+
+///|
+test "relational less-than-or-equal converts right before left Symbol numeric failure" {
   let interp = Interpreter::new()
   let right_calls : Ref[Int] = { val: 0 }
   let right_hook = make_method_func(
@@ -109,7 +157,7 @@ test "relational less-than-or-equal leaves right untouched on left Symbol failur
     _ => false
   }
   assert_true(raised)
-  inspect(right_calls.val, content="0")
+  inspect(right_calls.val, content="1")
 }
 
 ///|

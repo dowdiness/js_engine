@@ -95,7 +95,6 @@ fn ExecutorCoercingLessThanOrEqualFrame::step_frame(
       )
       match operation.step(interp) {
         ExecutorActivationNormal(value) => {
-          relational_preflight_left_primitive(value, interp)
           self.phase = ExecutorCoercingLessThanOrEqualHaveLeft(value)
           self.step_frame(interp)
         }
@@ -108,7 +107,6 @@ fn ExecutorCoercingLessThanOrEqualFrame::step_frame(
     ExecutorCoercingLessThanOrEqualAwaitLeft(operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(value) => {
-          relational_preflight_left_primitive(value, interp)
           self.phase = ExecutorCoercingLessThanOrEqualHaveLeft(value)
           self.step_frame(interp)
         }
