@@ -390,13 +390,7 @@ test "issue 931 leaves excluded UpdateComputed typed" {
 
 ///|
 test "issue 931 canonical property chain graduates with aggregate evidence" {
-  let source =
-    #|var obj = { a: { b: { c: { d: { e: 42 } } } } };
-    #|var sum = 0;
-    #|for (var i = 0; i < 10000; i++) {
-    #|  sum = sum + obj.a.b.c.d.e;
-    #|}
-    #|sum;
+  let source = @benchmark_workloads.PROPERTY_CHAIN_SRC
   let (value, evidence) = candidate_run_with_summary_for_wb(source)
   assert_eq(value.to_string(), "420000")
   assert_eq(evidence.val.summary.tree_starts, 0)
