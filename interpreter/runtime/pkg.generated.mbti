@@ -45,6 +45,8 @@ pub fn begin_executor_coercing_less_than(Value, Value, @token.Loc) -> ExecutorCo
 
 pub fn begin_executor_coercing_less_than_or_equal(Value, Value, @token.Loc) -> ExecutorCoercingLessThanOrEqualStart raise
 
+pub fn begin_executor_coercing_relational(Value, Value, @token.Loc, ExecutorRelationalOperator) -> ExecutorCoercingRelationalStart raise
+
 pub fn begin_executor_coercing_subtraction(Value, Value, @token.Loc) -> ExecutorCoercingSubtractionStart raise
 
 pub fn begin_executor_copy_data_properties(Interpreter, Value, Value, Array[Value], @token.Loc) -> ExecutorCopyDataPropertiesStart
@@ -132,6 +134,10 @@ pub fn executor_activation_coercing_less_than_or_equal(Value, Value, @token.Loc)
 pub fn executor_activation_coercing_less_than_or_equal_request(ExecutorCoercingLessThanOrEqualRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_coercing_less_than_request(ExecutorCoercingLessThanRequest) -> ExecutorActivationStep
+
+pub fn executor_activation_coercing_relational(Value, Value, @token.Loc, ExecutorRelationalOperator) -> ExecutorActivationStep
+
+pub fn executor_activation_coercing_relational_request(ExecutorCoercingRelationalRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_coercing_subtraction(Value, Value, @token.Loc) -> ExecutorActivationStep
 
@@ -730,8 +736,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
-  ExecutorActivationCoercingLessThanOrEqual(ExecutorCoercingLessThanOrEqualRequest)
-  ExecutorActivationCoercingLessThan(ExecutorCoercingLessThanRequest)
+  ExecutorActivationCoercingRelational(ExecutorCoercingRelationalRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
@@ -788,6 +793,15 @@ pub enum ExecutorCoercingLessThanStart {
   ExecutorCoercingLessThanSuspended(ExecutorCoercingLessThanRequest)
 }
 
+pub struct ExecutorCoercingRelationalRequest {
+  // private fields
+}
+
+pub enum ExecutorCoercingRelationalStart {
+  ExecutorCoercingRelationalCompleted(Value)
+  ExecutorCoercingRelationalSuspended(ExecutorCoercingRelationalRequest)
+}
+
 pub struct ExecutorCoercingSubtractionRequest {
   // private fields
 }
@@ -838,6 +852,13 @@ pub struct ExecutorPropertySetRequest {
 
 pub struct ExecutorPropertyUpdateRequest {
   // private fields
+}
+
+pub(all) enum ExecutorRelationalOperator {
+  ExecutorRelationalLessThan
+  ExecutorRelationalGreaterThan
+  ExecutorRelationalGreaterThanOrEqual
+  ExecutorRelationalLessThanOrEqual
 }
 
 pub(all) struct FuncData {

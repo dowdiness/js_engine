@@ -277,6 +277,83 @@ test "relational less-than converts both operands before Symbol numeric failure"
 }
 
 ///|
+test "relational greater operators compare object String primitives" {
+  let interp = Interpreter::new()
+  let events : Ref[Array[String]] = { val: [] }
+  let left = make_object(Map([]), Null, None, "Left", Map([]), true)
+  let right = make_object(Map([]), Null, None, "Right", Map([]), true)
+  let set_hook = fn(object : Value, label : String, result : String) raise {
+    let hook = make_method_func(
+      name="@@toPrimitive",
+      realm_state=Some(interp.realm_state),
+      fn(_this_value, args) raise {
+        match args {
+          [String_(hint)] => {
+            assert_true(hint == "number")
+            events.val.push(label)
+            String_(result)
+          }
+          _ => fail("expected the number hint")
+        }
+      },
+    )
+    match object {
+      Object(data) =>
+        data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = hook
+      _ => fail("expected object fixture")
+    }
+  }
+  set_hook(left, "left", "2")
+  set_hook(right, "right", "10")
+  let evaluate = fn(op : @ast.BinOp) raise {
+    eval_binary_op(op, left, right, @token.Loc::default(), interp=Some(interp))
+  }
+  inspect(evaluate(@ast.BinOp::Gt), content="true")
+  inspect(evaluate(@ast.BinOp::GtEq), content="true")
+  json_inspect(events.val, content=["left", "right", "left", "right"])
+}
+
+///|
+test "relational greater operators convert both operands before Symbol failure" {
+  let interp = Interpreter::new()
+  let right_calls : Ref[Int] = { val: 0 }
+  let right_hook = make_method_func(
+    name="rightToPrimitive",
+    realm_state=Some(interp.realm_state),
+    fn(_this_value, _args) {
+      right_calls.val += 1
+      Number(2.0)
+    },
+  )
+  let right_object = make_object(Map([]), Null, None, "Right", Map([]), true)
+  match right_object {
+    Object(data) =>
+      data.bag.symbol_properties[interp.realm_state.well_known_symbols.to_primitive.id] = right_hook
+    _ => fail("expected right object")
+  }
+  let evaluate = fn(op : @ast.BinOp) raise {
+    right_calls.val = 0
+    let raised = try {
+      let _ = eval_binary_op(
+        op,
+        Symbol({ id: 9015, description: None }),
+        right_object,
+        @token.Loc::default(),
+        interp=Some(interp),
+      )
+      false
+    } catch {
+      @errors.TypeError(_) => true
+      _ => false
+    }
+    assert_true(raised)
+    inspect(right_calls.val, content="1")
+  }
+  evaluate(@ast.BinOp::Gt)
+  evaluate(@ast.BinOp::GtEq)
+}
+
+///|
 test "expr_may_contain_yield handles 4096 nested expressions" {
   let loc = @token.Loc::default()
   let mut nested = @ast.Expr::YieldExpr(None, false, loc)

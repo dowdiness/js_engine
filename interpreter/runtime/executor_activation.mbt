@@ -17,10 +17,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
-  ExecutorActivationCoercingLessThanOrEqual(
-    ExecutorCoercingLessThanOrEqualRequest
-  )
-  ExecutorActivationCoercingLessThan(ExecutorCoercingLessThanRequest)
+  ExecutorActivationCoercingRelational(ExecutorCoercingRelationalRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
@@ -457,8 +454,13 @@ pub fn executor_activation_coercing_less_than_or_equal(
   right : Value,
   loc : @token.Loc,
 ) -> ExecutorActivationStep {
-  ExecutorActivationCoercingLessThanOrEqual(
-    ExecutorCoercingLessThanOrEqualRequest(left~, right~, loc~),
+  ExecutorActivationCoercingRelational(
+    ExecutorCoercingRelationalRequest(
+      left~,
+      right~,
+      operator=ExecutorRelationalLessThanOrEqual,
+      loc~,
+    ),
   )
 }
 
@@ -466,7 +468,28 @@ pub fn executor_activation_coercing_less_than_or_equal(
 pub fn executor_activation_coercing_less_than_or_equal_request(
   request : ExecutorCoercingLessThanOrEqualRequest,
 ) -> ExecutorActivationStep {
-  ExecutorActivationCoercingLessThanOrEqual(request)
+  ExecutorActivationCoercingRelational(
+    executor_coercing_relational_request_from_less_than_or_equal(request),
+  )
+}
+
+///|
+pub fn executor_activation_coercing_relational(
+  left : Value,
+  right : Value,
+  loc : @token.Loc,
+  operator : ExecutorRelationalOperator,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingRelational(
+    ExecutorCoercingRelationalRequest(left~, right~, operator~, loc~),
+  )
+}
+
+///|
+pub fn executor_activation_coercing_relational_request(
+  request : ExecutorCoercingRelationalRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingRelational(request)
 }
 
 ///|
@@ -475,8 +498,13 @@ pub fn executor_activation_coercing_less_than(
   right : Value,
   loc : @token.Loc,
 ) -> ExecutorActivationStep {
-  ExecutorActivationCoercingLessThan(
-    ExecutorCoercingLessThanRequest(left~, right~, loc~),
+  ExecutorActivationCoercingRelational(
+    ExecutorCoercingRelationalRequest(
+      left~,
+      right~,
+      operator=ExecutorRelationalLessThan,
+      loc~,
+    ),
   )
 }
 
@@ -484,7 +512,9 @@ pub fn executor_activation_coercing_less_than(
 pub fn executor_activation_coercing_less_than_request(
   request : ExecutorCoercingLessThanRequest,
 ) -> ExecutorActivationStep {
-  ExecutorActivationCoercingLessThan(request)
+  ExecutorActivationCoercingRelational(
+    executor_coercing_relational_request_from_less_than(request),
+  )
 }
 
 ///|
@@ -903,8 +933,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertySet(Value)
   ExecutorChildPropertyUpdate
   ExecutorChildCoercingAddition
-  ExecutorChildCoercingLessThanOrEqual
-  ExecutorChildCoercingLessThan
+  ExecutorChildCoercingRelational
   ExecutorChildCoercingSubtraction
   ExecutorChildPropertyDelete
   ExecutorChildIterableSpread
@@ -1475,10 +1504,8 @@ fn Interpreter::complete_executor_step(
       executor_property_update_completion(step)
     Some(ExecutorChildCoercingAddition) =>
       executor_coercing_addition_completion(step)
-    Some(ExecutorChildCoercingLessThanOrEqual) =>
-      executor_coercing_less_than_or_equal_completion(step)
-    Some(ExecutorChildCoercingLessThan) =>
-      executor_coercing_less_than_completion(step)
+    Some(ExecutorChildCoercingRelational) =>
+      executor_coercing_relational_completion(step)
     Some(ExecutorChildCoercingSubtraction) =>
       executor_coercing_subtraction_completion(step)
     Some(ExecutorChildPropertyDelete) =>
@@ -2222,23 +2249,11 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
-    ExecutorActivationCoercingLessThanOrEqual(request) => {
-      let less_than_or_equal_frame = ExecutorCoercingLessThanOrEqualFrame(
-        request,
-      )
+    ExecutorActivationCoercingRelational(request) => {
+      let relational_frame = ExecutorCoercingRelationalFrame(request)
       stack.push({
-        frame: less_than_or_equal_frame as &ExecutorActivationFrame,
-        completion: Some(ExecutorChildCoercingLessThanOrEqual),
-        cleanup: None,
-        graph_cursor: None,
-      })
-      None
-    }
-    ExecutorActivationCoercingLessThan(request) => {
-      let less_than_frame = ExecutorCoercingLessThanFrame(request)
-      stack.push({
-        frame: less_than_frame as &ExecutorActivationFrame,
-        completion: Some(ExecutorChildCoercingLessThan),
+        frame: relational_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildCoercingRelational),
         cleanup: None,
         graph_cursor: None,
       })
@@ -2541,8 +2556,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
-        | ExecutorActivationCoercingLessThanOrEqual(_)
-        | ExecutorActivationCoercingLessThan(_)
+        | ExecutorActivationCoercingRelational(_)
         | ExecutorActivationCoercingSubtraction(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
@@ -2560,8 +2574,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
-        | ExecutorActivationCoercingLessThanOrEqual(_)
-        | ExecutorActivationCoercingLessThan(_)
+        | ExecutorActivationCoercingRelational(_)
         | ExecutorActivationCoercingSubtraction(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
@@ -2589,8 +2602,7 @@ fn executor_construct_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2620,8 +2632,7 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2649,8 +2660,7 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2678,8 +2688,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2694,7 +2703,7 @@ fn executor_coercing_addition_completion(
 }
 
 ///|
-fn executor_coercing_less_than_or_equal_completion(
+fn executor_coercing_relational_completion(
   step : ExecutorActivationStep,
 ) -> ExecutorActivationCompletion {
   match step {
@@ -2707,8 +2716,7 @@ fn executor_coercing_less_than_or_equal_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2716,36 +2724,7 @@ fn executor_coercing_less_than_or_equal_completion(
     | ExecutorActivationBinding(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
-          message="coercing less-than-or-equal completed with a pending activation step",
-        ),
-      )
-  }
-}
-
-///|
-fn executor_coercing_less_than_completion(
-  step : ExecutorActivationStep,
-) -> ExecutorActivationCompletion {
-  match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
-      ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) =>
-      ExecutorActivationCompletionAbrupt(
-        @errors.InternalError(
-          message="coercing less-than completed with a pending activation step",
+          message="coercing relational completed with a pending activation step",
         ),
       )
   }
@@ -2765,8 +2744,7 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2794,8 +2772,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingLessThanOrEqual(_)
-    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
