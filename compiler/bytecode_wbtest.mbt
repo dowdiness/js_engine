@@ -1501,6 +1501,36 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     [Operator],
   )
   assert_instruction_contract_for_wb(
+    BinaryOp(LtEq, BinaryExpression, loc),
+    true,
+    ManagedSuspension,
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
+    BinaryOp(Lt, BinaryExpression, loc),
+    true,
+    UnsupportedBeforeActivation(BinaryOperation),
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
+    BinaryOp(Gt, BinaryExpression, loc),
+    true,
+    UnsupportedBeforeActivation(BinaryOperation),
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
+    BinaryOp(GtEq, BinaryExpression, loc),
+    true,
+    UnsupportedBeforeActivation(BinaryOperation),
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
+    BinaryOp(LtEq, CompoundAssignment, loc),
+    true,
+    UnsupportedBeforeActivation(BinaryOperation),
+    [Operator],
+  )
+  assert_instruction_contract_for_wb(
     AssignDestructure(@runtime.destructure_plan_bind_name("binding")),
     true,
     UnsupportedBeforeActivation(DestructuringAssignment),
@@ -1687,6 +1717,37 @@ test "bytecode primitive subtraction bypasses child activation" {
       fail("object subtraction must request coercing subtraction")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("object subtraction must suspend for guest conversion")
+  }
+}
+
+///|
+test "bytecode primitive less-than-or-equal bypasses child activation" {
+  let interp = @interpreter.new_interpreter()
+  let primitive = parse_bytecode_for_wb("1 <= 2;")
+  let primitive_frame = BytecodeFrame(primitive.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match primitive_frame.step_bytecode(interp) {
+    BytecodeFrameNormal(Bool(value)) => inspect(value, content="true")
+    BytecodeFrameReturn(Bool(value)) => inspect(value, content="true")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("primitive less-than-or-equal must produce a Boolean")
+    BytecodeFrameSuspended(_) =>
+      fail("primitive less-than-or-equal must not create a child activation")
+  }
+  let object = parse_bytecode_for_wb("({}) <= 1;")
+  let object_frame = BytecodeFrame(object.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match object_frame.step_bytecode(interp) {
+    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingLessThanOrEqual(_)) =>
+      ()
+    BytecodeFrameSuspended(_) =>
+      fail("object less-than-or-equal must request its runtime operation")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("object less-than-or-equal must suspend for guest conversion")
   }
 }
 

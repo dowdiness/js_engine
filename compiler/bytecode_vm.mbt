@@ -843,6 +843,20 @@ fn BytecodeFrame::step_bytecode(
           }
         }
       }
+      BinaryOp(LtEq, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match @runtime.begin_executor_coercing_less_than_or_equal(left, right, loc) {
+          @runtime.ExecutorCoercingLessThanOrEqualCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingLessThanOrEqualSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_less_than_or_equal_request(request),
+            )
+          }
+        }
+      }
       BinaryOp(op, _, loc) => {
         let right = match stack.pop() {
           Some(value) => value
