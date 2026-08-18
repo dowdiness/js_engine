@@ -375,6 +375,7 @@ fn run_candidate_bytecode_function(
     | @runtime.ExecutorActivationPropertyUpdate(_)
     | @runtime.ExecutorActivationCoercingAddition(_)
     | @runtime.ExecutorActivationCoercingLessThanOrEqual(_)
+    | @runtime.ExecutorActivationCoercingLessThan(_)
     | @runtime.ExecutorActivationCoercingSubtraction(_)
     | @runtime.ExecutorActivationPropertyDelete(_)
     | @runtime.ExecutorActivationIterableSpread(_)

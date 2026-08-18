@@ -719,7 +719,6 @@ fn bytecode_binary_contract(
     | (EqEq, CompoundAssignment)
     | (NotEq, BinaryExpression)
     | (NotEq, CompoundAssignment)
-    | (Lt, BinaryExpression)
     | (Lt, CompoundAssignment)
     | (Gt, BinaryExpression)
     | (Gt, CompoundAssignment)
@@ -750,6 +749,8 @@ fn bytecode_binary_contract(
     (Sub, BinaryExpression) =>
       bytecode_contract(true, ManagedSuspension, [Operator])
     (LtEq, BinaryExpression) =>
+      bytecode_contract(true, ManagedSuspension, [Operator])
+    (Lt, BinaryExpression) =>
       bytecode_contract(true, ManagedSuspension, [Operator])
   }
 }

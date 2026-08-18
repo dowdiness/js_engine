@@ -640,6 +640,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing less-than-or-equal",
       )
+    @runtime.ExecutorActivationCoercingLessThan(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending coercing less-than",
+      )
     @runtime.ExecutorActivationCoercingSubtraction(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing subtraction",
@@ -839,6 +843,19 @@ fn BytecodeFrame::step_bytecode(
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(
               @runtime.executor_activation_coercing_subtraction_request(request),
+            )
+          }
+        }
+      }
+      BinaryOp(Lt, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match @runtime.begin_executor_coercing_less_than(left, right, loc) {
+          @runtime.ExecutorCoercingLessThanCompleted(value) => stack.push(value)
+          @runtime.ExecutorCoercingLessThanSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_less_than_request(request),
             )
           }
         }

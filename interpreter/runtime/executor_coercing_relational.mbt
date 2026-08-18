@@ -177,3 +177,177 @@ impl ExecutorActivationFrame for ExecutorCoercingLessThanOrEqualFrame with fn de
       )
   }
 }
+
+///|
+// A managed Abstract Relational Comparison operation for plain <. The runtime
+// owns ToPrimitive(number) ordering and the canonical less-than result; the VM
+// only transfers already-evaluated operands.
+pub enum ExecutorCoercingLessThanStart {
+  ExecutorCoercingLessThanCompleted(Value)
+  ExecutorCoercingLessThanSuspended(ExecutorCoercingLessThanRequest)
+}
+
+///|
+pub struct ExecutorCoercingLessThanRequest {
+  priv left : Value
+  priv right : Value
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorCoercingLessThanRequest::ExecutorCoercingLessThanRequest(
+  left~ : Value,
+  right~ : Value,
+  loc~ : @token.Loc,
+) -> ExecutorCoercingLessThanRequest {
+  { left, right, loc }
+}
+
+///|
+pub fn begin_executor_coercing_less_than(
+  left : Value,
+  right : Value,
+  loc : @token.Loc,
+) -> ExecutorCoercingLessThanStart raise Error {
+  if is_js_object(left) || is_js_object(right) {
+    ExecutorCoercingLessThanSuspended(
+      ExecutorCoercingLessThanRequest(left~, right~, loc~),
+    )
+  } else {
+    ExecutorCoercingLessThanCompleted(
+      match relational_is_less_than_primitives(left, right) {
+        RelationalLess => Bool(true)
+        RelationalNotLess | RelationalUnordered => Bool(false)
+      },
+    )
+  }
+}
+
+///|
+priv enum ExecutorCoercingLessThanPhase {
+  ExecutorCoercingLessThanNeedLeft
+  ExecutorCoercingLessThanAwaitLeft(ExecutorToPrimitiveOperation)
+  ExecutorCoercingLessThanHaveLeft(Value)
+  ExecutorCoercingLessThanAwaitRight(Value, ExecutorToPrimitiveOperation)
+  ExecutorCoercingLessThanComplete(Value)
+}
+
+///|
+priv struct ExecutorCoercingLessThanFrame {
+  request : ExecutorCoercingLessThanRequest
+  mut phase : ExecutorCoercingLessThanPhase
+}
+
+///|
+fn ExecutorCoercingLessThanFrame::ExecutorCoercingLessThanFrame(
+  request : ExecutorCoercingLessThanRequest,
+) -> ExecutorCoercingLessThanFrame {
+  { request, phase: ExecutorCoercingLessThanNeedLeft }
+}
+
+///|
+fn ExecutorCoercingLessThanFrame::finish_right(
+  self : ExecutorCoercingLessThanFrame,
+  interp : Interpreter,
+  left : Value,
+  right : Value,
+) -> ExecutorActivationStep raise Error {
+  let result = match
+    relational_is_less_than_primitives(left, right, interp=Some(interp)) {
+    RelationalLess => Bool(true)
+    RelationalNotLess | RelationalUnordered => Bool(false)
+  }
+  self.phase = ExecutorCoercingLessThanComplete(result)
+  ExecutorActivationNormal(result)
+}
+
+///|
+fn ExecutorCoercingLessThanFrame::step_frame(
+  self : ExecutorCoercingLessThanFrame,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match self.phase {
+    ExecutorCoercingLessThanNeedLeft => {
+      let operation = ExecutorToPrimitiveOperation(
+        self.request.left,
+        ExecutorToPrimitiveNumber,
+        self.request.loc,
+      )
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) => {
+          self.phase = ExecutorCoercingLessThanHaveLeft(value)
+          self.step_frame(interp)
+        }
+        step => {
+          self.phase = ExecutorCoercingLessThanAwaitLeft(operation)
+          step
+        }
+      }
+    }
+    ExecutorCoercingLessThanAwaitLeft(operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) => {
+          self.phase = ExecutorCoercingLessThanHaveLeft(value)
+          self.step_frame(interp)
+        }
+        step => {
+          self.phase = ExecutorCoercingLessThanAwaitLeft(operation)
+          step
+        }
+      }
+    ExecutorCoercingLessThanHaveLeft(left) => {
+      let operation = ExecutorToPrimitiveOperation(
+        self.request.right,
+        ExecutorToPrimitiveNumber,
+        self.request.loc,
+      )
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) => self.finish_right(interp, left, value)
+        step => {
+          self.phase = ExecutorCoercingLessThanAwaitRight(left, operation)
+          step
+        }
+      }
+    }
+    ExecutorCoercingLessThanAwaitRight(left, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) => self.finish_right(interp, left, value)
+        step => {
+          self.phase = ExecutorCoercingLessThanAwaitRight(left, operation)
+          step
+        }
+      }
+    ExecutorCoercingLessThanComplete(value) => {
+      ignore(value)
+      raise @errors.InternalError(
+        message="coercing less-than frame stepped after completion",
+      )
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorCoercingLessThanFrame with fn step(
+  self,
+  interp,
+) {
+  self.step_frame(interp)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorCoercingLessThanFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match self.phase {
+    ExecutorCoercingLessThanAwaitLeft(operation)
+    | ExecutorCoercingLessThanAwaitRight(_, operation) =>
+      operation.deliver_activation_completion(completion)
+    ExecutorCoercingLessThanNeedLeft
+    | ExecutorCoercingLessThanHaveLeft(_)
+    | ExecutorCoercingLessThanComplete(_) =>
+      raise @errors.InternalError(
+        message="coercing less-than received an unexpected child completion",
+      )
+  }
+}

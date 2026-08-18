@@ -344,10 +344,66 @@ test "candidate less-than-or-equal resumes through guest conversion" {
 }
 
 ///|
-test "candidate relational siblings stay Tree-walker before effects" {
-  assert_candidate_tree_route_evidence_for_wb(
-    "var value = 1; value < 2;", "true",
+test "candidate plain less-than admits only its exact binary origin" {
+  let less_than = prepare_candidate_program(@parser.parse("1 < 2;").stmts)
+  match less_than.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("plain less-than lost its managed disposition")
+    UseTreeWalker(_) => fail("plain less-than selected Tree-walker")
+  }
+  let greater_than = prepare_candidate_program(@parser.parse("1 > 2;").stmts)
+  match greater_than.root.selection {
+    UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("greater-than lost its typed unsupported reason")
+      }
+    UseTreeWalker(_) => fail("greater-than lost its typed unsupported reason")
+    UseBytecode(_) => fail("greater-than was admitted with plain less-than")
+  }
+  let equality = prepare_candidate_program(@parser.parse("1 == 2;").stmts)
+  match equality.root.selection {
+    UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("equality lost its typed unsupported reason")
+      }
+    UseTreeWalker(_) => fail("equality lost its typed unsupported reason")
+    UseBytecode(_) => fail("equality was admitted with plain less-than")
+  }
+}
+
+///|
+test "candidate plain less-than preserves coercion order and Symbol failure" {
+  let source =
+    #|var events = "";
+    #|var left = {};
+    #|var right = {};
+    #|left[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "left:" + hint + ";";
+    #|  return "2";
+    #|};
+    #|right[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "right:" + hint + ";";
+    #|  return "10";
+    #|};
+    #|var stringResult = left < right;
+    #|var symbolThrew = false;
+    #|try { Symbol("x") < right; } catch (error) { symbolThrew = true; }
+    #|stringResult + "|" + events + "|" + symbolThrew;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "false|left:number;right:number;right:number;|true",
   )
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate relational siblings stay Tree-walker before effects" {
   assert_candidate_tree_route_evidence_for_wb(
     "var value = 1; value > 2;", "false",
   )

@@ -127,6 +127,46 @@ test "coercing less-than-or-equal start completes primitives and suspends object
 }
 
 ///|
+test "coercing less-than start completes primitives and suspends objects" {
+  let loc = @token.Loc::default()
+  match begin_executor_coercing_less_than(Number(0.0), Number(1.0), loc) {
+    ExecutorCoercingLessThanCompleted(Bool(true)) => ()
+    ExecutorCoercingLessThanCompleted(_) =>
+      fail("number < must complete true")
+    ExecutorCoercingLessThanSuspended(_) =>
+      fail("primitive < must not create a child frame")
+  }
+  match begin_executor_coercing_less_than(String_("2"), String_("10"), loc) {
+    ExecutorCoercingLessThanCompleted(Bool(false)) => ()
+    ExecutorCoercingLessThanCompleted(_) =>
+      fail("String < must use ECMAScript lexicographic order")
+    ExecutorCoercingLessThanSuspended(_) =>
+      fail("primitive String < must not create a child frame")
+  }
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match begin_executor_coercing_less_than(object, Number(1.0), loc) {
+    ExecutorCoercingLessThanSuspended(_) => ()
+    ExecutorCoercingLessThanCompleted(_) =>
+      fail("object < must request a child frame")
+  }
+  let symbol_error : Error? = try {
+    let _ = begin_executor_coercing_less_than(
+      Symbol({ id: 9014, description: None }),
+      Number(1.0),
+      loc,
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match symbol_error {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected Symbol TypeError, got " + error.to_string())
+    None => fail("Symbol < must throw synchronously")
+  }
+}
+
+///|
 test "coercing less-than-or-equal completes object String primitives in source order" {
   let interp = Interpreter::new()
   let events : Array[String] = []

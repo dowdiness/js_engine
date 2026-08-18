@@ -20,6 +20,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCoercingLessThanOrEqual(
     ExecutorCoercingLessThanOrEqualRequest
   )
+  ExecutorActivationCoercingLessThan(ExecutorCoercingLessThanRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
@@ -469,6 +470,24 @@ pub fn executor_activation_coercing_less_than_or_equal_request(
 }
 
 ///|
+pub fn executor_activation_coercing_less_than(
+  left : Value,
+  right : Value,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingLessThan(
+    ExecutorCoercingLessThanRequest(left~, right~, loc~),
+  )
+}
+
+///|
+pub fn executor_activation_coercing_less_than_request(
+  request : ExecutorCoercingLessThanRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingLessThan(request)
+}
+
+///|
 // A closed property-delete request. Runtime owns ToPropertyKey, Proxy trap
 // lookup/call, forwarding, invariants, and strict-result normalization. The
 // compiler supplies only an already-evaluated target and either a static key
@@ -885,6 +904,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildPropertyUpdate
   ExecutorChildCoercingAddition
   ExecutorChildCoercingLessThanOrEqual
+  ExecutorChildCoercingLessThan
   ExecutorChildCoercingSubtraction
   ExecutorChildPropertyDelete
   ExecutorChildIterableSpread
@@ -1457,6 +1477,8 @@ fn Interpreter::complete_executor_step(
       executor_coercing_addition_completion(step)
     Some(ExecutorChildCoercingLessThanOrEqual) =>
       executor_coercing_less_than_or_equal_completion(step)
+    Some(ExecutorChildCoercingLessThan) =>
+      executor_coercing_less_than_completion(step)
     Some(ExecutorChildCoercingSubtraction) =>
       executor_coercing_subtraction_completion(step)
     Some(ExecutorChildPropertyDelete) =>
@@ -2212,6 +2234,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationCoercingLessThan(request) => {
+      let less_than_frame = ExecutorCoercingLessThanFrame(request)
+      stack.push({
+        frame: less_than_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildCoercingLessThan),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
     ExecutorActivationCoercingSubtraction(request) => {
       let subtraction_frame = ExecutorCoercingSubtractionFrame(request)
       stack.push({
@@ -2510,6 +2542,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationCoercingLessThanOrEqual(_)
+        | ExecutorActivationCoercingLessThan(_)
         | ExecutorActivationCoercingSubtraction(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
@@ -2528,6 +2561,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationCoercingLessThanOrEqual(_)
+        | ExecutorActivationCoercingLessThan(_)
         | ExecutorActivationCoercingSubtraction(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
@@ -2556,6 +2590,7 @@ fn executor_construct_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2586,6 +2621,7 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2614,6 +2650,7 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2642,6 +2679,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2670,6 +2708,7 @@ fn executor_coercing_less_than_or_equal_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2678,6 +2717,35 @@ fn executor_coercing_less_than_or_equal_completion(
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing less-than-or-equal completed with a pending activation step",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_coercing_less_than_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    ExecutorActivationContinue
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationPropertySet(_)
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
+    | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_) =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="coercing less-than completed with a pending activation step",
         ),
       )
   }
@@ -2698,6 +2766,7 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
@@ -2726,6 +2795,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingLessThanOrEqual(_)
+    | ExecutorActivationCoercingLessThan(_)
     | ExecutorActivationCoercingSubtraction(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
