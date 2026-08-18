@@ -1515,13 +1515,13 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
   assert_instruction_contract_for_wb(
     BinaryOp(Gt, BinaryExpression, loc),
     true,
-    UnsupportedBeforeActivation(BinaryOperation),
+    ManagedSuspension,
     [Operator],
   )
   assert_instruction_contract_for_wb(
     BinaryOp(GtEq, BinaryExpression, loc),
     true,
-    UnsupportedBeforeActivation(BinaryOperation),
+    ManagedSuspension,
     [Operator],
   )
   assert_instruction_contract_for_wb(
@@ -1742,9 +1742,8 @@ test "bytecode primitive less-than-or-equal bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(
-      @runtime.ExecutorActivationCoercingLessThanOrEqual(_)
-    ) => ()
+    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingRelational(_)) =>
+      ()
     BytecodeFrameSuspended(_) =>
       fail("object less-than-or-equal must request its runtime operation")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
@@ -1774,11 +1773,46 @@ test "bytecode primitive less-than bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingLessThan(_)) => ()
+    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingRelational(_)) =>
+      ()
     BytecodeFrameSuspended(_) =>
       fail("object less-than must request its runtime operation")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("object less-than must suspend for guest conversion")
+  }
+}
+
+///|
+test "bytecode primitive greater relational operators bypass child activation" {
+  let interp = @interpreter.new_interpreter()
+  let primitive = parse_bytecode_for_wb("1 > 2; 1 >= 2;")
+  let primitive_frame = BytecodeFrame(primitive.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match primitive_frame.step_bytecode(interp) {
+    BytecodeFrameNormal(Bool(_)) | BytecodeFrameReturn(Bool(_)) => ()
+    BytecodeFrameSuspended(_) =>
+      fail("primitive greater relational operators must not suspend")
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail("primitive greater relational operators must produce Booleans")
+  }
+  let object = parse_bytecode_for_wb("({}) > 1; ({}) >= 1;")
+  let object_frame = BytecodeFrame(object.verified_main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  match object_frame.step_bytecode(interp) {
+    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingRelational(_)) =>
+      ()
+    BytecodeFrameSuspended(_) =>
+      fail(
+        "object greater relational operators must request their runtime operation",
+      )
+    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
+      fail(
+        "object greater relational operators must suspend for guest conversion",
+      )
   }
 }
 
