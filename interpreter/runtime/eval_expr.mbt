@@ -2451,6 +2451,19 @@ fn relational_is_less_than_primitives(
 }
 
 ///|
+fn relational_less_than_or_equal_primitives(
+  left : Value,
+  right : Value,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match relational_is_less_than_primitives(right, left, interp~) {
+    RelationalLess => Bool(false)
+    RelationalNotLess => Bool(true)
+    RelationalUnordered => Bool(false)
+  }
+}
+
+///|
 // Runtime-owned Abstract Relational Comparison. `left_first` controls the
 // observable ToPrimitive order; comparison itself is always left < right.
 fn relational_is_less_than(

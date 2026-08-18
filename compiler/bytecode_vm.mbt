@@ -636,6 +636,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing addition",
       )
+    @runtime.ExecutorActivationCoercingLessThanOrEqual(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending coercing less-than-or-equal",
+      )
     @runtime.ExecutorActivationCoercingSubtraction(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing subtraction",
