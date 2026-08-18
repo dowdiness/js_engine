@@ -2544,11 +2544,9 @@ pub fn eval_binary_op(
     (Div, Number(a), Number(b)) => Number(a / b)
     (Mod, Number(a), Number(b)) => Number(a % b)
     // Comparison (numeric)
-    (Lt, Number(a), Number(b)) => Bool(a < b)
     (Gt, Number(a), Number(b)) => Bool(a > b)
     (GtEq, Number(a), Number(b)) => Bool(a >= b)
     // Comparison (string — lexicographic)
-    (Lt, String_(a), String_(b)) => Bool(a < b)
     (Gt, String_(a), String_(b)) => Bool(a > b)
     (GtEq, String_(a), String_(b)) => Bool(a >= b)
     // Equality
@@ -2571,8 +2569,13 @@ pub fn eval_binary_op(
     (Mul, l, r) => Number(n(l) * n(r))
     (Div, l, r) => Number(n(l) / n(r))
     (Mod, l, r) => Number(n(l) % n(r))
-    // Comparison fallbacks (type coercion)
-    (Lt, l, r) => Bool(n(l) < n(r))
+    // Comparison fallback: Abstract Relational Comparison with source-order
+    // ToPrimitive and UTF-16 String/String ordering.
+    (Lt, l, r) =>
+      match relational_is_less_than(l, r, true, interp~) {
+        RelationalLess => Bool(true)
+        RelationalNotLess | RelationalUnordered => Bool(false)
+      }
     (Gt, l, r) => Bool(n(l) > n(r))
     (LtEq, l, r) => finish_less_than_or_equal(l, r, _loc, interp~)
     (GtEq, l, r) => Bool(n(l) >= n(r))
