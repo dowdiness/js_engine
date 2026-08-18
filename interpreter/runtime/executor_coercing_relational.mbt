@@ -208,9 +208,8 @@ impl ExecutorActivationFrame for ExecutorCoercingRelationalFrame with fn deliver
 }
 
 ///|
-// These narrow start/request wrappers preserve the existing <= and < runtime
-// seams for focused tests while delegating every execution path to the shared
-// relational operation/frame above.
+// This narrow start/request wrapper preserves the existing <= runtime seam for
+// focused tests while delegating execution to the shared relational operation.
 pub enum ExecutorCoercingLessThanOrEqualStart {
   ExecutorCoercingLessThanOrEqualCompleted(Value)
   ExecutorCoercingLessThanOrEqualSuspended(
@@ -268,66 +267,6 @@ fn executor_coercing_relational_request_from_less_than_or_equal(
     left=request.left,
     right=request.right,
     operator=ExecutorRelationalLessThanOrEqual,
-    loc=request.loc,
-  )
-}
-
-///|
-pub enum ExecutorCoercingLessThanStart {
-  ExecutorCoercingLessThanCompleted(Value)
-  ExecutorCoercingLessThanSuspended(ExecutorCoercingLessThanRequest)
-}
-
-///|
-pub struct ExecutorCoercingLessThanRequest {
-  priv left : Value
-  priv right : Value
-  priv loc : @token.Loc
-}
-
-///|
-fn ExecutorCoercingLessThanRequest::ExecutorCoercingLessThanRequest(
-  left~ : Value,
-  right~ : Value,
-  loc~ : @token.Loc,
-) -> ExecutorCoercingLessThanRequest {
-  { left, right, loc }
-}
-
-///|
-pub fn begin_executor_coercing_less_than(
-  left : Value,
-  right : Value,
-  loc : @token.Loc,
-) -> ExecutorCoercingLessThanStart raise Error {
-  match
-    begin_executor_coercing_relational(
-      left,
-      right,
-      loc,
-      ExecutorRelationalLessThan,
-    ) {
-    ExecutorCoercingRelationalCompleted(value) =>
-      ExecutorCoercingLessThanCompleted(value)
-    ExecutorCoercingRelationalSuspended(request) =>
-      ExecutorCoercingLessThanSuspended(
-        ExecutorCoercingLessThanRequest(
-          left=request.left,
-          right=request.right,
-          loc=request.loc,
-        ),
-      )
-  }
-}
-
-///|
-fn executor_coercing_relational_request_from_less_than(
-  request : ExecutorCoercingLessThanRequest,
-) -> ExecutorCoercingRelationalRequest {
-  ExecutorCoercingRelationalRequest(
-    left=request.left,
-    right=request.right,
-    operator=ExecutorRelationalLessThan,
     loc=request.loc,
   )
 }

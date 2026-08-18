@@ -127,32 +127,52 @@ test "coercing less-than-or-equal start completes primitives and suspends object
 }
 
 ///|
-test "coercing less-than start completes primitives and suspends objects" {
+test "canonical coercing relational start covers less-than" {
   let loc = @token.Loc::default()
-  match begin_executor_coercing_less_than(Number(0.0), Number(1.0), loc) {
-    ExecutorCoercingLessThanCompleted(Bool(true)) => ()
-    ExecutorCoercingLessThanCompleted(_) => fail("number < must complete true")
-    ExecutorCoercingLessThanSuspended(_) =>
+  match
+    begin_executor_coercing_relational(
+      Number(0.0),
+      Number(1.0),
+      loc,
+      ExecutorRelationalLessThan,
+    ) {
+    ExecutorCoercingRelationalCompleted(Bool(true)) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("number < must complete true")
+    ExecutorCoercingRelationalSuspended(_) =>
       fail("primitive < must not create a child frame")
   }
-  match begin_executor_coercing_less_than(String_("2"), String_("10"), loc) {
-    ExecutorCoercingLessThanCompleted(Bool(false)) => ()
-    ExecutorCoercingLessThanCompleted(_) =>
+  match
+    begin_executor_coercing_relational(
+      String_("2"),
+      String_("10"),
+      loc,
+      ExecutorRelationalLessThan,
+    ) {
+    ExecutorCoercingRelationalCompleted(Bool(false)) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
       fail("String < must use ECMAScript lexicographic order")
-    ExecutorCoercingLessThanSuspended(_) =>
+    ExecutorCoercingRelationalSuspended(_) =>
       fail("primitive String < must not create a child frame")
   }
   let object = make_object(Map([]), Null, None, "Object", Map([]), true)
-  match begin_executor_coercing_less_than(object, Number(1.0), loc) {
-    ExecutorCoercingLessThanSuspended(_) => ()
-    ExecutorCoercingLessThanCompleted(_) =>
+  match
+    begin_executor_coercing_relational(
+      object,
+      Number(1.0),
+      loc,
+      ExecutorRelationalLessThan,
+    ) {
+    ExecutorCoercingRelationalSuspended(_) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
       fail("object < must request a child frame")
   }
   let symbol_error : Error? = try {
-    let _ = begin_executor_coercing_less_than(
+    let _ = begin_executor_coercing_relational(
       Symbol({ id: 9014, description: None }),
       Number(1.0),
       loc,
+      ExecutorRelationalLessThan,
     )
     None
   } catch {

@@ -400,6 +400,104 @@ test "candidate plain greater relational operators admit exact origins" {
 }
 
 ///|
+test "candidate plain greater-than closes its own route" {
+  let source = "1 > 2;"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("plain greater-than lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "false")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() == 3 else {
+    fail("plain greater-than did not close exactly one route")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseBytecode(ManagedSuspension) => ()
+        _ =>
+          fail("plain greater-than route was not prepared as managed bytecode")
+      }
+    _ => fail("plain greater-than did not prepare before starting")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateBytecodeExecutor => ()
+        CandidateTreeWalkerExecutor =>
+          fail("plain greater-than started Tree-walker")
+      }
+    _ => fail("plain greater-than did not start after preparation")
+  }
+  match evidence.val.events[2] {
+    CandidateRouteCompletedEvent(completed) =>
+      match completed.completion {
+        CandidateRouteNormal => ()
+        CandidateRouteAbrupt => fail("plain greater-than completed abruptly")
+      }
+    _ => fail("plain greater-than did not complete exactly once")
+  }
+}
+
+///|
+test "candidate plain greater-than-or-equal closes its own route" {
+  let source = "1 >= 2;"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) =>
+      fail("plain greater-than-or-equal lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than-or-equal selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "false")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() == 3 else {
+    fail("plain greater-than-or-equal did not close exactly one route")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseBytecode(ManagedSuspension) => ()
+        _ =>
+          fail(
+            "plain greater-than-or-equal route was not prepared as managed bytecode",
+          )
+      }
+    _ => fail("plain greater-than-or-equal did not prepare before starting")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateBytecodeExecutor => ()
+        CandidateTreeWalkerExecutor =>
+          fail("plain greater-than-or-equal started Tree-walker")
+      }
+    _ => fail("plain greater-than-or-equal did not start after preparation")
+  }
+  match evidence.val.events[2] {
+    CandidateRouteCompletedEvent(completed) =>
+      match completed.completion {
+        CandidateRouteNormal => ()
+        CandidateRouteAbrupt =>
+          fail("plain greater-than-or-equal completed abruptly")
+      }
+    _ => fail("plain greater-than-or-equal did not complete exactly once")
+  }
+}
+
+///|
 test "candidate plain less-than preserves coercion order and Symbol failure" {
   let source =
     #|var events = "";

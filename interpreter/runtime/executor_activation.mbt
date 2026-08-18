@@ -493,31 +493,6 @@ pub fn executor_activation_coercing_relational_request(
 }
 
 ///|
-pub fn executor_activation_coercing_less_than(
-  left : Value,
-  right : Value,
-  loc : @token.Loc,
-) -> ExecutorActivationStep {
-  ExecutorActivationCoercingRelational(
-    ExecutorCoercingRelationalRequest(
-      left~,
-      right~,
-      operator=ExecutorRelationalLessThan,
-      loc~,
-    ),
-  )
-}
-
-///|
-pub fn executor_activation_coercing_less_than_request(
-  request : ExecutorCoercingLessThanRequest,
-) -> ExecutorActivationStep {
-  ExecutorActivationCoercingRelational(
-    executor_coercing_relational_request_from_less_than(request),
-  )
-}
-
-///|
 // A closed property-delete request. Runtime owns ToPropertyKey, Proxy trap
 // lookup/call, forwarding, invariants, and strict-result normalization. The
 // compiler supplies only an already-evaluated target and either a static key
