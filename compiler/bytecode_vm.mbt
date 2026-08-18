@@ -636,9 +636,9 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing addition",
       )
-    @runtime.ExecutorActivationCoercingLessThanOrEqual(_) =>
+    @runtime.ExecutorActivationCoercingRelational(_) =>
       raise @errors.InternalError(
-        message="executor activation coordinator returned a pending coercing less-than-or-equal",
+        message="executor activation coordinator returned a pending coercing relational operation",
       )
     @runtime.ExecutorActivationCoercingSubtraction(_) =>
       raise @errors.InternalError(
@@ -843,19 +843,82 @@ fn BytecodeFrame::step_bytecode(
           }
         }
       }
+      BinaryOp(Lt, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match
+          @runtime.begin_executor_coercing_relational(
+            left,
+            right,
+            loc,
+            @runtime.ExecutorRelationalOperator::ExecutorRelationalLessThan,
+          ) {
+          @runtime.ExecutorCoercingRelationalCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingRelationalSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_relational_request(request),
+            )
+          }
+        }
+      }
+      BinaryOp(Gt, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match
+          @runtime.begin_executor_coercing_relational(
+            left,
+            right,
+            loc,
+            @runtime.ExecutorRelationalOperator::ExecutorRelationalGreaterThan,
+          ) {
+          @runtime.ExecutorCoercingRelationalCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingRelationalSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_relational_request(request),
+            )
+          }
+        }
+      }
+      BinaryOp(GtEq, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match
+          @runtime.begin_executor_coercing_relational(
+            left,
+            right,
+            loc,
+            @runtime.ExecutorRelationalOperator::ExecutorRelationalGreaterThanOrEqual,
+          ) {
+          @runtime.ExecutorCoercingRelationalCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingRelationalSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_relational_request(request),
+            )
+          }
+        }
+      }
       BinaryOp(LtEq, BinaryExpression, loc) => {
         let right = frame.pop()
         let left = frame.pop()
         match
-          @runtime.begin_executor_coercing_less_than_or_equal(left, right, loc) {
-          @runtime.ExecutorCoercingLessThanOrEqualCompleted(value) =>
+          @runtime.begin_executor_coercing_relational(
+            left,
+            right,
+            loc,
+            @runtime.ExecutorRelationalOperator::ExecutorRelationalLessThanOrEqual,
+          ) {
+          @runtime.ExecutorCoercingRelationalCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingLessThanOrEqualSuspended(request) => {
+          @runtime.ExecutorCoercingRelationalSuspended(request) => {
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_less_than_or_equal_request(
-                request,
-              ),
+              @runtime.executor_activation_coercing_relational_request(request),
             )
           }
         }

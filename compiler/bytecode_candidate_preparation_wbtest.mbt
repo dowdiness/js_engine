@@ -344,16 +344,221 @@ test "candidate less-than-or-equal resumes through guest conversion" {
 }
 
 ///|
+test "candidate plain relational operators retain exact binary origins" {
+  let less_than = prepare_candidate_program(@parser.parse("1 < 2;").stmts)
+  match less_than.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("plain less-than lost its managed disposition")
+    UseTreeWalker(_) => fail("plain less-than selected Tree-walker")
+  }
+  let greater_than = prepare_candidate_program(@parser.parse("1 > 2;").stmts)
+  match greater_than.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("plain greater-than lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than selected Tree-walker")
+  }
+  let equality = prepare_candidate_program(@parser.parse("1 == 2;").stmts)
+  match equality.root.selection {
+    UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("equality lost its typed unsupported reason")
+      }
+    UseTreeWalker(_) => fail("equality lost its typed unsupported reason")
+    UseBytecode(_) => fail("equality was admitted with relational operators")
+  }
+}
+
+///|
+test "candidate plain greater relational operators admit exact origins" {
+  let greater_than = prepare_candidate_program(@parser.parse("1 > 2;").stmts)
+  match greater_than.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("plain greater-than lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than selected Tree-walker")
+  }
+  let greater_than_or_equal = prepare_candidate_program(
+    @parser.parse("1 >= 2;").stmts,
+  )
+  match greater_than_or_equal.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) =>
+      fail("plain greater-than-or-equal lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than-or-equal selected Tree-walker")
+  }
+  let equality = prepare_candidate_program(@parser.parse("1 == 2;").stmts)
+  match equality.root.selection {
+    UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
+      match unsupported.reason {
+        BinaryOperation => ()
+        _ => fail("equality lost its typed unsupported reason")
+      }
+    UseTreeWalker(_) => fail("equality lost its typed unsupported reason")
+    UseBytecode(_) =>
+      fail("equality was admitted with greater relational operators")
+  }
+}
+
+///|
+test "candidate plain greater-than closes its own route" {
+  let source = "1 > 2;"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("plain greater-than lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "false")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() == 3 else {
+    fail("plain greater-than did not close exactly one route")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseBytecode(ManagedSuspension) => ()
+        _ =>
+          fail("plain greater-than route was not prepared as managed bytecode")
+      }
+    _ => fail("plain greater-than did not prepare before starting")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateBytecodeExecutor => ()
+        CandidateTreeWalkerExecutor =>
+          fail("plain greater-than started Tree-walker")
+      }
+    _ => fail("plain greater-than did not start after preparation")
+  }
+  match evidence.val.events[2] {
+    CandidateRouteCompletedEvent(completed) =>
+      match completed.completion {
+        CandidateRouteNormal => ()
+        CandidateRouteAbrupt => fail("plain greater-than completed abruptly")
+      }
+    _ => fail("plain greater-than did not complete exactly once")
+  }
+}
+
+///|
+test "candidate plain greater-than-or-equal closes its own route" {
+  let source = "1 >= 2;"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) =>
+      fail("plain greater-than-or-equal lost its managed disposition")
+    UseTreeWalker(_) => fail("plain greater-than-or-equal selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "false")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.events.length() == 3 else {
+    fail("plain greater-than-or-equal did not close exactly one route")
+  }
+  match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) =>
+      match prepared.decision {
+        UseBytecode(ManagedSuspension) => ()
+        _ =>
+          fail(
+            "plain greater-than-or-equal route was not prepared as managed bytecode",
+          )
+      }
+    _ => fail("plain greater-than-or-equal did not prepare before starting")
+  }
+  match evidence.val.events[1] {
+    CandidateRouteStartedEvent(started) =>
+      match started.executor {
+        CandidateBytecodeExecutor => ()
+        CandidateTreeWalkerExecutor =>
+          fail("plain greater-than-or-equal started Tree-walker")
+      }
+    _ => fail("plain greater-than-or-equal did not start after preparation")
+  }
+  match evidence.val.events[2] {
+    CandidateRouteCompletedEvent(completed) =>
+      match completed.completion {
+        CandidateRouteNormal => ()
+        CandidateRouteAbrupt =>
+          fail("plain greater-than-or-equal completed abruptly")
+      }
+    _ => fail("plain greater-than-or-equal did not complete exactly once")
+  }
+}
+
+///|
+test "candidate plain less-than preserves coercion order and Symbol failure" {
+  let source =
+    #|var events = "";
+    #|var left = {};
+    #|var right = {};
+    #|left[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "left:" + hint + ";";
+    #|  return "2";
+    #|};
+    #|right[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "right:" + hint + ";";
+    #|  return "10";
+    #|};
+    #|var stringResult = left < right;
+    #|var symbolThrew = false;
+    #|try { Symbol("x") < right; } catch (error) { symbolThrew = true; }
+    #|stringResult + "|" + events + "|" + symbolThrew;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "false|left:number;right:number;right:number;|true",
+  )
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate plain greater relational operators preserve coercion order" {
+  let source =
+    #|var events = "";
+    #|var left = {};
+    #|var right = {};
+    #|left[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "left:" + hint + ";";
+    #|  return "2";
+    #|};
+    #|right[Symbol.toPrimitive] = function(hint) {
+    #|  events = events + "right:" + hint + ";";
+    #|  return "10";
+    #|};
+    #|var less = left < right;
+    #|var greater = left > right;
+    #|var greaterEqual = left >= right;
+    #|var symbolThrew = false;
+    #|try { Symbol("x") > right; } catch (error) { symbolThrew = true; }
+    #|less + "|" + greater + "|" + greaterEqual + "|" + events + "|" + symbolThrew;
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(
+    value.to_string(),
+    "false|true|true|left:number;right:number;left:number;right:number;left:number;right:number;right:number;|true",
+  )
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate relational siblings stay Tree-walker before effects" {
-  assert_candidate_tree_route_evidence_for_wb(
-    "var value = 1; value < 2;", "true",
-  )
-  assert_candidate_tree_route_evidence_for_wb(
-    "var value = 1; value > 2;", "false",
-  )
-  assert_candidate_tree_route_evidence_for_wb(
-    "var value = 1; value >= 2;", "false",
-  )
   assert_candidate_tree_route_evidence_for_wb(
     "var value = 1; value == 1;", "true",
   )

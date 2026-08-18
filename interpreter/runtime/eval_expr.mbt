@@ -2451,19 +2451,6 @@ fn relational_is_less_than_primitives(
 }
 
 ///|
-fn relational_less_than_or_equal_primitives(
-  left : Value,
-  right : Value,
-  interp? : Interpreter? = None,
-) -> Value raise Error {
-  match relational_is_less_than_primitives(right, left, interp~) {
-    RelationalLess => Bool(false)
-    RelationalNotLess => Bool(true)
-    RelationalUnordered => Bool(false)
-  }
-}
-
-///|
 // Runtime-owned Abstract Relational Comparison. `left_first` controls the
 // observable ToPrimitive order; comparison itself is always left < right.
 fn relational_is_less_than(
@@ -2543,14 +2530,6 @@ pub fn eval_binary_op(
     (Mul, Number(a), Number(b)) => Number(a * b)
     (Div, Number(a), Number(b)) => Number(a / b)
     (Mod, Number(a), Number(b)) => Number(a % b)
-    // Comparison (numeric)
-    (Lt, Number(a), Number(b)) => Bool(a < b)
-    (Gt, Number(a), Number(b)) => Bool(a > b)
-    (GtEq, Number(a), Number(b)) => Bool(a >= b)
-    // Comparison (string — lexicographic)
-    (Lt, String_(a), String_(b)) => Bool(a < b)
-    (Gt, String_(a), String_(b)) => Bool(a > b)
-    (GtEq, String_(a), String_(b)) => Bool(a >= b)
     // Equality
     (EqEqEq, l, r) => Bool(strict_equal(l, r))
     (NotEqEq, l, r) => Bool(!strict_equal(l, r))
@@ -2571,11 +2550,25 @@ pub fn eval_binary_op(
     (Mul, l, r) => Number(n(l) * n(r))
     (Div, l, r) => Number(n(l) / n(r))
     (Mod, l, r) => Number(n(l) % n(r))
-    // Comparison fallbacks (type coercion)
-    (Lt, l, r) => Bool(n(l) < n(r))
-    (Gt, l, r) => Bool(n(l) > n(r))
+    // Comparison fallback: Abstract Relational Comparison with source-order
+    // ToPrimitive and UTF-16 String/String ordering.
+    (Lt, l, r) =>
+      match relational_is_less_than(l, r, true, interp~) {
+        RelationalLess => Bool(true)
+        RelationalNotLess | RelationalUnordered => Bool(false)
+      }
+    (Gt, l, r) =>
+      match relational_is_less_than(r, l, false, interp~) {
+        RelationalLess => Bool(true)
+        RelationalNotLess | RelationalUnordered => Bool(false)
+      }
     (LtEq, l, r) => finish_less_than_or_equal(l, r, _loc, interp~)
-    (GtEq, l, r) => Bool(n(l) >= n(r))
+    (GtEq, l, r) =>
+      match relational_is_less_than(l, r, true, interp~) {
+        RelationalLess => Bool(false)
+        RelationalNotLess => Bool(true)
+        RelationalUnordered => Bool(false)
+      }
     // Bitwise operations
     (BitAnd, l, r) => Number((to_int32(n(l)) & to_int32(n(r))).to_double())
     (BitOr, l, r) => Number((to_int32(n(l)) | to_int32(n(r))).to_double())

@@ -127,6 +127,108 @@ test "coercing less-than-or-equal start completes primitives and suspends object
 }
 
 ///|
+test "canonical coercing relational start covers less-than" {
+  let loc = @token.Loc::default()
+  match
+    begin_executor_coercing_relational(
+      Number(0.0),
+      Number(1.0),
+      loc,
+      ExecutorRelationalLessThan,
+    ) {
+    ExecutorCoercingRelationalCompleted(Bool(true)) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("number < must complete true")
+    ExecutorCoercingRelationalSuspended(_) =>
+      fail("primitive < must not create a child frame")
+  }
+  match
+    begin_executor_coercing_relational(
+      String_("2"),
+      String_("10"),
+      loc,
+      ExecutorRelationalLessThan,
+    ) {
+    ExecutorCoercingRelationalCompleted(Bool(false)) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("String < must use ECMAScript lexicographic order")
+    ExecutorCoercingRelationalSuspended(_) =>
+      fail("primitive String < must not create a child frame")
+  }
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match
+    begin_executor_coercing_relational(
+      object,
+      Number(1.0),
+      loc,
+      ExecutorRelationalLessThan,
+    ) {
+    ExecutorCoercingRelationalSuspended(_) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("object < must request a child frame")
+  }
+  let symbol_error : Error? = try {
+    let _ = begin_executor_coercing_relational(
+      Symbol({ id: 9014, description: None }),
+      Number(1.0),
+      loc,
+      ExecutorRelationalLessThan,
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match symbol_error {
+    Some(@errors.TypeError(_)) => ()
+    Some(error) => fail("expected Symbol TypeError, got " + error.to_string())
+    None => fail("Symbol < must throw synchronously")
+  }
+}
+
+///|
+test "canonical coercing relational start covers greater operators" {
+  let loc = @token.Loc::default()
+  match
+    begin_executor_coercing_relational(
+      Number(2.0),
+      Number(10.0),
+      loc,
+      ExecutorRelationalGreaterThan,
+    ) {
+    ExecutorCoercingRelationalCompleted(Bool(false)) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("number > must use the shared comparison formula")
+    ExecutorCoercingRelationalSuspended(_) =>
+      fail("primitive > must not create a child frame")
+  }
+  match
+    begin_executor_coercing_relational(
+      String_("2"),
+      String_("10"),
+      loc,
+      ExecutorRelationalGreaterThanOrEqual,
+    ) {
+    ExecutorCoercingRelationalCompleted(Bool(true)) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("String >= must use canonical UTF-16 ordering")
+    ExecutorCoercingRelationalSuspended(_) =>
+      fail("primitive String >= must not create a child frame")
+  }
+  let object = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match
+    begin_executor_coercing_relational(
+      object,
+      Number(1.0),
+      loc,
+      ExecutorRelationalGreaterThanOrEqual,
+    ) {
+    ExecutorCoercingRelationalSuspended(_) => ()
+    ExecutorCoercingRelationalCompleted(_) =>
+      fail("object >= must request the shared child frame")
+  }
+}
+
+///|
 test "coercing less-than-or-equal completes object String primitives in source order" {
   let interp = Interpreter::new()
   let events : Array[String] = []
