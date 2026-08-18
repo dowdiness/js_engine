@@ -820,19 +820,8 @@ fn compile_update(
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   match operand {
     Ident(name, _) =>
-      fn(interp, _, env) raise {
-        let old = env.get(name)
-        let old_num = @runtime.to_number(old, interp=Some(interp))
-        let new_value = match op {
-          Increment => Value::Number(old_num + 1.0)
-          Decrement => Value::Number(old_num - 1.0)
-        }
-        env.assign(name, new_value)
-        if prefix {
-          new_value
-        } else {
-          Value::Number(old_num)
-        }
+      fn(interp, ctx, env) raise {
+        interp.update_compiled_name(ctx, env, name, op, prefix, loc)
       }
     Member(obj_expr, prop, member_loc) => {
       let obj_fn = compile_expr_to_closure_inner(obj_expr)
