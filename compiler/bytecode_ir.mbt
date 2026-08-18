@@ -565,10 +565,7 @@ fn bytecode_instruction_contract(
     MakeRegExp(_, _) =>
       bytecode_contract(true, SynchronousLeaf, [ExpressionEntry])
     UpdateName(_, _, _, _) =>
-      bytecode_contract(true, UnsupportedBeforeActivation(UpdateName), [
-        BindingAccess,
-        Operator,
-      ])
+      bytecode_contract(true, ManagedSuspension, [BindingAccess, Operator])
     UpdateLocal(_, _, _) =>
       bytecode_contract(true, UnsupportedBeforeActivation(UpdateLocal), [
         BindingAccess,
