@@ -1,6 +1,5 @@
 ///|
-// Issue #931 RED: a name update is currently typed pre-start, so the
-// candidate route falls back before executing the UpdateName instruction.
+// Issue #931 UpdateName route and default/candidate semantic parity coverage.
 
 ///|
 fn issue931_assert_form_route_for_wb(
@@ -14,6 +13,20 @@ fn issue931_assert_form_route_for_wb(
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+fn issue931_update_event_trace_for_wb(value : @runtime.Value) -> String {
+  match value {
+    @runtime.Array(data) =>
+      // Legacy function activation probes [[ThrowTypeError]] through the
+      // with-object on the default route; retain the UpdateName trace itself.
+      data.elements
+      .map(value => value.to_string())
+      .filter(event => event != "has:[[ThrowTypeError]]:0")
+      .join(",")
+    _ => value.to_string()
+  }
 }
 
 ///|
@@ -190,6 +203,54 @@ test "issue 931 candidate does not re-resolve after conversion mutation" {
 }
 
 ///|
+test "issue 931 default and candidate retain the conversion-selected reference" {
+  let source =
+    #|var events = [];
+    #|var phase = 0;
+    #|var outer = { value: 100 };
+    #|var target = {};
+    #|var changing = { valueOf: function() { phase = 1; events.push("convert"); return 3; } };
+    #|target.value = changing;
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { events.push("has:" + key + ":" + phase); return phase === 0 && Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { events.push(key === Symbol.unscopables ? "unscopables" : "get:" + key); return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { events.push("set:" + key + ":" + value); return Reflect.set(t, key, value, receiver); }
+    #|});
+    #|var update;
+    #|with (scope) { update = function() { return value++; }; }
+    #|events = [];
+    #|var old = update();
+    #|old + ":" + target.value + ":" + outer.value + ":" + events.join(",");
+  let default_interp = @interpreter.new_interpreter()
+  let default_outcome = try {
+    let value = default_interp.run(@parser.parse(source).stmts)
+    "ok:" + value.to_string()
+  } catch {
+    @runtime.JsException(value) => "throw:" + value.to_string()
+    error => "error:" + error.to_string()
+  }
+  let candidate_interp = @interpreter.new_interpreter()
+  let (candidate_value, evidence) = run_candidate_program_with_evidence(
+    candidate_interp,
+    @parser.parse(source).stmts,
+  )
+  let candidate_outcome = "ok:" + candidate_value.to_string()
+  assert_true(default_outcome.has_prefix("ok:3:4:100:"))
+  assert_true(candidate_outcome.has_prefix("ok:3:4:100:"))
+  assert_eq(
+    issue931_update_event_trace_for_wb(default_interp.global.get("events")),
+    issue931_update_event_trace_for_wb(candidate_interp.global.get("events")),
+  )
+  assert_eq(
+    candidate_value.to_string(),
+    "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,set:value:4",
+  )
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 931 candidate retains conversion effects when PutValue throws" {
   let source =
     #|var events = [];
@@ -206,6 +267,40 @@ test "issue 931 candidate retains conversion effects when PutValue throws" {
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(value.to_string(), "convert,set:4,write failed:object")
   assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 931 default and candidate preserve abrupt PutValue parity" {
+  let source =
+    #|var events = [];
+    #|var target = { value: { valueOf: function() { events.push("convert"); return 3; } } };
+    #|var scope = new Proxy(target, {
+    #|  has: function(t, key) { return Reflect.has(t, key); },
+    #|  get: function(t, key, receiver) { return Reflect.get(t, key, receiver); },
+    #|  set: function(t, key, value, receiver) { events.push("set:" + value); throw "write failed"; }
+    #|});
+    #|var update;
+    #|with (scope) { update = function() { return value++; }; }
+    #|try { update(); } catch (error) { events.push(error); }
+    #|events.join(",") + ":" + (typeof target.value);
+  let default_interp = @interpreter.new_interpreter()
+  let default_value = default_interp.run(@parser.parse(source).stmts)
+  let candidate_interp = @interpreter.new_interpreter()
+  let (candidate_value, evidence) = run_candidate_program_with_evidence(
+    candidate_interp,
+    @parser.parse(source).stmts,
+  )
+  assert_true(
+    default_value.to_string().contains("convert,set:4,write failed:object"),
+  )
+  assert_eq(
+    issue931_update_event_trace_for_wb(default_interp.global.get("events")),
+    issue931_update_event_trace_for_wb(candidate_interp.global.get("events")),
+  )
+  assert_eq(candidate_value.to_string(), "convert,set:4,write failed:object")
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)

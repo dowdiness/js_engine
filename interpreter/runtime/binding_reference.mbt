@@ -91,8 +91,14 @@ fn executor_binding_reference_plain(
         match env.bindings.get(request.name) {
           Some(_) => {
             let slot = env.resolve_slot(request.name).unwrap()
+            let kind = if env.parent is None &&
+              interp.is_immutable_global(request.name) {
+              ResolvedBindingGlobal
+            } else {
+              ResolvedBindingLexical(slot)
+            }
             return resolved_binding_reference(
-              ResolvedBindingLexical(slot),
+              kind,
               request.name,
               request.ctx,
               request.loc,

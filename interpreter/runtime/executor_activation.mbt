@@ -744,6 +744,38 @@ pub fn begin_executor_binding_update(
 }
 
 ///|
+// Complete a binding update for synchronous runtime owners. Dynamic binding
+// resolution and object conversion use the same coordinator as bytecode, so
+// a suspended request keeps its one resolved reference through every child.
+fn Interpreter::run_binding_update_to_completion(
+  self : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match begin_executor_binding_update(self, ctx, env, name, op, prefix, loc) {
+    ExecutorBindingUpdateCompleted(value) => value
+    ExecutorBindingUpdateSuspended(request) => {
+      let frame = ExecutorBindingUpdateFrame(request)
+      match
+        self.run_executor_activation_coordinator(
+          frame as &ExecutorActivationFrame,
+        ) {
+        ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+          value
+        _ =>
+          raise @errors.InternalError(
+            message="binding update coordinator returned a pending activation",
+          )
+      }
+    }
+  }
+}
+
+///|
 pub fn executor_activation_binding_update_request(
   request : ExecutorBindingUpdateRequest,
 ) -> ExecutorActivationStep {
