@@ -689,11 +689,45 @@ pub fn begin_executor_binding_update(
       ExecutorBindingUpdateSuspended(request)
     }
     ExecutorBindingReferenceCompleted(reference) => {
-      request.phase = ExecutorBindingUpdateNeedGet(reference)
-      let frame = ExecutorBindingUpdateFrame(request)
-      match frame.step_frame(interp) {
-        ExecutorActivationNormal(value) => ExecutorBindingUpdateCompleted(value)
-        _ => ExecutorBindingUpdateSuspended(frame.request)
+      match begin_executor_binding_reference_get(interp, reference) {
+        ExecutorBindingReferenceGetSuspended(_) => {
+          request.phase = ExecutorBindingUpdateNeedGet(reference)
+          ExecutorBindingUpdateSuspended(request)
+        }
+        ExecutorBindingReferenceGetCompleted(current) if is_js_object(current) => {
+          request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
+          ExecutorBindingUpdateSuspended(request)
+        }
+        ExecutorBindingReferenceGetCompleted(current) => {
+          match reference.kind {
+            ResolvedBindingWithObject(_, _) => {
+              request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
+              ExecutorBindingUpdateSuspended(request)
+            }
+            _ => {
+              let old_number = to_number(current, interp=Some(interp))
+              let next_value : Value = match request.operator {
+                ExecutorBindingIncrement => Number(old_number + 1.0)
+                ExecutorBindingDecrement => Number(old_number - 1.0)
+              }
+              let result = if request.prefix {
+                next_value
+              } else {
+                Number(old_number)
+              }
+              match begin_executor_binding_reference_put(interp, reference, next_value) {
+                ExecutorBindingReferencePutCompleted(value) => {
+                  ignore(value)
+                  ExecutorBindingUpdateCompleted(result)
+                }
+                ExecutorBindingReferencePutSuspended(_) => {
+                  request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
+                  ExecutorBindingUpdateSuspended(request)
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

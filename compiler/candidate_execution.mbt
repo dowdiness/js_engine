@@ -380,7 +380,9 @@ fn run_candidate_bytecode_function(
     | @runtime.ExecutorActivationIterableSpread(_)
     | @runtime.ExecutorActivationCopyDataProperties(_)
     | @runtime.ExecutorActivationBinding(_)
-    | _ =>
+    | @runtime.ExecutorActivationBindingReference(_)
+    | @runtime.ExecutorActivationBindingUpdate(_)
+    | @runtime.ExecutorActivationReference(_) =>
       raise @errors.InternalError(
         message="candidate root coordinator returned a pending activation",
       )

@@ -664,7 +664,9 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending binding resolution",
       )
-    _ =>
+    @runtime.ExecutorActivationBindingReference(_)
+    | @runtime.ExecutorActivationBindingUpdate(_)
+    | @runtime.ExecutorActivationReference(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending binding reference",
       )
