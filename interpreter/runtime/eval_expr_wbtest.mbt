@@ -183,6 +183,10 @@ test "relational less-than-or-equal uses numeric and String primitive semantics"
   inspect(evaluate(String_("10"), String_("10")), content="true")
   inspect(evaluate(String_("2"), Number(10.0)), content="true")
   inspect(evaluate(Number(10.0), String_("2")), content="false")
+  // U+10000 is a surrogate pair (D800 DC00), which sorts before U+E000
+  // under ECMAScript's UTF-16 code-unit ordering despite its larger code point.
+  inspect(evaluate(String_("\u{10000}"), String_("\u{E000}")), content="true")
+  inspect(evaluate(String_("\u{E000}"), String_("\u{10000}")), content="false")
 }
 
 ///|

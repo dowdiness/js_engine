@@ -13,6 +13,7 @@ import {
 
 import {
   "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/internal/benchmark_workloads",
   "dowdiness/js_engine/parser",
   "moonbitlang/core/bench",
 } for "wbtest"

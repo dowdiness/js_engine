@@ -306,6 +306,19 @@ test "candidate plain less-than-or-equal selects bytecode before frame construct
 }
 
 ///|
+test "candidate less-than-or-equal preserves UTF-16 String ordering" {
+  let source =
+    #|"\u{10000}" <= "\u{E000}";
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "true")
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "candidate less-than-or-equal resumes through guest conversion" {
   let source =
     #|var events = "";
@@ -471,17 +484,6 @@ test "candidate equality Fibonacci 30 stays entirely bytecode" {
 }
 
 ///|
-fn issue925_fibonacci_source_for_wb(n : String) -> String {
-  "function fib(n) {\n" +
-  "  if (n <= 1) return n;\n" +
-  "  return fib(n - 1) + fib(n - 2);\n" +
-  "}\n" +
-  "fib(" +
-  n +
-  ");"
-}
-
-///|
 fn issue925_assert_fibonacci_candidates_bytecode_for_wb(
   program : CandidateProgram,
 ) -> Unit raise Error {
@@ -503,7 +505,7 @@ fn issue925_assert_fibonacci_candidates_bytecode_for_wb(
 
 ///|
 test "issue 925 Fibonacci 10 keeps full route evidence on bytecode" {
-  let source = issue925_fibonacci_source_for_wb("10")
+  let source = @benchmark_workloads.FIBONACCI_SMALL_SRC
   let program = prepare_candidate_program(@parser.parse(source).stmts)
   issue925_assert_fibonacci_candidates_bytecode_for_wb(program)
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
@@ -518,7 +520,7 @@ test "issue 925 Fibonacci 10 keeps full route evidence on bytecode" {
 
 ///|
 test "issue 925 Fibonacci 30 uses bounded aggregate route evidence" {
-  let source = issue925_fibonacci_source_for_wb("30")
+  let source = @benchmark_workloads.FIBONACCI_SRC
   let program = prepare_candidate_program(@parser.parse(source).stmts)
   issue925_assert_fibonacci_candidates_bytecode_for_wb(program)
   let (value, evidence) = candidate_run_with_summary_for_wb(source)

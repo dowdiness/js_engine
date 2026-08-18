@@ -204,6 +204,11 @@ pub const LEXER_LARGE_SRC : String =
 // ---------------------------------------------------------------------------
 
 ///|
+// Canonical execution sources are owned by the neutral package so compiler
+// route tests and executable benchmarks consume identical strings.
+pub using @benchmark_workloads {FIBONACCI_SRC, FIBONACCI_SMALL_SRC}
+
+///|
 /// Minimal program used as the interpreter-startup guardrail.
 ///
 /// Category: Regression
@@ -213,35 +218,6 @@ pub const LEXER_LARGE_SRC : String =
 ///
 /// Expected result: "2"
 pub const STARTUP_TINY_SRC : String = "1 + 1"
-
-///|
-/// Recursive Fibonacci(30).
-///
-/// Category: Regression
-/// Exercises: function call overhead, scope chain creation, arithmetic,
-///            conditional branching inside the interpreter loop.
-/// Hot path: call_value() → exec_stmt() → eval_expr() recursively.
-///
-/// This benchmark amplifies function call cost: fib(30) makes
-/// approximately 2.7 million recursive invocations.
-///
-/// Expected result: "832040"
-pub const FIBONACCI_SRC : String =
-  #|function fib(n) {
-  #|  if (n <= 1) return n;
-  #|  return fib(n - 1) + fib(n - 2);
-  #|}
-  #|fib(30);
-
-///|
-/// Sanity-check variant: Fibonacci(10) for quick verification.
-/// Expected result: "55"
-pub const FIBONACCI_SMALL_SRC : String =
-  #|function fib(n) {
-  #|  if (n <= 1) return n;
-  #|  return fib(n - 1) + fib(n - 2);
-  #|}
-  #|fib(10);
 
 ///|
 /// Deep property chain access in a 10 000-iteration JS loop.

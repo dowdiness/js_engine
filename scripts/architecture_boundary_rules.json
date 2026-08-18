@@ -352,6 +352,18 @@
       "to": "parser",
       "scope": "wbtest",
       "reason": "compiler white-box tests parse source fixtures"
+    },
+    {
+      "from": "compiler",
+      "to": "internal/benchmark_workloads",
+      "scope": "wbtest",
+      "reason": "compiler white-box Fibonacci route evidence consumes canonical benchmark source fixtures"
+    },
+    {
+      "from": "benchmarks",
+      "to": "internal/benchmark_workloads",
+      "scope": "prod",
+      "reason": "benchmark executable re-exports canonical workload sources"
     }
   ],
   "allowlisted_import_debt": [
