@@ -41,6 +41,8 @@ pub fn begin_executor_binding_typeof(Interpreter, ExecContext, Environment, Stri
 
 pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
 
+pub fn begin_executor_coercing_less_than(Value, Value, @token.Loc) -> ExecutorCoercingLessThanStart raise
+
 pub fn begin_executor_coercing_less_than_or_equal(Value, Value, @token.Loc) -> ExecutorCoercingLessThanOrEqualStart raise
 
 pub fn begin_executor_coercing_subtraction(Value, Value, @token.Loc) -> ExecutorCoercingSubtractionStart raise
@@ -123,9 +125,13 @@ pub fn executor_activation_coercing_addition(Value, Value, @token.Loc) -> Execut
 
 pub fn executor_activation_coercing_addition_request(ExecutorCoercingAdditionRequest) -> ExecutorActivationStep
 
+pub fn executor_activation_coercing_less_than(Value, Value, @token.Loc) -> ExecutorActivationStep
+
 pub fn executor_activation_coercing_less_than_or_equal(Value, Value, @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_coercing_less_than_or_equal_request(ExecutorCoercingLessThanOrEqualRequest) -> ExecutorActivationStep
+
+pub fn executor_activation_coercing_less_than_request(ExecutorCoercingLessThanRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_coercing_subtraction(Value, Value, @token.Loc) -> ExecutorActivationStep
 
@@ -725,6 +731,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationCoercingLessThanOrEqual(ExecutorCoercingLessThanOrEqualRequest)
+  ExecutorActivationCoercingLessThan(ExecutorCoercingLessThanRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
@@ -770,6 +777,15 @@ pub struct ExecutorCoercingLessThanOrEqualRequest {
 pub enum ExecutorCoercingLessThanOrEqualStart {
   ExecutorCoercingLessThanOrEqualCompleted(Value)
   ExecutorCoercingLessThanOrEqualSuspended(ExecutorCoercingLessThanOrEqualRequest)
+}
+
+pub struct ExecutorCoercingLessThanRequest {
+  // private fields
+}
+
+pub enum ExecutorCoercingLessThanStart {
+  ExecutorCoercingLessThanCompleted(Value)
+  ExecutorCoercingLessThanSuspended(ExecutorCoercingLessThanRequest)
 }
 
 pub struct ExecutorCoercingSubtractionRequest {

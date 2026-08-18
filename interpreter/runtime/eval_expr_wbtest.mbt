@@ -227,6 +227,18 @@ test "relational less-than compares object String primitives in source order" {
   )
   inspect(result, content="false")
   json_inspect(events.val, content=["left", "right"])
+  // U+10000 is a surrogate pair (D800 DC00), which sorts before U+E000
+  // under ECMAScript's UTF-16 code-unit ordering despite its larger code point.
+  inspect(
+    eval_binary_op(
+      @ast.BinOp::Lt,
+      String_("\u{10000}"),
+      String_("\u{E000}"),
+      @token.Loc::default(),
+      interp=Some(interp),
+    ),
+    content="true",
+  )
 }
 
 ///|
