@@ -630,7 +630,7 @@ priv enum ExecutorBindingUpdatePhase {
     Value,
     ExecutorToPrimitiveOperation
   )
-  ExecutorBindingUpdateAwaitPut(ResolvedBindingReference, Value)
+  ExecutorBindingUpdateAwaitPut(ExecutorBindingReferencePutOperation, Value)
   ExecutorBindingUpdateComplete(Value)
 }
 
@@ -812,9 +812,9 @@ fn ExecutorBindingUpdateFrame::begin_put(
       self.request.phase = ExecutorBindingUpdateComplete(result)
       ExecutorActivationNormal(result)
     }
-    ExecutorBindingReferencePutSuspended(step) => {
-      self.request.phase = ExecutorBindingUpdateAwaitPut(reference, result)
-      step
+    ExecutorBindingReferencePutSuspended(operation) => {
+      self.request.phase = ExecutorBindingUpdateAwaitPut(operation, result)
+      operation.step(interp)
     }
   }
 }
@@ -891,10 +891,19 @@ fn ExecutorBindingUpdateFrame::step_frame(
           step
         }
       }
+    ExecutorBindingUpdateAwaitPut(operation, result) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(_) => {
+          self.request.phase = ExecutorBindingUpdateComplete(result)
+          ExecutorActivationNormal(result)
+        }
+        step => {
+          self.request.phase = ExecutorBindingUpdateAwaitPut(operation, result)
+          step
+        }
+      }
     ExecutorBindingUpdateComplete(result) => ExecutorActivationNormal(result)
-    ExecutorBindingUpdateAwaitReference
-    | ExecutorBindingUpdateAwaitGet(_)
-    | ExecutorBindingUpdateAwaitPut(_, _) =>
+    ExecutorBindingUpdateAwaitReference | ExecutorBindingUpdateAwaitGet(_) =>
       raise @errors.InternalError(
         message="binding update stepped while awaiting a child completion",
       )
@@ -935,8 +944,10 @@ impl ExecutorActivationFrame for ExecutorBindingUpdateFrame with fn deliver_acti
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
-        ExecutorBindingUpdateAwaitPut(_, result) =>
-          self.request.phase = ExecutorBindingUpdateComplete(result)
+        ExecutorBindingUpdateAwaitPut(operation, _) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
         ExecutorBindingUpdateNeedReference(_)
         | ExecutorBindingUpdateAwaitReference
         | ExecutorBindingUpdateNeedGet(_)

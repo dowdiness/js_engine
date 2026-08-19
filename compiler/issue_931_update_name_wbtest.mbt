@@ -150,7 +150,7 @@ test "issue 931 candidate retains one with Proxy Reference" {
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(
     value.to_string(),
-    "3:4:90:has:value,unscopables,has:value,get:value,set:value:4",
+    "3:4:90:has:value,unscopables,has:value,get:value,has:value,set:value:4",
   )
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
@@ -180,7 +180,7 @@ test "issue 931 candidate does not re-resolve after conversion mutation" {
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(
     value.to_string(),
-    "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,set:value:4",
+    "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,has:value:1,set:value:4",
   )
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
@@ -216,7 +216,7 @@ test "issue 931 default and candidate retain the conversion-selected reference" 
   )
   assert_eq(
     default_value.to_string(),
-    "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,set:value:4",
+    "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,has:value:1,set:value:4",
   )
   assert_eq(candidate_value.to_string(), default_value.to_string())
   assert_eq(evidence.val.summary.fallback_violations, 0)
@@ -272,6 +272,44 @@ test "issue 931 default and candidate preserve abrupt PutValue parity" {
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 931 strict name updates reject a disappeared with binding" {
+  for form in ["x++", "x--", "++x", "--x"] {
+    let prefix =
+      #|var count = 0;
+      #|var outcome = "none";
+      #|var scope = {
+      #|  get x() {
+      #|    delete this.x;
+      #|    return 2;
+      #|  }
+      #|};
+      #|var update;
+      #|with (scope) {
+      #|  update = function() {
+      #|    "use strict";
+      #|    count++;
+    let suffix =
+      #|;
+      #|    count++;
+      #|  };
+      #|}
+      #|try { update(); } catch (error) { outcome = error.name; }
+      #|count + ":" + outcome + ":" + ("x" in scope);
+    let source = prefix + form + suffix
+    let default_value = @interpreter.new_interpreter().run(
+      @parser.parse(source).stmts,
+    )
+    let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+    assert_eq(default_value.to_string(), "1:ReferenceError:false")
+    assert_eq(candidate_value.to_string(), default_value.to_string())
+    assert_true(evidence.val.summary.bytecode_starts > 0)
+    assert_eq(evidence.val.summary.fallback_violations, 0)
+    assert_eq(evidence.val.summary.replay_violations, 0)
+    assert_eq(evidence.val.summary.active_activations, 0)
+  }
 }
 
 ///|
