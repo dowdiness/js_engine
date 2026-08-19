@@ -106,28 +106,8 @@ fn Interpreter::eval_update(
   loc : @token.Loc,
 ) -> Value raise Error {
   match operand {
-    Ident(name, _) => {
-      let current = get_assignment_name_value(ctx, env, name)
-      let num = self.to_number(current)
-      let new_val : Value = match op {
-        Increment => Number(num + 1.0)
-        Decrement => Number(num - 1.0)
-      }
-      if self.is_immutable_global(name) {
-        if ctx.strict {
-          raise @errors.TypeError(
-            message="Cannot assign to read only property '\{name}' of object '[object global]'",
-          )
-        }
-      } else {
-        env.assign_with_strict(name, new_val, ctx.strict)
-      }
-      if prefix {
-        new_val
-      } else {
-        Number(num)
-      }
-    }
+    Ident(name, _) =>
+      self.run_binding_update_to_completion(ctx, env, name, op, prefix, loc)
     Member(obj_expr, prop, mloc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       self.eval_update_property(ctx, obj, prop, op, prefix, mloc, loc)

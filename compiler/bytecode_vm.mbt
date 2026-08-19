@@ -665,6 +665,7 @@ fn run_bytecode_function(
         message="executor activation coordinator returned a pending binding resolution",
       )
     @runtime.ExecutorActivationBindingReference(_)
+    | @runtime.ExecutorActivationBindingUpdate(_)
     | @runtime.ExecutorActivationReference(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending binding reference",
@@ -1047,7 +1048,18 @@ fn BytecodeFrame::step_bytecode(
         stack.push(value)
       }
       UpdateName(name, op, prefix, loc) =>
-        stack.push(interp.update_compiled_name(ctx, env, name, op, prefix, loc))
+        match
+          @runtime.begin_executor_binding_update(
+            interp, ctx, env, name, op, prefix, loc,
+          ) {
+          @runtime.ExecutorBindingUpdateCompleted(value) => stack.push(value)
+          @runtime.ExecutorBindingUpdateSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_binding_update_request(request),
+            )
+          }
+        }
       UpdateLocal(slot, op, prefix) => {
         let old_number = @runtime.to_number(locals[slot], interp=Some(interp))
         let next_value = match op {

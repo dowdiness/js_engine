@@ -39,6 +39,8 @@ pub fn begin_executor_binding_store(Interpreter, ExecContext, Environment, Strin
 
 pub fn begin_executor_binding_typeof(Interpreter, ExecContext, Environment, String, @token.Loc) -> ExecutorBindingStart raise
 
+pub fn begin_executor_binding_update(Interpreter, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> ExecutorBindingUpdateStart raise
+
 pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoercingAdditionStart raise
 
 pub fn begin_executor_coercing_less_than_or_equal(Value, Value, @token.Loc) -> ExecutorCoercingLessThanOrEqualStart raise
@@ -116,6 +118,8 @@ pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interprete
 pub fn execution_control_failure_code(Error) -> String?
 
 pub fn executor_activation_binding_request(ExecutorBindingRequest) -> ExecutorActivationStep
+
+pub fn executor_activation_binding_update_request(ExecutorBindingUpdateRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_call(Value, Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
@@ -738,6 +742,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
   ExecutorActivationBinding(ExecutorBindingRequest)
   ExecutorActivationBindingReference(ExecutorBindingReferenceRequest)
+  ExecutorActivationBindingUpdate(ExecutorBindingUpdateRequest)
   ExecutorActivationReference(ResolvedBindingReference)
 }
 
@@ -752,6 +757,15 @@ pub struct ExecutorBindingRequest {
 pub enum ExecutorBindingStart {
   ExecutorBindingCompleted(Value)
   ExecutorBindingSuspended(ExecutorBindingRequest)
+}
+
+pub struct ExecutorBindingUpdateRequest {
+  // private fields
+}
+
+pub enum ExecutorBindingUpdateStart {
+  ExecutorBindingUpdateCompleted(Value)
+  ExecutorBindingUpdateSuspended(ExecutorBindingUpdateRequest)
 }
 
 pub struct ExecutorCallRequest {

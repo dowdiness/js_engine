@@ -53,7 +53,146 @@ priv enum ExecutorBindingReferenceGetStart {
 #warnings("-unused_constructor")
 priv enum ExecutorBindingReferencePutStart {
   ExecutorBindingReferencePutCompleted(Value)
-  ExecutorBindingReferencePutSuspended(ExecutorActivationStep)
+  ExecutorBindingReferencePutSuspended(ExecutorBindingReferencePutOperation)
+}
+
+///|
+priv enum ExecutorBindingReferencePutPhase {
+  ExecutorBindingReferencePutNeedHas(Value)
+  ExecutorBindingReferencePutAwaitHas(ExecutorDeleteHasPropertyOperation)
+  ExecutorBindingReferencePutAwaitSet
+  ExecutorBindingReferencePutComplete
+  ExecutorBindingReferencePutDone
+}
+
+///|
+priv struct ExecutorBindingReferencePutOperation {
+  reference : ResolvedBindingReference
+  value : Value
+  mut phase : ExecutorBindingReferencePutPhase
+}
+
+///|
+fn ExecutorBindingReferencePutOperation::ExecutorBindingReferencePutOperation(
+  reference : ResolvedBindingReference,
+  value : Value,
+  obj : Value,
+) -> ExecutorBindingReferencePutOperation {
+  { reference, value, phase: ExecutorBindingReferencePutNeedHas(obj) }
+}
+
+///|
+fn ExecutorBindingReferencePutOperation::after_has(
+  self : ExecutorBindingReferencePutOperation,
+  obj : Value,
+  has_property : Bool,
+) -> ExecutorActivationStep raise Error {
+  if !has_property && self.reference.strict {
+    raise @errors.ReferenceError(message="{self.reference.name} is not defined")
+  }
+  self.phase = ExecutorBindingReferencePutAwaitSet
+  executor_activation_managed_property_set(
+    obj,
+    self.reference.name,
+    self.value,
+    self.reference.loc,
+    self.reference.strict,
+  )
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingReferencePutOperation with fn step(
+  self,
+  interp,
+) {
+  match self.phase {
+    ExecutorBindingReferencePutNeedHas(obj) => {
+      let operation = ExecutorDeleteHasPropertyOperation(
+        target=obj,
+        key=String_(self.reference.name),
+        loc=self.reference.loc,
+      )
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          self.after_has(obj, has_property)
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="binding reference PutValue HasProperty returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingReferencePutAwaitHas(operation)
+          step
+        }
+      }
+    }
+    ExecutorBindingReferencePutAwaitHas(operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          match self.reference.kind {
+            ResolvedBindingWithObject(obj, _) =>
+              self.after_has(obj, has_property)
+            _ =>
+              raise @errors.InternalError(
+                message="binding reference PutValue lost its with-object base",
+              )
+          }
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="binding reference PutValue HasProperty returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingReferencePutAwaitHas(operation)
+          step
+        }
+      }
+    ExecutorBindingReferencePutAwaitSet =>
+      raise @errors.InternalError(
+        message="binding reference PutValue stepped while awaiting Set",
+      )
+    ExecutorBindingReferencePutComplete => {
+      self.phase = ExecutorBindingReferencePutDone
+      ExecutorActivationNormal(self.value)
+    }
+    ExecutorBindingReferencePutDone =>
+      raise @errors.InternalError(
+        message="binding reference PutValue stepped after completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingReferencePutOperation with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="binding reference PutValue received a nested reference",
+      )
+    ExecutorActivationCompletionNormal(value) =>
+      match self.phase {
+        ExecutorBindingReferencePutAwaitHas(operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorBindingReferencePutAwaitSet =>
+          self.phase = ExecutorBindingReferencePutComplete
+        ExecutorBindingReferencePutNeedHas(_)
+        | ExecutorBindingReferencePutComplete
+        | ExecutorBindingReferencePutDone =>
+          raise @errors.InternalError(
+            message="binding reference PutValue received an unexpected child completion",
+          )
+      }
+  }
+}
+
+///|
+extend ExecutorBindingReferencePutOperation with ExecutorActivationFrame::{
+  step,
+  deliver_activation_completion,
 }
 
 ///|
@@ -91,8 +230,14 @@ fn executor_binding_reference_plain(
         match env.bindings.get(request.name) {
           Some(_) => {
             let slot = env.resolve_slot(request.name).unwrap()
+            let kind = if env.parent is None &&
+              interp.is_immutable_global(request.name) {
+              ResolvedBindingGlobal
+            } else {
+              ResolvedBindingLexical(slot)
+            }
             return resolved_binding_reference(
-              ResolvedBindingLexical(slot),
+              kind,
               request.name,
               request.ctx,
               request.loc,
@@ -198,13 +343,7 @@ fn begin_executor_binding_reference_put(
     }
     ResolvedBindingWithObject(obj, _) =>
       ExecutorBindingReferencePutSuspended(
-        executor_activation_managed_property_set(
-          obj,
-          reference.name,
-          value,
-          reference.loc,
-          reference.strict,
-        ),
+        ExecutorBindingReferencePutOperation(reference, value, obj),
       )
     ResolvedBindingGlobal | ResolvedBindingUnresolvable =>
       ExecutorBindingReferencePutCompleted(

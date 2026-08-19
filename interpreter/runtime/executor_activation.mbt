@@ -24,6 +24,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
   ExecutorActivationBinding(ExecutorBindingRequest)
   ExecutorActivationBindingReference(ExecutorBindingReferenceRequest)
+  ExecutorActivationBindingUpdate(ExecutorBindingUpdateRequest)
   ExecutorActivationReference(ResolvedBindingReference)
 }
 
@@ -598,6 +599,368 @@ pub fn executor_activation_property_delete_request(
 }
 
 ///|
+// A closed identifier-update request. Runtime retains the resolved binding
+// reference across read, Number-hint conversion, and write; the compiler and
+// VM provide only the source update operator and result destination.
+pub struct ExecutorBindingUpdateRequest {
+  priv ctx : ExecContext
+  priv env : Environment
+  priv name : String
+  priv operator : ExecutorBindingUpdateOperator
+  priv prefix : Bool
+  priv loc : @token.Loc
+  priv mut phase : ExecutorBindingUpdatePhase
+}
+
+///|
+priv enum ExecutorBindingUpdateOperator {
+  ExecutorBindingIncrement
+  ExecutorBindingDecrement
+}
+
+///|
+priv enum ExecutorBindingUpdatePhase {
+  ExecutorBindingUpdateNeedReference(ExecutorBindingReferenceRequest)
+  ExecutorBindingUpdateAwaitReference
+  ExecutorBindingUpdateNeedGet(ResolvedBindingReference)
+  ExecutorBindingUpdateAwaitGet(ResolvedBindingReference)
+  ExecutorBindingUpdateHaveCurrent(ResolvedBindingReference, Value)
+  ExecutorBindingUpdateAwaitToPrimitive(
+    ResolvedBindingReference,
+    Value,
+    ExecutorToPrimitiveOperation
+  )
+  ExecutorBindingUpdateAwaitPut(ExecutorBindingReferencePutOperation, Value)
+  ExecutorBindingUpdateComplete(Value)
+}
+
+///|
+fn ExecutorBindingUpdateRequest::ExecutorBindingUpdateRequest(
+  ctx~ : ExecContext,
+  env~ : Environment,
+  name~ : String,
+  operator~ : ExecutorBindingUpdateOperator,
+  prefix~ : Bool,
+  loc~ : @token.Loc,
+  phase~ : ExecutorBindingUpdatePhase,
+) -> ExecutorBindingUpdateRequest {
+  { ctx, env, name, operator, prefix, loc, phase }
+}
+
+///|
+pub enum ExecutorBindingUpdateStart {
+  ExecutorBindingUpdateCompleted(Value)
+  ExecutorBindingUpdateSuspended(ExecutorBindingUpdateRequest)
+}
+
+///|
+fn executor_binding_update_operator(
+  op : @ast.UpdateOp,
+) -> ExecutorBindingUpdateOperator {
+  match op {
+    Increment => ExecutorBindingIncrement
+    Decrement => ExecutorBindingDecrement
+  }
+}
+
+///|
+pub fn begin_executor_binding_update(
+  interp : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  loc : @token.Loc,
+) -> ExecutorBindingUpdateStart raise Error {
+  let reference_request = ExecutorBindingReferenceRequest(
+    ctx~,
+    env~,
+    name~,
+    loc~,
+  )
+  let request = ExecutorBindingUpdateRequest(
+    ctx~,
+    env~,
+    name~,
+    operator=executor_binding_update_operator(op),
+    prefix~,
+    loc~,
+    phase=ExecutorBindingUpdateNeedReference(reference_request),
+  )
+  match begin_executor_binding_reference(interp, ctx, env, name, loc) {
+    ExecutorBindingReferenceSuspended(reference_request) => {
+      request.phase = ExecutorBindingUpdateNeedReference(reference_request)
+      ExecutorBindingUpdateSuspended(request)
+    }
+    ExecutorBindingReferenceCompleted(reference) =>
+      match begin_executor_binding_reference_get(interp, reference) {
+        ExecutorBindingReferenceGetSuspended(_) => {
+          request.phase = ExecutorBindingUpdateNeedGet(reference)
+          ExecutorBindingUpdateSuspended(request)
+        }
+        ExecutorBindingReferenceGetCompleted(current) if is_js_object(current) => {
+          request.phase = ExecutorBindingUpdateHaveCurrent(reference, current)
+          ExecutorBindingUpdateSuspended(request)
+        }
+        ExecutorBindingReferenceGetCompleted(current) =>
+          match reference.kind {
+            ResolvedBindingWithObject(_, _) => {
+              request.phase = ExecutorBindingUpdateHaveCurrent(
+                reference, current,
+              )
+              ExecutorBindingUpdateSuspended(request)
+            }
+            _ => {
+              let old_number = to_number(current, interp=Some(interp))
+              let next_value : Value = match request.operator {
+                ExecutorBindingIncrement => Number(old_number + 1.0)
+                ExecutorBindingDecrement => Number(old_number - 1.0)
+              }
+              let result = if request.prefix {
+                next_value
+              } else {
+                Number(old_number)
+              }
+              match
+                begin_executor_binding_reference_put(
+                  interp, reference, next_value,
+                ) {
+                ExecutorBindingReferencePutCompleted(value) => {
+                  ignore(value)
+                  ExecutorBindingUpdateCompleted(result)
+                }
+                ExecutorBindingReferencePutSuspended(_) => {
+                  request.phase = ExecutorBindingUpdateHaveCurrent(
+                    reference, current,
+                  )
+                  ExecutorBindingUpdateSuspended(request)
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+///|
+// Complete a binding update for synchronous runtime owners. Dynamic binding
+// resolution and object conversion use the same coordinator as bytecode, so
+// a suspended request keeps its one resolved reference through every child.
+fn Interpreter::run_binding_update_to_completion(
+  self : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match begin_executor_binding_update(self, ctx, env, name, op, prefix, loc) {
+    ExecutorBindingUpdateCompleted(value) => value
+    ExecutorBindingUpdateSuspended(request) => {
+      let frame = ExecutorBindingUpdateFrame(request)
+      match
+        self.run_executor_activation_coordinator(
+          frame as &ExecutorActivationFrame,
+        ) {
+        ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+          value
+        _ =>
+          raise @errors.InternalError(
+            message="binding update coordinator returned a pending activation",
+          )
+      }
+    }
+  }
+}
+
+///|
+pub fn executor_activation_binding_update_request(
+  request : ExecutorBindingUpdateRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationBindingUpdate(request)
+}
+
+///|
+priv struct ExecutorBindingUpdateFrame {
+  request : ExecutorBindingUpdateRequest
+}
+
+///|
+fn ExecutorBindingUpdateFrame::ExecutorBindingUpdateFrame(
+  request : ExecutorBindingUpdateRequest,
+) -> ExecutorBindingUpdateFrame {
+  { request, }
+}
+
+///|
+fn ExecutorBindingUpdateFrame::begin_put(
+  self : ExecutorBindingUpdateFrame,
+  interp : Interpreter,
+  reference : ResolvedBindingReference,
+  old_number : Double,
+) -> ExecutorActivationStep raise Error {
+  let next_value : Value = match self.request.operator {
+    ExecutorBindingIncrement => Number(old_number + 1.0)
+    ExecutorBindingDecrement => Number(old_number - 1.0)
+  }
+  let result = if self.request.prefix { next_value } else { Number(old_number) }
+  match begin_executor_binding_reference_put(interp, reference, next_value) {
+    ExecutorBindingReferencePutCompleted(value) => {
+      ignore(value)
+      self.request.phase = ExecutorBindingUpdateComplete(result)
+      ExecutorActivationNormal(result)
+    }
+    ExecutorBindingReferencePutSuspended(operation) => {
+      self.request.phase = ExecutorBindingUpdateAwaitPut(operation, result)
+      operation.step(interp)
+    }
+  }
+}
+
+///|
+fn ExecutorBindingUpdateFrame::begin_to_primitive(
+  self : ExecutorBindingUpdateFrame,
+  interp : Interpreter,
+  reference : ResolvedBindingReference,
+  current : Value,
+) -> ExecutorActivationStep raise Error {
+  let operation = ExecutorToPrimitiveOperation(
+    current,
+    ExecutorToPrimitiveNumber,
+    self.request.loc,
+  )
+  match operation.step(interp) {
+    ExecutorActivationNormal(value) =>
+      self.begin_put(interp, reference, to_number(value, interp=Some(interp)))
+    step => {
+      self.request.phase = ExecutorBindingUpdateAwaitToPrimitive(
+        reference, current, operation,
+      )
+      step
+    }
+  }
+}
+
+///|
+fn ExecutorBindingUpdateFrame::step_frame(
+  self : ExecutorBindingUpdateFrame,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match self.request.phase {
+    ExecutorBindingUpdateNeedReference(reference_request) => {
+      self.request.phase = ExecutorBindingUpdateAwaitReference
+      ExecutorActivationBindingReference(reference_request)
+    }
+    ExecutorBindingUpdateNeedGet(reference) =>
+      match begin_executor_binding_reference_get(interp, reference) {
+        ExecutorBindingReferenceGetCompleted(value) => {
+          self.request.phase = ExecutorBindingUpdateHaveCurrent(
+            reference, value,
+          )
+          self.step_frame(interp)
+        }
+        ExecutorBindingReferenceGetSuspended(step) => {
+          self.request.phase = ExecutorBindingUpdateAwaitGet(reference)
+          step
+        }
+      }
+    ExecutorBindingUpdateHaveCurrent(reference, current) =>
+      if is_js_object(current) {
+        self.begin_to_primitive(interp, reference, current)
+      } else {
+        self.begin_put(
+          interp,
+          reference,
+          to_number(current, interp=Some(interp)),
+        )
+      }
+    ExecutorBindingUpdateAwaitToPrimitive(reference, current, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) =>
+          self.begin_put(
+            interp,
+            reference,
+            to_number(value, interp=Some(interp)),
+          )
+        step => {
+          self.request.phase = ExecutorBindingUpdateAwaitToPrimitive(
+            reference, current, operation,
+          )
+          step
+        }
+      }
+    ExecutorBindingUpdateAwaitPut(operation, result) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(_) => {
+          self.request.phase = ExecutorBindingUpdateComplete(result)
+          ExecutorActivationNormal(result)
+        }
+        step => {
+          self.request.phase = ExecutorBindingUpdateAwaitPut(operation, result)
+          step
+        }
+      }
+    ExecutorBindingUpdateComplete(result) => ExecutorActivationNormal(result)
+    ExecutorBindingUpdateAwaitReference | ExecutorBindingUpdateAwaitGet(_) =>
+      raise @errors.InternalError(
+        message="binding update stepped while awaiting a child completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingUpdateFrame with fn step(
+  self,
+  interp,
+) {
+  self.step_frame(interp)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingUpdateFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(reference) =>
+      match self.request.phase {
+        ExecutorBindingUpdateAwaitReference =>
+          self.request.phase = ExecutorBindingUpdateNeedGet(reference)
+        _ =>
+          raise @errors.InternalError(
+            message="binding update received an unexpected binding reference",
+          )
+      }
+    ExecutorActivationCompletionNormal(value) =>
+      match self.request.phase {
+        ExecutorBindingUpdateAwaitGet(reference) =>
+          self.request.phase = ExecutorBindingUpdateHaveCurrent(
+            reference, value,
+          )
+        ExecutorBindingUpdateAwaitToPrimitive(_, _, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorBindingUpdateAwaitPut(operation, _) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorBindingUpdateNeedReference(_)
+        | ExecutorBindingUpdateAwaitReference
+        | ExecutorBindingUpdateNeedGet(_)
+        | ExecutorBindingUpdateHaveCurrent(_, _)
+        | ExecutorBindingUpdateComplete(_) =>
+          raise @errors.InternalError(
+            message="binding update received an unexpected child completion",
+          )
+      }
+  }
+}
+
+///|
 // A closed static property-update request. Runtime owns the resumable
 // get/convert/set pipeline and prefix/postfix result selection; executors only
 // provide the already-evaluated target and update syntax.
@@ -918,6 +1281,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildCopyDataProperties
   ExecutorChildBinding
   ExecutorChildBindingReference
+  ExecutorChildBindingUpdate
 }
 
 ///|
@@ -1505,6 +1869,7 @@ fn Interpreter::complete_executor_step(
     Some(ExecutorChildBinding) => executor_binding_completion(step)
     Some(ExecutorChildBindingReference) =>
       executor_binding_reference_completion(step)
+    Some(ExecutorChildBindingUpdate) => executor_binding_update_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
   self.complete_executor_child(stack, completion)
@@ -1535,6 +1900,22 @@ fn executor_binding_reference_completion(
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="binding reference frame completed without a reference",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_binding_update_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    _ =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="binding update completed with a pending activation",
         ),
       )
   }
@@ -1891,6 +2272,16 @@ fn Interpreter::handle_executor_activation_step(
       stack.push({
         frame: binding_frame as &ExecutorActivationFrame,
         completion: Some(ExecutorChildBindingReference),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
+    ExecutorActivationBindingUpdate(request) => {
+      let binding_update_frame = ExecutorBindingUpdateFrame(request)
+      stack.push({
+        frame: binding_update_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildBindingUpdate),
         cleanup: None,
         graph_cursor: None,
       })
@@ -2581,6 +2972,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertyGet(_)
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
+        | ExecutorActivationBindingUpdate(_)
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationCoercingRelational(_)
         | ExecutorActivationCoercingSubtraction(_)
@@ -2604,6 +2996,7 @@ fn executor_call_completion(
         | ExecutorActivationPropertyGet(_)
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
+        | ExecutorActivationBindingUpdate(_)
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationCoercingRelational(_)
         | ExecutorActivationCoercingSubtraction(_)
@@ -2637,6 +3030,7 @@ fn executor_construct_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
@@ -2671,6 +3065,7 @@ fn executor_property_get_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
@@ -2701,6 +3096,7 @@ fn executor_property_update_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
@@ -2731,6 +3127,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
@@ -2761,6 +3158,7 @@ fn executor_coercing_relational_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
@@ -2791,6 +3189,7 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
@@ -2821,6 +3220,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationPropertyGet(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)

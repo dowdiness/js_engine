@@ -352,7 +352,7 @@ priv enum Issue933ReferenceProbePhase {
   Issue933ReferenceProbeNeedInterveningGet
   Issue933ReferenceProbeAwaitInterveningGet
   Issue933ReferenceProbeNeedPut
-  Issue933ReferenceProbeAwaitPut
+  Issue933ReferenceProbeAwaitPut(ExecutorBindingReferencePutOperation)
   Issue933ReferenceProbeComplete(Value)
   Issue933ReferenceProbeDone
 }
@@ -466,16 +466,23 @@ impl ExecutorActivationFrame for Issue933ReferenceProbe with fn step(
           self.phase = Issue933ReferenceProbeComplete(value)
           ExecutorActivationContinue
         }
-        ExecutorBindingReferencePutSuspended(step) => {
-          self.phase = Issue933ReferenceProbeAwaitPut
-          step
+        ExecutorBindingReferencePutSuspended(operation) => {
+          self.phase = Issue933ReferenceProbeAwaitPut(operation)
+          operation.step(interp)
         }
       }
     }
-    Issue933ReferenceProbeAwaitPut =>
-      raise @errors.InternalError(
-        message="reference probe stepped while awaiting put",
-      )
+    Issue933ReferenceProbeAwaitPut(operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) => {
+          self.phase = Issue933ReferenceProbeComplete(value)
+          ExecutorActivationContinue
+        }
+        step => {
+          self.phase = Issue933ReferenceProbeAwaitPut(operation)
+          step
+        }
+      }
     Issue933ReferenceProbeComplete(value) => {
       self.phase = Issue933ReferenceProbeDone
       ExecutorActivationNormal(value)
@@ -513,8 +520,10 @@ impl ExecutorActivationFrame for Issue933ReferenceProbe with fn deliver_activati
         }
         Issue933ReferenceProbeAwaitInterveningGet =>
           self.phase = Issue933ReferenceProbeNeedPut
-        Issue933ReferenceProbeAwaitPut =>
-          self.phase = Issue933ReferenceProbeComplete(value)
+        Issue933ReferenceProbeAwaitPut(operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
         _ =>
           raise @errors.InternalError(
             message="reference probe received a value at the wrong phase",
@@ -678,7 +687,7 @@ test "issue 933 retains with reference across a real managed suspension" {
   assert_eq(probe.read_value.unwrap().to_string(), "42")
   assert_eq(control.active_depth(), 0L)
   json_inspect(events.val, content=[
-    "has", "get-unscopables", "has", "get-name", "intervening-get", "set",
+    "has", "get-unscopables", "has", "get-name", "intervening-get", "has", "set",
   ])
   match selected_target {
     Object(target) => assert_eq(target.bag.properties["name"].to_string(), "77")
@@ -1002,7 +1011,7 @@ test "issue 933 with Proxy resolves once and retains the selected base" {
   with_env.with_object = Some(proxy)
   let replacement = make_object(Map([]), Null, None, "Object", Map([]), true)
   let false_has_trap = make_native_func(name="falseHas", fn(_args) {
-    events.val.push("unexpected-has")
+    events.val.push("put-has")
     Bool(false)
   })
   let probe = Issue933ReferenceProbe(
@@ -1029,7 +1038,7 @@ test "issue 933 with Proxy resolves once and retains the selected base" {
   assert_eq(result.to_string(), "77")
   assert_eq(probe.read_value.unwrap().to_string(), "42")
   json_inspect(events.val, content=[
-    "has", "get-unscopables", "has", "get-name", "set",
+    "has", "get-unscopables", "has", "get-name", "put-has", "set",
   ])
   match target {
     Object(data) => assert_eq(data.bag.properties["name"].to_string(), "77")
@@ -1350,7 +1359,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
   let result = issue933_run_reference_probe(interp, probe)
   assert_eq(result.to_string(), "31")
   assert_eq(probe.read_value.unwrap().to_string(), "undefined")
-  assert_eq(has_count.val, 2)
+  assert_eq(has_count.val, 3)
   assert_eq(set_count.val, 1)
   match proxy {
     Proxy(data) =>

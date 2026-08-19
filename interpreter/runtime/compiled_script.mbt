@@ -100,29 +100,9 @@ pub fn Interpreter::update_compiled_name(
   name : String,
   op : @ast.UpdateOp,
   prefix : Bool,
-  _loc : @token.Loc,
+  loc : @token.Loc,
 ) -> Value raise Error {
-  @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
-  let old_value = env.get(name)
-  let old_number = to_number(old_value, interp=Some(self))
-  let next_value = match op {
-    Increment => Value::Number(old_number + 1.0)
-    Decrement => Value::Number(old_number - 1.0)
-  }
-  if self.is_immutable_global(name) {
-    if ctx.strict {
-      raise @errors.TypeError(
-        message="Cannot assign to read only property '\{name}' of object '[object global]'",
-      )
-    }
-  } else {
-    env.assign_with_strict(name, next_value, ctx.strict)
-  }
-  if prefix {
-    next_value
-  } else {
-    Value::Number(old_number)
-  }
+  self.run_binding_update_to_completion(ctx, env, name, op, prefix, loc)
 }
 
 ///|

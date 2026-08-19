@@ -206,7 +206,11 @@ pub const LEXER_LARGE_SRC : String =
 ///|
 // Canonical execution sources are owned by the neutral package so compiler
 // route tests and executable benchmarks consume identical strings.
-pub using @benchmark_workloads {FIBONACCI_SRC, FIBONACCI_SMALL_SRC}
+pub using @benchmark_workloads {
+  FIBONACCI_SRC,
+  FIBONACCI_SMALL_SRC,
+  PROPERTY_CHAIN_SRC,
+}
 
 ///|
 /// Minimal program used as the interpreter-startup guardrail.
@@ -218,28 +222,6 @@ pub using @benchmark_workloads {FIBONACCI_SRC, FIBONACCI_SMALL_SRC}
 ///
 /// Expected result: "2"
 pub const STARTUP_TINY_SRC : String = "1 + 1"
-
-///|
-/// Deep property chain access in a 10 000-iteration JS loop.
-///
-/// Category: Regression
-/// Exercises: get_property() with 5-level object literal nesting.
-///            Each JS loop body performs 5 property reads:
-///              obj.a → obj.a.b → obj.a.b.c → obj.a.b.c.d → obj.a.b.c.d.e
-///            Total: 50 000 get_property() calls per run().
-///
-/// This workload is deliberately chosen over prototype-chain access to
-/// isolate the own-property lookup hot path and keep the scenario stable.
-/// Prototype-chain depth and property descriptors are excluded by design.
-///
-/// Expected result: "420000"   (10000 * 42)
-pub const PROPERTY_CHAIN_SRC : String =
-  #|var obj = { a: { b: { c: { d: { e: 42 } } } } };
-  #|var sum = 0;
-  #|for (var i = 0; i < 10000; i++) {
-  #|  sum = sum + obj.a.b.c.d.e;
-  #|}
-  #|sum;
 
 ///|
 /// Array.prototype.map + Array.prototype.filter on 1 000 elements.
