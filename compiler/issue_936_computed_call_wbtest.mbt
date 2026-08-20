@@ -288,6 +288,71 @@ test "issue 936 does not replay base key or getter after suspension" {
 }
 
 ///|
+test "issue 936 rejects null computed call before key conversion" {
+  let source =
+    #|var keyCalls = 0;
+    #|var key = { [Symbol.toPrimitive]: function() { keyCalls = keyCalls + 1; return "method"; } };
+    #|null[key]();
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    ignore(run_executor_neutral_bytecode(interp, source))
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      match value {
+        Object(data) => assert_eq(data.class_name, "TypeError")
+        _ => fail("null computed call must throw a TypeError object")
+      }
+    Some(error) => fail("null computed call raised: " + error.to_string())
+    None => fail("null computed call must throw TypeError")
+  }
+  assert_eq(interp.global.get("keyCalls").to_string(), "0")
+}
+
+///|
+test "issue 936 rejects undefined computed call before key conversion" {
+  let source =
+    #|var keyCalls = 0;
+    #|var key = { [Symbol.toPrimitive]: function() { keyCalls = keyCalls + 1; return "method"; } };
+    #|undefined[key]();
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    ignore(run_executor_neutral_bytecode(interp, source))
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      match value {
+        Object(data) => assert_eq(data.class_name, "TypeError")
+        _ => fail("undefined computed call must throw a TypeError object")
+      }
+    Some(error) => fail("undefined computed call raised: " + error.to_string())
+    None => fail("undefined computed call must throw TypeError")
+  }
+  assert_eq(interp.global.get("keyCalls").to_string(), "0")
+}
+
+///|
+test "issue 936 boxes primitive computed-call bases but preserves receiver" {
+  let source =
+    #|var key = "issue936Receiver";
+    #|Number.prototype.issue936Receiver = function() { "use strict"; return typeof this + ":" + this.valueOf(); };
+    #|(1)[key]();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "number:1")
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 936 propagates revoked Proxy computed call errors" {
   let source =
     #|var target = { method: function() { return 7; } };

@@ -268,35 +268,42 @@ pub fn begin_executor_computed_call_preparation(
   raw_key : Value,
   loc : @token.Loc,
 ) -> ExecutorComputedCallPreparationStart raise Error {
-  match executor_computed_call_array_fast_path(target, raw_key) {
-    Some(callee) => ExecutorComputedCallPreparationCompleted(callee)
-    None =>
-      if is_js_object(raw_key) {
-        ExecutorComputedCallPreparationSuspended(
-          ExecutorComputedCallPreparationRequest(
-            target~,
-            raw_key=Some(raw_key),
-            sealed_key=None,
-            loc~,
-          ),
-        )
-      } else {
-        let sealed_key = executor_property_get_key_from_value(
-          executor_to_property_key_primitive(raw_key),
-        )
-        ExecutorComputedCallPreparationSuspended(
-          ExecutorComputedCallPreparationRequest(
-            target~,
-            raw_key=None,
-            sealed_key=Some(
-              match sealed_key {
-                ExecutorStringPropertyGetKey(name) => String_(name)
-                ExecutorSymbolPropertyGetKey(symbol) => Symbol(symbol)
-              },
-            ),
-            loc~,
-          ),
-        )
+  match target {
+    Null | Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ =>
+      match executor_computed_call_array_fast_path(target, raw_key) {
+        Some(callee) => ExecutorComputedCallPreparationCompleted(callee)
+        None =>
+          if is_js_object(raw_key) {
+            ExecutorComputedCallPreparationSuspended(
+              ExecutorComputedCallPreparationRequest(
+                target~,
+                raw_key=Some(raw_key),
+                sealed_key=None,
+                loc~,
+              ),
+            )
+          } else {
+            let sealed_key = executor_property_get_key_from_value(
+              executor_to_property_key_primitive(raw_key),
+            )
+            ExecutorComputedCallPreparationSuspended(
+              ExecutorComputedCallPreparationRequest(
+                target~,
+                raw_key=None,
+                sealed_key=Some(
+                  match sealed_key {
+                    ExecutorStringPropertyGetKey(name) => String_(name)
+                    ExecutorSymbolPropertyGetKey(symbol) => Symbol(symbol)
+                  },
+                ),
+                loc~,
+              ),
+            )
+          }
       }
   }
 }
@@ -335,6 +342,7 @@ priv enum ExecutorComputedCallPreparationPhase {
 priv struct ExecutorComputedCallPreparationFrame {
   request : ExecutorComputedCallPreparationRequest
   mut phase : ExecutorComputedCallPreparationPhase
+  mut lookup_target : Value?
 }
 
 ///|
@@ -353,17 +361,37 @@ fn ExecutorComputedCallPreparationFrame::ExecutorComputedCallPreparationFrame(
       )
     _ => ExecutorComputedCallPreparationComplete(Undefined)
   }
-  { request, phase }
+  { request, phase, lookup_target: None }
+}
+
+///|
+fn ExecutorComputedCallPreparationFrame::ensure_lookup_target(
+  self : ExecutorComputedCallPreparationFrame,
+  interp : Interpreter,
+) -> Value {
+  match self.lookup_target {
+    Some(target) => target
+    None => {
+      let target = box_primitive_call_this(
+        self.request.target,
+        interp.realm_state,
+      )
+      self.lookup_target = Some(target)
+      target
+    }
+  }
 }
 
 ///|
 fn ExecutorComputedCallPreparationFrame::begin_property_get(
   self : ExecutorComputedCallPreparationFrame,
   key : ExecutorPropertyGetKey,
+  interp : Interpreter,
 ) -> ExecutorActivationStep {
   self.phase = ExecutorComputedCallPreparationAwaitPropertyGet
+  let lookup_target = self.ensure_lookup_target(interp)
   executor_activation_property_get_with_receiver(
-    self.request.target,
+    lookup_target,
     key,
     self.request.target,
     self.request.loc,
@@ -376,12 +404,18 @@ fn ExecutorComputedCallPreparationFrame::step_frame(
   self : ExecutorComputedCallPreparationFrame,
   interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
+  // RequireObjectCoercible and ToObject precede ToPropertyKey. Keeping the
+  // boxed lookup target on the frame also preserves it across key suspension.
+  let _ = self.ensure_lookup_target(interp)
   match self.phase {
     ExecutorComputedCallPreparationNeedKey(raw_key) => {
       let operation = ExecutorToPropertyKeyOperation(raw_key, self.request.loc)
       match operation.step(interp) {
         ExecutorActivationNormal(key) =>
-          self.begin_property_get(executor_property_get_key_from_value(key))
+          self.begin_property_get(
+            executor_property_get_key_from_value(key),
+            interp,
+          )
         step => {
           self.phase = ExecutorComputedCallPreparationAwaitKey(operation)
           step
@@ -391,14 +425,17 @@ fn ExecutorComputedCallPreparationFrame::step_frame(
     ExecutorComputedCallPreparationAwaitKey(operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(key) =>
-          self.begin_property_get(executor_property_get_key_from_value(key))
+          self.begin_property_get(
+            executor_property_get_key_from_value(key),
+            interp,
+          )
         step => {
           self.phase = ExecutorComputedCallPreparationAwaitKey(operation)
           step
         }
       }
     ExecutorComputedCallPreparationNeedPropertyGet(key) =>
-      self.begin_property_get(key)
+      self.begin_property_get(key, interp)
     ExecutorComputedCallPreparationAwaitPropertyGet =>
       raise @errors.InternalError(
         message="computed call preparation stepped while awaiting property get",
