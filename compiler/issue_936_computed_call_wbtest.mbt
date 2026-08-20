@@ -43,6 +43,75 @@ test "issue 936 graduates the unchanged closure factory benchmark" {
 }
 
 ///|
+test "issue 936 keeps independently captured counter cells" {
+  let source =
+    #|function makeCounter(start) {
+    #|  var count = start;
+    #|  return function() {
+    #|    count = count + 1;
+    #|    return count;
+    #|  };
+    #|}
+    #|var first = makeCounter(0);
+    #|var second = makeCounter(1);
+    #|var third = makeCounter(10);
+    #|first() + ":" + second() + ":" + third();
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "1:2:11")
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 936 keeps an old counter closure callable after later eval" {
+  let interp = @interpreter.new_interpreter()
+  let initial_source =
+    #|function makeCounter(start) {
+    #|  var count = start;
+    #|  return function() {
+    #|    count = count + 1;
+    #|    return count;
+    #|  };
+    #|}
+    #|var oldCounter = makeCounter(2);
+  let (_, initial_evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse(initial_source).stmts,
+  )
+  let initial_start_count = candidate_started_executors_for_wb(initial_evidence).length()
+  ignore(
+    run_candidate_program_with_evidence(
+      interp,
+      @parser.parse("var later = 7;").stmts,
+    ),
+  )
+  let (value, call_evidence) = run_candidate_program_with_evidence(
+    interp,
+    @parser.parse("oldCounter();").stmts,
+  )
+  assert_eq(value.to_string(), "3")
+  assert_eq(call_evidence.val.summary.tree_starts, 0)
+  assert_true(call_evidence.val.summary.bytecode_starts > 0)
+  assert_eq(call_evidence.val.summary.fallback_violations, 0)
+  assert_eq(call_evidence.val.summary.replay_violations, 0)
+  assert_eq(call_evidence.val.summary.active_activations, 0)
+  let initial_starts = candidate_started_executors_for_wb(initial_evidence)
+  assert_eq(initial_starts.length(), initial_start_count + 1)
+  match initial_starts[initial_starts.length() - 1] {
+    CandidateBytecodeExecutor => ()
+    CandidateTreeWalkerExecutor =>
+      fail("old counter closure did not start through bytecode")
+  }
+  assert_eq(initial_evidence.val.summary.tree_starts, 0)
+  assert_eq(initial_evidence.val.summary.fallback_violations, 0)
+  assert_eq(initial_evidence.val.summary.replay_violations, 0)
+  assert_eq(initial_evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 936 preserves computed call receiver identity" {
   let source =
     #|var functions = [function() { return this === functions; }];
