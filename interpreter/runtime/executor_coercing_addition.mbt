@@ -244,6 +244,17 @@ fn finish_executor_to_property_key(
 }
 
 ///|
+// Primitive ToPropertyKey conversion has no guest-capable step. Computed
+// call preparation uses this same runtime owner to seal a primitive key before
+// deciding whether property lookup itself needs a managed request.
+fn executor_to_property_key_primitive(value : Value) -> Value raise Error {
+  match value {
+    Symbol(_) => value
+    _ => String_(to_js_string(value))
+  }
+}
+
+///|
 fn ExecutorToPropertyKeyOperation::step(
   self : ExecutorToPropertyKeyOperation,
   interp : Interpreter,

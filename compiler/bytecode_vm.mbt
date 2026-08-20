@@ -628,6 +628,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property get",
       )
+    @runtime.ExecutorActivationComputedCallPreparation(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending computed call preparation",
+      )
     @runtime.ExecutorActivationPropertySet(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property set",
@@ -1580,10 +1584,20 @@ fn BytecodeFrame::step_bytecode(
       PrepareComputedCall(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        frame.pending_activation_result = Some(PushReceiverAndValue(obj))
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_prepare_computed_call(obj, key, loc),
-        )
+        match @runtime.begin_executor_computed_call_preparation(obj, key, loc) {
+          @runtime.ExecutorComputedCallPreparationCompleted(callee) => {
+            stack.push(obj)
+            stack.push(callee)
+          }
+          @runtime.ExecutorComputedCallPreparationSuspended(request) => {
+            frame.pending_activation_result = Some(PushReceiverAndValue(obj))
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_computed_call_preparation_request(
+                request,
+              ),
+            )
+          }
+        }
       }
       PrepareSuperPropertyCall(prop, loc) => {
         let (receiver, callee) = interp.eval_super_property_call_reference(

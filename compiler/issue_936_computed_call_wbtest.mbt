@@ -188,6 +188,37 @@ test "issue 936 preserves inherited and Proxy computed call lookup" {
 }
 
 ///|
+test "issue 936 preserves the original base for callable Proxy thisArg" {
+  let source =
+    #|var base = {};
+    #|var target = function() { return 0; };
+    #|var callable = new Proxy(target, { apply: function(_target, thisArg, _args) { return thisArg === base; } });
+    #|base.method = callable;
+    #|base["method"]();
+  let value = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  assert_eq(value.to_string(), "true")
+}
+
+///|
+test "issue 936 does not replay base key or getter after suspension" {
+  let source =
+    #|var keyCalls = 0;
+    #|var getCalls = 0;
+    #|var receiver = {};
+    #|var key = { [Symbol.toPrimitive]: function() { keyCalls = keyCalls + 1; receiver.changed = 1; return "method"; } };
+    #|Object.defineProperty(receiver, "method", { get: function() { getCalls = getCalls + 1; receiver.changed = 2; return function() { return receiver.changed; }; } });
+    #|receiver[key]() + ":" + keyCalls + ":" + getCalls;
+  let value = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  assert_eq(value.to_string(), "2:1:1")
+}
+
+///|
 test "issue 936 propagates revoked Proxy computed call errors" {
   let source =
     #|var target = { method: function() { return 7; } };
