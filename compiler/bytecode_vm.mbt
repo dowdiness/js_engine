@@ -1580,20 +1580,10 @@ fn BytecodeFrame::step_bytecode(
       PrepareComputedCall(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        match
-          @runtime.executor_activation_computed_property_get_if_admitted(
-            obj, key, loc,
-          ) {
-          Some(step) => {
-            frame.pending_activation_result = Some(PushReceiverAndValue(obj))
-            return BytecodeFrameSuspended(step)
-          }
-          None => {
-            let callee = interp.get_computed_property(obj, key, loc)
-            stack.push(obj)
-            stack.push(callee)
-          }
-        }
+        frame.pending_activation_result = Some(PushReceiverAndValue(obj))
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_prepare_computed_call(obj, key, loc),
+        )
       }
       PrepareSuperPropertyCall(prop, loc) => {
         let (receiver, callee) = interp.eval_super_property_call_reference(
