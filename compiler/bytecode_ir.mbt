@@ -640,11 +640,7 @@ fn bytecode_instruction_contract(
         [MemberAccess, PropertyKey],
       )
     PrepareComputedCall(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ConditionalComputedCall),
-        [MemberAccess, PropertyKey],
-      )
+      bytecode_contract(true, ManagedSuspension, [MemberAccess, PropertyKey])
     AssignDestructure(_) =>
       bytecode_contract(
         true,

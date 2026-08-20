@@ -49,6 +49,8 @@ pub fn begin_executor_coercing_relational(Value, Value, @token.Loc, ExecutorRela
 
 pub fn begin_executor_coercing_subtraction(Value, Value, @token.Loc) -> ExecutorCoercingSubtractionStart raise
 
+pub fn begin_executor_computed_call_preparation(Value, Value, @token.Loc) -> ExecutorComputedCallPreparationStart raise
+
 pub fn begin_executor_copy_data_properties(Interpreter, Value, Value, Array[Value], @token.Loc) -> ExecutorCopyDataPropertiesStart
 
 pub fn begin_executor_iterable_spread(Value, @token.Loc) -> ExecutorIterableSpreadStart
@@ -144,6 +146,8 @@ pub fn executor_activation_coercing_subtraction_request(ExecutorCoercingSubtract
 pub fn executor_activation_completion_abrupt(Error) -> ExecutorActivationCompletion
 
 pub fn executor_activation_completion_normal(Value) -> ExecutorActivationCompletion
+
+pub fn executor_activation_computed_call_preparation_request(ExecutorComputedCallPreparationRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_computed_property_get_if_admitted(Value, Value, @token.Loc) -> ExecutorActivationStep?
 
@@ -732,6 +736,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
+  ExecutorActivationComputedCallPreparation(ExecutorComputedCallPreparationRequest)
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
@@ -815,6 +820,15 @@ pub struct ExecutorCoercingSubtractionRequest {
 pub enum ExecutorCoercingSubtractionStart {
   ExecutorCoercingSubtractionCompleted(Value)
   ExecutorCoercingSubtractionSuspended(ExecutorCoercingSubtractionRequest)
+}
+
+pub struct ExecutorComputedCallPreparationRequest {
+  // private fields
+}
+
+pub enum ExecutorComputedCallPreparationStart {
+  ExecutorComputedCallPreparationCompleted(Value)
+  ExecutorComputedCallPreparationSuspended(ExecutorComputedCallPreparationRequest)
 }
 
 pub struct ExecutorConstructRequest {
@@ -1467,4 +1481,3 @@ pub(open) trait ExecutorActivationFrame {
 pub(open) trait ExecutorCode {
   fn start(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
 }
-

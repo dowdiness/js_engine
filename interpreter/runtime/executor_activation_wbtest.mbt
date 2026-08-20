@@ -456,6 +456,23 @@ impl ExecutorActivationFrame for ExecutorActivationCoercingAdditionRootFrame wit
 }
 
 ///|
+test "issue 936 ordinary array numeric computed call completes synchronously" {
+  let callee = make_native_func(name="array element", _args => Number(7.0))
+  let array = make_array([callee])
+  match
+    begin_executor_computed_call_preparation(
+      array,
+      Number(0.0),
+      @token.Loc::default(),
+    ) {
+    ExecutorComputedCallPreparationCompleted(value) =>
+      assert_true(physical_equal(value, callee))
+    ExecutorComputedCallPreparationSuspended(_) =>
+      fail("ordinary Array + numeric key must not create a child activation")
+  }
+}
+
+///|
 impl ExecutorActivationFrame for ExecutorActivationCoercingAdditionRootFrame with fn deliver_activation_completion(
   self,
   completion,

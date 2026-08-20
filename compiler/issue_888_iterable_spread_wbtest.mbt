@@ -41,6 +41,35 @@ fn issue888_assert_root_bytecode_for_wb(
 }
 
 ///|
+fn issue888_assert_root_treewalker_for_wb(
+  evidence : Ref[CandidateRouteEvidence],
+) -> Unit raise Error {
+  let root_id = match evidence.val.events[0] {
+    CandidateRoutePreparedEvent(prepared) => prepared.activation_id
+    _ => fail("candidate evidence must begin with root preparation")
+  }
+  let mut prepared_treewalker = false
+  let mut started_treewalker = false
+  for event in evidence.val.events {
+    match event {
+      CandidateRoutePreparedEvent(prepared) if prepared.activation_id == root_id =>
+        match prepared.decision {
+          UseTreeWalker(_) => prepared_treewalker = true
+          UseBytecode(_) => fail("issue 888 root selected Bytecode")
+        }
+      CandidateRouteStartedEvent(started) if started.activation_id == root_id =>
+        match started.executor {
+          CandidateTreeWalkerExecutor => started_treewalker = true
+          CandidateBytecodeExecutor => fail("issue 888 root started Bytecode")
+        }
+      _ => ()
+    }
+  }
+  assert_true(prepared_treewalker)
+  assert_true(started_treewalker)
+}
+
+///|
 test "RED issue 888 candidate array spread must start bytecode" {
   let source =
     #|var xs = [0, ...[1, 2], 3];
@@ -147,7 +176,10 @@ test "RED issue 888 candidate callable Proxy iterator keeps route hygiene" {
     #|[...iterable].join(",") + ":" + calls;
   let (value, evidence) = issue888_candidate_route_for_wb(source)
   assert_eq(value.to_string(), "1,2:1")
-  assert_eq(evidence.val.summary.bytecode_starts, 0)
+  issue888_assert_root_treewalker_for_wb(evidence)
+  guard evidence.val.summary.bytecode_starts > 0 else {
+    fail("nested array iterator callback must start Bytecode")
+  }
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)

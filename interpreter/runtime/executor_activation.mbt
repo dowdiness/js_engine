@@ -14,6 +14,9 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
+  ExecutorActivationComputedCallPreparation(
+    ExecutorComputedCallPreparationRequest
+  )
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
@@ -194,6 +197,12 @@ pub fn executor_activation_copy_data_properties_request(
 }
 
 ///|
+priv enum ExecutorPropertyGetKey {
+  ExecutorStringPropertyGetKey(String)
+  ExecutorSymbolPropertyGetKey(SymbolData)
+}
+
+///|
 // A closed property-get request. Runtime owns property lookup and accessor
 // admission; executors only provide an already-evaluated target and a sealed
 // string or symbol key.
@@ -207,9 +216,270 @@ pub struct ExecutorPropertyGetRequest {
 }
 
 ///|
-priv enum ExecutorPropertyGetKey {
-  ExecutorStringPropertyGetKey(String)
-  ExecutorSymbolPropertyGetKey(SymbolData)
+// A closed computed-call preparation request. Runtime owns ToPropertyKey and
+// the receiver-aware [[Get]]; the VM supplies only already-evaluated values.
+pub struct ExecutorComputedCallPreparationRequest {
+  priv target : Value
+  priv raw_key : Value?
+  priv sealed_key : Value?
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorComputedCallPreparationRequest::ExecutorComputedCallPreparationRequest(
+  target~ : Value,
+  raw_key~ : Value?,
+  sealed_key~ : Value?,
+  loc~ : @token.Loc,
+) -> ExecutorComputedCallPreparationRequest {
+  { target, raw_key, sealed_key, loc }
+}
+
+///|
+pub enum ExecutorComputedCallPreparationStart {
+  ExecutorComputedCallPreparationCompleted(Value)
+  ExecutorComputedCallPreparationSuspended(
+    ExecutorComputedCallPreparationRequest
+  )
+}
+
+///|
+fn executor_computed_call_array_fast_path(
+  target : Value,
+  raw_key : Value,
+) -> Value? {
+  match (target, raw_key) {
+    (Array(data), Number(index)) =>
+      if index >= 0.0 && index == index.floor() && index <= 2147483647.0 {
+        match array_index_lookup_result(data, index.to_int()) {
+          Present(callee) if is_callable(callee) => Some(callee)
+          _ => None
+        }
+      } else {
+        None
+      }
+    _ => None
+  }
+}
+
+///|
+pub fn begin_executor_computed_call_preparation(
+  target : Value,
+  raw_key : Value,
+  loc : @token.Loc,
+) -> ExecutorComputedCallPreparationStart raise Error {
+  match target {
+    Null | Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ =>
+      match executor_computed_call_array_fast_path(target, raw_key) {
+        Some(callee) => ExecutorComputedCallPreparationCompleted(callee)
+        None =>
+          if is_js_object(raw_key) {
+            ExecutorComputedCallPreparationSuspended(
+              ExecutorComputedCallPreparationRequest(
+                target~,
+                raw_key=Some(raw_key),
+                sealed_key=None,
+                loc~,
+              ),
+            )
+          } else {
+            let sealed_key = executor_property_get_key_from_value(
+              executor_to_property_key_primitive(raw_key),
+            )
+            ExecutorComputedCallPreparationSuspended(
+              ExecutorComputedCallPreparationRequest(
+                target~,
+                raw_key=None,
+                sealed_key=Some(
+                  match sealed_key {
+                    ExecutorStringPropertyGetKey(name) => String_(name)
+                    ExecutorSymbolPropertyGetKey(symbol) => Symbol(symbol)
+                  },
+                ),
+                loc~,
+              ),
+            )
+          }
+      }
+  }
+}
+
+///|
+pub fn executor_activation_computed_call_preparation_request(
+  request : ExecutorComputedCallPreparationRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationComputedCallPreparation(request)
+}
+
+///|
+fn executor_property_get_key_from_value(
+  key : Value,
+) -> ExecutorPropertyGetKey raise Error {
+  match key {
+    String_(property_name) => ExecutorStringPropertyGetKey(property_name)
+    Symbol(symbol) => ExecutorSymbolPropertyGetKey(symbol)
+    _ =>
+      raise @errors.InternalError(
+        message="computed property key operation returned a non-key value",
+      )
+  }
+}
+
+///|
+priv enum ExecutorComputedCallPreparationPhase {
+  ExecutorComputedCallPreparationNeedKey(Value)
+  ExecutorComputedCallPreparationAwaitKey(ExecutorToPropertyKeyOperation)
+  ExecutorComputedCallPreparationNeedPropertyGet(ExecutorPropertyGetKey)
+  ExecutorComputedCallPreparationAwaitPropertyGet
+  ExecutorComputedCallPreparationComplete(Value)
+}
+
+///|
+priv struct ExecutorComputedCallPreparationFrame {
+  request : ExecutorComputedCallPreparationRequest
+  mut phase : ExecutorComputedCallPreparationPhase
+  mut lookup_target : Value?
+}
+
+///|
+fn ExecutorComputedCallPreparationFrame::ExecutorComputedCallPreparationFrame(
+  request : ExecutorComputedCallPreparationRequest,
+) -> ExecutorComputedCallPreparationFrame {
+  let phase = match (request.raw_key, request.sealed_key) {
+    (Some(raw_key), None) => ExecutorComputedCallPreparationNeedKey(raw_key)
+    (None, Some(String_(property_name))) =>
+      ExecutorComputedCallPreparationNeedPropertyGet(
+        ExecutorStringPropertyGetKey(property_name),
+      )
+    (None, Some(Symbol(symbol))) =>
+      ExecutorComputedCallPreparationNeedPropertyGet(
+        ExecutorSymbolPropertyGetKey(symbol),
+      )
+    _ => ExecutorComputedCallPreparationComplete(Undefined)
+  }
+  { request, phase, lookup_target: None }
+}
+
+///|
+fn ExecutorComputedCallPreparationFrame::ensure_lookup_target(
+  self : ExecutorComputedCallPreparationFrame,
+  interp : Interpreter,
+) -> Value {
+  match self.lookup_target {
+    Some(target) => target
+    None => {
+      let target = box_primitive_call_this(
+        self.request.target,
+        interp.realm_state,
+      )
+      self.lookup_target = Some(target)
+      target
+    }
+  }
+}
+
+///|
+fn ExecutorComputedCallPreparationFrame::begin_property_get(
+  self : ExecutorComputedCallPreparationFrame,
+  key : ExecutorPropertyGetKey,
+  interp : Interpreter,
+) -> ExecutorActivationStep {
+  self.phase = ExecutorComputedCallPreparationAwaitPropertyGet
+  let lookup_target = self.ensure_lookup_target(interp)
+  executor_activation_property_get_with_receiver(
+    lookup_target,
+    key,
+    self.request.target,
+    self.request.loc,
+    true,
+  )
+}
+
+///|
+fn ExecutorComputedCallPreparationFrame::step_frame(
+  self : ExecutorComputedCallPreparationFrame,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  // RequireObjectCoercible and ToObject precede ToPropertyKey. Keeping the
+  // boxed lookup target on the frame also preserves it across key suspension.
+  let _ = self.ensure_lookup_target(interp)
+  match self.phase {
+    ExecutorComputedCallPreparationNeedKey(raw_key) => {
+      let operation = ExecutorToPropertyKeyOperation(raw_key, self.request.loc)
+      match operation.step(interp) {
+        ExecutorActivationNormal(key) =>
+          self.begin_property_get(
+            executor_property_get_key_from_value(key),
+            interp,
+          )
+        step => {
+          self.phase = ExecutorComputedCallPreparationAwaitKey(operation)
+          step
+        }
+      }
+    }
+    ExecutorComputedCallPreparationAwaitKey(operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(key) =>
+          self.begin_property_get(
+            executor_property_get_key_from_value(key),
+            interp,
+          )
+        step => {
+          self.phase = ExecutorComputedCallPreparationAwaitKey(operation)
+          step
+        }
+      }
+    ExecutorComputedCallPreparationNeedPropertyGet(key) =>
+      self.begin_property_get(key, interp)
+    ExecutorComputedCallPreparationAwaitPropertyGet =>
+      raise @errors.InternalError(
+        message="computed call preparation stepped while awaiting property get",
+      )
+    ExecutorComputedCallPreparationComplete(value) =>
+      ExecutorActivationNormal(value)
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorComputedCallPreparationFrame with fn step(
+  self,
+  interp,
+) {
+  self.step_frame(interp)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorComputedCallPreparationFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="computed call preparation received a binding reference completion",
+      )
+    ExecutorActivationCompletionNormal(value) =>
+      match self.phase {
+        ExecutorComputedCallPreparationAwaitKey(operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorComputedCallPreparationAwaitPropertyGet =>
+          self.phase = ExecutorComputedCallPreparationComplete(value)
+        ExecutorComputedCallPreparationNeedKey(_)
+        | ExecutorComputedCallPreparationNeedPropertyGet(_)
+        | ExecutorComputedCallPreparationComplete(_) =>
+          raise @errors.InternalError(
+            message="computed call preparation received an unexpected child completion",
+          )
+      }
+  }
 }
 
 ///|
@@ -1271,6 +1541,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildArrayForEach
   ExecutorChildConstruct(Value)
   ExecutorChildPropertyGet
+  ExecutorChildComputedCallPreparation
   ExecutorChildPropertySet(Value)
   ExecutorChildPropertyUpdate
   ExecutorChildCoercingAddition
@@ -1850,6 +2121,8 @@ fn Interpreter::complete_executor_step(
         executor_construct_completion(step, instance),
       )
     Some(ExecutorChildPropertyGet) => executor_property_get_completion(step)
+    Some(ExecutorChildComputedCallPreparation) =>
+      executor_property_get_completion(step)
     Some(ExecutorChildPropertySet(value)) =>
       executor_property_set_completion(value)
     Some(ExecutorChildPropertyUpdate) =>
@@ -2441,6 +2714,16 @@ fn Interpreter::handle_executor_activation_step(
       deliver_executor_activation_request(frame, requested)
       None
     }
+    ExecutorActivationComputedCallPreparation(request) => {
+      let preparation_frame = ExecutorComputedCallPreparationFrame(request)
+      stack.push({
+        frame: preparation_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildComputedCallPreparation),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
     ExecutorActivationPropertyGet(request) => {
       let requested : Result[ExecutorActivationRequestOutcome, Error] = Ok(
         {
@@ -2970,6 +3253,7 @@ fn executor_call_completion(
         ExecutorActivationCall(_)
         | ExecutorActivationConstruct(_)
         | ExecutorActivationPropertyGet(_)
+        | ExecutorActivationComputedCallPreparation(_)
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationBindingUpdate(_)
@@ -2994,6 +3278,7 @@ fn executor_call_completion(
         ExecutorActivationCall(_)
         | ExecutorActivationConstruct(_)
         | ExecutorActivationPropertyGet(_)
+        | ExecutorActivationComputedCallPreparation(_)
         | ExecutorActivationPropertySet(_)
         | ExecutorActivationPropertyUpdate(_)
         | ExecutorActivationBindingUpdate(_)
@@ -3028,6 +3313,7 @@ fn executor_construct_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
@@ -3063,6 +3349,7 @@ fn executor_property_get_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
@@ -3094,6 +3381,7 @@ fn executor_property_update_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
@@ -3125,6 +3413,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
@@ -3156,6 +3445,7 @@ fn executor_coercing_relational_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
@@ -3187,6 +3477,7 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
@@ -3218,6 +3509,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationCall(_)
     | ExecutorActivationConstruct(_)
     | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
     | ExecutorActivationPropertySet(_)
     | ExecutorActivationPropertyUpdate(_)
     | ExecutorActivationBindingUpdate(_)
