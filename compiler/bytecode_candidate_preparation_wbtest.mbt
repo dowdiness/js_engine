@@ -153,7 +153,7 @@ test "candidate tree separates parent and child outcomes" {
 test "candidate selection keeps activation unsupported local to a function" {
   let source =
     #|function parent() { return 1; }
-    #|function child() { return 1 * 2; }
+    #|function child() { return 1 ** 2; }
   let root = (prepare_candidate_program(@parser.parse(source).stmts) catch {
       error => {
         debug_inspect(error.to_string())
@@ -184,7 +184,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
-    #|  function child() { return 1 * 2; }
+    #|  function child() { return 1 ** 2; }
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
@@ -210,7 +210,7 @@ test "candidate nested eligible parent keeps activation fallback local" {
 
 ///|
 test "candidate root selection distinguishes activation fallback" {
-  let program = prepare_candidate_program(@parser.parse("1 * 2;").stmts)
+  let program = prepare_candidate_program(@parser.parse("1 ** 2;").stmts)
   match program.root.selection {
     UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
       match unsupported.reason {
@@ -221,6 +221,135 @@ test "candidate root selection distinguishes activation fallback" {
       fail("root activation fallback was mislabeled as lowering unsupported")
     UseBytecode(_) => fail("activation-unsupported root selected bytecode")
   }
+}
+
+///|
+test "RED: plain multiplication selects bytecode" {
+  let program = prepare_candidate_program(@parser.parse("1 * 2;").stmts)
+  match program.root.selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("plain multiplication must select bytecode")
+  }
+}
+
+///|
+fn assert_plain_multiplicative_route_for_wb(
+  source : String,
+  expected : String,
+) -> Unit raise Error {
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) =>
+      fail("plain multiplicative operation lost managed disposition")
+    UseTreeWalker(_) =>
+      fail("plain multiplicative operation selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), expected)
+  assert_eq(evidence.val.summary.bytecode_starts, 1)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate plain multiplicative family selects bytecode" {
+  assert_plain_multiplicative_route_for_wb("2 * 3;", "6")
+  assert_plain_multiplicative_route_for_wb("6 / 2;", "3")
+  assert_plain_multiplicative_route_for_wb("5 % 2;", "1")
+}
+
+///|
+test "candidate multiplicative compound and sibling operators stay tree-walker" {
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 2; value *= 3; value;", "6",
+  )
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 6; value /= 2; value;", "3",
+  )
+  assert_candidate_tree_route_evidence_for_wb(
+    "var value = 5; value %= 2; value;", "1",
+  )
+  assert_candidate_tree_route_evidence_for_wb("2 ** 3;", "8")
+  assert_candidate_tree_route_evidence_for_wb("5 & 3;", "1")
+}
+
+///|
+test "candidate object construction graduates through multiplicative family" {
+  let program = prepare_candidate_program(
+    @parser.parse(@benchmark_workloads.OBJECT_CONSTRUCTION_SRC).stmts,
+  )
+  match program.root.selection {
+    UseBytecode(ManagedSuspension) => ()
+    UseBytecode(_) => fail("object construction lost managed root disposition")
+    UseTreeWalker(_) => fail("object construction selected Tree-walker")
+  }
+  let (value, evidence) = candidate_run_with_summary_for_wb(
+    @benchmark_workloads.OBJECT_CONSTRUCTION_SRC,
+  )
+  assert_eq(value.to_string(), "1000")
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+  guard evidence.val.summary.bytecode_starts > 0 else {
+    fail("object construction did not start a Bytecode activation")
+  }
+}
+
+///|
+test "candidate object construction keeps exact small multiplicative shape" {
+  let source =
+    #|var objects = [];
+    #|for (var i = 0; i < 2; i++) {
+    #|  objects.push({
+    #|    id: i,
+    #|    value: i * 2,
+    #|    label: "item" + i,
+    #|    active: true,
+    #|    score: i * i
+    #|  });
+    #|}
+    #|objects.length;
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  let bytecode = match program.root.bytecode {
+    Some(bytecode) => bytecode.function.code
+    None => fail("small object construction lost retained Bytecode")
+  }
+  let multiply_count = bytecode
+    .filter(instruction => {
+      match instruction {
+        BinaryOp(Mul, BinaryExpression, _) => true
+        _ => false
+      }
+    })
+    .length()
+  let push_count = bytecode
+    .filter(instruction => {
+      match instruction {
+        PreparePlainPropertyCall("push", _) => true
+        _ => false
+      }
+    })
+    .length()
+  let mut property_count = 0
+  for instruction in bytecode {
+    match instruction {
+      MakeObject(keys) => property_count += keys.length()
+      _ => ()
+    }
+  }
+  assert_eq(multiply_count, 2)
+  assert_eq(push_count, 1)
+  assert_eq(property_count, 5)
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "2")
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
 }
 
 ///|

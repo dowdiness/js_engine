@@ -652,6 +652,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing subtraction",
       )
+    @runtime.ExecutorActivationCoercingMultiplicative(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending coercing multiplicative operation",
+      )
     @runtime.ExecutorActivationPropertyDelete(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property delete",
@@ -853,6 +857,72 @@ fn BytecodeFrame::step_bytecode(
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(
               @runtime.executor_activation_coercing_subtraction_request(request),
+            )
+          }
+        }
+      }
+      BinaryOp(Mul, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match
+          @runtime.begin_executor_coercing_multiplicative(
+            @runtime.ExecutorMultiplicativeOperator::ExecutorMultiplicativeMultiply,
+            left,
+            right,
+            loc,
+          ) {
+          @runtime.ExecutorCoercingMultiplicativeCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingMultiplicativeSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_multiplicative_request(
+                request,
+              ),
+            )
+          }
+        }
+      }
+      BinaryOp(Div, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match
+          @runtime.begin_executor_coercing_multiplicative(
+            @runtime.ExecutorMultiplicativeOperator::ExecutorMultiplicativeDivide,
+            left,
+            right,
+            loc,
+          ) {
+          @runtime.ExecutorCoercingMultiplicativeCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingMultiplicativeSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_multiplicative_request(
+                request,
+              ),
+            )
+          }
+        }
+      }
+      BinaryOp(Mod, BinaryExpression, loc) => {
+        let right = frame.pop()
+        let left = frame.pop()
+        match
+          @runtime.begin_executor_coercing_multiplicative(
+            @runtime.ExecutorMultiplicativeOperator::ExecutorMultiplicativeRemainder,
+            left,
+            right,
+            loc,
+          ) {
+          @runtime.ExecutorCoercingMultiplicativeCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorCoercingMultiplicativeSuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_coercing_multiplicative_request(
+                request,
+              ),
             )
           }
         }
