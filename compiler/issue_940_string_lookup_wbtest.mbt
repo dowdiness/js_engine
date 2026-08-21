@@ -162,6 +162,34 @@ test "issue 940 observes String prototype chain properties" {
 }
 
 ///|
+test "issue 940 observes String prototype-chain Proxy exactly once" {
+  let source =
+    #|delete String.prototype.toUpperCase;
+    #|var gets = 0;
+    #|var receiverKind = "";
+    #|var receiverText = "";
+    #|var proxyProto = new Proxy({}, { get: function(target, key, receiver) {
+    #|  gets = gets + 1;
+    #|  receiverKind = typeof receiver;
+    #|  receiverText = receiver + "";
+    #|  return undefined;
+    #|} });
+    #|Object.setPrototypeOf(String.prototype, proxyProto);
+    #|var errorName = "";
+    #|try { "hello".toUpperCase(); } catch (error) { errorName = error.name; }
+    #|errorName + ":" + gets + ":" + receiverKind + ":" + receiverText;
+  let default_value = @interpreter.new_interpreter().run(
+    @parser.parse(source).stmts,
+  )
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), "TypeError:1:string:hello")
+  assert_eq(candidate_value.to_string(), default_value.to_string())
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 940 propagates String prototype getter errors without fallback" {
   let source =
     #|Object.defineProperty(String.prototype, "toUpperCase", { get: function() {
