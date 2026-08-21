@@ -2547,9 +2547,30 @@ pub fn eval_binary_op(
       finish_primitive_addition(interp, lp, rp, _loc)
     }
     (Sub, l, r) => finish_subtraction(l, r, _loc, interp~)
-    (Mul, l, r) => Number(n(l) * n(r))
-    (Div, l, r) => Number(n(l) / n(r))
-    (Mod, l, r) => Number(n(l) % n(r))
+    (Mul, l, r) =>
+      finish_multiplicative(
+        ExecutorMultiplicativeOperator::ExecutorMultiplicativeMultiply,
+        l,
+        r,
+        _loc,
+        interp~,
+      )
+    (Div, l, r) =>
+      finish_multiplicative(
+        ExecutorMultiplicativeOperator::ExecutorMultiplicativeDivide,
+        l,
+        r,
+        _loc,
+        interp~,
+      )
+    (Mod, l, r) =>
+      finish_multiplicative(
+        ExecutorMultiplicativeOperator::ExecutorMultiplicativeRemainder,
+        l,
+        r,
+        _loc,
+        interp~,
+      )
     // Comparison fallback: Abstract Relational Comparison with source-order
     // ToPrimitive and UTF-16 String/String ordering.
     (Lt, l, r) =>

@@ -209,6 +209,7 @@ pub const LEXER_LARGE_SRC : String =
 pub using @benchmark_workloads {
   FIBONACCI_SRC,
   FIBONACCI_SMALL_SRC,
+  OBJECT_CONSTRUCTION_SRC,
   PROPERTY_CHAIN_SRC,
 }
 
@@ -272,28 +273,6 @@ pub const CLOSURE_FACTORY_SRC : String =
   #|  total = total + counters[i]();
   #|}
   #|total;
-
-///|
-/// Object literal construction: 1 000 objects with 5 properties each.
-///
-/// Category: Component
-/// Exercises: ObjectData allocation, property insertion (Map write),
-///            string concatenation ("item" + i), array push.
-///            Does NOT exercise prototype-chain or property descriptors.
-///
-/// Expected result: "1000"
-pub const OBJECT_CONSTRUCTION_SRC : String =
-  #|var objects = [];
-  #|for (var i = 0; i < 1000; i++) {
-  #|  objects.push({
-  #|    id: i,
-  #|    value: i * 2,
-  #|    label: "item" + i,
-  #|    active: true,
-  #|    score: i * i
-  #|  });
-  #|}
-  #|objects.length;
 
 ///|
 /// String method dispatch in a 100-iteration loop.

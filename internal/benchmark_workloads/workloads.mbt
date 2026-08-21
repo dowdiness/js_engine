@@ -40,3 +40,20 @@ pub const PROPERTY_CHAIN_SRC : String =
   #|  sum = sum + obj.a.b.c.d.e;
   #|}
   #|sum;
+
+///|
+/// Object literal construction: 1 000 objects with 5 properties each.
+///
+/// Expected result: "1000".
+pub const OBJECT_CONSTRUCTION_SRC : String =
+  #|var objects = [];
+  #|for (var i = 0; i < 1000; i++) {
+  #|  objects.push({
+  #|    id: i,
+  #|    value: i * 2,
+  #|    label: "item" + i,
+  #|    active: true,
+  #|    score: i * i
+  #|  });
+  #|}
+  #|objects.length;

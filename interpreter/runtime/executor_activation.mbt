@@ -22,6 +22,9 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationCoercingRelational(ExecutorCoercingRelationalRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
+  ExecutorActivationCoercingMultiplicative(
+    ExecutorCoercingMultiplicativeRequest
+  )
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
@@ -720,6 +723,25 @@ pub fn executor_activation_coercing_subtraction_request(
   request : ExecutorCoercingSubtractionRequest,
 ) -> ExecutorActivationStep {
   ExecutorActivationCoercingSubtraction(request)
+}
+
+///|
+pub fn executor_activation_coercing_multiplicative_request(
+  request : ExecutorCoercingMultiplicativeRequest,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingMultiplicative(request)
+}
+
+///|
+pub fn executor_activation_coercing_multiplicative(
+  left : Value,
+  right : Value,
+  operator : ExecutorMultiplicativeOperator,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationCoercingMultiplicative(
+    ExecutorCoercingMultiplicativeRequest(left~, right~, operator~, loc~),
+  )
 }
 
 ///|
@@ -1547,6 +1569,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildCoercingAddition
   ExecutorChildCoercingRelational
   ExecutorChildCoercingSubtraction
+  ExecutorChildCoercingMultiplicative
   ExecutorChildPropertyDelete
   ExecutorChildIterableSpread
   ExecutorChildCopyDataProperties
@@ -2133,6 +2156,8 @@ fn Interpreter::complete_executor_step(
       executor_coercing_relational_completion(step)
     Some(ExecutorChildCoercingSubtraction) =>
       executor_coercing_subtraction_completion(step)
+    Some(ExecutorChildCoercingMultiplicative) =>
+      executor_coercing_multiplicative_completion(step)
     Some(ExecutorChildPropertyDelete) =>
       executor_property_delete_completion(step)
     Some(ExecutorChildIterableSpread) =>
@@ -2969,6 +2994,16 @@ fn Interpreter::handle_executor_activation_step(
       })
       None
     }
+    ExecutorActivationCoercingMultiplicative(request) => {
+      let multiplicative_frame = ExecutorCoercingMultiplicativeFrame(request)
+      stack.push({
+        frame: multiplicative_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildCoercingMultiplicative),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
     ExecutorActivationPropertyDelete(request) => {
       let delete_frame = ExecutorPropertyDeleteFrame(request)
       stack.push({
@@ -3260,6 +3295,7 @@ fn executor_call_completion(
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationCoercingRelational(_)
         | ExecutorActivationCoercingSubtraction(_)
+        | ExecutorActivationCoercingMultiplicative(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
         | ExecutorActivationCopyDataProperties(_)
@@ -3285,6 +3321,7 @@ fn executor_call_completion(
         | ExecutorActivationCoercingAddition(_)
         | ExecutorActivationCoercingRelational(_)
         | ExecutorActivationCoercingSubtraction(_)
+        | ExecutorActivationCoercingMultiplicative(_)
         | ExecutorActivationPropertyDelete(_)
         | ExecutorActivationIterableSpread(_)
         | ExecutorActivationCopyDataProperties(_)
@@ -3320,6 +3357,7 @@ fn executor_construct_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -3356,6 +3394,7 @@ fn executor_property_get_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -3388,6 +3427,7 @@ fn executor_property_update_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -3420,6 +3460,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -3452,6 +3493,7 @@ fn executor_coercing_relational_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -3484,6 +3526,7 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
@@ -3493,6 +3536,39 @@ fn executor_coercing_subtraction_completion(
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing subtraction completed with a pending activation step",
+        ),
+      )
+  }
+}
+
+///|
+fn executor_coercing_multiplicative_completion(
+  step : ExecutorActivationStep,
+) -> ExecutorActivationCompletion {
+  match step {
+    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+      ExecutorActivationCompletionNormal(value)
+    ExecutorActivationContinue
+    | ExecutorActivationCall(_)
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_)
+    | ExecutorActivationComputedCallPreparation(_)
+    | ExecutorActivationPropertySet(_)
+    | ExecutorActivationPropertyUpdate(_)
+    | ExecutorActivationBindingUpdate(_)
+    | ExecutorActivationCoercingAddition(_)
+    | ExecutorActivationCoercingRelational(_)
+    | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
+    | ExecutorActivationPropertyDelete(_)
+    | ExecutorActivationIterableSpread(_)
+    | ExecutorActivationCopyDataProperties(_)
+    | ExecutorActivationBinding(_)
+    | ExecutorActivationBindingReference(_)
+    | ExecutorActivationReference(_) =>
+      ExecutorActivationCompletionAbrupt(
+        @errors.InternalError(
+          message="coercing multiplicative completed with a pending activation step",
         ),
       )
   }
@@ -3516,6 +3592,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationCoercingAddition(_)
     | ExecutorActivationCoercingRelational(_)
     | ExecutorActivationCoercingSubtraction(_)
+    | ExecutorActivationCoercingMultiplicative(_)
     | ExecutorActivationPropertyDelete(_)
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)

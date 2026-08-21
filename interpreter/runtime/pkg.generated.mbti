@@ -45,6 +45,8 @@ pub fn begin_executor_coercing_addition(Value, Value, @token.Loc) -> ExecutorCoe
 
 pub fn begin_executor_coercing_less_than_or_equal(Value, Value, @token.Loc) -> ExecutorCoercingLessThanOrEqualStart raise
 
+pub fn begin_executor_coercing_multiplicative(ExecutorMultiplicativeOperator, Value, Value, @token.Loc) -> ExecutorCoercingMultiplicativeStart raise
+
 pub fn begin_executor_coercing_relational(Value, Value, @token.Loc, ExecutorRelationalOperator) -> ExecutorCoercingRelationalStart raise
 
 pub fn begin_executor_coercing_subtraction(Value, Value, @token.Loc) -> ExecutorCoercingSubtractionStart raise
@@ -134,6 +136,10 @@ pub fn executor_activation_coercing_addition_request(ExecutorCoercingAdditionReq
 pub fn executor_activation_coercing_less_than_or_equal(Value, Value, @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_coercing_less_than_or_equal_request(ExecutorCoercingLessThanOrEqualRequest) -> ExecutorActivationStep
+
+pub fn executor_activation_coercing_multiplicative(Value, Value, ExecutorMultiplicativeOperator, @token.Loc) -> ExecutorActivationStep
+
+pub fn executor_activation_coercing_multiplicative_request(ExecutorCoercingMultiplicativeRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_coercing_relational(Value, Value, @token.Loc, ExecutorRelationalOperator) -> ExecutorActivationStep
 
@@ -742,6 +748,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
   ExecutorActivationCoercingRelational(ExecutorCoercingRelationalRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
+  ExecutorActivationCoercingMultiplicative(ExecutorCoercingMultiplicativeRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
@@ -804,6 +811,15 @@ pub enum ExecutorCoercingLessThanOrEqualStart {
   ExecutorCoercingLessThanOrEqualSuspended(ExecutorCoercingLessThanOrEqualRequest)
 }
 
+pub struct ExecutorCoercingMultiplicativeRequest {
+  // private fields
+}
+
+pub enum ExecutorCoercingMultiplicativeStart {
+  ExecutorCoercingMultiplicativeCompleted(Value)
+  ExecutorCoercingMultiplicativeSuspended(ExecutorCoercingMultiplicativeRequest)
+}
+
 pub struct ExecutorCoercingRelationalRequest {
   // private fields
 }
@@ -851,6 +867,12 @@ pub struct ExecutorIterableSpreadRequest {
 pub enum ExecutorIterableSpreadStart {
   ExecutorIterableSpreadCompleted(Array[Value])
   ExecutorIterableSpreadSuspended(ExecutorIterableSpreadRequest)
+}
+
+pub(all) enum ExecutorMultiplicativeOperator {
+  ExecutorMultiplicativeMultiply
+  ExecutorMultiplicativeDivide
+  ExecutorMultiplicativeRemainder
 }
 
 pub struct ExecutorPropertyDeleteRequest {

@@ -700,13 +700,14 @@ fn bytecode_binary_contract(
       bytecode_contract(false, SynchronousLeaf, [Operator])
     (Add, BinaryExpression) =>
       bytecode_contract(true, ManagedSuspension, [Operator])
+    (Mul, BinaryExpression)
+    | (Div, BinaryExpression)
+    | (Mod, BinaryExpression) =>
+      bytecode_contract(true, ManagedSuspension, [Operator])
     (Add, CompoundAssignment)
     | (Sub, CompoundAssignment)
-    | (Mul, BinaryExpression)
     | (Mul, CompoundAssignment)
-    | (Div, BinaryExpression)
     | (Div, CompoundAssignment)
-    | (Mod, BinaryExpression)
     | (Mod, CompoundAssignment)
     | (EqEq, BinaryExpression)
     | (EqEq, CompoundAssignment)
