@@ -1,4 +1,97 @@
 ///|
+priv enum PropertyLookupResult {
+  Found(Value)
+  Absent
+}
+
+///|
+/// Resolve a canonical property key through one receiver-aware [[Get]] walk.
+/// `Found(Undefined)` is intentionally distinct from `Absent`, so callers can
+/// keep an observable property from falling through to an internal shortcut.
+fn Interpreter::get_property_key_with_receiver_result(
+  self : Interpreter,
+  target : Value,
+  prop_key : Value,
+  receiver : Value,
+  loc : @token.Loc,
+) -> PropertyLookupResult raise Error {
+  match target {
+    Proxy(proxy_data) =>
+      // A Proxy [[Get]] is itself an observable lookup. Even when its trap
+      // returns undefined, the property is not absent from this traversal.
+      Found(proxy_get_key(self, proxy_data, prop_key, receiver))
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) =>
+      match self.get_own_property(target, prop_key) {
+        Some((desc, own_value)) =>
+          match desc.getter {
+            Some(getter) => Found(self.call_value(getter, receiver, [], loc))
+            None =>
+              if desc.is_accessor || desc.setter is Some(_) {
+                Found(Undefined)
+              } else {
+                Found(own_value)
+              }
+          }
+        None => {
+          let proto = match target {
+            Object(data) => data.prototype
+            Array(data) => get_array_prototype(self.realm_state, data)
+            Map(data) =>
+              data.prototype.unwrap_or_else(fn() {
+                self.realm_state.get_map_proto()
+              })
+            Set(data) =>
+              data.prototype.unwrap_or_else(fn() {
+                self.realm_state.get_set_proto()
+              })
+            Promise(data) =>
+              data.prototype.unwrap_or_else(fn() {
+                self.realm_state.get_promise_proto()
+              })
+            _ => fail("non-object reached property lookup result walk")
+          }
+          self.get_property_key_with_receiver_result(
+            proto, prop_key, receiver, loc,
+          )
+        }
+      }
+    Null | Undefined => Absent
+    _ => Found(self.get_computed_property(target, prop_key, loc))
+  }
+}
+
+///|
+/// Resolve a named property on a String primitive through its boxed String
+/// exotic object and live prototype chain before consulting the internal lazy
+/// builtin shortcut. The lookup target is boxed; the receiver remains the
+/// original primitive for accessors and methods.
+fn Interpreter::get_string_property(
+  self : Interpreter,
+  obj : Value,
+  s : String,
+  prop : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let boxed = box_primitive_call_this(String_(s), self.realm_state)
+  match
+    self.get_property_key_with_receiver_result(boxed, String_(prop), obj, loc) {
+    Found(value) => value
+    Absent => {
+      let result = (self.stdlib_hooks.get_string_method)(
+        s,
+        prop,
+        self.realm_state,
+        self.annex_b,
+      )
+      match result {
+        Undefined => lookup_builtin_proto(self, obj, "String", prop, loc)
+        _ => result
+      }
+    }
+  }
+}
+
+///|
 /// Spec [[Get]] for an integer index on an Array exotic object.
 /// Centralises the descriptor / dense / hole / OOB dispatch and the
 /// receiver-preserving prototype walk so every [[Get]] entry point
@@ -166,21 +259,7 @@ fn Interpreter::get_property_impl(
           }
         }
       }
-    String_(s) =>
-      if prop == "length" {
-        Number(utf16_length(s).to_double())
-      } else {
-        let result = (self.stdlib_hooks.get_string_method)(
-          s,
-          prop,
-          self.realm_state,
-          self.annex_b,
-        )
-        match result {
-          Undefined => lookup_builtin_proto(self, obj, "String", prop, loc)
-          _ => result
-        }
-      }
+    String_(s) => self.get_string_property(obj, s, prop, loc)
     Number(_) => {
       let result = (self.stdlib_hooks.get_number_method)(
         obj,
@@ -304,45 +383,10 @@ fn Interpreter::get_property_key_with_receiver_canonical(
   receiver : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  match target {
-    Proxy(proxy_data) => proxy_get_key(self, proxy_data, prop_key, receiver)
-    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) =>
-      match self.get_own_property(target, prop_key) {
-        Some((desc, own_value)) =>
-          match desc.getter {
-            Some(getter) => self.call_value(getter, receiver, [], loc)
-            None =>
-              if desc.is_accessor || desc.setter is Some(_) {
-                Undefined
-              } else {
-                own_value
-              }
-          }
-        None => {
-          let proto = match target {
-            Object(data) => data.prototype
-            Array(data) => get_array_prototype(self.realm_state, data)
-            Map(data) =>
-              data.prototype.unwrap_or_else(fn() {
-                self.realm_state.get_map_proto()
-              })
-            Set(data) =>
-              data.prototype.unwrap_or_else(fn() {
-                self.realm_state.get_set_proto()
-              })
-            Promise(data) =>
-              data.prototype.unwrap_or_else(fn() {
-                self.realm_state.get_promise_proto()
-              })
-            _ => fail("non-object reached object [[Get]] prototype dispatch")
-          }
-          self.get_property_key_with_receiver_canonical(
-            proto, prop_key, receiver, loc,
-          )
-        }
-      }
-    Null | Undefined => Undefined
-    _ => self.get_computed_property(target, prop_key, loc)
+  match
+    self.get_property_key_with_receiver_result(target, prop_key, receiver, loc) {
+    Found(value) => value
+    Absent => Undefined
   }
 }
 
@@ -1483,12 +1527,7 @@ fn Interpreter::get_computed_property_impl(
             index < units.length() {
             String_(String::make(1, units[index].unsafe_to_char()))
           } else {
-            (self.stdlib_hooks.get_string_method)(
-              s,
-              property_name,
-              self.realm_state,
-              self.annex_b,
-            )
+            self.get_string_property(obj, s, property_name, loc)
           }
         }
         _ => Undefined

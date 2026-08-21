@@ -1234,22 +1234,26 @@ pub fn get_string_method(
         Value::String_(str)
       })
     }
-    "replaceAll" => {
-      let str = s
+    "replaceAll" =>
       @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="replaceAll",
         length=2,
-        fn(interp, _this_val, args) raise {
-          if args.length() == 0 {
-            return Value::String_(str)
+        fn(interp, this_val, args) raise {
+          match this_val {
+            Null | Undefined =>
+              raise @errors.TypeError(
+                message="String.prototype.replaceAll called on null or undefined",
+              )
+            _ => ()
           }
+          let search_value = if args.length() > 0 { args[0] } else { Undefined }
           // Per spec §22.1.3.19 step 3b: if IsRegExp(searchValue), require global flag FIRST.
           // Use Get(searchValue, "flags") — flags is an accessor on RegExp.prototype.
-          if !(args[0] is Undefined || args[0] is Null) &&
-            regexp_is_regexp(interp, args[0]) {
+          if !(search_value is Undefined || search_value is Null) &&
+            regexp_is_regexp(interp, search_value) {
             let loc = @token.Loc::default()
-            let flags_val = interp.get_property(args[0], "flags", loc)
+            let flags_val = interp.get_property(search_value, "flags", loc)
             match flags_val {
               Undefined | Null =>
                 raise @errors.TypeError(
@@ -1267,11 +1271,11 @@ pub fn get_string_method(
           // Track when Symbol.replace is explicitly null/undefined so we don't
           // route those cases through the regexp fallback below.
           let mut symbol_replace_explicitly_absent = false
-          match args[0] {
+          match search_value {
             Object(data) => {
               let replace_sym = well_known_symbols.replace
               let replace_fn = @runtime.lookup_symbol_property_chain(
-                args[0],
+                search_value,
                 data,
                 replace_sym.id,
                 interp=Some(interp),
@@ -1284,8 +1288,8 @@ pub fn get_string_method(
                   let rep = if args.length() > 1 { args[1] } else { Undefined }
                   let result = @runtime.call_callable_direct(
                     fn_val,
-                    args[0],
-                    [Value::String_(str), rep],
+                    search_value,
+                    [this_val, rep],
                     interp=Some(interp),
                   )
                   return result
@@ -1299,16 +1303,17 @@ pub fn get_string_method(
           // Skip when Symbol.replace was explicitly null/undefined — spec §22.1.3.19
           // step 3d says only call Symbol.replace when it is callable; null/undefined
           // means no replacer, so fall through to the string path below.
+          let str = interp.to_js_string(this_val)
           if !symbol_replace_explicitly_absent {
-            match args[0] {
+            match search_value {
               Object(data) =>
                 if data.class_name == "RegExp" {
                   let loc = @token.Loc::default()
                   let flags = interp.to_js_string(
-                    interp.get_property(args[0], "flags", loc),
+                    interp.get_property(search_value, "flags", loc),
                   )
                   let pattern = interp.to_js_string(
-                    interp.get_property(args[0], "source", loc),
+                    interp.get_property(search_value, "source", loc),
                   )
                   let replacement = if args.length() > 1 {
                     interp.to_js_string(args[1])
@@ -1320,7 +1325,7 @@ pub fn get_string_method(
               _ => ()
             }
           }
-          let search = interp.to_js_string(args[0])
+          let search = interp.to_js_string(search_value)
           let replace_val = if args.length() > 1 { args[1] } else { Undefined }
           let is_func = @runtime.is_callable(replace_val)
           let replacement = if is_func {
@@ -1411,7 +1416,6 @@ pub fn get_string_method(
           Value::String_(buf.to_string())
         },
       )
-    }
     "localeCompare" => {
       let str = s
       @runtime.make_interp_method_func(
@@ -1941,7 +1945,11 @@ pub fn setup_string_prototype(
             name=display_name,
             length=meth_length,
             fn(interp, this_val, args) raise {
-              let s = this_to_string_impl(this_val, interp=Some(interp))
+              let s = if mname == "replaceAll" {
+                ""
+              } else {
+                this_to_string_impl(this_val, interp=Some(interp))
+              }
               let meth_val = get_string_method(s, mname, realm_state, annex_b~)
               match meth_val {
                 Object(fdata) =>

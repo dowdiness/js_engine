@@ -211,6 +211,7 @@ pub using @benchmark_workloads {
   FIBONACCI_SMALL_SRC,
   OBJECT_CONSTRUCTION_SRC,
   PROPERTY_CHAIN_SRC,
+  STRING_OPS_SRC,
 }
 
 ///|
@@ -273,21 +274,6 @@ pub const CLOSURE_FACTORY_SRC : String =
   #|  total = total + counters[i]();
   #|}
   #|total;
-
-///|
-/// String method dispatch in a 100-iteration loop.
-///
-/// Category: Component
-/// Exercises: String.prototype.toUpperCase, string concatenation,
-///            string length property access.
-///
-/// Expected result: "600"   (100 × "HELLO " = 100 × 6 chars)
-pub const STRING_OPS_SRC : String =
-  #|var result = "";
-  #|for (var i = 0; i < 100; i++) {
-  #|  result = result + "hello".toUpperCase() + " ";
-  #|}
-  #|result.length;
 
 // ---------------------------------------------------------------------------
 // Pipeline breakdown workload — same source measured at each frontend/runtime

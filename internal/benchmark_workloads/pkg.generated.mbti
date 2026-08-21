@@ -10,6 +10,8 @@ pub const OBJECT_CONSTRUCTION_SRC : String = "var objects = [];\nfor (var i = 0;
 
 pub const PROPERTY_CHAIN_SRC : String = "var obj = { a: { b: { c: { d: { e: 42 } } } } };\nvar sum = 0;\nfor (var i = 0; i < 10000; i++) {\n  sum = sum + obj.a.b.c.d.e;\n}\nsum;"
 
+pub const STRING_OPS_SRC : String = "var result = \"\";\nfor (var i = 0; i < 100; i++) {\n  result = result + \"hello\".toUpperCase() + \" \";\n}\nresult.length;"
+
 // Errors
 
 // Types and methods
