@@ -208,6 +208,71 @@ test "issue 940 propagates String prototype getter errors without fallback" {
 }
 
 ///|
+test "issue 940 replaceAll checks search protocol before receiver coercion" {
+  let source =
+    #|var events = "";
+    #|var receiver = { toString: function() { events = events + "T"; throw "receiver"; } };
+    #|var search = {};
+    #|Object.defineProperty(search, Symbol.match, { get: function() {
+    #|  events = events + "M";
+    #|  throw "match";
+    #|} });
+    #|try { "".replaceAll.call(receiver, search, receiver); }
+    #|catch (error) { events + ":" + error; }
+  let default_value = @interpreter.new_interpreter().run(
+    @parser.parse(source).stmts,
+  )
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), "M:match")
+  assert_eq(candidate_value.to_string(), default_value.to_string())
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 940 replaceAll rejects flags before receiver coercion" {
+  let source =
+    #|var poisoned = 0;
+    #|var receiver = { toString: function() { poisoned = poisoned + 1; throw "receiver"; } };
+    #|var events = "";
+    #|var search = { get flags() { events = events + "F"; return ""; } };
+    #|search[Symbol.match] = true;
+    #|try { "".replaceAll.call(receiver, search, receiver); }
+    #|catch (error) { error.name + ":" + events + ":" + poisoned; }
+  let default_value = @interpreter.new_interpreter().run(
+    @parser.parse(source).stmts,
+  )
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), "TypeError:F:0")
+  assert_eq(candidate_value.to_string(), default_value.to_string())
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "issue 940 replaceAll passes original receiver to symbol replacer" {
+  let source =
+    #|var receiver = { toString: function() { throw "receiver"; } };
+    #|var search = {};
+    #|search[Symbol.match] = false;
+    #|search[Symbol.replace] = function(value, replacement) {
+    #|  return (value === receiver) + ":" + replacement;
+    #|};
+    #|"".replaceAll.call(receiver, search, "replacement");
+  let default_value = @interpreter.new_interpreter().run(
+    @parser.parse(source).stmts,
+  )
+  let (candidate_value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(default_value.to_string(), "true:replacement")
+  assert_eq(candidate_value.to_string(), default_value.to_string())
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
 test "issue 940 graduates the unchanged string_ops benchmark" {
   let source = @benchmark_workloads.STRING_OPS_SRC
   let program = prepare_candidate_program(@parser.parse(source).stmts)
