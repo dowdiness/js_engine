@@ -276,8 +276,8 @@ jobs:
           path: |
             ~/.moon/registry
             .mooncakes
-          key: moon-microtask-graduation-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
-          restore-keys: moon-microtask-graduation-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
 
       - name: Install repository dependencies
         run: moon update
