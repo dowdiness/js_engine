@@ -38,6 +38,10 @@ for workflow_name in "${workflows[@]}"; do
     fail "$workflow_name must verify every restored or installed toolchain"
 done
 
+unit_test_block="$(sed -n '/^  unit-test:$/,/^  unit-test-runner:$/p' "$ROOT_DIR/.github/workflows/test262.yml")"
+[[ "$(grep -Fc 'timeout-minutes: 30' <<<"$unit_test_block")" -eq 1 ]] ||
+  fail 'test262 unit-test must allow 30 minutes for architecture audit and the full test suite'
+
 [[ -x "$ROOT_DIR/scripts/verify_moonbit_toolchain.sh" ]] ||
   fail 'scripts/verify_moonbit_toolchain.sh must exist and be executable'
 
