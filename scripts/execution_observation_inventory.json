@@ -368,7 +368,7 @@
       "status": "observed-exactly-once",
       "duplicate_charge_risk": "Each logical repetition must observe the shared operation budget exactly once before its append; the aggregate String-loop row remains unobserved for other algorithms.",
       "owning_implementation_or_issue": "interpreter/stdlib/builtins_string.mbt#String.prototype.repeat",
-      "focused_evidence": ["interpreter/stdlib/builtins_string.mbt#interp.observe_execution_step()", "interpreter/stdlib/issue_944_repeat_observation_wbtest.mbt#exact logical repetition and zero-count observation", "compiler/issue_944_repeat_observation_wbtest.mbt#candidate String.repeat function remains bytecode-eligible"],
+      "focused_evidence": ["interpreter/stdlib/builtins_string.mbt#interp.observe_execution_step()", "interpreter/stdlib/issue_944_repeat_observation_wbtest.mbt#String.repeat observes exactly one step per logical repetition", "interpreter/stdlib/issue_944_repeat_observation_wbtest.mbt#String.repeat zero count observes no repetition step", "compiler/issue_944_repeat_observation_wbtest.mbt#candidate String.repeat function remains bytecode-eligible"],
       "public_facade_evidence_required": true,
       "public_facade_evidence": ["integration/external_consumer/repeat_guardrail_test.mbt#default String.repeat observes the bounded execution budget", "integration/external_consumer_candidate/repeat_guardrail_test.mbt#candidate String.repeat observes the bounded execution budget"]
     },
