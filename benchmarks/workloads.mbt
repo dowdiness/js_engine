@@ -209,6 +209,8 @@ pub const LEXER_LARGE_SRC : String =
 pub using @benchmark_workloads {
   FIBONACCI_SRC,
   FIBONACCI_SMALL_SRC,
+  MICROTASK_DRAIN_200_OUTPUT,
+  MICROTASK_DRAIN_200_SRC,
   OBJECT_CONSTRUCTION_SRC,
   PROPERTY_CHAIN_SRC,
   STRING_OPS_SRC,
@@ -653,25 +655,6 @@ pub const VARHOIST_NESTED_BODY : String =
 //
 // These workloads gate the @priority_queue migration in issue #329.
 // ---------------------------------------------------------------------------
-
-///|
-/// 200 Promise.resolve().then() callbacks that all increment a shared counter.
-/// A final setTimeout at delay=0 logs the counter value after microtasks drain.
-///
-/// Expected console output: "200"
-///
-/// Used as a control benchmark — the head-pointer microtask drain is already
-/// O(n), so no quadratic behavior is expected here.
-pub const MICROTASK_DRAIN_200_SRC : String =
-  #|var counter = 0;
-  #|var p = Promise.resolve();
-  #|for (var i = 0; i < 200; i++) {
-  #|  p.then(function() { counter++; });
-  #|}
-  #|setTimeout(function() { console.log(counter); }, 0);
-
-///|
-pub const MICROTASK_DRAIN_200_OUTPUT : String = "200"
 
 ///|
 /// 200 setTimeout calls with delays 0, 1, ..., 199 (registered ascending),

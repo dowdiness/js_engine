@@ -72,3 +72,18 @@ pub const STRING_OPS_SRC : String =
   #|  result = result + "hello".toUpperCase() + " ";
   #|}
   #|result.length;
+
+///|
+/// 200 Promise reactions increment a shared counter before a timer observes it.
+///
+/// Expected console output: "200".
+pub const MICROTASK_DRAIN_200_SRC : String =
+  #|var counter = 0;
+  #|var p = Promise.resolve();
+  #|for (var i = 0; i < 200; i++) {
+  #|  p.then(function() { counter++; });
+  #|}
+  #|setTimeout(function() { console.log(counter); }, 0);
+
+///|
+pub const MICROTASK_DRAIN_200_OUTPUT : String = "200"

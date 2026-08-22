@@ -16,4 +16,6 @@ import {
   "dowdiness/js_engine/internal/benchmark_workloads",
   "dowdiness/js_engine/parser",
   "moonbitlang/core/bench",
+  "moonbitlang/x/crypto",
+  "moonbitlang/x/encoding",
 } for "wbtest"
