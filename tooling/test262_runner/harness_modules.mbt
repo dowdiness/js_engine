@@ -173,8 +173,8 @@ fn resolve_fixtures(
 ) -> Array[(String, String)] raise {
   let test_abs = @path_utils.absolute_path(test_path)
   let test_dir = @path_utils.dirname(test_abs)
-  let visited : Map[String, (String, String)] = {}
-  let stack = @set.Set::default()
+  let visited : Map[String, (String, String)] = Map([])
+  let stack : @set.Set[String] = Default::default()
   let order : Array[String] = []
   for spec in import_relative_specifiers(source) {
     visit_fixture(

@@ -230,7 +230,7 @@ fn parse_csv_record(line : String) -> Array[String] raise {
 ///|
 fn parse_rows(csv_text : String) -> Map[String, Map[String, String]] raise {
   let lines = splitlines(csv_text)
-  let rows : Map[String, Map[String, String]] = {}
+  let rows : Map[String, Map[String, String]] = Map([])
   guard lines.length() > 0 else { return rows }
   let header = parse_csv_record(lines[0])
   for line in lines[1:] {
@@ -238,7 +238,7 @@ fn parse_rows(csv_text : String) -> Map[String, Map[String, String]] raise {
       continue
     }
     let values = parse_csv_record(line)
-    let row : Map[String, String] = {}
+    let row : Map[String, String] = Map([])
     for i, key in header {
       match values.get(i) {
         Some(value) => row[key] = value

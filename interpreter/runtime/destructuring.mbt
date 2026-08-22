@@ -189,7 +189,7 @@ fn Interpreter::bind_pattern(
           message="Cannot destructure " + value.to_string() + " value",
         )
       }
-      let used_string_keys = @set.Set::default()
+      let used_string_keys : @set.Set[String] = Default::default()
       let used_symbol_keys : Map[Int, Bool] = Map([])
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
@@ -235,7 +235,7 @@ fn Interpreter::bind_pattern(
             Object(data) => {
               // CopyDataProperties: copy own enumerable properties, invoking getters
               // First collect all own enumerable string keys (from properties and descriptors)
-              let all_keys = @set.Set::default()
+              let all_keys : @set.Set[String] = Default::default()
               data.bag.properties.each(fn(k, _v) { all_keys.add(k) })
               data.bag.descriptors.each(fn(k, _v) { all_keys.add(k) })
               all_keys.each(fn(k) raise {
@@ -592,7 +592,7 @@ fn Interpreter::assign_pattern(
           message="Cannot destructure " + value.to_string() + " value",
         )
       }
-      let used_string_keys = @set.Set::default()
+      let used_string_keys : @set.Set[String] = Default::default()
       let used_symbol_keys : Map[Int, Bool] = Map([])
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)

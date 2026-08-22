@@ -332,7 +332,7 @@ fn parse_inline_dict(value : String) -> Map[String, Json]? {
   let value = value.trim().to_owned()
   guard value.has_prefix("{") && value.has_suffix("}") else { return None }
   let inner = value[1:value.length() - 1].to_owned().trim().to_owned()
-  let out : Map[String, Json] = {}
+  let out : Map[String, Json] = Map([])
   if inner == "" {
     return Some(out)
   }
@@ -438,7 +438,7 @@ fn parse_indented_block(
     }
     (Json::array(out), j)
   } else {
-    let out : Map[String, Json] = {}
+    let out : Map[String, Json] = Map([])
     for raw in block_lines {
       if raw.trim().is_empty() {
         continue
@@ -486,7 +486,7 @@ fn parse_remainder_value(
 
 ///|
 fn parse_frontmatter_fallback(frontmatter : String) -> Map[String, Json] {
-  let data : Map[String, Json] = {}
+  let data : Map[String, Json] = Map([])
   let lines = split_lines(frontmatter)
   let mut i = 0
   while i < lines.length() {

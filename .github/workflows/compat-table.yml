@@ -28,7 +28,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  MOONBIT_CACHE_VERSION: "2026-07"
+  MOONBIT_INSTALL_VERSION: "20260814"
+  MOONBIT_CACHE_VERSION: "2026-08-14"
 
 jobs:
   compat-table:

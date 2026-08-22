@@ -231,7 +231,7 @@ fn load_completed_task_keys(
 ) -> @set.Set[String] raise {
   let raw = @json.parse(@fs.read_file_to_string(results_file))
   let root : Map[String, Json] = @json.from_json(raw) catch { _ => {} }
-  let completed = @set.Set::default()
+  let completed : @set.Set[String] = Default::default()
   let finished = @set.Set(["pass", "fail", "skip", "timeout", "error"])
   let records : Array[Json] = match root.get("results") {
     Some(Json::Array(items)) => items

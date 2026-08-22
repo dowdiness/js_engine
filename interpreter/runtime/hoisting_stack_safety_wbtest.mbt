@@ -193,7 +193,7 @@ test "compiled script preparation rejects an unsettled early-error boundary" {
 fn annex_b_tagged_names(
   source : String,
   names : Array[String],
-  excluded? : @set.Set[String] = @set.Set::default(),
+  excluded? : @set.Set[String] = Default::default(),
 ) -> Array[String] raise Error {
   let parsed = @parser.parse(source)
   let interp = Interpreter::new()
@@ -202,7 +202,7 @@ fn annex_b_tagged_names(
     interp,
     parsed.stmts,
     env,
-    @set.Set::default(),
+    Default::default(),
     excluded~,
   )
   names.filter(name => {
@@ -228,7 +228,7 @@ test "Task 4D: Annex B candidate effects follow source traversal order" {
   let parsed = @parser.parse(source)
   let interp = Interpreter::new()
   let env = Environment::new()
-  hoist_eval_annex_b_candidates(interp, parsed.stmts, env, @set.Set::default())
+  hoist_eval_annex_b_candidates(interp, parsed.stmts, env, Default::default())
   json_inspect(env.bindings.keys().collect(), content=[
     "sibling_first", "sibling_second", "if_then", "if_else", "case_first", "case_second",
     "try_first", "catch_second", "finally_third",
@@ -255,7 +255,7 @@ test "Task 4D: StmtList and export preserve incoming block context" {
       parsed.stmts[2],
     ],
     top_env,
-    @set.Set::default(),
+    Default::default(),
   )
   json_inspect(
     ["plain", "labeled", "exported"].map(name => {
@@ -279,7 +279,7 @@ test "Task 4D: StmtList and export preserve incoming block context" {
       ),
     ],
     block_env,
-    @set.Set::default(),
+    Default::default(),
   )
   json_inspect(
     ["plain", "exported"].map(name => {
@@ -306,7 +306,7 @@ test "Task 4D: loop-head frame does not leak to later siblings" {
 
 ///|
 test "Task 4D: excluded candidate does not suppress later eligible candidate" {
-  let excluded = @set.Set::default()
+  let excluded : @set.Set[String] = Default::default()
   excluded.add("parameter")
   json_inspect(
     annex_b_tagged_names(
@@ -383,7 +383,7 @@ test "post-parse stack safety: deep Annex B candidates behind false control flow
   }
   let interp = Interpreter::new()
   let env = Environment::new()
-  hoist_eval_annex_b_candidates(interp, [nested], env, @set.Set::default())
+  hoist_eval_annex_b_candidates(interp, [nested], env, Default::default())
   debug_inspect(
     env.bindings.get("deep_candidate").map(binding => binding.annex_b_hoisted),
     content="Some(true)",

@@ -171,7 +171,7 @@ fn validate_block_statement_list_early_errors(
   allow_duplicate_block_functions? : Bool = false,
   include_function_decls_in_var_names? : Bool = false,
 ) -> Unit raise Error {
-  let lexical_names = @set.Set::default()
+  let lexical_names : @set.Set[String] = Default::default()
   let block_function_kinds : Map[String, Int] = Map([])
   for stmt in stmts {
     collect_block_lexical_decl_names_from_stmt(
@@ -182,7 +182,7 @@ fn validate_block_statement_list_early_errors(
       allow_duplicate_block_functions~,
     )
   }
-  let var_name_set = @set.Set::default()
+  let var_name_set : @set.Set[String] = Default::default()
   for
     name in @static_semantics.collect_var_declared_names(
       stmts,
@@ -869,7 +869,7 @@ fn collect_pattern_lex_names(
 fn collect_stmts_lex_names(
   stmts : Array[@ast.Stmt],
 ) -> @set.Set[String] raise Error {
-  let names = @set.Set::default()
+  let names : @set.Set[String] = Default::default()
   for stmt in stmts {
     add_stmt_lex_names(stmt, names)
   }
@@ -886,7 +886,7 @@ fn check_global_function_declarations(
 ) -> Unit raise Error {
   match interp.global_this {
     Value::Object(data) => {
-      let declared : @set.Set[String] = @set.Set::default()
+      let declared : @set.Set[String] = Default::default()
       for name in names {
         if !declared.contains(name) {
           let definable = match ordinary_get_own_string_desc(data.bag, name) {
@@ -919,7 +919,7 @@ fn check_global_var_declarations(
 ) -> Unit raise Error {
   match interp.global_this {
     Value::Object(data) => {
-      let function_set : @set.Set[String] = @set.Set::default()
+      let function_set : @set.Set[String] = Default::default()
       for name in function_names {
         function_set.add(name)
       }
@@ -990,7 +990,7 @@ fn annex_b_candidate_conflicts(
   name : String,
   top_lex : @set.Set[String],
   lex_stack : Array[@set.Set[String]],
-  excluded? : @set.Set[String] = @set.Set::default(),
+  excluded? : @set.Set[String] = Default::default(),
 ) -> Bool {
   // §B.3.2.1 step ii parameter carve-out: when called from a function body,
   // `excluded` contains formal parameter names (plus "arguments" when the
@@ -1034,7 +1034,7 @@ fn hoist_eval_annex_b_candidates(
   stmts : Array[@ast.Stmt],
   var_env : Environment,
   top_lex : @set.Set[String],
-  excluded? : @set.Set[String] = @set.Set::default(),
+  excluded? : @set.Set[String] = Default::default(),
 ) -> Unit raise Error {
   let lex_stack : Array[@set.Set[String]] = []
   let work : Array[AnnexBWalkTask] = []
@@ -1058,7 +1058,7 @@ fn hoist_eval_annex_b_candidates(
         schedule_annex_b_stmts_reverse(work, inner_stmts, in_block=true)
       }
       EnterAnnexBCatch(catch_param, catch_body) => {
-        let catch_frame = @set.Set::default()
+        let catch_frame : @set.Set[String] = Default::default()
         match catch_param {
           Some(IdentPat(_)) => ()
           Some(pattern) =>
@@ -1155,7 +1155,7 @@ fn visit_eval_annex_b_stmt(
         for_init_lex_names(init),
       )
     ForInStmt(kind, name, _, body, _) => {
-      let frame = @set.Set::default()
+      let frame : @set.Set[String] = Default::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
       }
@@ -1163,14 +1163,14 @@ fn visit_eval_annex_b_stmt(
     }
     ForOfStmt(kind, name, _, body, _)
     | AsyncForOfStmt(kind, name, _, body, _) => {
-      let frame = @set.Set::default()
+      let frame : @set.Set[String] = Default::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
       }
       schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
-      let frame = @set.Set::default()
+      let frame : @set.Set[String] = Default::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
@@ -1178,7 +1178,7 @@ fn visit_eval_annex_b_stmt(
     }
     ForOfStmtPat(kind, pattern, _, body, _)
     | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      let frame = @set.Set::default()
+      let frame : @set.Set[String] = Default::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
@@ -1196,7 +1196,7 @@ fn visit_eval_annex_b_stmt(
     // candidate `function F` in one case must not self-conflict. Duplicate
     // lex declarations across cases are caught by the early-error validator.
     SwitchStmt(_, cases, _) => {
-      let frame = @set.Set::default()
+      let frame : @set.Set[String] = Default::default()
       for case_ in cases {
         for inner in case_.body {
           add_stmt_lex_names(inner, frame)
@@ -1252,7 +1252,7 @@ fn visit_eval_annex_b_stmt(
 /// `StmtList(inner, _)` is the comma-separated `for (let a=1, b=2; …)` shape
 /// — unwrap it one level so each inner declaration contributes.
 fn for_init_lex_names(init : @ast.Stmt?) -> @set.Set[String] raise Error {
-  let names = @set.Set::default()
+  let names : @set.Set[String] = Default::default()
   match init {
     Some(StmtList(inner, _)) =>
       for s in inner {
@@ -1578,7 +1578,7 @@ fn Interpreter::hoist_declarations(
     // `arguments` is installed as a VarBinding during function-call setup.
     // Script / module top-level envs have no such bindings, so `excluded`
     // stays empty and no names are skipped.
-    let excluded = @set.Set::default()
+    let excluded : @set.Set[String] = Default::default()
     // In the split (§10.2.11) case, param/"arguments" bindings live on
     // `param_source`, not `env` (= body_env). Fall back to `env` when no
     // split (scripts/modules/non-Ext single-env paths).

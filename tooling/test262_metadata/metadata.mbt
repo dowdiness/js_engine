@@ -79,7 +79,7 @@ fn decode_string_array(
   let values : Array[String] = @json.from_json(raw) catch {
     _ => schema_error(path, "\{key} must be an array of strings")
   }
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   for value in values {
     if seen.contains(value) {
       schema_error(path, "\{key} must not contain duplicate entries: \{value}")

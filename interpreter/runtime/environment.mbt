@@ -11,7 +11,7 @@ pub(all) enum BindingKind {
 
 ///|
 pub impl Show for BindingKind with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|

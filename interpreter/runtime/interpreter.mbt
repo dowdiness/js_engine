@@ -274,7 +274,7 @@ pub fn Interpreter::new(
 ///|
 /// Check for duplicate parameter names. Raises SyntaxError in strict mode.
 fn check_duplicate_params(params : Array[String]) -> Unit raise Error {
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   for p in params {
     if seen.contains(p) {
       raise @errors.SyntaxError(
@@ -324,7 +324,7 @@ fn check_duplicate_params_ext(
   params : Array[@ast.Param],
   rest_param : String?,
 ) -> Unit raise Error {
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   let has_rest_pattern = params_have_rest_pattern(params)
   for p in params {
     match p.pattern {
@@ -457,7 +457,7 @@ pub fn validate_function_constructor_params(
   }
   let body_strict = body_has_use_strict
   if !is_simple || body_strict {
-    let seen = @set.Set::default()
+    let seen : @set.Set[String] = Default::default()
     for p in param_names {
       if seen.contains(p) {
         raise @errors.SyntaxError(

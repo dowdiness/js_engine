@@ -1425,7 +1425,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
   }
   self.eat_semicolon()
   // Validate: no duplicate bound names in import
-  let bound_names = @set.Set::default()
+  let bound_names : @set.Set[String] = Default::default()
   match default_import {
     Some(name) => bound_names.add(name)
     None => ()

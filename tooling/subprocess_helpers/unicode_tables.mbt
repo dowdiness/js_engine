@@ -363,7 +363,7 @@ pub async fn run_unicode_tables(config : UnicodeConfig) -> ToolRun {
   let url = unicode_data_url(config.unicode_version)
   stderr.write_string("Fetching " + url + "\n")
   let text = fetch_unicode_data(config.unicode_version, config.fetch_timeout_ms)
-  let tables : Map[String, Array[(Int, Int)]] = {}
+  let tables : Map[String, Array[(Int, Int)]] = Map([])
   for name in unicode_properties() {
     tables[name] = parse_unicode_property(text, name)
   }

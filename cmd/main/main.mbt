@@ -111,7 +111,7 @@ fn main {
             exit_with_error()
             return
           }
-          let registered_specifiers = @set.Set::default()
+          let registered_specifiers : @set.Set[String] = Default::default()
           for fixture in fixtures {
             let (specifier, _) = fixture
             if registered_specifiers.contains(specifier) {

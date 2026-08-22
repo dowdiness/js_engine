@@ -421,7 +421,7 @@ fn analyze_test_file(
       return {
         path: file.full_path,
         classification: "error",
-        reason: "\{to_repr(err)}",
+        reason: "\{Repr(err)}",
         category: "",
         complexity: "simple",
         features_required: [],
@@ -536,7 +536,7 @@ fn append_analysis_counts(
 
 ///|
 fn json_int_map(keys : Array[String], values : Map[String, Int]) -> Json {
-  let out : Map[String, Json] = {}
+  let out : Map[String, Json] = Map([])
   for key in keys {
     out[key] = json_int(map_get_count(values, key))
   }
@@ -567,7 +567,7 @@ fn analysis_json_report(
     ["simple", "moderate", "complex"],
     by_complexity,
   )
-  let categories : Map[String, Json] = {}
+  let categories : Map[String, Json] = Map([])
   let cats = sorted_count_keys_desc(total_by_category)
   for cat in cats {
     let total_for_cat = map_get_count(total_by_category, cat)
@@ -604,11 +604,11 @@ fn render_analysis_report(
   metadata : @metadata.SkipMetadata,
 ) -> (Array[String], Json) {
   let total = analyses.length()
-  let by_classification : Map[String, Int] = {}
-  let by_complexity : Map[String, Int] = {}
-  let applicable_by_category : Map[String, Int] = {}
-  let total_by_category : Map[String, Int] = {}
-  let feature_gaps : Map[String, Int] = {}
+  let by_classification : Map[String, Int] = Map([])
+  let by_complexity : Map[String, Int] = Map([])
+  let applicable_by_category : Map[String, Int] = Map([])
+  let total_by_category : Map[String, Int] = Map([])
+  let feature_gaps : Map[String, Int] = Map([])
   for analysis in analyses {
     append_analysis_counts(
       analysis, metadata, by_classification, by_complexity, applicable_by_category,

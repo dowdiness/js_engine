@@ -784,7 +784,7 @@ pub fn proxy_own_property_keys(
     }
   }
   // Step 9: If trapResult contains any duplicate entries, throw TypeError
-  let seen_strings = @set.Set::default()
+  let seen_strings : @set.Set[String] = Default::default()
   let seen_symbols : Map[Int, Bool] = Map([])
   for key in trap_keys {
     match key {

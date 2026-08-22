@@ -314,7 +314,7 @@ test "observed activation releases after restoring its owned runtime state" {
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
   )
   dispatch_shell_test_install_realm_sentinel(interp, 72)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("observation-release")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -558,7 +558,7 @@ test "restore all cleanup releases nested observations after state restoration" 
     "f(256);",
   )
   dispatch_shell_test_install_realm_sentinel(interp, 73)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("restore-all-observation")
   interp.realm_state.active_source_identity.val = Some("restore-all-caller.js")
   interp.in_nonarrow_param_default_eval = true
@@ -577,7 +577,7 @@ test "restore all cleanup releases nested observations after state restoration" 
     plan.root_call_loc,
   )
   dispatch_shell_test_install_realm_sentinel(interp, 74)
-  let nested_conflicts : @set.Set[String] = @set.Set::default()
+  let nested_conflicts : @set.Set[String] = Default::default()
   nested_conflicts.add("nested-restore-all-observation")
   interp.realm_state.active_source_identity.val = Some("nested-caller.js")
   interp.in_nonarrow_param_default_eval = true
@@ -642,7 +642,7 @@ test "direct numeric root call reports every managed activation in strict LIFO o
   )
   let registry = direct_numeric_recursion_registry_or_fail(interp, callee)
   dispatch_shell_test_install_realm_sentinel(interp, 75)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("direct-root-observation")
   interp.realm_state.active_source_identity.val = Some("direct-root-caller.js")
   interp.in_nonarrow_param_default_eval = true

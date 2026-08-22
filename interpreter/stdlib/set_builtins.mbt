@@ -223,7 +223,7 @@ fn setup_set_builtins(
               Some(i) => {
                 let ts = match data.tombstones {
                   None => {
-                    let ts : @set.Set[Int] = @set.Set::default()
+                    let ts : @set.Set[Int] = Default::default()
                     data.tombstones = Some(ts)
                     ts
                   }
@@ -267,7 +267,7 @@ fn setup_set_builtins(
           if n > 0 {
             let ts = match data.tombstones {
               None => {
-                let ts : @set.Set[Int] = @set.Set::default()
+                let ts : @set.Set[Int] = Default::default()
                 data.tombstones = Some(ts)
                 ts
               }
@@ -314,7 +314,7 @@ fn setup_set_builtins(
           // compaction (compacting mid-forEach would corrupt our cursor).
           let tombstones_pre_existed = data.tombstones is Some(_)
           if !tombstones_pre_existed {
-            data.tombstones = Some(@set.Set::default())
+            data.tombstones = Some(Default::default())
           }
           data.iteration_depth += 1
           let result : Result[Value, Error] = try {
@@ -1154,7 +1154,7 @@ fn make_set_iterator(
     before_create=fn() {
       // Enter tombstone mode so delete/clear tombstone (not compact) during for..of.
       if set_data.tombstones is None {
-        set_data.tombstones = Some(@set.Set::default())
+        set_data.tombstones = Some(Default::default())
       }
     },
   )

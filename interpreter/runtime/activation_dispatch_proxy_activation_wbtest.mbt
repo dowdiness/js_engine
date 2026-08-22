@@ -80,7 +80,7 @@ test "trusted Proxy get entry owns receiver arguments and dynamic state" {
   let (interp, shell, _, plan, capture, trap) = proxy_activation_test_fixture()
   dispatch_shell_test_install_realm_sentinel(interp, 51)
   interp.realm_state.active_source_identity.val = Some("caller.js")
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("caller")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)

@@ -2295,7 +2295,7 @@ pub fn collect_for_in_keys(
   interp : Interpreter,
 ) -> Array[String] raise Error {
   let keys : Array[String] = []
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   let mut current = obj
   while true {
     match current {

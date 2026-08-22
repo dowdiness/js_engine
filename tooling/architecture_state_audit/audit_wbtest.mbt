@@ -62,7 +62,7 @@ test "discover_mutable_bindings matches Python guardrail cases" {
   write_mbt(root, "interpreter/stdlib/unannotated.mbt", "let cache = [0]\n")
 
   let bindings = discover_mutable_bindings(root)
-  let found : Map[String, MutableBinding] = {}
+  let found : Map[String, MutableBinding] = Map([])
   for binding in bindings {
     found[binding.key] = binding
   }

@@ -150,7 +150,7 @@ fn collect_param_default_eval_var_conflicts(
   rest_param : String?,
   implicit_arguments? : Bool = false,
 ) -> @set.Set[String] {
-  let conflicts = @set.Set::default()
+  let conflicts : @set.Set[String] = Default::default()
   if implicit_arguments {
     conflicts.add("arguments")
   }

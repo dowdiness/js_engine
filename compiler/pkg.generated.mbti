@@ -30,4 +30,3 @@ pub fn BytecodeProgram::run(Self, @runtime.Interpreter) -> @runtime.Value raise
 // Type aliases
 
 // Traits
-
