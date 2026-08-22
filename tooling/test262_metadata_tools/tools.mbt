@@ -119,8 +119,8 @@ fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
     fail(missing_suite_message(test262_root))
   }
 
-  let features = @set.Set::default()
-  let flags = @set.Set::default()
+  let features : @set.Set[String] = Default::default()
+  let flags : @set.Set[String] = Default::default()
   let paths : Array[String] = []
   let mut files_scanned = 0
 

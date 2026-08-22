@@ -11,3 +11,8 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/set",
 }
+
+// The 20260819 toolchain flags cleanup-only catch/rethrow paths. Keep the
+// existing builtin cleanup behavior until those paths migrate to errdefer.
+
+warnings = "-92"

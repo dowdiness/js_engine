@@ -88,7 +88,7 @@ fn assert_user_func_call_test_gate_restored(
 ///|
 test "simple UserFunc parameter gate scopes restore nested state in LIFO order" {
   let interp = Interpreter::new()
-  let outer_conflicts : @set.Set[String] = @set.Set::default()
+  let outer_conflicts : @set.Set[String] = Default::default()
   outer_conflicts.add("outer")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(outer_conflicts)
@@ -97,7 +97,7 @@ test "simple UserFunc parameter gate scopes restore nested state in LIFO order" 
   inspect(interp.in_nonarrow_param_default_eval, content="false")
   inspect(interp.param_default_eval_var_conflicts is None, content="true")
 
-  let inner_conflicts : @set.Set[String] = @set.Set::default()
+  let inner_conflicts : @set.Set[String] = Default::default()
   inner_conflicts.add("inner")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(inner_conflicts)
@@ -122,7 +122,7 @@ test "simple UserFunc preparation binds parameters without executing its body" {
   )
   let body = @parser.parse("body_probe();").stmts
   let (data, callee) = user_func_call_test_fixture(interp.global, body)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("saved")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -214,7 +214,7 @@ test "simple UserFunc successful call restores parameter gate" {
     interp.global,
     @parser.parse("body_probe(); return value;").stmts,
   )
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("saved")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -271,7 +271,7 @@ test "simple UserFunc setup failure preserves error and restores parameter gate"
     closure,
     @parser.parse("body_probe();").stmts,
   )
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("saved")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -313,7 +313,7 @@ test "simple UserFunc body failure preserves error and restores parameter gate" 
     interp.global,
     @parser.parse("body_probe();").stmts,
   )
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("saved")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)

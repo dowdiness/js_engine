@@ -21,7 +21,7 @@ test "unicode parser filters properties and coalesces adjacent ranges" {
 
 ///|
 test "unicode emitter preserves deterministic MoonBit table shape" {
-  let tables : Map[String, Array[(Int, Int)]] = {}
+  let tables : Map[String, Array[(Int, Int)]] = Map([])
   tables["ID_Start"] = [(0x41, 0x5A)]
   tables["ID_Continue"] = [(0x30, 0x39), (0x41, 0x5A)]
   let output = emit_unicode_tables("17.0.0", tables)

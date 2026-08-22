@@ -483,7 +483,7 @@ fn classify_path_by_edition(
     return ("Pre-ES2015 (baseline)", [])
   }
   let editions : Array[String] = []
-  let unmapped_seen = @set.Set::default()
+  let unmapped_seen : @set.Set[String] = Default::default()
   let feature_map = feature_edition()
   for feature in features {
     match feature_map.get(feature) {
@@ -573,9 +573,9 @@ fn classify_result_records(
   records : Array[ResultRecord],
   test262_root : String,
 ) -> (Map[String, EditionBucket], Map[String, Int]) {
-  let buckets : Map[String, EditionBucket] = {}
-  let unmapped_counts : Map[String, Int] = {}
-  let feature_cache : Map[String, Array[String]] = {}
+  let buckets : Map[String, EditionBucket] = Map([])
+  let unmapped_counts : Map[String, Int] = Map([])
+  let feature_cache : Map[String, Array[String]] = Map([])
   for record in records {
     let features = match feature_cache.get(record.path) {
       Some(cached) => cached
@@ -612,7 +612,7 @@ fn sorted_compact_keys(
   strict_buckets : Map[String, EditionBucket],
   nonstrict_buckets : Map[String, EditionBucket],
 ) -> Array[String] {
-  let seen : Map[String, Bool] = {}
+  let seen : Map[String, Bool] = Map([])
   let keys : Array[String] = []
   for key, _ in strict_buckets {
     guard !seen.contains(key) else { continue }
@@ -993,7 +993,7 @@ fn render_failure_analysis(
       bucket.failures.length().to_string() +
       " failures",
     )
-    let subdir_counts : Map[String, Int] = {}
+    let subdir_counts : Map[String, Int] = Map([])
     for failure in bucket.failures {
       increment_count(subdir_counts, top_subdir(failure.path, depth=4))
     }
@@ -1013,7 +1013,7 @@ fn render_failure_analysis(
         )
       }
     }
-    let reason_counts : Map[String, Int] = {}
+    let reason_counts : Map[String, Int] = Map([])
     for failure in bucket.failures {
       increment_count(reason_counts, reason_key(failure.reason))
     }
@@ -1085,7 +1085,7 @@ fn edition_bucket_json(bucket : EditionBucket) -> Json {
 
 ///|
 fn editions_json(buckets : Map[String, EditionBucket]) -> Json {
-  let editions : Map[String, Json] = {}
+  let editions : Map[String, Json] = Map([])
   for edition in sorted_edition_keys(buckets) {
     let bucket = buckets[edition]
     if bucket.total == 0 {
@@ -1110,12 +1110,12 @@ pub fn run_classify_by_edition(
   json_output? : String = "",
   compact? : Bool = false,
 ) -> ToolRun raise {
-  let all_unmapped : Map[String, Int] = {}
+  let all_unmapped : Map[String, Int] = Map([])
   let stdout_lines : Array[String] = []
   let failure_sections : Array[Array[String]] = []
-  let mode_editions : Map[String, Json] = {}
+  let mode_editions : Map[String, Json] = Map([])
   if compact {
-    let mode_buckets : Map[String, Map[String, EditionBucket]] = {}
+    let mode_buckets : Map[String, Map[String, EditionBucket]] = Map([])
     for result_path in result_paths {
       let data = load_result_file(result_path)
       let (buckets, unmapped) = classify_result_records(

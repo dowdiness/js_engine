@@ -98,7 +98,7 @@ test "skip_reason matches shared parity cases" {
     )
     guard reason == case.reason else {
       fail(
-        "parity case failed: \{case.name}; got \{to_repr(reason)}, expected \{to_repr(case.reason)}",
+        "parity case failed: \{case.name}; got \{Repr(reason)}, expected \{Repr(case.reason)}",
       )
     }
   }

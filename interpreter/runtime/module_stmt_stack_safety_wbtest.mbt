@@ -67,7 +67,7 @@ test "Task 6A: deep exported destructuring uses stack-safe BoundNames metadata" 
   collect_module_direct_export_names_from_stmt(
     exported,
     names,
-    @set.Set::default(),
+    Default::default(),
   )
   json_inspect(names, content=["deep_name"])
   assert_eq(
@@ -101,7 +101,7 @@ test "Task 6A: export wrapper is opaque but declaration payload carrier flattens
   collect_module_direct_export_names_from_stmt(
     wrapper,
     names,
-    @set.Set::default(),
+    Default::default(),
   )
   json_inspect(names, content=["first", "second"])
 }
@@ -140,19 +140,19 @@ test "Task 6A: synthetic statement carrier keeps direct indirect star precedence
     direct,
     "chosen",
     records,
-    @set.Set::default(),
+    Default::default(),
   )
   let resolved_indirect = interp.resolve_module_export(
     indirect,
     "chosen",
     records,
-    @set.Set::default(),
+    Default::default(),
   )
   let resolved_star = interp.resolve_module_export(
     star_only,
     "chosen",
     records,
-    @set.Set::default(),
+    Default::default(),
   )
   inspect(
     match resolved_direct {
@@ -217,7 +217,7 @@ test "Task 6A: deep direct and star export collectors preserve duplicate policy"
   collect_module_direct_export_names_from_stmt(
     nested,
     names,
-    @set.Set::default(),
+    Default::default(),
   )
   json_inspect(names, content=["first", "alias"])
   json_inspect(module_test_record([nested]).star_sources(), content=[
@@ -292,9 +292,9 @@ test "Task 6B: dependency path search handles deep true false and shared seen ca
   let length = 4096
   let records = module_dependency_chain(length)
   assert_false(
-    module_dependency_path_exists("0", "missing", records, @set.Set::default()),
+    module_dependency_path_exists("0", "missing", records, Default::default()),
   )
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   assert_true(module_dependency_path_exists("0", "4095", records, seen))
   assert_true(seen.contains("0"))
   assert_true(seen.contains("4094"))
@@ -476,7 +476,7 @@ fn assert_deep_module_resolution(
 ///|
 test "Task 6C: 4096-hop explicit-source resolution is stack safe" {
   let records = module_resolution_chain(4097, "explicit")
-  let resolve_set = @set.Set::default()
+  let resolve_set : @set.Set[String] = Default::default()
   assert_deep_module_resolution(
     Interpreter::new().resolve_module_export(
       records["0"],
@@ -493,7 +493,7 @@ test "Task 6C: 4096-hop explicit-source resolution is stack safe" {
 ///|
 test "Task 6C: 4096-hop imported-local resolution is stack safe" {
   let records = module_resolution_chain(4097, "imported")
-  let resolve_set = @set.Set::default()
+  let resolve_set : @set.Set[String] = Default::default()
   assert_deep_module_resolution(
     Interpreter::new().resolve_module_export(
       records["0"],
@@ -510,7 +510,7 @@ test "Task 6C: 4096-hop imported-local resolution is stack safe" {
 ///|
 test "Task 6C: 4096-hop star resolution reaches direct leaf stack safely" {
   let records = module_resolution_chain(4097, "star")
-  let resolve_set = @set.Set::default()
+  let resolve_set : @set.Set[String] = Default::default()
   assert_deep_module_resolution(
     Interpreter::new().resolve_module_export(
       records["0"],
@@ -557,7 +557,7 @@ test "Task 6C: explicit selection and direct/default precedence parity" {
       "export { x } from 'missing'; export { x } from 'leaf'; export * from 'leaf';",
     ).stmts,
   )
-  let first_set = @set.Set::default()
+  let first_set : @set.Set[String] = Default::default()
   assert_module_resolution_origin(
     interp.resolve_module_export(first_missing, "x", records, first_set),
     1.0,
@@ -573,7 +573,7 @@ test "Task 6C: explicit selection and direct/default precedence parity" {
     ).stmts,
   )
   direct.exports["x"] = Number(2.0)
-  let direct_set = @set.Set::default()
+  let direct_set : @set.Set[String] = Default::default()
   assert_module_resolution_origin(
     interp.resolve_module_export(direct, "x", records, direct_set),
     2.0,
@@ -585,7 +585,7 @@ test "Task 6C: explicit selection and direct/default precedence parity" {
     "default",
     @parser.parse("export * from 'never-loaded';").stmts,
   )
-  let default_set = @set.Set::default()
+  let default_set : @set.Set[String] = Default::default()
   assert_true(
     interp.resolve_module_export(default_only, "default", records, default_set)
     is NotFound,
@@ -626,7 +626,7 @@ test "Task 6C: star ambiguity identity and short-circuit parity" {
     @parser.parse("export * from 'alias-a'; export * from 'alias-b';").stmts,
   )
   assert_module_resolution_origin(
-    interp.resolve_module_export(same, "x", records, @set.Set::default()),
+    interp.resolve_module_export(same, "x", records, Default::default()),
     1.0,
     "leaf",
     "x",
@@ -637,7 +637,7 @@ test "Task 6C: star ambiguity identity and short-circuit parity" {
       "export * from 'alias-a'; export * from 'different'; export * from 'must-not-load';",
     ).stmts,
   )
-  let ambiguous_set = @set.Set::default()
+  let ambiguous_set : @set.Set[String] = Default::default()
   assert_true(
     interp.resolve_module_export(ambiguous, "x", records, ambiguous_set)
     is Ambiguous,
@@ -659,7 +659,7 @@ test "Task 6C: star ring later fallback and caller resolve-set reuse parity" {
     "4096",
     @parser.parse("export * from '0'; export * from 'leaf';").stmts,
   )
-  let resolve_set = @set.Set::default()
+  let resolve_set : @set.Set[String] = Default::default()
   assert_module_resolution_origin(
     interp.resolve_module_export(records["0"], "x", records, resolve_set),
     3.0,
@@ -680,7 +680,7 @@ test "Task 6C: ImportedNamespace preserves identity cache and resolve set" {
   let interp = Interpreter::new()
   let exports : Map[String, Value] = Map([("x", Number(7.0))])
   interp.register_module("external", exports)
-  let resolve_set = @set.Set::default()
+  let resolve_set : @set.Set[String] = Default::default()
   let first = interp.resolve_module_import_target(
     ImportedNamespace("external"),
     Map([]),
@@ -732,7 +732,7 @@ fn module_exported_names_chain(
 ///|
 test "Task 7: exported names handles a 4096-edge record chain" {
   let records = module_exported_names_chain(4097)
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   let names = Interpreter::new().module_get_exported_names(
     records["0"],
     records,
@@ -761,7 +761,7 @@ test "Task 7: exported names cycle continues to later star source" {
     "tail",
     @parser.parse("export const tail = 1;").stmts,
   )
-  let seen = @set.Set::default()
+  let seen : @set.Set[String] = Default::default()
   json_inspect(
     Interpreter::new().module_get_exported_names(records["a"], records, seen),
     content=["a", "b", "tail"],
@@ -794,7 +794,7 @@ test "Task 7: exported names filters default and dedupes at each level in order"
     Interpreter::new().module_get_exported_names(
       root,
       records,
-      @set.Set::default(),
+      Default::default(),
     ),
     content=["own", "shared", "left", "right"],
   )
@@ -823,7 +823,7 @@ test "Task 7: exported names reaches external sources in order and stops on erro
     ).stmts,
   )
   let result : Result[Array[String], Error] = Ok(
-    interp.module_get_exported_names(root, Map([]), @set.Set::default()),
+    interp.module_get_exported_names(root, Map([]), Default::default()),
   ) catch {
     error => Err(error)
   }

@@ -451,7 +451,7 @@ fn numeric_activation_test_cleanup_completion(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
   )
   dispatch_shell_test_install_realm_sentinel(interp, sentinel)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("saved")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -493,7 +493,7 @@ test "numeric setup rejection retains state until exactly one rollback" {
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
   )
   dispatch_shell_test_install_realm_sentinel(interp, 36)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("rejected")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -646,7 +646,7 @@ test "numeric cleanup restores every nested activation after a shell failure" {
     "f(256);",
   )
   dispatch_shell_test_install_realm_sentinel(interp, 34)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("outer")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)

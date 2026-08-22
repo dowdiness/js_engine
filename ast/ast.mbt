@@ -362,95 +362,95 @@ pub(all) struct Program {
 
 ///|
 pub impl Show for BinOp with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for UnaryOp with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for UpdateOp with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for CompoundOp with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for VarKind with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for PropKind with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for Property with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for SwitchCase with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for Expr with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for Param with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for Pattern with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for PropPat with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for ImportSpecifier with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for ExportSpecifier with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for ClassMethod with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for ClassField with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for ClassMember with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for Stmt with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
 pub impl Show for Program with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }

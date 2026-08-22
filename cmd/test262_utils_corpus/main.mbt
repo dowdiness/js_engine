@@ -163,7 +163,7 @@ fn main {
   }
   @fs.write_string_to_file(output_path, artifact.stringify(indent=2) + "\n") catch {
     err => {
-      eprintln("Error: \{to_repr(err)}")
+      eprintln("Error: \{Repr(err)}")
       exit_with_error()
       return
     }

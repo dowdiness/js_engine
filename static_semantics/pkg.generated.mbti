@@ -27,4 +27,3 @@ pub fn validate_strict_identifier_reference(Bool, String) -> Unit raise
 // Type aliases
 
 // Traits
-

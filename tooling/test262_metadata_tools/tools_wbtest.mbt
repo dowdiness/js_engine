@@ -60,7 +60,7 @@ test "validate_skip_metadata accepts live shared metadata entries" {
 
 ///|
 test "render_classify_table keeps skipped-only buckets in totals" {
-  let buckets : Map[String, EditionBucket] = {}
+  let buckets : Map[String, EditionBucket] = Map([])
   buckets["ES2015"] = bucket_record(
     bucket_record(empty_bucket(), "pass", path="p.js", reason=""),
     "fail",

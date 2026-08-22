@@ -625,7 +625,7 @@ fn make_arguments_object(
   let mapped_indices : Map[Int, Bool] = Map([])
   match mapped_env {
     Some(_) => {
-      let mapped_set = @set.Set::default()
+      let mapped_set : @set.Set[String] = Default::default()
       let mut idx = map_count - 1
       while idx >= 0 {
         let pname = mapped_names[idx]

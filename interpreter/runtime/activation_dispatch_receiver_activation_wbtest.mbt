@@ -82,7 +82,7 @@ fn receiver_activation_test_cleanup_completion(
 ) -> Unit raise {
   let (interp, shell, _, plan, callee, receiver) = receiver_activation_test_fixture()
   dispatch_shell_test_install_realm_sentinel(interp, sentinel)
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("saved")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
@@ -107,7 +107,7 @@ test "trusted receiver entry owns this and restores dynamic state" {
   let (interp, shell, _, plan, callee, receiver) = receiver_activation_test_fixture()
   dispatch_shell_test_install_realm_sentinel(interp, 61)
   interp.realm_state.active_source_identity.val = Some("caller.js")
-  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  let saved_conflicts : @set.Set[String] = Default::default()
   saved_conflicts.add("caller")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)

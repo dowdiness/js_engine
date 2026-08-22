@@ -315,7 +315,7 @@ test "direct numeric recursion abrupt exit restores activation lifecycle state" 
     content="true",
   )
   interp.in_nonarrow_param_default_eval = true
-  let conflicts : @set.Set[String] = @set.Set::default()
+  let conflicts : @set.Set[String] = Default::default()
   conflicts.add("outer") |> ignore
   interp.param_default_eval_var_conflicts = Some(conflicts)
   let control = ExecutionControl(

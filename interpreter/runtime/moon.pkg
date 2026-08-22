@@ -1,3 +1,7 @@
+// The 20260819 toolchain flags cleanup-only catch/rethrow paths. Keep the
+// existing runtime behavior until cancellation-safe errdefer migration lands.
+warnings = "-92"
+
 import {
   "dowdiness/js_engine/ast",
   "dowdiness/js_engine/token",

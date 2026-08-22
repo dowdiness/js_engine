@@ -253,7 +253,7 @@ fn render_report(
     !binding.is_unannotated &&
     classified_reason(classified, binding.key) is None
   })
-  let found = @set.Set::default()
+  let found : @set.Set[String] = Default::default()
   for binding in bindings {
     found.add(binding.key)
   }

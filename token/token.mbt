@@ -7,7 +7,7 @@ pub(all) struct Loc {
 
 ///|
 pub impl Show for Loc with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
@@ -47,7 +47,7 @@ pub(all) enum LexForm {
 
 ///|
 pub impl Show for LexForm with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
@@ -183,7 +183,7 @@ pub(all) enum TokenKind {
 
 ///|
 pub impl Show for TokenKind with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|
@@ -197,7 +197,7 @@ pub(all) struct Token {
 
 ///|
 pub impl Show for Token with fn output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write(Debug::to_repr(self))
 }
 
 ///|

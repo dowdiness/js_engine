@@ -39,4 +39,3 @@ pub fn Parser::new(Array[@token.Token], String) -> Self
 // Type aliases
 
 // Traits
-

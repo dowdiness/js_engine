@@ -37,6 +37,9 @@ pub impl Show for JsError with fn output(self, logger) {
 }
 
 ///|
+extend JsError with Show::{to_string}
+
+///|
 pub fn JsError::name(self : JsError) -> String noraise {
   match self {
     TypeError(_) => "TypeError"

@@ -15,4 +15,3 @@ pub fn tokenize(String) -> Array[@token.Token] raise
 // Type aliases
 
 // Traits
-

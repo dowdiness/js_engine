@@ -23,7 +23,9 @@ jobs:
       contents: read
 
     env:
-      MOONBIT_CACHE_VERSION: "2026-07"
+      MOONBIT_INSTALL_VERSION: "latest"
+      MOONBIT_EXPECTED_VERSION: "moon 0.1.20260819 (fc2a4ee 2026-08-19)"
+      MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
       WARMUP_RUNS: ${{ inputs.warmup }}
       MIN_RUNS: ${{ inputs.min_runs }}
       STARTUP_SOURCE: "1 + 1"
@@ -46,6 +48,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version

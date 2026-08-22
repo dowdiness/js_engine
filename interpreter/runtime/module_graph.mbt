@@ -265,7 +265,7 @@ fn Interpreter::instantiate_indirect_exports_from_stmt(
               source,
               spec.local_name,
               records_by_specifier,
-              @set.Set::default(),
+              Default::default(),
             ) {
             Resolved(resolved) => resolved.value
             Ambiguous =>
@@ -301,7 +301,7 @@ fn Interpreter::instantiate_module_star_exports(
     name in self.module_get_exported_names(
       record,
       records_by_specifier,
-      @set.Set::default(),
+      Default::default(),
     ) {
     if name != "default" {
       match
@@ -309,7 +309,7 @@ fn Interpreter::instantiate_module_star_exports(
           record,
           name,
           records_by_specifier,
-          @set.Set::default(),
+          Default::default(),
         ) {
         Resolved(resolved) => self.module_exports[name] = resolved.value
         NotFound | Ambiguous => ()
@@ -708,7 +708,7 @@ fn Interpreter::module_get_exported_names_driver(
             }
             seen_modules.add(record.specifier)
             let names : Array[String] = []
-            let seen_names = @set.Set::default()
+            let seen_names : @set.Set[String] = Default::default()
             for stmt in record.stmts {
               collect_module_direct_export_names_from_stmt(
                 stmt, names, seen_names,
@@ -1063,7 +1063,7 @@ fn should_skip_weak_module_back_edge(
     dependency,
     record.specifier,
     records_by_specifier,
-    @set.Set::default(),
+    Default::default(),
   )
 }
 

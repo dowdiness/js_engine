@@ -288,4 +288,3 @@ pub impl Show for VarKind
 // Type aliases
 
 // Traits
-

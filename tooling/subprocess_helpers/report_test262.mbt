@@ -762,7 +762,7 @@ fn merge_shards_to_file(
     "timeout": Json::number(m_timeout.to_double(), repr=m_timeout.to_string()),
     "error": Json::number(m_error.to_double(), repr=m_error.to_string()),
   }
-  let empty_cats : Map[String, Json] = {}
+  let empty_cats : Map[String, Json] = Map([])
   let merged_fields : Map[String, Json] = {
     "engine": Json::string("MoonBit JS Engine"),
     "date": Json::string("1970-01-01T00:00:00Z"),

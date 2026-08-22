@@ -28,7 +28,7 @@ fn aggregate_results(
   results : Array[TestResult],
   test262_dir~ : String,
 ) -> AggregatedResults {
-  let categories : Map[String, CategoryStats] = {}
+  let categories : Map[String, CategoryStats] = Map([])
   let overall = CategoryStats()
   for result in results {
     let cat = category_for_path(result.path, test262_dir)
@@ -142,7 +142,7 @@ fn results_artifact(
       summary["methodology"] = methodology["label"]
     _ => ()
   }
-  let categories : Map[String, Json] = {}
+  let categories : Map[String, Json] = Map([])
   for cat in sorted_keys(agg.categories) {
     let stats = agg.categories[cat]
     categories[cat] = Json::object({

@@ -1019,7 +1019,7 @@ priv struct RegexNameSummary {
 
 ///|
 fn RegexNameSummary::RegexNameSummary() -> RegexNameSummary {
-  { names: @set.Set::default() }
+  { names: Default::default() }
 }
 
 ///|
