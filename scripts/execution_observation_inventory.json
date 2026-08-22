@@ -358,6 +358,21 @@
       "public_facade_evidence": ["pkg.generated.mbti#Engine::eval_bounded"]
     },
     {
+      "id": "bounded-evaluation-string-repeat-loop",
+      "accounting_entry_id": "bounded-evaluation-string-repeat-loop-entry",
+      "operation_family": "bounded evaluation",
+      "entry_category": "String.prototype.repeat logical repetition loop",
+      "contract_observation_category": "script-controlled-execution-time-loop",
+      "current_accounting_owner": "interpreter/stdlib/builtins_string.mbt#repeat loop",
+      "intended_final_accounting_owner": "bounded-evaluation-string-repeat-loop-observation",
+      "status": "observed-exactly-once",
+      "duplicate_charge_risk": "Each logical repetition must observe the shared operation budget exactly once before its append; the aggregate String-loop row remains unobserved for other algorithms.",
+      "owning_implementation_or_issue": "interpreter/stdlib/builtins_string.mbt#String.prototype.repeat",
+      "focused_evidence": ["interpreter/stdlib/builtins_string.mbt#interp.observe_execution_step()", "compiler/issue_944_repeat_observation_wbtest.mbt#candidate String.repeat function remains bytecode-eligible"],
+      "public_facade_evidence_required": true,
+      "public_facade_evidence": ["integration/external_consumer/repeat_guardrail_test.mbt#default String.repeat observes the bounded execution budget", "integration/external_consumer_candidate/repeat_guardrail_test.mbt#candidate String.repeat observes the bounded execution budget"]
+    },
+    {
       "id": "bounded-evaluation-regexp-loops",
       "accounting_entry_id": "bounded-evaluation-regexp-loops-entry",
       "operation_family": "bounded evaluation",
