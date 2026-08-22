@@ -13,8 +13,3 @@ import {
 }
 
 supported_targets = "+native"
-
-// The 20260819 toolchain flags cleanup-only catch/rethrow paths. Keep the
-// existing subprocess cleanup behavior until those paths migrate to errdefer.
-
-warnings = "-92"

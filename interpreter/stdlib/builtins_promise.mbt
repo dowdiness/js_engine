@@ -622,19 +622,19 @@ pub fn setup_promise(
         iterator = iter
         has_iterator = true
         while true {
-          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-            e => {
+          let next_result = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.call_value(next_method, iterator, [], loc)
           }
           let done = match next_result {
             Object(_) => {
-              let done_value = interp.get_property(next_result, "done", loc) catch {
-                e => {
+              let done_value = {
+                errdefer {
                   iterator_done = true
-                  raise e
                 }
+                interp.get_property(next_result, "done", loc)
               }
               @runtime.is_truthy(done_value)
             }
@@ -649,11 +649,11 @@ pub fn setup_promise(
             iterator_done = true
             break
           }
-          let next_value = interp.get_property(next_result, "value", loc) catch {
-            e => {
+          let next_value = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.get_property(next_result, "value", loc)
           }
           let index = results.length()
           results.push(Undefined)
@@ -738,19 +738,19 @@ pub fn setup_promise(
         // iterator completion or abrupt completion. We do not stop consuming
         // the iterator when one already-enqueued promise settles.
         while true {
-          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-            e => {
+          let next_result = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.call_value(next_method, iterator, [], loc)
           }
           let done = match next_result {
             Object(_) => {
-              let done_value = interp.get_property(next_result, "done", loc) catch {
-                e => {
+              let done_value = {
+                errdefer {
                   iterator_done = true
-                  raise e
                 }
+                interp.get_property(next_result, "done", loc)
               }
               @runtime.is_truthy(done_value)
             }
@@ -765,11 +765,11 @@ pub fn setup_promise(
             iterator_done = true
             break
           }
-          let next_value = interp.get_property(next_result, "value", loc) catch {
-            e => {
+          let next_value = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.get_property(next_result, "value", loc)
           }
           let next_promise = call_promise_resolve_method(
             interp, promise_resolve, _this, next_value, loc,
@@ -813,19 +813,19 @@ pub fn setup_promise(
         iterator = iter
         has_iterator = true
         while true {
-          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-            e => {
+          let next_result = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.call_value(next_method, iterator, [], loc)
           }
           let done = match next_result {
             Object(_) => {
-              let done_value = interp.get_property(next_result, "done", loc) catch {
-                e => {
+              let done_value = {
+                errdefer {
                   iterator_done = true
-                  raise e
                 }
+                interp.get_property(next_result, "done", loc)
               }
               @runtime.is_truthy(done_value)
             }
@@ -840,11 +840,11 @@ pub fn setup_promise(
             iterator_done = true
             break
           }
-          let next_value = interp.get_property(next_result, "value", loc) catch {
-            e => {
+          let next_value = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.get_property(next_result, "value", loc)
           }
           let index = results.length()
           results.push(Undefined)
@@ -989,19 +989,19 @@ pub fn setup_promise(
         // As in the spec algorithm, this loop consumes the iterator
         // synchronously; resolving early does not short-circuit iteration.
         while true {
-          let next_result = interp.call_value(next_method, iterator, [], loc) catch {
-            e => {
+          let next_result = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.call_value(next_method, iterator, [], loc)
           }
           let done = match next_result {
             Object(_) => {
-              let done_value = interp.get_property(next_result, "done", loc) catch {
-                e => {
+              let done_value = {
+                errdefer {
                   iterator_done = true
-                  raise e
                 }
+                interp.get_property(next_result, "done", loc)
               }
               @runtime.is_truthy(done_value)
             }
@@ -1016,11 +1016,11 @@ pub fn setup_promise(
             iterator_done = true
             break
           }
-          let next_value = interp.get_property(next_result, "value", loc) catch {
-            e => {
+          let next_value = {
+            errdefer {
               iterator_done = true
-              raise e
             }
+            interp.get_property(next_result, "value", loc)
           }
           let index = errors.length()
           errors.push(Undefined)

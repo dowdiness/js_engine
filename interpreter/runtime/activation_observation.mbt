@@ -123,12 +123,8 @@ fn ActivationObservationToken::ActivationObservationToken(
 fn observe_activation_entry(
   port : ActivationObservationPort,
 ) -> ActivationEntryAttempt raise Error {
-  let hooks = (port.begin_entry)() catch {
-    error => {
-      (port.denied)()
-      raise error
-    }
-  }
+  errdefer (port.denied)()
+  let hooks = (port.begin_entry)()
   // A successful begin_entry owns one unit even when later setup rejects the
   // entry. Outcome hooks remain reserved for setup acceptance or rejection;
   // release pairs with this acquisition after owned cleanup.

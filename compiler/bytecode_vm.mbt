@@ -142,36 +142,30 @@ fn start_candidate_bytecode_frame(
   interp : Interpreter,
   frame : BytecodeFrame,
 ) -> BytecodeFrame raise Error {
-  try {
-    match frame.func_def.activation_kind {
-      ScriptRootActivation => {
+  errdefer frame.complete_candidate_route(false)
+  match frame.func_def.activation_kind {
+    ScriptRootActivation => {
+      if frame.func_def.env_slot_names.length() > 0 {
+        frame.bind_env_slots()
+      }
+      frame.hoist_function_decls(interp)
+    }
+    FunctionActivation => {
+      if frame.func_def.needs_own_env {
+        frame.hoist_env_var_bindings(interp)
+        frame.hoist_lexical_bindings()
         if frame.func_def.env_slot_names.length() > 0 {
           frame.bind_env_slots()
         }
-        frame.hoist_function_decls(interp)
       }
-      FunctionActivation => {
-        if frame.func_def.needs_own_env {
-          frame.hoist_env_var_bindings(interp)
-          frame.hoist_lexical_bindings()
-          if frame.func_def.env_slot_names.length() > 0 {
-            frame.bind_env_slots()
-          }
-        }
-        // Candidate children retain their own typed selection even when the
-        // bytecode activation does not need an additional lexical environment.
-        // Function declarations still need to be materialized into the frame's
-        // local slots or enclosing environment before the first instruction.
-        frame.hoist_function_decls(interp)
-      }
-    }
-    frame
-  } catch {
-    error => {
-      frame.complete_candidate_route(false)
-      raise error
+      // Candidate children retain their own typed selection even when the
+      // bytecode activation does not need an additional lexical environment.
+      // Function declarations still need to be materialized into the frame's
+      // local slots or enclosing environment before the first instruction.
+      frame.hoist_function_decls(interp)
     }
   }
+  frame
 }
 
 ///|
@@ -242,11 +236,9 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
   // Cross the neutral seam only at completion or an explicit suspension point.
   // #631 will add the first suspension result; continuing one opcode at a time
   // would make executor-neutral dispatch part of the bytecode inner loop.
-  let step = self.step_bytecode(interp) catch {
-    error => {
-      self.complete_candidate_route(false)
-      raise error
-    }
+  let step = {
+    errdefer self.complete_candidate_route(false)
+    self.step_bytecode(interp)
   }
   match step {
     BytecodeFrameNormal(value) => {

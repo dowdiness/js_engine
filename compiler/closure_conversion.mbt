@@ -1579,7 +1579,10 @@ fn call_compiled_func(
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
-  let result : Value = try {
+  let result : Value = {
+    errdefer {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+    }
     let func_ctx : ExecContext = { strict, current_generator: None }
     let func_env = Environment::new(parent=Some(closure))
     func_env.is_var_scope = true
@@ -1607,11 +1610,6 @@ fn call_compiled_func(
         reduce_body_signal((compiled_body.0)(interp, func_ctx, func_env))
       None => abort("call_compiled_func: body is required")
     }
-  } catch {
-    err => {
-      interp.in_nonarrow_param_default_eval = saved_in_default
-      raise err
-    }
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   result
@@ -1628,17 +1626,15 @@ fn call_compiled_arrow_func(
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
-  let result : Value = try {
+  let result : Value = {
+    errdefer {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+    }
     let func_env = Environment::new(parent=Some(closure))
     func_env.is_var_scope = true
     let func_ctx : ExecContext = { strict, current_generator: None }
     bind_simple_params(func_env, params, args)
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
-  } catch {
-    err => {
-      interp.in_nonarrow_param_default_eval = saved_in_default
-      raise err
-    }
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   result

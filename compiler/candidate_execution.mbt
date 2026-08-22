@@ -318,17 +318,15 @@ impl @runtime.ExecutorCode for CandidateBytecodeExecutorCode with fn start(
     self.decision,
   )
   candidate_route_start(activation, CandidateBytecodeExecutor)
-  let frame = BytecodeFrame::candidate(
-    execution,
-    prepared.environment(),
-    prepared.context(),
-    activation,
-    direct_args=Some(prepared.arguments()),
-  ) catch {
-    error => {
-      candidate_route_complete(activation, CandidateRouteAbrupt)
-      raise error
-    }
+  let frame = {
+    errdefer candidate_route_complete(activation, CandidateRouteAbrupt)
+    BytecodeFrame::candidate(
+      execution,
+      prepared.environment(),
+      prepared.context(),
+      activation,
+      direct_args=Some(prepared.arguments()),
+    )
   }
   start_candidate_bytecode_frame(interp, frame)
   as &@runtime.ExecutorActivationFrame
@@ -349,20 +347,16 @@ fn run_candidate_bytecode_function(
     bytecode,
     candidate_child_materializer(candidate, bytecode, activation.evidence),
   )
-  let frame = BytecodeFrame::candidate(execution, env, ctx, activation) catch {
-    error => {
-      candidate_route_complete(activation, CandidateRouteAbrupt)
-      raise error
-    }
+  let frame = {
+    errdefer candidate_route_complete(activation, CandidateRouteAbrupt)
+    BytecodeFrame::candidate(execution, env, ctx, activation)
   }
   let frame = start_candidate_bytecode_frame(interp, frame)
-  let result = interp.run_executor_activation_coordinator(
-    frame as &@runtime.ExecutorActivationFrame,
-  ) catch {
-    error => {
-      frame.complete_candidate_route(false)
-      raise error
-    }
+  let result = {
+    errdefer frame.complete_candidate_route(false)
+    interp.run_executor_activation_coordinator(
+      frame as &@runtime.ExecutorActivationFrame,
+    )
   }
   match result {
     @runtime.ExecutorActivationNormal(value)

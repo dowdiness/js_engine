@@ -1437,6 +1437,10 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
       // isolating them from any outer generator's context.
       self.push_generator_context(false)
       self.push_async_context(obj_is_async)
+      errdefer {
+        self.pop_async_context()
+        self.pop_generator_context()
+      }
       let func_data : @ast.Expr = try {
         let params = self.parse_params()
         // Validate getter/setter arity
@@ -1455,13 +1459,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             }
           @ast.Init | @ast.Spread => ()
         }
-        let body = self.parse_block_body() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
+        let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
         if obj_is_async {
@@ -1487,35 +1485,19 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             msg == "DEFAULT_PARAM_FOUND" ||
             msg == "DESTRUCTURE_PARAM_FOUND" {
             self.pos = saved_pos
-            let (ext_params, rest_param) = self.parse_params_ext() catch {
-              e => {
-                self.pop_async_context()
-                self.pop_generator_context()
-                raise e
-              }
-            }
+            let (ext_params, rest_param) = self.parse_params_ext()
             if prop_kind == @ast.Set &&
               (ext_params.length() != 1 || rest_param is Some(_)) {
-              self.pop_async_context()
-              self.pop_generator_context()
               raise @errors.SyntaxError(
                 message="Setter must have exactly one non-rest parameter",
               )
             }
             if obj_is_async && params_contain_await(ext_params) {
-              self.pop_async_context()
-              self.pop_generator_context()
               raise @errors.SyntaxError(
                 message="Async method formal parameters may not contain await expressions",
               )
             }
-            let body = self.parse_block_body() catch {
-              e => {
-                self.pop_async_context()
-                self.pop_generator_context()
-                raise e
-              }
-            }
+            let body = self.parse_block_body()
             self.pop_async_context()
             self.pop_generator_context()
             if obj_is_async {
@@ -1538,15 +1520,9 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
               )
             }
           } else {
-            self.pop_async_context()
-            self.pop_generator_context()
             raise @errors.SyntaxError(message=msg)
           }
-        e => {
-          self.pop_async_context()
-          self.pop_generator_context()
-          raise e
-        }
+        e => raise e
       }
       props.push({
         key: key_expr,
@@ -1635,26 +1611,18 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
   // this expression appears inside an outer generator's parameter list.
   self.push_generator_context(false)
   self.push_async_context(false)
+  errdefer {
+    self.pop_async_context()
+    self.pop_generator_context()
+  }
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
       if msg == "REST_PARAM_FOUND" ||
         msg == "DEFAULT_PARAM_FOUND" ||
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
-        let (ext_params, rest_param) = self.parse_params_ext() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
-        let body = self.parse_block_body() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
+        let (ext_params, rest_param) = self.parse_params_ext()
+        let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
         return FuncExprExt(
@@ -1666,23 +1634,11 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
           self.consume_source_text(tok.loc.offset),
         )
       } else {
-        self.pop_async_context()
-        self.pop_generator_context()
         raise @errors.SyntaxError(message=msg)
       }
-    e => {
-      self.pop_async_context()
-      self.pop_generator_context()
-      raise e
-    }
+    e => raise e
   }
-  let body = self.parse_block_body() catch {
-    e => {
-      self.pop_async_context()
-      self.pop_generator_context()
-      raise e
-    }
-  }
+  let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
   FuncExpr(
@@ -1799,34 +1755,24 @@ fn Parser::parse_async_func_body(
   // from any outer generator's context (mirrors fix in parse_func_expr).
   self.push_generator_context(is_generator)
   self.push_async_context(true)
+  errdefer {
+    self.pop_async_context()
+    self.pop_generator_context()
+  }
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
       if msg == "REST_PARAM_FOUND" ||
         msg == "DEFAULT_PARAM_FOUND" ||
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
-        let (ext_params, rest_param) = self.parse_params_ext() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
+        let (ext_params, rest_param) = self.parse_params_ext()
         if params_contain_await(ext_params) ||
           (is_generator && params_contain_yield(ext_params)) {
-          self.pop_async_context()
-          self.pop_generator_context()
           raise @errors.SyntaxError(
             message="Async formal parameters may not contain await/yield expressions",
           )
         }
-        let body = self.parse_block_body() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
+        let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
         return if is_generator {
@@ -1849,23 +1795,11 @@ fn Parser::parse_async_func_body(
           )
         }
       } else {
-        self.pop_async_context()
-        self.pop_generator_context()
         raise @errors.SyntaxError(message=msg)
       }
-    e => {
-      self.pop_async_context()
-      self.pop_generator_context()
-      raise e
-    }
+    e => raise e
   }
-  let body = self.parse_block_body() catch {
-    e => {
-      self.pop_async_context()
-      self.pop_generator_context()
-      raise e
-    }
-  }
+  let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
   if is_generator {
@@ -2481,13 +2415,11 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     let initializer : @ast.Expr? = if self.eat(Assign) {
       self.push_generator_context(false)
       self.push_yield_identifier_context(false)
-      let parsed = self.parse_assignment() catch {
-        e => {
-          self.pop_yield_identifier_context()
-          self.pop_generator_context()
-          raise e
-        }
+      errdefer {
+        self.pop_yield_identifier_context()
+        self.pop_generator_context()
       }
+      let parsed = self.parse_assignment()
       self.pop_yield_identifier_context()
       self.pop_generator_context()
       Some(parsed)

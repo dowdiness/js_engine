@@ -858,7 +858,11 @@ fn create_generator_instance(
   let saved_param_default_conflicts = interp.param_default_eval_var_conflicts
   interp.in_nonarrow_param_default_eval = false
   interp.param_default_eval_var_conflicts = None
-  let gen_result : Value = try {
+  let gen_result : Value = {
+    errdefer {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+      interp.param_default_eval_var_conflicts = saved_param_default_conflicts
+    }
     match params_ext {
       Some(pext) => {
         let param_default_conflicts = collect_param_default_eval_var_conflicts(
@@ -1079,12 +1083,6 @@ fn create_generator_instance(
       extensible: true,
       arraybuffer_state: None,
     })
-  } catch {
-    e => {
-      interp.in_nonarrow_param_default_eval = saved_in_default
-      interp.param_default_eval_var_conflicts = saved_param_default_conflicts
-      raise e
-    }
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   interp.param_default_eval_var_conflicts = saved_param_default_conflicts
@@ -1210,7 +1208,8 @@ fn run_generator_body(
     strict: gen.strict,
     current_generator: Some(gen),
   }
-  let result = try {
+  let result = {
+    errdefer complete_generator(gen)
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
@@ -1252,11 +1251,6 @@ fn run_generator_body(
     // Body completed normally — per spec, generators return undefined if no explicit return
     complete_generator(gen)
     create_iter_result(Undefined, true)
-  } catch {
-    e => {
-      complete_generator(gen)
-      raise e
-    }
   }
   result
 }

@@ -567,13 +567,11 @@ fn setup_weakmap_builtins(
                 Value::Number(1.0),
                 loc,
               )
-              let _ = interp.call_value(adder, wm_obj, [key, val], loc) catch {
-                e => {
-                  close_weak_collection_iterator(interp, iterator, loc) catch {
-                    _ => ()
-                  }
-                  raise e
-                }
+              let _ = {
+                errdefer (close_weak_collection_iterator(interp, iterator, loc) catch {
+                  _ => ()
+                })
+                interp.call_value(adder, wm_obj, [key, val], loc)
               }
             }
           }
@@ -811,13 +809,11 @@ fn setup_weakset_builtins(
                 break
               }
               let value = interp.get_property(result, "value", loc)
-              let _ = interp.call_value(adder, ws_obj, [value], loc) catch {
-                e => {
-                  close_weak_collection_iterator(interp, iterator, loc) catch {
-                    _ => ()
-                  }
-                  raise e
-                }
+              let _ = {
+                errdefer (close_weak_collection_iterator(interp, iterator, loc) catch {
+                  _ => ()
+                })
+                interp.call_value(adder, ws_obj, [value], loc)
               }
             }
           }
