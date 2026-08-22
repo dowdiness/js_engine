@@ -36,6 +36,47 @@ test "default String.repeat observes the bounded execution budget" {
 }
 
 ///|
+test "default String.repeat preserves coercion and error precedence" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = "";
+      #|var receiver = { toString() { events = events + "s"; return "x"; } };
+      #|var count = { valueOf() { events = events + "n"; return 100000; } };
+      #|function repeatWithCoercion() {
+      #|  return String.prototype.repeat.call(receiver, count);
+      #|}
+      #|function readEvents() { return events; }
+      #|function precedence() {
+      #|  var result = [];
+      #|  try { "x".repeat(-1); } catch (error) { result.push(error instanceof RangeError); }
+      #|  try { "x".repeat(Infinity); } catch (error) { result.push(error instanceof RangeError); }
+      #|  try { String.prototype.repeat.call(null, 1); } catch (error) { result.push(error instanceof TypeError); }
+      #|  var throwingCount = { valueOf() { throw "count"; } };
+      #|  try { "x".repeat(throwingCount); } catch (error) { result.push(error === "count"); }
+      #|  return result;
+      #|}
+    ),
+  )
+  match
+    engine.call_json_bounded(
+      "repeatWithCoercion",
+      [],
+      repeat_default_guardrail_policy(1000L),
+    ) {
+    Ok(_) => fail("coercing String.repeat unexpectedly completed")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
+      assert_true(diagnostic.pending_jobs() is @js_engine.PendingJobs::None)
+    }
+  }
+  json_inspect(engine.call_json("readEvents", []), content="sn")
+  json_inspect(engine.call_json("precedence", []), content=[
+    true, true, true, true,
+  ])
+}
+
+///|
 test "default String.repeat preserves normal completion" {
   let engine = @js_engine.Engine()
   engine.eval(

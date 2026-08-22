@@ -10,6 +10,8 @@ CONSUMER_PACKAGE="$ROOT_DIR/integration/external_consumer/moon.pkg"
 CONSUMER_SUITE="$ROOT_DIR/integration/external_consumer/stack_safety_test.mbt"
 BOUNDED_SUITE="$ROOT_DIR/integration/external_consumer/bounded_eval_test.mbt"
 BOUNDED_CALL_SUITE="$ROOT_DIR/integration/external_consumer/bounded_call_json_test.mbt"
+REPEAT_SUITE="$ROOT_DIR/integration/external_consumer/repeat_guardrail_test.mbt"
+CANDIDATE_REPEAT_SUITE="$ROOT_DIR/integration/external_consumer_candidate/repeat_guardrail_test.mbt"
 ACTIVATION_SUITE="$ROOT_DIR/interpreter/runtime/activation_dispatch_numeric_activation_wbtest.mbt"
 RESULT_PIPELINE_SOURCE="$ROOT_DIR/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
 COMPOSITION_SOURCE="$ROOT_DIR/interpreter/runtime/activation_dispatch_composition.mbt"
@@ -34,6 +36,8 @@ fail() {
 [[ -f "$CONSUMER_SUITE" ]] || fail 'external-consumer stack-safety suite is missing'
 [[ -f "$BOUNDED_SUITE" ]] || fail 'bounded external-consumer suite is missing'
 [[ -f "$BOUNDED_CALL_SUITE" ]] || fail 'bounded-call external-consumer suite is missing'
+[[ -f "$REPEAT_SUITE" ]] || fail 'repeat external-consumer suite is missing'
+[[ -f "$CANDIDATE_REPEAT_SUITE" ]] || fail 'candidate repeat external-consumer suite is missing'
 [[ -f "$ACTIVATION_SUITE" ]] || fail 'numeric activation cleanup suite is missing'
 [[ -f "$RESULT_PIPELINE_SOURCE" ]] || fail 'result pipeline source is missing'
 [[ -f "$COMPOSITION_SOURCE" ]] || fail 'dispatch composition source is missing'
@@ -127,6 +131,8 @@ selected_suites=(
   "$CONSUMER_SUITE"
   "$BOUNDED_SUITE"
   "$BOUNDED_CALL_SUITE"
+  "$REPEAT_SUITE"
+  "$CANDIDATE_REPEAT_SUITE"
 )
 for suite in "${selected_suites[@]}"; do
   [[ -f "$suite" ]] || fail "selected stack-safety suite is missing: ${suite#"$ROOT_DIR/"}"
@@ -277,7 +283,9 @@ for suite in \
 done
 grep -Fq '(cd integration/external_consumer' "$MAKEFILE" ||
   fail 'focused Make target omits the external-consumer suite'
-grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt bounded_call_json_test.mbt' "$MAKEFILE" ||
+grep -Fq 'integration/external_consumer_candidate/repeat_guardrail_test.mbt' "$MAKEFILE" ||
+  fail 'focused Make target omits the candidate repeat guardrail suite'
+grep -Fq 'moon test --target "$(TARGET)" $$release stack_safety_test.mbt bounded_eval_test.mbt bounded_call_json_test.mbt repeat_guardrail_test.mbt' "$MAKEFILE" ||
   fail 'focused Make target does not select every external-consumer suite'
 
 grep -Fq 'import {' "$CONSUMER_PACKAGE" ||
@@ -347,7 +355,8 @@ copy_fixture() {
     "$fixture/.github/workflows" \
     "$fixture/docs" \
     "$fixture/interpreter/runtime" \
-    "$fixture/integration/external_consumer"
+    "$fixture/integration/external_consumer" \
+    "$fixture/integration/external_consumer_candidate"
   cp "$MAKEFILE" "$fixture/Makefile"
   cp "$WORKFLOW" "$fixture/.github/workflows/adoption.yml"
   cp "$DEVELOPMENT_DOC" "$fixture/docs/development.md"
@@ -355,6 +364,8 @@ copy_fixture() {
   cp "$CONSUMER_SUITE" "$fixture/integration/external_consumer/stack_safety_test.mbt"
   cp "$BOUNDED_SUITE" "$fixture/integration/external_consumer/bounded_eval_test.mbt"
   cp "$BOUNDED_CALL_SUITE" "$fixture/integration/external_consumer/bounded_call_json_test.mbt"
+  cp "$REPEAT_SUITE" "$fixture/integration/external_consumer/repeat_guardrail_test.mbt"
+  cp "$CANDIDATE_REPEAT_SUITE" "$fixture/integration/external_consumer_candidate/repeat_guardrail_test.mbt"
   cp "$ROOT_DIR/interpreter/stack_safety_test.mbt" "$fixture/interpreter/stack_safety_test.mbt"
   cp "$RESULT_PIPELINE_SOURCE" "$fixture/interpreter/runtime/activation_dispatch_result_pipeline.mbt"
   cp "$COMPOSITION_SOURCE" "$fixture/interpreter/runtime/activation_dispatch_composition.mbt"
