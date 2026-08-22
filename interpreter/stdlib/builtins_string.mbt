@@ -1140,6 +1140,7 @@ pub fn get_string_method(
           }
           let buf = StringBuilder::new()
           for _i = 0; _i < count; _i = _i + 1 {
+            interp.observe_execution_step()
             buf.write_string(str)
           }
           Value::String_(buf.to_string())
