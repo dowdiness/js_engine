@@ -13,7 +13,8 @@ concurrency:
 
 env:
   MOONBIT_INSTALL_VERSION: "latest"
-  MOONBIT_CACHE_VERSION: "2026-08-19"
+  MOONBIT_EXPECTED_VERSION: "moon 0.1.20260819 (fc2a4ee 2026-08-19)"
+  MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
 
 jobs:
   cross-target-engine:
@@ -46,6 +47,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version
@@ -99,6 +103,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version
@@ -178,6 +185,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version
@@ -266,6 +276,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version

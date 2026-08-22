@@ -37,7 +37,8 @@ env:
   TEST262_COMMIT: "2b2ecead6e82"
   # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
   MOONBIT_INSTALL_VERSION: "latest"
-  MOONBIT_CACHE_VERSION: "2026-08-19"
+  MOONBIT_EXPECTED_VERSION: "moon 0.1.20260819 (fc2a4ee 2026-08-19)"
+  MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
   SHARD_TOTAL: 4
 
 jobs:
@@ -112,6 +113,9 @@ jobs:
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
+
       - name: Get MoonBit version
         id: moonbit-version
         run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
@@ -179,6 +183,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version
@@ -249,6 +256,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version
@@ -371,6 +381,9 @@ jobs:
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
 
       - name: Get MoonBit version
         id: moonbit-version

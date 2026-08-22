@@ -10,10 +10,14 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/**'
+      - 'scripts/verify_moonbit_toolchain.sh'
+      - 'scripts/test_moonbit_toolchain_contract.sh'
   pull_request:
     branches: [main]
     paths:
       - '.github/workflows/**'
+      - 'scripts/verify_moonbit_toolchain.sh'
+      - 'scripts/test_moonbit_toolchain_contract.sh'
   workflow_dispatch:
 
 jobs:
@@ -24,6 +28,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
+
+      - name: Verify MoonBit toolchain workflow contract
+        run: bash scripts/test_moonbit_toolchain_contract.sh
 
       - name: Install actionlint
         id: install
