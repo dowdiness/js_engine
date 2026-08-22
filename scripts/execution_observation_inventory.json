@@ -403,6 +403,21 @@
       "public_facade_evidence": ["integration/external_consumer/repeat_guardrail_test.mbt#default String.repeat observes the bounded execution budget", "integration/external_consumer_candidate/repeat_guardrail_test.mbt#candidate String.repeat observes the bounded execution budget"]
     },
     {
+      "id": "bounded-evaluation-string-lastindexof-search-loop",
+      "accounting_entry_id": "bounded-evaluation-string-lastindexof-search-loop-entry",
+      "operation_family": "bounded evaluation",
+      "entry_category": "String.prototype.lastIndexOf reverse code-unit comparison loop",
+      "contract_observation_category": "script-controlled-execution-time-loop",
+      "current_accounting_owner": "interpreter/stdlib/builtins_string.mbt#string_last_index_of_observed",
+      "intended_final_accounting_owner": "bounded-evaluation-string-reverse-search-observation",
+      "status": "observed-exactly-once",
+      "duplicate_charge_risk": "The reverse-search helper owns each compared UTF-16 code-unit observation; empty-search and impossible-length fast returns perform no comparison charge.",
+      "owning_implementation_or_issue": "interpreter/stdlib/builtins_string.mbt#string_last_index_of_observed",
+      "focused_evidence": ["interpreter/stdlib/builtins_string.mbt#string_last_index_of_observed", "interpreter/stdlib/issue_950_lastindexof_observation_wbtest.mbt#String.lastIndexOf observes each reverse code-unit comparison", "interpreter/stdlib/issue_950_lastindexof_observation_wbtest.mbt#String.lastIndexOf reports UTF-16 code-unit positions", "compiler/issue_950_lastindexof_observation_wbtest.mbt#candidate String.lastIndexOf keeps the search function on Bytecode"],
+      "public_facade_evidence_required": true,
+      "public_facade_evidence": ["integration/external_consumer/issue_950_lastindexof_guardrail_test.mbt#default String.lastIndexOf observes the bounded execution budget", "integration/external_consumer_candidate/issue_950_lastindexof_guardrail_test.mbt#candidate String.lastIndexOf observes the bounded execution budget"]
+    },
+    {
       "id": "bounded-evaluation-regexp-loops",
       "accounting_entry_id": "bounded-evaluation-regexp-loops-entry",
       "operation_family": "bounded evaluation",
