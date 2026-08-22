@@ -354,6 +354,7 @@ pub fn get_string_method(
           for i = start; i <= slen - search_len; i = i + 1 {
             let mut found = true
             for j = 0; j < search_len; j = j + 1 {
+              interp.observe_execution_step()
               if s_chars[i + j] != search_chars[j] {
                 found = false
                 break
