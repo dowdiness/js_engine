@@ -739,3 +739,6 @@ pub impl Show for Value with fn output(self, logger) {
       }
   }
 }
+
+///|
+extend Value with Show::{to_string, output}
