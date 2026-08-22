@@ -192,6 +192,10 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
   // the §20.2.1.1.1 step 17a Contains check via the AST.
   self.push_generator_context(true)
   self.push_async_context(false)
+  errdefer {
+    self.pop_async_context()
+    self.pop_generator_context()
+  }
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
       if msg == "REST_PARAM_FOUND" ||
@@ -199,27 +203,13 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         // Wrap each inner call so cleanup runs even if parsing fails.
-        let (ext_params, rest_param) = self.parse_params_ext() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
+        let (ext_params, rest_param) = self.parse_params_ext()
         if params_contain_yield(ext_params) {
-          self.pop_async_context()
-          self.pop_generator_context()
           raise @errors.SyntaxError(
             message="Generator formal parameters may not contain yield expressions",
           )
         }
-        let body = self.parse_block_body() catch {
-          e => {
-            self.pop_async_context()
-            self.pop_generator_context()
-            raise e
-          }
-        }
+        let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
         return GeneratorDeclExt(
@@ -231,23 +221,11 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
           self.consume_source_text(tok.loc.offset),
         )
       } else {
-        self.pop_async_context()
-        self.pop_generator_context()
         raise @errors.SyntaxError(message=msg)
       }
-    e => {
-      self.pop_async_context()
-      self.pop_generator_context()
-      raise e
-    }
+    e => raise e
   }
-  let body = self.parse_block_body() catch {
-    e => {
-      self.pop_async_context()
-      self.pop_generator_context()
-      raise e
-    }
-  }
+  let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
   GeneratorDecl(

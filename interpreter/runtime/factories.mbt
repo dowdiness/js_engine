@@ -898,27 +898,21 @@ pub fn[T] observe_source_failure(
   if previous_overrides is None {
     realm_state.active_overrides.val = Some(empty_function_realm_protos())
   }
-  try {
-    let result = eval()
-    realm_state.observing_source_failure.val = previous_observing
-    realm_state.observed_source_failure.val = previous_failure
-    realm_state.observed_source_identity.val = previous_identity
-    realm_state.active_overrides.val = previous_overrides
-    Ok(result)
-  } catch {
+  let result : Result[T, SourceObservedFailure] = Ok(eval()) catch {
     error => {
       let source_identity = match realm_state.observed_source_failure.val {
         Some(observed) if physical_equal(observed, error) =>
           realm_state.observed_source_identity.val
         _ => None
       }
-      realm_state.observing_source_failure.val = previous_observing
-      realm_state.observed_source_failure.val = previous_failure
-      realm_state.observed_source_identity.val = previous_identity
-      realm_state.active_overrides.val = previous_overrides
       Err(SourceObservedFailure(error, source_identity))
     }
   }
+  realm_state.observing_source_failure.val = previous_observing
+  realm_state.observed_source_failure.val = previous_failure
+  realm_state.observed_source_identity.val = previous_identity
+  realm_state.active_overrides.val = previous_overrides
+  result
 }
 
 ///|
@@ -929,16 +923,14 @@ pub fn[T] with_source_identity(
 ) -> T raise Error {
   let previous = realm_state.active_source_identity.val
   realm_state.active_source_identity.val = source_identity
-  try {
-    let result = eval()
-    realm_state.active_source_identity.val = previous
-    result
-  } catch {
-    error => {
+  let result : T = {
+    errdefer {
       realm_state.active_source_identity.val = previous
-      raise error
     }
+    eval()
   }
+  realm_state.active_source_identity.val = previous
+  result
 }
 
 ///|
@@ -1510,14 +1502,15 @@ fn with_active_callee_realm_value(
   eval : () -> Value raise Error,
 ) -> Value raise Error {
   let scope = begin_active_callee_realm_value(realm_state, callee)
-  try {
-    let result = eval()
-    finish_active_callee_realm_value(realm_state, scope, failure=None)
-    result
-  } catch {
-    e => {
-      finish_active_callee_realm_value(realm_state, scope, failure=Some(e))
-      raise e
+  let result : Result[Value, Error] = Ok(eval()) catch { error => Err(error) }
+  match result {
+    Ok(value) => {
+      finish_active_callee_realm_value(realm_state, scope, failure=None)
+      value
+    }
+    Err(error) => {
+      finish_active_callee_realm_value(realm_state, scope, failure=Some(error))
+      raise error
     }
   }
 }
@@ -1533,16 +1526,12 @@ fn[T] with_active_realm_protos(
 ) -> T raise Error {
   let previous_realm_protos = active_realm_protos(realm_state)
   apply_active_realm_protos(realm_state, protos)
-  try {
-    let result = eval()
-    apply_active_realm_protos(realm_state, previous_realm_protos)
-    result
-  } catch {
-    error => {
-      apply_active_realm_protos(realm_state, previous_realm_protos)
-      raise error
-    }
+  let result : T = {
+    errdefer apply_active_realm_protos(realm_state, previous_realm_protos)
+    eval()
   }
+  apply_active_realm_protos(realm_state, previous_realm_protos)
+  result
 }
 
 ///|
@@ -1551,16 +1540,12 @@ fn[T] with_cleared_active_callee_realm(
   eval : () -> T raise Error,
 ) -> T raise Error {
   let scope = begin_cleared_active_callee_realm(realm_state)
-  try {
-    let result = eval()
-    finish_cleared_active_callee_realm(realm_state, scope)
-    result
-  } catch {
-    e => {
-      finish_cleared_active_callee_realm(realm_state, scope)
-      raise e
-    }
+  let result : T = {
+    errdefer finish_cleared_active_callee_realm(realm_state, scope)
+    eval()
   }
+  finish_cleared_active_callee_realm(realm_state, scope)
+  result
 }
 
 ///|

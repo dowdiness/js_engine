@@ -4742,8 +4742,8 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
     self.receiver_root_preflight is Some(_) ||
     self.mutual_receiver_root_preflight is Some(_) ||
     activation_dispatch_leaf_program_is_admissible(stmts)
-  try {
-    let completion = self.drive(
+  let result : Result[DispatchCompletion, Error] = Ok(
+    self.drive(
       DispatchProgramActivation(
         DispatchStatementCursor(
           ctx~,
@@ -4752,17 +4752,35 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
           production~,
         ),
       ),
-    )
-    guard self.cleanup_stack.is_empty() else {
-      invalid_activation_dispatch_shell(
-        "dispatch finished while cleanup ownership remained",
-      )
-    }
-    completion
-  } catch {
-    error => {
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  match result {
+    Err(error) => {
       self.restore_all_cleanup(failure=Some(error))
       raise error
+    }
+    Ok(completion) => {
+      let checked : Result[DispatchCompletion, Error] = Ok(
+        {
+          guard self.cleanup_stack.is_empty() else {
+            invalid_activation_dispatch_shell(
+              "dispatch finished while cleanup ownership remained",
+            )
+          }
+          completion
+        },
+      ) catch {
+        error => Err(error)
+      }
+      match checked {
+        Ok(value) => value
+        Err(error) => {
+          self.restore_all_cleanup(failure=Some(error))
+          raise error
+        }
+      }
     }
   }
 }
@@ -4772,18 +4790,36 @@ fn PrimitiveProgramDispatchShell::drive_root_call(
   self : PrimitiveProgramDispatchShell,
   request : DispatchCallRequest,
 ) -> DispatchCompletion raise Error {
-  try {
-    let completion = self.drive(DispatchCallActivation(request))
-    guard self.cleanup_stack.is_empty() else {
-      invalid_activation_dispatch_shell(
-        "direct call dispatch finished while cleanup ownership remained",
-      )
-    }
-    completion
-  } catch {
-    error => {
+  let result : Result[DispatchCompletion, Error] = Ok(
+    self.drive(DispatchCallActivation(request)),
+  ) catch {
+    error => Err(error)
+  }
+  match result {
+    Err(error) => {
       self.restore_all_cleanup(failure=Some(error))
       raise error
+    }
+    Ok(completion) => {
+      let checked : Result[DispatchCompletion, Error] = Ok(
+        {
+          guard self.cleanup_stack.is_empty() else {
+            invalid_activation_dispatch_shell(
+              "direct call dispatch finished while cleanup ownership remained",
+            )
+          }
+          completion
+        },
+      ) catch {
+        error => Err(error)
+      }
+      match checked {
+        Ok(value) => value
+        Err(error) => {
+          self.restore_all_cleanup(failure=Some(error))
+          raise error
+        }
+      }
     }
   }
 }

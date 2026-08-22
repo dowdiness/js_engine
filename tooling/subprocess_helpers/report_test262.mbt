@@ -881,7 +881,12 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
   let mut stdout = ""
   let mut stderr = ""
   let mut code = 0
-  try {
+  {
+    errdefer (if cleanup {
+      @afs.rmdir(art_dir, recursive=true) catch {
+        _ => ()
+      }
+    })
     download_artifacts(run.id, config.repo, art_dir)
     let (strict_path, nonstrict_path) = find_results(art_dir)
     let strict = load_summary(strict_path)
@@ -932,15 +937,6 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
           }
         }
       }
-    }
-  } catch {
-    err => {
-      if cleanup {
-        @afs.rmdir(art_dir, recursive=true) catch {
-          _ => ()
-        }
-      }
-      raise err
     }
   }
   if cleanup {

@@ -192,11 +192,11 @@ pub fn[T] Interpreter::with_function_materializer(
 ) -> T raise Error {
   let previous = self.active_function_materializer
   self.active_function_materializer = materializer
-  let result : T = thunk() catch {
-    error => {
+  let result : T = {
+    errdefer {
       self.active_function_materializer = previous
-      raise error
     }
+    thunk()
   }
   self.active_function_materializer = previous
   result
@@ -223,15 +223,15 @@ pub fn[T] Interpreter::run_materialized_function(
   }
   let previous = self.active_function_materializer
   self.active_function_materializer = active
-  let result : T = thunk() catch {
-    error => {
+  let result : T = {
+    errdefer {
       self.active_function_materializer = previous
       match hooks {
         Some(h) => (h.complete)(false)
         None => ()
       }
-      raise error
     }
+    thunk()
   }
   self.active_function_materializer = previous
   match hooks {

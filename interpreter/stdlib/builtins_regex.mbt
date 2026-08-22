@@ -234,30 +234,22 @@ fn resolve_named_backreferences(
       }
     Group(children, idx, name) => {
       let resolved = children.map(child => {
-        resolve_named_backreferences(child, group_names) catch {
-          e => raise e
-        }
+        resolve_named_backreferences(child, group_names)
       })
       Group(resolved, idx, name)
     }
     Sequence(nodes) => {
       let resolved = nodes.map(child => {
-        resolve_named_backreferences(child, group_names) catch {
-          e => raise e
-        }
+        resolve_named_backreferences(child, group_names)
       })
       Sequence(resolved)
     }
     Alternation(left, right) => {
       let resolved_left = left.map(child => {
-        resolve_named_backreferences(child, group_names) catch {
-          e => raise e
-        }
+        resolve_named_backreferences(child, group_names)
       })
       let resolved_right = right.map(child => {
-        resolve_named_backreferences(child, group_names) catch {
-          e => raise e
-        }
+        resolve_named_backreferences(child, group_names)
       })
       Alternation(resolved_left, resolved_right)
     }
@@ -267,17 +259,13 @@ fn resolve_named_backreferences(
     }
     Lookbehind(children, positive) => {
       let resolved = children.map(child => {
-        resolve_named_backreferences(child, group_names) catch {
-          e => raise e
-        }
+        resolve_named_backreferences(child, group_names)
       })
       Lookbehind(resolved, positive)
     }
     Lookahead(children, positive) => {
       let resolved = children.map(child => {
-        resolve_named_backreferences(child, group_names) catch {
-          e => raise e
-        }
+        resolve_named_backreferences(child, group_names)
       })
       Lookahead(resolved, positive)
     }

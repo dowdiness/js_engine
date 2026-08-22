@@ -71,12 +71,8 @@ pub fn Interpreter::run_microtasks_observed(
         MicrotaskQueueEmpty => break
         MicrotaskObservationRequired => ()
       }
-      self.observe_execution_step() catch {
-        error => {
-          policy.reject_dispatch_observation()
-          raise error
-        }
-      }
+      errdefer policy.reject_dispatch_observation()
+      self.observe_execution_step()
       let task = match policy.select_next() {
         Some(task) => task
         None => fail("microtask queue readiness changed before selection")
@@ -113,9 +109,7 @@ pub fn Interpreter::run_microtasks_observed(
     }
     policy.complete_drain()
     Ok(())
-  }) catch {
-    e => raise e
-  }
+  })
 }
 
 ///|
@@ -375,7 +369,5 @@ pub fn Interpreter::run_timers_observed(
       self.host.cancelled_timer_ids.clear()
     }
     Ok(())
-  }) catch {
-    e => raise e
-  }
+  })
 }

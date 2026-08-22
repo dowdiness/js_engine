@@ -1994,15 +1994,12 @@ fn Interpreter::start_executor_activation(
     ExecutorStartConstruct(request) => request.ctor
     ExecutorStartPropertySet(request, _) => request.callee
   }
-  let observation = observe_executor_activation_entry(self) catch {
-    error => {
-      match property_scope {
-        Some(scope) =>
-          finish_cleared_active_callee_realm(self.realm_state, scope)
-        None => ()
-      }
-      raise error
-    }
+  let observation = {
+    errdefer (match property_scope {
+      Some(scope) => finish_cleared_active_callee_realm(self.realm_state, scope)
+      None => ()
+    })
+    observe_executor_activation_entry(self)
   }
   let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
   let active_realm = begin_active_callee_realm_value(self.realm_state, callee)
@@ -3050,26 +3047,31 @@ fn Interpreter::drive_executor_activation_stack(
         Err(error) =>
           self.deliver_executor_activation_error(stack, index, error)
         Ok(step) => {
-          let handled : ExecutorActivationStep? = self.handle_executor_activation_step(
-            stack, index, step,
+          let handled_result : Result[ExecutorActivationStep?, Error] = Ok(
+            self.handle_executor_activation_step(stack, index, step),
           ) catch {
-            error => {
+            error => Err(error)
+          }
+          match handled_result {
+            Err(error) => {
               if index < stack.length() {
                 self.deliver_executor_activation_error(stack, index, error)
               }
               raise error
             }
-          }
-          match handled {
-            Some(result) => {
-              let root = stack.pop().unwrap()
-              match root.cleanup {
-                Some(cleanup) => self.finish_executor_activation(cleanup, None)
+            Ok(handled) =>
+              match handled {
+                Some(result) => {
+                  let root = stack.pop().unwrap()
+                  match root.cleanup {
+                    Some(cleanup) =>
+                      self.finish_executor_activation(cleanup, None)
+                    None => ()
+                  }
+                  return result
+                }
                 None => ()
               }
-              return result
-            }
-            None => ()
           }
         }
       }
@@ -3618,7 +3620,10 @@ fn Interpreter::run_executor_function(
 ) -> Value raise Error {
   let saved_in_default = self.in_nonarrow_param_default_eval
   self.in_nonarrow_param_default_eval = false
-  let result : Value = try {
+  let result : Value = {
+    errdefer {
+      self.in_nonarrow_param_default_eval = saved_in_default
+    }
     if context.is_constructing() {
       let new_target = context.new_target().unwrap_or(callee)
       let proto = self.get_prototype_from_constructor(
@@ -3651,11 +3656,6 @@ fn Interpreter::run_executor_function(
         executable.kind,
         self.drive_executor_activation(executable.code, prepared),
       )
-    }
-  } catch {
-    error => {
-      self.in_nonarrow_param_default_eval = saved_in_default
-      raise error
     }
   }
   self.in_nonarrow_param_default_eval = saved_in_default

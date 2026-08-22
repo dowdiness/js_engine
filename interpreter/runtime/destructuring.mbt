@@ -1,4 +1,24 @@
 ///|
+fn[T] with_destructuring_iterator_error_cleanup(
+  action : () -> T raise Error,
+  on_yield : () -> Unit,
+  on_error : () -> Unit,
+) -> T raise Error {
+  let result : Result[T, Error] = Ok(action()) catch { error => Err(error) }
+  match result {
+    Ok(value) => value
+    Err(error) => {
+      if error is YieldSignal(_) {
+        on_yield()
+      } else {
+        on_error()
+      }
+      raise error
+    }
+  }
+}
+
+///|
 fn Interpreter::destructuring_property_key(
   self : Interpreter,
   ctx : ExecContext,
@@ -134,21 +154,22 @@ fn Interpreter::bind_pattern(
                 Some(result) => self.iterator_result_value(result, loc_dstr)
               }
             }
-            self.bind_pattern(pat, val, env, bk, ctx~) catch {
-              e => {
-                if e is YieldSignal(_) {
-                  if !iter_done {
-                    match ctx.current_generator {
-                      Some(g) => g.dstr_iterator_stack.push(iterator)
-                      None => ()
-                    }
+            with_destructuring_iterator_error_cleanup(
+              fn() raise { self.bind_pattern(pat, val, env, bk, ctx~) },
+              fn() {
+                if !iter_done {
+                  match ctx.current_generator {
+                    Some(g) => g.dstr_iterator_stack.push(iterator)
+                    None => ()
                   }
-                } else if !iter_done {
+                }
+              },
+              fn() {
+                if !iter_done {
                   self.iterator_close_throw(iterator, loc_dstr)
                 }
-                raise e
-              }
-            }
+              },
+            )
           }
           None =>
             if !iter_done {
@@ -400,33 +421,35 @@ fn Interpreter::assign_pattern(
             match assign_expr {
               Some(expr) => {
                 // Phase 1: evaluate lref (may throw before any iterator call)
-                let lref = self.eval_lref_of_expr(ctx, expr, env) catch {
-                  e => {
-                    if e is YieldSignal(_) {
-                      if !iter_done_a {
-                        match ctx.current_generator {
-                          Some(g) => g.dstr_iterator_stack.push(iterator_a)
-                          None => ()
-                        }
+                let lref = with_destructuring_iterator_error_cleanup(
+                  fn() raise { self.eval_lref_of_expr(ctx, expr, env) },
+                  fn() {
+                    if !iter_done_a {
+                      match ctx.current_generator {
+                        Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                        None => ()
                       }
-                    } else if !iter_done_a {
+                    }
+                  },
+                  fn() {
+                    if !iter_done_a {
                       self.iterator_close_throw(iterator_a, loc_dstr)
                     }
-                    raise e
-                  }
-                }
+                  },
+                )
                 // Phase 2: consume one value from iterator
                 let val : Value = if iter_done_a {
                   Undefined
                 } else {
-                  let step = self.iterator_step_result(
-                    iterator_a, next_method_a, loc_dstr,
-                  ) catch {
-                    e => {
-                      self.iterator_close_throw(iterator_a, loc_dstr)
-                      raise e
-                    }
-                  }
+                  let step = with_destructuring_iterator_error_cleanup(
+                    fn() raise {
+                      self.iterator_step_result(
+                        iterator_a, next_method_a, loc_dstr,
+                      )
+                    },
+                    fn() { self.iterator_close_throw(iterator_a, loc_dstr) },
+                    fn() { self.iterator_close_throw(iterator_a, loc_dstr) },
+                  )
                   match step {
                     None => {
                       iter_done_a = true
@@ -439,36 +462,37 @@ fn Interpreter::assign_pattern(
                 let final_val : Value = match pat {
                   DefaultPat(_, default_expr) =>
                     if val is Undefined {
-                      self.eval_expr(ctx, default_expr, env) catch {
-                        e => {
-                          if e is YieldSignal(_) {
-                            if !iter_done_a {
-                              match ctx.current_generator {
-                                Some(g) =>
-                                  g.dstr_iterator_stack.push(iterator_a)
-                                None => ()
-                              }
+                      with_destructuring_iterator_error_cleanup(
+                        fn() raise { self.eval_expr(ctx, default_expr, env) },
+                        fn() {
+                          if !iter_done_a {
+                            match ctx.current_generator {
+                              Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                              None => ()
                             }
-                          } else if !iter_done_a {
+                          }
+                        },
+                        fn() {
+                          if !iter_done_a {
                             self.iterator_close_throw(iterator_a, loc_dstr)
                           }
-                          raise e
-                        }
-                      }
+                        },
+                      )
                     } else {
                       val
                     }
                   _ => val
                 }
                 // Phase 4: assign via the pre-evaluated lref
-                self.put_lref(ctx, lref, final_val, env) catch {
-                  e => {
-                    if !iter_done_a && !(e is YieldSignal(_)) {
+                with_destructuring_iterator_error_cleanup(
+                  fn() raise { self.put_lref(ctx, lref, final_val, env) },
+                  () => (),
+                  fn() {
+                    if !iter_done_a {
                       self.iterator_close_throw(iterator_a, loc_dstr)
                     }
-                    raise e
-                  }
-                }
+                  },
+                )
               }
               None => {
                 // Non-AssignTarget: consume from iterator, then bind pattern
@@ -486,21 +510,22 @@ fn Interpreter::assign_pattern(
                     Some(result) => self.iterator_result_value(result, loc_dstr)
                   }
                 }
-                self.assign_pattern(ctx, pat, val, env) catch {
-                  e => {
-                    if e is YieldSignal(_) {
-                      if !iter_done_a {
-                        match ctx.current_generator {
-                          Some(g) => g.dstr_iterator_stack.push(iterator_a)
-                          None => ()
-                        }
+                with_destructuring_iterator_error_cleanup(
+                  fn() raise { self.assign_pattern(ctx, pat, val, env) },
+                  fn() {
+                    if !iter_done_a {
+                      match ctx.current_generator {
+                        Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                        None => ()
                       }
-                    } else if !iter_done_a {
+                    }
+                  },
+                  fn() {
+                    if !iter_done_a {
                       self.iterator_close_throw(iterator_a, loc_dstr)
                     }
-                    raise e
-                  }
-                }
+                  },
+                )
               }
             }
           }
@@ -519,32 +544,32 @@ fn Interpreter::assign_pattern(
       match rest {
         Some(AssignTarget(expr)) => {
           // Pre-evaluate lref before consuming rest values from iterator
-          let lref = self.eval_lref_of_expr(ctx, expr, env) catch {
-            e => {
-              if e is YieldSignal(_) {
-                if !iter_done_a {
-                  match ctx.current_generator {
-                    Some(g) => g.dstr_iterator_stack.push(iterator_a)
-                    None => ()
-                  }
+          let lref = with_destructuring_iterator_error_cleanup(
+            fn() raise { self.eval_lref_of_expr(ctx, expr, env) },
+            fn() {
+              if !iter_done_a {
+                match ctx.current_generator {
+                  Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                  None => ()
                 }
-              } else if !iter_done_a {
+              }
+            },
+            fn() {
+              if !iter_done_a {
                 self.iterator_close_throw(iterator_a, loc_dstr)
               }
-              raise e
-            }
-          }
+            },
+          )
           let rest_elements : Array[Value] = []
           if !iter_done_a {
             while true {
-              let step = self.iterator_step_value(
-                iterator_a, next_method_a, loc_dstr,
-              ) catch {
-                e => {
-                  self.iterator_close_throw(iterator_a, loc_dstr)
-                  raise e
-                }
-              }
+              let step = with_destructuring_iterator_error_cleanup(
+                fn() raise {
+                  self.iterator_step_value(iterator_a, next_method_a, loc_dstr)
+                },
+                fn() { self.iterator_close_throw(iterator_a, loc_dstr) },
+                fn() { self.iterator_close_throw(iterator_a, loc_dstr) },
+              )
               match step {
                 None => {
                   iter_done_a = true
@@ -554,14 +579,17 @@ fn Interpreter::assign_pattern(
               }
             }
           }
-          self.put_lref(ctx, lref, make_array(rest_elements), env) catch {
-            e => {
-              if !iter_done_a && !(e is YieldSignal(_)) {
+          with_destructuring_iterator_error_cleanup(
+            fn() raise {
+              self.put_lref(ctx, lref, make_array(rest_elements), env)
+            },
+            () => (),
+            fn() {
+              if !iter_done_a {
                 self.iterator_close_throw(iterator_a, loc_dstr)
               }
-              raise e
-            }
-          }
+            },
+          )
         }
         Some(rest_pat) => {
           let rest_elements : Array[Value] = []

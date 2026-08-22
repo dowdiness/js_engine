@@ -510,31 +510,17 @@ fn setup_map_builtins(
                   " is not an entry object",
               )
             }
-            let key = interp.get_computed_property(
-              value,
-              Value::Number(0.0),
-              loc,
-            ) catch {
-              e => {
-                interp.iterator_close_throw(iterator, loc)
-                raise e
-              }
+            let key = {
+              errdefer interp.iterator_close_throw(iterator, loc)
+              interp.get_computed_property(value, Value::Number(0.0), loc)
             }
-            let val = interp.get_computed_property(
-              value,
-              Value::Number(1.0),
-              loc,
-            ) catch {
-              e => {
-                interp.iterator_close_throw(iterator, loc)
-                raise e
-              }
+            let val = {
+              errdefer interp.iterator_close_throw(iterator, loc)
+              interp.get_computed_property(value, Value::Number(1.0), loc)
             }
-            let _ = interp.call_value(adder, new_map, [key, val], loc) catch {
-              e => {
-                interp.iterator_close_throw(iterator, loc)
-                raise e
-              }
+            let _ = {
+              errdefer interp.iterator_close_throw(iterator, loc)
+              interp.call_value(adder, new_map, [key, val], loc)
             }
           }
         }
@@ -588,16 +574,14 @@ fn setup_map_builtins(
               Some(result) => result
             }
             let kvalue = interp.iterator_result_value(iter_result, loc)
-            let raw_key = interp.call_value(
-              callback,
-              Undefined,
-              [kvalue, Value::Number(k.to_double())],
-              loc,
-            ) catch {
-              e => {
-                interp.iterator_close_throw(iterator, loc)
-                raise e
-              }
+            let raw_key = {
+              errdefer interp.iterator_close_throw(iterator, loc)
+              interp.call_value(
+                callback,
+                Undefined,
+                [kvalue, Value::Number(k.to_double())],
+                loc,
+              )
             }
             let key = canonicalize_keyed_collection_key(raw_key)
             // Find existing group

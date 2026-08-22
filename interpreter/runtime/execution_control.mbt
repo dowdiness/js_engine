@@ -381,12 +381,8 @@ fn[T] Interpreter::with_execution_control(
     annex_b_hoisted: false,
     is_parameter: false,
   }
-  let result = action() catch {
-    error => {
-      restore_execution_control_binding(self.global, previous)
-      raise error
-    }
-  }
+  errdefer restore_execution_control_binding(self.global, previous)
+  let result = action()
   restore_execution_control_binding(self.global, previous)
   result
 }
@@ -444,18 +440,15 @@ fn[T] ExecutionControl::with_activation(
 ) -> Result[T, ExecutionControlFailure] raise Error {
   match self.observe_activation() {
     Err(failure) => Err(failure)
-    Ok(_) =>
-      try {
-        let result = action()
-        match self.release_activation() {
-          Ok(_) => Ok(result)
-          Err(failure) => Err(failure)
-        }
-      } catch {
-        error => {
-          let _ = self.release_activation()
-          raise error
-        }
+    Ok(_) => {
+      errdefer {
+        let _ = self.release_activation()
       }
+      let result = action()
+      match self.release_activation() {
+        Ok(_) => Ok(result)
+        Err(failure) => Err(failure)
+      }
+    }
   }
 }

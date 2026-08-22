@@ -89,6 +89,21 @@ fn Interpreter::bind_function_decl_value(
 const FOR_OF_RESUME_VALUE_BINDING = "[[ForOfResumeValue]]"
 
 ///|
+fn[T] exec_stmt_rethrow_with_handler(
+  action : () -> T raise Error,
+  on_error : (Error) -> Unit raise Error,
+) -> T raise Error {
+  let result : Result[T, Error] = Ok(action()) catch { error => Err(error) }
+  match result {
+    Ok(value) => value
+    Err(error) => {
+      on_error(error)
+      raise error
+    }
+  }
+}
+
+///|
 /// Collect all binding names from a pattern (IdentPat leaves only).
 /// Used to build the TDZ environment for let/const for-of ForDeclaration
 /// per spec §14.7.5.12 step 2 (ForIn/OfHeadEvaluation TDZnames).
@@ -281,9 +296,7 @@ fn Interpreter::exec_stmt(
           // In strict mode, throw ReferenceError per §13.3.2.2.
           match env.resolve_binding_env(name) {
             Some(target_env) =>
-              target_env.assign_resolved(name, value, ctx.strict) catch {
-                e => raise e
-              }
+              target_env.assign_resolved(name, value, ctx.strict)
             None => {
               if ctx.strict {
                 raise @errors.ReferenceError(message="\{name} is not defined")
@@ -360,8 +373,9 @@ fn Interpreter::exec_stmt(
           Some(g) => g.yield_index
           _ => 0
         }
-        let body_signal = self.exec_stmt(ctx, body, env) catch {
-          e => {
+        let body_signal = exec_stmt_rethrow_with_handler(
+          fn() raise { self.exec_stmt(ctx, body, env) },
+          fn(e) {
             if e is YieldSignal(_) {
               match gen_opt {
                 Some(g) => {
@@ -371,9 +385,8 @@ fn Interpreter::exec_stmt(
                 _ => ()
               }
             }
-            raise e
-          }
-        }
+          },
+        )
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
@@ -479,8 +492,9 @@ fn Interpreter::exec_stmt(
           Some(g) => g.yield_index
           _ => 0
         }
-        let body_signal = self.exec_stmt(ctx, body, iter_env) catch {
-          e => {
+        let body_signal = exec_stmt_rethrow_with_handler(
+          fn() raise { self.exec_stmt(ctx, body, iter_env) },
+          fn(e) {
             if e is YieldSignal(_) {
               // Yield inside for loop body — save for_env for resume
               match gen_opt {
@@ -491,9 +505,8 @@ fn Interpreter::exec_stmt(
                 _ => ()
               }
             }
-            raise e
-          }
-        }
+          },
+        )
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
@@ -675,8 +688,9 @@ fn Interpreter::exec_stmt(
           Some(g) => g.yield_index
           _ => 0
         }
-        let body_signal = self.exec_stmt(ctx, body, env) catch {
-          e => {
+        let body_signal = exec_stmt_rethrow_with_handler(
+          fn() raise { self.exec_stmt(ctx, body, env) },
+          fn(e) {
             if e is YieldSignal(_) {
               match gen_opt {
                 Some(g) => {
@@ -686,9 +700,8 @@ fn Interpreter::exec_stmt(
                 _ => ()
               }
             }
-            raise e
-          }
-        }
+          },
+        )
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => return ReturnSignal(v)
@@ -877,16 +890,16 @@ fn Interpreter::exec_stmt(
             Some(g) => g.yield_index
             _ => 0
           }
-          let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
-            e => {
+          let body_signal = exec_stmt_rethrow_with_handler(
+            fn() raise { self.exec_stmt(ctx, body, actual_body_env) },
+            fn(e) {
               if e is YieldSignal(_) {
                 save_for_of_resume_state(
                   gen_opt, iterator, next_method, actual_body_env, body_yield_base,
                 )
               }
-              raise e
-            }
-          }
+            },
+          )
           match body_signal {
             Normal(v) => completion = v
             ReturnSignal(v) => return ReturnSignal(v)
@@ -943,12 +956,10 @@ fn Interpreter::exec_stmt(
             body_env.def(name, value, bk)
           }
           None =>
-            env.assign_with_strict(name, value, ctx.strict) catch {
-              e => {
-                close_iterator_throw(self, iterator, loc)
-                raise e
-              }
-            }
+            exec_stmt_rethrow_with_handler(
+              fn() raise { env.assign_with_strict(name, value, ctx.strict) },
+              fn(_e) { close_iterator_throw(self, iterator, loc) },
+            )
         }
 
         // Execute the loop body
@@ -956,8 +967,9 @@ fn Interpreter::exec_stmt(
           Some(g) => g.yield_index
           _ => 0
         }
-        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
-          e => {
+        let body_signal = exec_stmt_rethrow_with_handler(
+          fn() raise { self.exec_stmt(ctx, body, body_env) },
+          fn(e) {
             if e is YieldSignal(_) {
               // Save for-of state for resume
               save_for_of_resume_state(
@@ -967,9 +979,8 @@ fn Interpreter::exec_stmt(
               // Close iterator on exception (IteratorClose)
               close_iterator_throw(self, iterator, loc)
             }
-            raise e
-          }
-        }
+          },
+        )
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => {
@@ -1162,8 +1173,11 @@ fn Interpreter::exec_stmt(
                 VarKind => env
                 _ => body_env
               }
-              self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
-                e => {
+              exec_stmt_rethrow_with_handler(
+                fn() raise {
+                  self.bind_pattern(pattern, value, bind_env, bk, ctx~)
+                },
+                fn(e) raise {
                   if e is YieldSignal(_) {
                     save_for_of_resume_value(body_env, value)
                     save_for_of_resume_state(
@@ -1171,16 +1185,13 @@ fn Interpreter::exec_stmt(
                     )
                   } else if e is GeneratorReturnSignal(_) {
                     // §7.4.9: return completion — outer loop close error replaces it
-                    close_iterator(self, iterator, loc) catch {
-                      close_err => raise close_err
-                    }
+                    close_iterator(self, iterator, loc)
                   } else {
                     // Throw completion — outer close error discarded (§7.4.9 step 4)
                     close_iterator_throw(self, iterator, loc)
                   }
-                  raise e
-                }
-              }
+                },
+              )
             }
             None =>
               // No exec_stmt-level guard here: the guard lives inside
@@ -1189,8 +1200,9 @@ fn Interpreter::exec_stmt(
               // within, which propagates here and triggers the catch block below —
               // closing the outer for-of iterator in the right order (inner first,
               // then outer), mirroring how the Some(kind) → bind_pattern arm works.
-              self.assign_pattern(ctx, pattern, value, env) catch {
-                e => {
+              exec_stmt_rethrow_with_handler(
+                fn() raise { self.assign_pattern(ctx, pattern, value, env) },
+                fn(e) raise {
                   if e is YieldSignal(_) {
                     save_for_of_resume_value(body_env, value)
                     save_for_of_resume_state(
@@ -1198,24 +1210,22 @@ fn Interpreter::exec_stmt(
                     )
                   } else if e is GeneratorReturnSignal(_) {
                     // §7.4.9: return completion — outer loop close error replaces it
-                    close_iterator(self, iterator, loc) catch {
-                      close_err => raise close_err
-                    }
+                    close_iterator(self, iterator, loc)
                   } else {
                     // Throw completion — outer close error discarded (§7.4.9 step 4)
                     close_iterator_throw(self, iterator, loc)
                   }
-                  raise e
-                }
-              }
+                },
+              )
           }
         }
         let body_yield_base = match gen_opt {
           Some(g) => g.yield_index
           None => 0
         }
-        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
-          e => {
+        let body_signal = exec_stmt_rethrow_with_handler(
+          fn() raise { self.exec_stmt(ctx, body, body_env) },
+          fn(e) {
             if e is YieldSignal(_) {
               save_for_of_resume_state(
                 gen_opt, iterator, next_method, body_env, body_yield_base,
@@ -1223,9 +1233,8 @@ fn Interpreter::exec_stmt(
             } else {
               close_iterator_throw(self, iterator, loc)
             }
-            raise e
-          }
-        }
+          },
+        )
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => {
@@ -1365,8 +1374,9 @@ fn Interpreter::exec_stmt(
             Some(g) => g.yield_index
             None => 0
           }
-          self.assign_to_expr(ctx, lhs_expr, value, env) catch {
-            e => {
+          exec_stmt_rethrow_with_handler(
+            fn() raise { self.assign_to_expr(ctx, lhs_expr, value, env) },
+            fn(e) {
               if e is YieldSignal(_) {
                 save_for_of_resume_value(body_env, value)
                 save_for_of_resume_state(
@@ -1375,16 +1385,16 @@ fn Interpreter::exec_stmt(
               } else {
                 close_iterator_throw(self, iterator, loc)
               }
-              raise e
-            }
-          }
+            },
+          )
         }
         let body_yield_base = match gen_opt {
           Some(g) => g.yield_index
           None => 0
         }
-        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
-          e => {
+        let body_signal = exec_stmt_rethrow_with_handler(
+          fn() raise { self.exec_stmt(ctx, body, body_env) },
+          fn(e) {
             if e is YieldSignal(_) {
               save_for_of_resume_state(
                 gen_opt, iterator, next_method, body_env, body_yield_base,
@@ -1392,9 +1402,8 @@ fn Interpreter::exec_stmt(
             } else {
               close_iterator_throw(self, iterator, loc)
             }
-            raise e
-          }
-        }
+          },
+        )
         match body_signal {
           Normal(v) => completion = v
           ReturnSignal(v) => {
@@ -1873,16 +1882,16 @@ fn Interpreter::exec_stmt(
             Some(g) => g.yield_index
             _ => 0
           }
-          let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
-            e => {
+          let body_signal = exec_stmt_rethrow_with_handler(
+            fn() raise { self.exec_stmt(ctx, body, actual_body_env) },
+            fn(e) {
               if e is YieldSignal(_) {
                 save_for_of_resume_state(
                   gen_opt, iterator, next_method, actual_body_env, body_yield_base,
                 )
               }
-              raise e
-            }
-          }
+            },
+          )
           match body_signal {
             Normal(v) => completion = v
             ReturnSignal(v) => return ReturnSignal(v)
@@ -1984,12 +1993,10 @@ fn Interpreter::exec_stmt(
             body_env.def(name, value, bk)
           }
           None =>
-            env.assign_with_strict(name, value, ctx.strict) catch {
-              e => {
-                close_iterator_throw(self, iterator, loc)
-                raise e
-              }
-            }
+            exec_stmt_rethrow_with_handler(
+              fn() raise { env.assign_with_strict(name, value, ctx.strict) },
+              fn(_e) { close_iterator_throw(self, iterator, loc) },
+            )
         }
         // Execute loop body
         let (new_c, should_continue, propagate) = exec_for_body_signal(
@@ -2123,8 +2130,11 @@ fn Interpreter::exec_stmt(
                 VarKind => env
                 _ => body_env
               }
-              self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
-                e => {
+              exec_stmt_rethrow_with_handler(
+                fn() raise {
+                  self.bind_pattern(pattern, value, bind_env, bk, ctx~)
+                },
+                fn(e) {
                   if e is YieldSignal(_) {
                     save_for_of_resume_value(body_env, value)
                     save_for_of_resume_state(
@@ -2133,13 +2143,13 @@ fn Interpreter::exec_stmt(
                   } else {
                     close_iterator_throw(self, iterator, loc)
                   }
-                  raise e
-                }
-              }
+                },
+              )
             }
             None =>
-              self.assign_pattern(ctx, pattern, value, env) catch {
-                e => {
+              exec_stmt_rethrow_with_handler(
+                fn() raise { self.assign_pattern(ctx, pattern, value, env) },
+                fn(e) {
                   if e is YieldSignal(_) {
                     save_for_of_resume_value(body_env, value)
                     save_for_of_resume_state(
@@ -2148,9 +2158,8 @@ fn Interpreter::exec_stmt(
                   } else {
                     close_iterator_throw(self, iterator, loc)
                   }
-                  raise e
-                }
-              }
+                },
+              )
           }
         }
         let (new_c, should_continue, propagate) = exec_for_body_signal(
@@ -2257,8 +2266,9 @@ fn Interpreter::exec_stmt(
             Some(g) => g.yield_index
             _ => 0
           }
-          self.assign_to_expr(ctx, lhs_expr, value, env) catch {
-            e => {
+          exec_stmt_rethrow_with_handler(
+            fn() raise { self.assign_to_expr(ctx, lhs_expr, value, env) },
+            fn(e) {
               if e is YieldSignal(_) {
                 save_for_of_resume_value(body_env, value)
                 save_for_of_resume_state(
@@ -2267,9 +2277,8 @@ fn Interpreter::exec_stmt(
               } else {
                 close_iterator_throw(self, iterator, loc)
               }
-              raise e
-            }
-          }
+            },
+          )
         }
         let (new_c, should_continue, propagate) = exec_for_body_signal(
           self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label,
@@ -2459,14 +2468,14 @@ fn Interpreter::exec_stmts(
   let mut last = initial_last
   for i = start; i < stmts.length(); i = i + 1 {
     let stmt = stmts[i]
-    let signal = self.exec_stmt(ctx, stmt, exec_env) catch {
-      e => {
+    let signal = exec_stmt_rethrow_with_handler(
+      fn() raise { self.exec_stmt(ctx, stmt, exec_env) },
+      fn(e) {
         if e is YieldSignal(_) {
           save_stmt_resume_frame(ctx.current_generator, i, exec_env, last)
         }
-        raise e
-      }
-    }
+      },
+    )
     match signal {
       Normal(v) =>
         // Per spec, declarations have empty completion values that don't update
@@ -2737,8 +2746,9 @@ fn exec_for_body_signal(
     Some(g) => g.yield_index
     _ => 0
   }
-  let body_signal = interp.exec_stmt(ctx, body, body_env) catch {
-    e => {
+  let body_signal = exec_stmt_rethrow_with_handler(
+    fn() raise { interp.exec_stmt(ctx, body, body_env) },
+    fn(e) {
       if e is YieldSignal(_) {
         save_for_of_resume_state(
           gen_opt, iterator, next_method, body_env, body_yield_base,
@@ -2746,9 +2756,8 @@ fn exec_for_body_signal(
       } else {
         close_iterator_throw(interp, iterator, loc)
       }
-      raise e
-    }
-  }
+    },
+  )
   match body_signal {
     Normal(v) => (v, false, None)
     ReturnSignal(v) => {

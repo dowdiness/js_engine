@@ -210,7 +210,11 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
     data.rest_param,
     implicit_arguments=!is_arrow,
   )
-  let result : Signal = try {
+  let result : Signal = {
+    errdefer {
+      self.in_nonarrow_param_default_eval = saved_in_default
+      self.param_default_eval_var_conflicts = saved_param_default_conflicts
+    }
     // §10.2.11 step 21: pre-declare all param BoundNames as TDZ so that
     // self- and forward-referencing defaults throw ReferenceError.
     let mut has_rest_pattern_param = false
@@ -351,12 +355,6 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
     let sig = self.exec_stmts(func_ctx, data.body, body_env)
     raise_if_break_continue(sig)
     sig
-  } catch {
-    e => {
-      self.in_nonarrow_param_default_eval = saved_in_default
-      self.param_default_eval_var_conflicts = saved_param_default_conflicts
-      raise e
-    }
   }
   self.in_nonarrow_param_default_eval = saved_in_default
   self.param_default_eval_var_conflicts = saved_param_default_conflicts
@@ -1493,7 +1491,8 @@ fn Interpreter::call_value_impl(
             // the signal so a nested invocation (e.g. an IIFE in an outer
             // function's param default) does not inherit the outer state.
             let gate_scope = self.begin_simple_user_func_parameter_gate()
-            let result : Value = try {
+            let result : Value = {
+              errdefer self.finish_simple_user_func_parameter_gate(gate_scope)
               let prepared = self.prepare_user_func_activation(
                 callee, this_val, args, data,
               )
@@ -1508,11 +1507,6 @@ fn Interpreter::call_value_impl(
                 ReturnSignal(v) => v
                 _ => Undefined
               }
-            } catch {
-              e => {
-                self.finish_simple_user_func_parameter_gate(gate_scope)
-                raise e
-              }
             }
             self.finish_simple_user_func_parameter_gate(gate_scope)
             result
@@ -1524,7 +1518,11 @@ fn Interpreter::call_value_impl(
             let saved_param_default_conflicts = self.param_default_eval_var_conflicts
             self.in_nonarrow_param_default_eval = false
             self.param_default_eval_var_conflicts = None
-            let result : Value = try {
+            let result : Value = {
+              errdefer {
+                self.in_nonarrow_param_default_eval = saved_in_default
+                self.param_default_eval_var_conflicts = saved_param_default_conflicts
+              }
               let func_env = Environment::new(parent=Some(data.closure))
               func_env.is_var_scope = true
               let func_ctx : ExecContext = {
@@ -1548,12 +1546,6 @@ fn Interpreter::call_value_impl(
                 Normal(_) => Undefined
                 ReturnSignal(v) => v
                 _ => Undefined
-              }
-            } catch {
-              e => {
-                self.in_nonarrow_param_default_eval = saved_in_default
-                self.param_default_eval_var_conflicts = saved_param_default_conflicts
-                raise e
               }
             }
             self.in_nonarrow_param_default_eval = saved_in_default

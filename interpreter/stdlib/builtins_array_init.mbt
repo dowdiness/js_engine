@@ -1241,25 +1241,23 @@ fn setup_array_builtins(
             }
             let value = interp.iterator_result_value(iter_result, loc)
             let mapped = match map_fn {
-              Some(fn_val) =>
-                interp.call_value(
-                  fn_val,
-                  this_arg,
-                  [value, Value::Number(k.to_double())],
-                  loc,
-                ) catch {
-                  e => {
-                    interp.iterator_close_throw(iterator, loc)
-                    raise e
-                  }
+              Some(fn_val) => {
+                let mapped = {
+                  errdefer interp.iterator_close_throw(iterator, loc)
+                  interp.call_value(
+                    fn_val,
+                    this_arg,
+                    [value, Value::Number(k.to_double())],
+                    loc,
+                  )
                 }
+                mapped
+              }
               None => value
             }
-            @runtime.create_data_property_or_throw(interp, result, k, mapped) catch {
-              e => {
-                interp.iterator_close_throw(iterator, loc)
-                raise e
-              }
+            let _ = {
+              errdefer interp.iterator_close_throw(iterator, loc)
+              @runtime.create_data_property_or_throw(interp, result, k, mapped)
             }
             k = k + 1L
           }

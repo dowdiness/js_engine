@@ -198,18 +198,16 @@ fn[T] Interpreter::with_module_exports(
   let saved_bindings = self.module_export_bindings
   self.module_exports = exports_map
   self.module_export_bindings = []
-  try {
-    let result = body()
-    self.module_exports = saved_exports
-    self.module_export_bindings = saved_bindings
-    result
-  } catch {
-    e => {
+  let result : T = {
+    errdefer {
       self.module_exports = saved_exports
       self.module_export_bindings = saved_bindings
-      raise e
     }
+    body()
   }
+  self.module_exports = saved_exports
+  self.module_export_bindings = saved_bindings
+  result
 }
 
 ///|

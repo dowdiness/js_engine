@@ -443,11 +443,9 @@ fn setup_set_builtins(
           None => break
           Some(r) => r
         }
-        let next_val = interp.iterator_result_value(iter_result, loc) catch {
-          e => {
-            interp.iterator_close_throw(key_iter, loc)
-            raise e
-          }
+        let next_val = {
+          errdefer interp.iterator_close_throw(key_iter, loc)
+          interp.iterator_result_value(iter_result, loc)
         }
         let next_val = canonicalize_keyed_collection_key(next_val)
         if result_values.search_by(v => same_value_zero(v, next_val)) is None {
@@ -526,11 +524,9 @@ fn setup_set_builtins(
             None => break
             Some(r) => r
           }
-          let next_val = interp.iterator_result_value(iter_result, loc) catch {
-            e => {
-              interp.iterator_close_throw(key_iter, loc)
-              raise e
-            }
+          let next_val = {
+            errdefer interp.iterator_close_throw(key_iter, loc)
+            interp.iterator_result_value(iter_result, loc)
           }
           let next_val = canonicalize_keyed_collection_key(next_val)
           // §24.2.3.2 step 6.a.i: skip if already in result (dedup)
@@ -620,11 +616,9 @@ fn setup_set_builtins(
             None => break
             Some(r) => r
           }
-          let next_val = interp.iterator_result_value(iter_result, loc) catch {
-            e => {
-              interp.iterator_close_throw(key_iter, loc)
-              raise e
-            }
+          let next_val = {
+            errdefer interp.iterator_close_throw(key_iter, loc)
+            interp.iterator_result_value(iter_result, loc)
           }
           let next_val = canonicalize_keyed_collection_key(next_val)
           match result_values.search_by(v => same_value_zero(v, next_val)) {
@@ -684,11 +678,9 @@ fn setup_set_builtins(
           None => break
           Some(r) => r
         }
-        let next_val = interp.iterator_result_value(iter_result, loc) catch {
-          e => {
-            interp.iterator_close_throw(key_iter, loc)
-            raise e
-          }
+        let next_val = {
+          errdefer interp.iterator_close_throw(key_iter, loc)
+          interp.iterator_result_value(iter_result, loc)
         }
         let next_val = canonicalize_keyed_collection_key(next_val)
         if set_data_contains_live(data, next_val) {
@@ -796,11 +788,9 @@ fn setup_set_builtins(
           None => break
           Some(r) => r
         }
-        let next_val = interp.iterator_result_value(iter_result, loc) catch {
-          e => {
-            interp.iterator_close_throw(key_iter, loc)
-            raise e
-          }
+        let next_val = {
+          errdefer interp.iterator_close_throw(key_iter, loc)
+          interp.iterator_result_value(iter_result, loc)
         }
         let next_val = canonicalize_keyed_collection_key(next_val)
         if !set_data_contains_live(data, next_val) {
@@ -871,11 +861,9 @@ fn setup_set_builtins(
             None => break
             Some(r) => r
           }
-          let next_val = interp.iterator_result_value(iter_result, loc) catch {
-            e => {
-              interp.iterator_close_throw(key_iter, loc)
-              raise e
-            }
+          let next_val = {
+            errdefer interp.iterator_close_throw(key_iter, loc)
+            interp.iterator_result_value(iter_result, loc)
           }
           let next_val = canonicalize_keyed_collection_key(next_val)
           if set_data_contains_live(data, next_val) {
@@ -1033,11 +1021,9 @@ fn setup_set_builtins(
               Some(result) => result
             }
             let value = interp.iterator_result_value(iter_result, loc)
-            let _ = interp.call_value(adder, new_set, [value], loc) catch {
-              e => {
-                interp.iterator_close_throw(iterator, loc)
-                raise e
-              }
+            let _ = {
+              errdefer interp.iterator_close_throw(iterator, loc)
+              interp.call_value(adder, new_set, [value], loc)
             }
           }
         }
