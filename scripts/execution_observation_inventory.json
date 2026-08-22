@@ -373,6 +373,21 @@
       "public_facade_evidence": ["integration/external_consumer/issue_946_includes_guardrail_test.mbt#default String.includes observes the bounded execution budget", "integration/external_consumer_candidate/issue_946_includes_guardrail_test.mbt#candidate String.includes observes the bounded execution budget"]
     },
     {
+      "id": "bounded-evaluation-string-indexof-search-loop",
+      "accounting_entry_id": "bounded-evaluation-string-indexof-search-loop-entry",
+      "operation_family": "bounded evaluation",
+      "entry_category": "String.prototype.indexOf code-unit comparison loop",
+      "contract_observation_category": "script-controlled-execution-time-loop",
+      "current_accounting_owner": "interpreter/stdlib/builtins_string.mbt#string_index_of_observed",
+      "intended_final_accounting_owner": "bounded-evaluation-string-indexof-search-loop-observation",
+      "status": "observed-exactly-once",
+      "duplicate_charge_risk": "The forward StringIndexOf helper is shared with includes; each compared UTF-16 code unit is charged exactly once, and result conversion adds no observation.",
+      "owning_implementation_or_issue": "interpreter/stdlib/builtins_string.mbt#String.prototype.indexOf",
+      "focused_evidence": ["interpreter/stdlib/builtins_string.mbt#string_index_of_observed", "interpreter/stdlib/issue_948_index_of_observation_wbtest.mbt#String.indexOf observes each code-unit comparison", "interpreter/stdlib/issue_948_index_of_observation_wbtest.mbt#String.indexOf empty search observes no comparisons", "interpreter/stdlib/issue_948_index_of_observation_wbtest.mbt#String.indexOf reports UTF-16 code-unit positions"],
+      "public_facade_evidence_required": true,
+      "public_facade_evidence": ["integration/external_consumer/issue_948_indexof_guardrail_test.mbt#default String.indexOf observes the bounded execution budget", "integration/external_consumer_candidate/issue_948_indexof_guardrail_test.mbt#candidate String.indexOf observes the bounded execution budget"]
+    },
+    {
       "id": "bounded-evaluation-string-repeat-loop",
       "accounting_entry_id": "bounded-evaluation-string-repeat-loop-entry",
       "operation_family": "bounded evaluation",
