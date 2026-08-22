@@ -1,7 +1,6 @@
 ///|
 test "candidate String.repeat function remains bytecode-eligible" {
-  let source =
-    "function repeatLength() { return \"x\".repeat(100000).length; } " +
+  let source = "function repeatLength() { return \"x\".repeat(100000).length; } " +
     "repeatLength();"
   let program = prepare_candidate_program(@parser.parse(source).stmts)
   guard program.root.children.length() == 1 else {
