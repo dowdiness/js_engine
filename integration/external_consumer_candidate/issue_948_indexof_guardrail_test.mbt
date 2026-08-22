@@ -129,3 +129,60 @@ test "candidate String.indexOf observes long common-prefix comparisons" {
     }
   }
 }
+
+///|
+test "candidate String.indexOf preserves coercion order and RegExp conversion" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|var events = "";
+      #|var receiver = { toString() { events = events + "this"; return "abc"; } };
+      #|var search = { toString() { events = events + "search"; return "bc"; } };
+      #|var position = { valueOf() { events = events + "position"; return 0; } };
+      #|function indexWithCoercion() { return String.prototype.indexOf.call(receiver, search, position); }
+      #|function readEvents() { return events; }
+      #|function precedence() {
+      #|  var result = [];
+      #|  try { String.prototype.indexOf.call(null, "x"); } catch (error) { result.push(error instanceof TypeError); }
+      #|  var throwingSearch = { toString() { throw "search"; } };
+      #|  try { "abc".indexOf(throwingSearch); } catch (error) { result.push(error === "search"); }
+      #|  var throwingPosition = { valueOf() { throw "position"; } };
+      #|  try { "abc".indexOf("a", throwingPosition); } catch (error) { result.push(error === "position"); }
+      #|  return result;
+      #|}
+    ),
+  )
+  expect_candidate_index_of_result(
+    engine.call_json_bounded(
+      "indexWithCoercion",
+      [],
+      candidate_index_of_guardrail_policy(1000L),
+    ),
+    1,
+  )
+  json_inspect(engine.call_json("readEvents", []), content="thissearchposition")
+  json_inspect(engine.call_json("precedence", []), content=[true, true, true])
+}
+
+///|
+test "candidate String.indexOf remains reusable after exhaustion" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var large = \"x\".repeat(100000); " +
+    "function indexOfMissing() { return large.indexOf(\"z\"); } " +
+    "function smallIndexOf() { return \"abc\".indexOf(\"bc\"); }",
+  )
+  match
+    engine.call_json_bounded(
+      "indexOfMissing",
+      [],
+      candidate_index_of_guardrail_policy(1000L),
+    ) {
+    Ok(_) => fail("large candidate String.indexOf unexpectedly completed")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
+      assert_true(diagnostic.pending_jobs() is @js_engine.PendingJobs::None)
+    }
+  }
+  json_inspect(engine.call_json("smallIndexOf", []), content=1)
+}
