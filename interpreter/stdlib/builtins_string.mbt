@@ -92,6 +92,42 @@ pub fn utf16_length(s : String) -> Int {
 }
 
 ///|
+/// Search a UTF-16 string forward while charging each code-unit comparison.
+/// The caller owns receiver/search/position coercion and result conversion;
+/// this helper is shared by String.prototype.indexOf and includes only.
+fn string_index_of_observed(
+  interp : Interpreter,
+  str : String,
+  search : String,
+  start : Int,
+) -> Int raise Error {
+  let s_units = string_to_utf16(str)
+  let search_units = string_to_utf16(search)
+  let slen = s_units.length()
+  let search_len = search_units.length()
+  if search_len == 0 {
+    return if start > slen { slen } else { start }
+  }
+  if start > slen - search_len {
+    return -1
+  }
+  for i = start; i <= slen - search_len; i = i + 1 {
+    let mut found = true
+    for j = 0; j < search_len; j = j + 1 {
+      interp.observe_execution_step()
+      if s_units[i + j] != search_units[j] {
+        found = false
+        break
+      }
+    }
+    if found {
+      return i
+    }
+  }
+  -1
+}
+
+///|
 /// GetMethod for the well-known symbol hooks used by String methods.
 /// The canonical computed-property dispatcher preserves Proxy [[Get]],
 /// accessor, revocation, and abrupt-completion semantics.
@@ -244,27 +280,8 @@ pub fn get_string_method(
             0
           }
           let start = if from_idx < 0 { 0 } else { from_idx }
-          let slen = str.length()
-          let search_len = search.length()
-          if search_len == 0 {
-            let empty_result = if start > slen { slen } else { start }
-            return Value::Number(empty_result.to_double())
-          }
-          let s_chars = str.to_array()
-          let search_chars = search.to_array()
-          for i = start; i <= slen - search_len; i = i + 1 {
-            let mut found = true
-            for j = 0; j < search_len; j = j + 1 {
-              if s_chars[i + j] != search_chars[j] {
-                found = false
-                break
-              }
-            }
-            if found {
-              return Value::Number(i.to_double())
-            }
-          }
-          Value::Number(-1.0)
+          let result = string_index_of_observed(interp, str, search, start)
+          Value::Number(result.to_double())
         },
       )
     }
@@ -344,27 +361,8 @@ pub fn get_string_method(
             0
           }
           let start = if from_idx < 0 { 0 } else { from_idx }
-          let slen = str.length()
-          let search_len = search.length()
-          if search_len == 0 {
-            return Value::Bool(true)
-          }
-          let s_chars = str.to_array()
-          let search_chars = search.to_array()
-          for i = start; i <= slen - search_len; i = i + 1 {
-            let mut found = true
-            for j = 0; j < search_len; j = j + 1 {
-              interp.observe_execution_step()
-              if s_chars[i + j] != search_chars[j] {
-                found = false
-                break
-              }
-            }
-            if found {
-              return Value::Bool(true)
-            }
-          }
-          Value::Bool(false)
+          let result = string_index_of_observed(interp, str, search, start)
+          Value::Bool(result >= 0)
         },
       )
     }
