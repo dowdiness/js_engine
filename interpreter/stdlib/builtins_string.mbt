@@ -76,6 +76,20 @@ fn string_to_utf16(s : String) -> Array[Int] {
 }
 
 ///|
+/// ECMAScript ToIntegerOrInfinity for numeric String method positions.
+fn string_to_integer_or_infinity(n : Double) -> Double {
+  if n.is_nan() || n == 0.0 {
+    0.0
+  } else if n.is_inf() {
+    n
+  } else if n < 0.0 {
+    n.ceil()
+  } else {
+    n.floor()
+  }
+}
+
+///|
 /// Get the UTF-16 length of a string (counting code units, not code points).
 pub fn utf16_length(s : String) -> Int {
   let cps = s.to_array()
@@ -1103,28 +1117,29 @@ pub fn get_string_method(
           } else {
             "undefined"
           }
-          let slen = str.length()
-          let raw_end = if args.length() > 1 {
-            interp.to_number(args[1]).to_int()
+          let slen = utf16_length(str)
+          let raw_end : Double = if args.length() > 1 && !(args[1] is Undefined) {
+            string_to_integer_or_infinity(interp.to_number(args[1]))
           } else {
-            slen
+            slen.to_double()
           }
-          let end_pos = if raw_end < 0 {
+          let end_pos = if raw_end <= 0.0 {
             0
-          } else if raw_end > slen {
+          } else if raw_end >= slen.to_double() {
             slen
           } else {
-            raw_end
+            raw_end.to_int()
           }
-          let search_len = search.length()
+          let search_units = string_to_utf16(search)
+          let search_len = search_units.length()
           let start = end_pos - search_len
           if start < 0 {
             return Value::Bool(false)
           }
-          let s_chars = str.to_array()
-          let search_chars = search.to_array()
+          let s_units = string_to_utf16(str)
           for i = 0; i < search_len; i = i + 1 {
-            if s_chars[start + i] != search_chars[i] {
+            interp.observe_execution_step()
+            if s_units[start + i] != search_units[i] {
               return Value::Bool(false)
             }
           }
