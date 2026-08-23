@@ -1076,6 +1076,7 @@ pub fn get_string_method(
             return Value::Bool(false)
           }
           for i = 0; i < search_chars.length(); i = i + 1 {
+            interp.observe_execution_step()
             if s_chars[pos + i] != search_chars[i] {
               return Value::Bool(false)
             }
