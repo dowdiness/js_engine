@@ -128,6 +128,44 @@ fn string_index_of_observed(
 }
 
 ///|
+/// Search a UTF-16 string backward while charging each code-unit comparison.
+/// The caller owns receiver/search/position coercion and result conversion;
+/// this helper is specific to String.prototype.lastIndexOf.
+fn string_last_index_of_observed(
+  interp : Interpreter,
+  str : String,
+  search : String,
+  from : Int,
+) -> Int raise Error {
+  let s_units = string_to_utf16(str)
+  let search_units = string_to_utf16(search)
+  let slen = s_units.length()
+  let search_len = search_units.length()
+  if search_len == 0 {
+    return if from > slen { slen } else { from }
+  }
+  let max_start = slen - search_len
+  if max_start < 0 {
+    return -1
+  }
+  let start = if from > max_start { max_start } else { from }
+  for i = start; i >= 0; i = i - 1 {
+    let mut found = true
+    for j = 0; j < search_len; j = j + 1 {
+      interp.observe_execution_step()
+      if s_units[i + j] != search_units[j] {
+        found = false
+        break
+      }
+    }
+    if found {
+      return i
+    }
+  }
+  -1
+}
+
+///|
 /// GetMethod for the well-known symbol hooks used by String methods.
 /// The canonical computed-property dispatcher preserves Proxy [[Get]],
 /// accessor, revocation, and abrupt-completion semantics.
@@ -297,8 +335,8 @@ pub fn get_string_method(
           } else {
             "undefined"
           }
-          let slen = str.length()
-          let search_len = search.length()
+          let slen = utf16_length(str)
+          let search_len = utf16_length(search)
           let from_idx = if args.length() > 1 {
             interp.to_number(args[1]).to_int()
           } else {
@@ -318,22 +356,8 @@ pub fn get_string_method(
           if max_start < 0 {
             return Value::Number(-1.0)
           }
-          let start = if from > max_start { max_start } else { from }
-          let s_chars = str.to_array()
-          let search_chars = search.to_array()
-          for i = start; i >= 0; i = i - 1 {
-            let mut found = true
-            for j = 0; j < search_len; j = j + 1 {
-              if i + j >= slen || s_chars[i + j] != search_chars[j] {
-                found = false
-                break
-              }
-            }
-            if found {
-              return Value::Number(i.to_double())
-            }
-          }
-          Value::Number(-1.0)
+          let result = string_last_index_of_observed(interp, str, search, from)
+          Value::Number(result.to_double())
         },
       )
     }
