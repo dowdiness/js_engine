@@ -116,6 +116,7 @@ fn setup_array_builtins(
         from_idx
       }
       for i = start; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           if strict_equal_val(
               @runtime.get_array_like_element_interp(interp, o, i),
