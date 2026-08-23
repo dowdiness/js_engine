@@ -4909,6 +4909,42 @@ test "endsWith large end position" {
 }
 
 ///|
+test "endsWith position conversion, protocol ordering, and UTF-16" {
+  let src =
+    #|var events = "";
+    #|var receiver = { toString: function() { events += "this"; return "abc"; } };
+    #|var search = { toString: function() { events += "search"; return "c"; } };
+    #|Object.defineProperty(search, Symbol.match, {
+    #|  get: function() { events += "match"; return false; }
+    #|});
+    #|var position = { valueOf: function() { events += "position"; return 3; } };
+    #|console.log(String.prototype.endsWith.call(receiver, search, position));
+    #|console.log(events);
+    #|console.log("abc".endsWith("c"));
+    #|console.log("abc".endsWith("c", undefined));
+    #|console.log("abc".endsWith("c", NaN));
+    #|console.log("abc".endsWith("c", Infinity));
+    #|console.log("abc".endsWith("c", -Infinity));
+    #|console.log("abc".endsWith("c", -1));
+    #|console.log("abc".endsWith("c", 100));
+    #|console.log("abc".endsWith("", 0));
+    #|console.log("abc".endsWith("abcd"));
+    #|console.log("😀x".endsWith("😀", 2));
+    #|var regexpEvents = "";
+    #|var regexpSearch = { toString: function() { regexpEvents += "search"; return "x"; } };
+    #|Object.defineProperty(regexpSearch, Symbol.match, {
+    #|  get: function() { regexpEvents += "match"; return true; }
+    #|});
+    #|try { "abc".endsWith(regexpSearch); } catch (error) { console.log(error instanceof TypeError); }
+    #|console.log(regexpEvents);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "thismatchsearchposition", "true", "true", "false", "true", "false",
+    "false", "true", "true", "false", "true", "true", "match",
+  ])
+}
+
+///|
 test "computed hasOwnProperty" {
   let src =
     #|var obj = { a: 1 };
