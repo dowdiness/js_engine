@@ -100,6 +100,46 @@ test "validator accepts contract-excluded host JSON conversion" {
 }
 
 ///|
+test "validator accepts a guarded row with permanent facade evidence" {
+  let first =
+    #|{"id":"guarded","accounting_entry_id":"fixture-guarded-entry","operation_family":"statement dispatch","current_accounting_owner":"runtime guard","intended_final_accounting_owner":"bounded native progress guard","status":"guarded-by-bounded-execution","owning_implementation_or_issue":"runtime guard","focused_evidence":["fixture.mbt#guard"],"entry_category":"entry","contract_observation_category":"script-controlled-execution-time-loop","duplicate_charge_risk":"guard owns the first unobserved work unit","public_facade_evidence_required":true,"public_facade_evidence":["facade.mbt#bounded-entry"]}
+  match
+    validate_manifest_text(six_family_manifest(first), "guarded-valid.json") {
+    Ok(_) => ()
+    Err(message) => fail("guarded row should validate: " + message)
+  }
+}
+
+///|
+test "validator rejects a guarded row without permanent facade evidence" {
+  let first =
+    #|{"id":"guarded","accounting_entry_id":"fixture-guarded-entry","operation_family":"statement dispatch","current_accounting_owner":"runtime guard","intended_final_accounting_owner":"bounded native progress guard","status":"guarded-by-bounded-execution","owning_implementation_or_issue":"runtime guard","focused_evidence":["fixture.mbt#guard"],"entry_category":"entry","contract_observation_category":"script-controlled-execution-time-loop","duplicate_charge_risk":"guard owns the first unobserved work unit","public_facade_evidence_required":false}
+  match
+    validate_manifest_text(
+      six_family_manifest(first),
+      "guarded-missing-facade.json",
+    ) {
+    Ok(_) => fail("guarded row without facade evidence must be rejected")
+    Err(message) =>
+      assert_true(message.contains("permanent public_facade_evidence"))
+  }
+}
+
+///|
+test "validator rejects tracking ownership on a guarded row" {
+  let first =
+    #|{"id":"guarded","accounting_entry_id":"fixture-guarded-entry","operation_family":"statement dispatch","current_accounting_owner":"runtime guard","intended_final_accounting_owner":"bounded native progress guard","status":"guarded-by-bounded-execution","owning_implementation_or_issue":"runtime guard","tracking_issue":"#966","focused_evidence":["fixture.mbt#guard"],"entry_category":"entry","contract_observation_category":"script-controlled-execution-time-loop","duplicate_charge_risk":"guard owns the first unobserved work unit","public_facade_evidence_required":true,"public_facade_evidence":["facade.mbt#bounded-entry"]}
+  match
+    validate_manifest_text(
+      six_family_manifest(first),
+      "guarded-tracking-issue.json",
+    ) {
+    Ok(_) => fail("guarded rows must not retain tracking_issue")
+    Err(message) => assert_true(message.contains("only unobserved rows"))
+  }
+}
+
+///|
 test "validator rejects missing accounting owner" {
   let manifest = six_family_manifest(
     "{\"id\":\"statement\",\"operation_family\":\"statement dispatch\"}",

@@ -163,6 +163,88 @@ test "raised control scope restores state and preserves the original error" {
 }
 
 ///|
+test "unbounded native-progress guard is a no-op and the interpreter remains reusable" {
+  let interp = Interpreter::new()
+  interp.reject_unobserved_native_progress()
+  let result = interp.run(@parser.parse("3").stmts)
+  match result {
+    Number(value) if value == 3.0 => ()
+    _ => fail("unbounded guard must not alter interpreter execution")
+  }
+}
+
+///|
+test "bounded native-progress guard fails before work and restores the interpreter" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=7,
+    maximum_active_depth=3,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let failure = try {
+    let _ : Unit = interp.with_execution_control(control, fn() raise {
+      interp.reject_unobserved_native_progress()
+    })
+    "none"
+  } catch {
+    ExecutionControlError(ExecutionLimit) => "execution-limit"
+    _ => "wrong-failure"
+  }
+  inspect(failure, content="execution-limit")
+  inspect(control.remaining_steps(), content="7")
+  inspect(control.active_depth(), content="0")
+  match interp.global.bindings.get(EXECUTION_CONTROL_BINDING) {
+    None => ()
+    Some(_) => fail("bounded guard scope leaked its execution carrier")
+  }
+  match interp.run(@parser.parse("4").stmts) {
+    Number(value) if value == 4.0 => ()
+    _ => fail("interpreter must be reusable after guarded interruption")
+  }
+}
+
+///|
+test "bounded native-progress failure bypasses JavaScript catch" {
+  let interp = Interpreter::new()
+  interp.global.def("counter", Number(0.0), VarBinding)
+  let native_guard = make_object(
+    Map([]),
+    Null,
+    Some(
+      NonConstructableCallable("test-native-progress-guard", fn(_args) raise {
+        interp.reject_unobserved_native_progress()
+        Undefined
+      }),
+    ),
+    "Function",
+    Map([]),
+    true,
+  )
+  interp.global.def_builtin("testNativeGuard", native_guard)
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=3,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let failure = try {
+    let _ = run_dispatch_source(
+      interp, "try { testNativeGuard(); counter = 1 } catch (error) { counter = 99 }",
+      control,
+    )
+    "none"
+  } catch {
+    ExecutionControlError(ExecutionLimit) => "execution-limit"
+    _ => "wrong-failure"
+  }
+  inspect(failure, content="execution-limit")
+  match interp.global.get("counter") {
+    Number(value) if value == 0.0 => ()
+    _ => fail("execution-control failure reached JavaScript catch")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "execution-control failure is not caught as a JavaScript exception" {
   let interp = Interpreter::new()
   interp.global.def("counter", Number(0.0), VarBinding)
