@@ -1469,6 +1469,7 @@ pub fn get_string_method(
           } else {
             "undefined"
           }
+          interp.reject_unobserved_native_progress()
           if str < other {
             Value::Number(-1.0)
           } else if str > other {
