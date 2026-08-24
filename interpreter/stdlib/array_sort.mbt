@@ -106,6 +106,9 @@ fn array_sort_indexed_properties(
   comparefn : Value,
 ) -> Value raise Error {
   let len = @runtime.to_array_like_length_interp(o, interp)
+  if len > 0L {
+    interp.reject_unobserved_native_progress()
+  }
   let elements : Array[Value] = []
   // SortIndexedProperties(..., skip-holes): only values for indices where
   // HasProperty is true enter the sortable list. Holes are deleted later.
