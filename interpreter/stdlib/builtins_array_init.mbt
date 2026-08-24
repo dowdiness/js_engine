@@ -13,6 +13,15 @@ fn is_concat_spreadable(
 }
 
 ///|
+fn array_flat_elements_with_length(value : Value, len : Int64) -> Array[Value] {
+  let elements : Array[Value] = []
+  for i = 0L; i < len; i = i + 1L {
+    elements.push(@runtime.get_array_like_element(value, i))
+  }
+  elements
+}
+
+///|
 fn setup_array_builtins(
   env : Environment,
   realm_state : @runtime.RealmState,
@@ -782,6 +791,7 @@ fn setup_array_builtins(
     length=0,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
+      let len = @runtime.to_array_like_length_interp(o, interp)
       let depth = if args.length() > 0 {
         match args[0] {
           Undefined => 1
@@ -790,10 +800,13 @@ fn setup_array_builtins(
       } else {
         1
       }
-      let elements = @runtime.to_array_like_elements(o)
+      let a = @runtime.array_species_create(interp, o, 0L)
+      if len > 0L {
+        interp.reject_unobserved_native_progress()
+      }
+      let elements = array_flat_elements_with_length(o, len)
       let flat_result : Array[Value] = []
       @runtime.flatten_array_val(elements, depth, flat_result)
-      let a = @runtime.array_species_create(interp, o, 0L)
       for i, val in flat_result {
         @runtime.create_data_property_or_throw(interp, a, i.to_int64(), val)
       }
@@ -816,6 +829,9 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       let a = @runtime.array_species_create(interp, o, 0L)
+      if len > 0L {
+        interp.reject_unobserved_native_progress()
+      }
       let mut n = 0L
       for i = 0L; i < len; i = i + 1L {
         let el = @runtime.get_array_like_element_interp(interp, o, i)
@@ -894,6 +910,9 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       array_mutator_require_array_create_length(len)
+      if len > 0L {
+        interp.reject_unobserved_native_progress()
+      }
       let result : Array[Value] = []
       for i = 0L; i < len; i = i + 1L {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
@@ -1235,6 +1254,10 @@ fn setup_array_builtins(
           }
           let iterator = interp.call_value(iterator_fn, source, [], loc)
           let next_method = interp.get_iterator_next_method(iterator, loc)
+          let _ = {
+            errdefer interp.iterator_close_throw(iterator, loc)
+            interp.reject_unobserved_native_progress()
+          }
           let mut k = 0L
           while true {
             let iter_result = match
