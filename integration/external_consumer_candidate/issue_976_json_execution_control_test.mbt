@@ -86,6 +86,40 @@ test "candidate JSON.stringify preserves root protocol ordering before execution
 }
 
 ///|
+test "candidate JSON.stringify preserves revoked Proxy IsArray error precedence" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var issue976CandidateProxyEvents = ''; " +
+    "var issue976CandidateProxyRecord = Proxy.revocable([], { get(t, k) { " +
+    "if (k === 'toJSON') issue976CandidateProxyEvents += 't'; " +
+    "return t[k]; } }); " +
+    "var issue976CandidateRootProxy = issue976CandidateProxyRecord.proxy; " +
+    "function issue976CandidateRevokeRootProxy(key, value) { " +
+    "if (key === '') { issue976CandidateProxyRecord.revoke(); " +
+    "return issue976CandidateRootProxy; } return value; } " +
+    "function issue976CandidateStringifyRevokedProxy() { " +
+    "return JSON.stringify(issue976CandidateRootProxy, " +
+    "issue976CandidateRevokeRootProxy); } " +
+    "function issue976CandidateReadProxyEvents() { " +
+    "return issue976CandidateProxyEvents; }",
+  )
+  match
+    engine.call_json_bounded(
+      "issue976CandidateStringifyRevokedProxy",
+      [],
+      issue_976_candidate_policy(),
+    ) {
+    Ok(_) => fail("candidate revoked Proxy must report its IsArray TypeError")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+  }
+  json_inspect(
+    engine.call_json("issue976CandidateReadProxyEvents", []),
+    content="t",
+  )
+}
+
+///|
 test "candidate JSON.stringify trivial primitive remains bounded" {
   let engine = @js_engine.Engine()
   engine.eval(

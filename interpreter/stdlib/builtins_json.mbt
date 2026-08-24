@@ -830,10 +830,11 @@ fn json_stringify_value(
       }
     }
     Value::Proxy(proxy_data) => {
+      let is_array = @runtime.is_array(val)
       json_reject_unobserved_native_progress(interp)
       match interp {
         Some(ip) =>
-          if @runtime.is_array(val) {
+          if is_array {
             json_serialize_json_array(
               ip,
               val,

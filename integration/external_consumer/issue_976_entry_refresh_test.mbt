@@ -116,6 +116,34 @@ test "JSON.stringify runs root protocol before the execution-control boundary" {
 }
 
 ///|
+test "JSON.stringify preserves revoked Proxy IsArray error precedence" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var issue976ProxyEvents = ''; " +
+    "var issue976ProxyRecord = Proxy.revocable([], { get(t, k) { " +
+    "if (k === 'toJSON') issue976ProxyEvents += 't'; return t[k]; } }); " +
+    "var issue976RootProxy = issue976ProxyRecord.proxy; " +
+    "function issue976RevokeRootProxy(key, value) { " +
+    "if (key === '') { issue976ProxyRecord.revoke(); " +
+    "return issue976RootProxy; } return value; } " +
+    "function issue976StringifyRevokedProxy() { " +
+    "return JSON.stringify(issue976RootProxy, issue976RevokeRootProxy); } " +
+    "function issue976ReadProxyEvents() { return issue976ProxyEvents; }",
+  )
+  match
+    engine.call_json_bounded(
+      "issue976StringifyRevokedProxy",
+      [],
+      issue_976_policy(),
+    ) {
+    Ok(_) => fail("revoked Proxy must report its IsArray TypeError")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+  }
+  json_inspect(engine.call_json("issue976ReadProxyEvents", []), content="t")
+}
+
+///|
 test "JSON.stringify replacer list stops before first element Get" {
   let engine = @js_engine.Engine()
   engine.eval(
