@@ -5,14 +5,19 @@ fn typedarray_collect_iterator_values(
   iterator_method : Value,
   loc : @token.Loc,
 ) -> Array[Value] raise Error {
-  let values : Array[Value] = []
   let iterator = interp.call_value(iterator_method, source, [], loc)
   let next_method = interp.get_iterator_next_method(iterator, loc)
-  while true {
-    match interp.iterator_step_value(iterator, next_method, loc) {
-      None => break
-      Some(value) => values.push(value)
+  let values = {
+    errdefer interp.iterator_close_throw(iterator, loc)
+    interp.reject_unobserved_native_progress()
+    let values : Array[Value] = []
+    while true {
+      match interp.iterator_step_value(iterator, next_method, loc) {
+        None => break
+        Some(value) => values.push(value)
+      }
     }
+    values
   }
   values
 }
@@ -1655,10 +1660,17 @@ pub fn setup_typedarray_builtins(
     name="sort",
     length=1,
     fn(interp, this_val, args) raise {
+      let comparefn = if args.length() > 0 { args[0] } else { Undefined }
+      if !(comparefn is Undefined) && !@runtime.is_callable(comparefn) {
+        raise @errors.TypeError(message="sort comparefn is not callable")
+      }
       let (data, _) = validate_typed_array(this_val, "sort", realm_state)
       let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
+      }
+      if len > 0 {
+        interp.reject_unobserved_native_progress()
       }
       // Read all elements into a decorated temp array. MoonBit's Array::sort_by
       // is intentionally unstable, so the original index is the spec-required
@@ -1671,10 +1683,9 @@ pub fn setup_typedarray_builtins(
           _ => temp.push((0.0, i))
         }
       }
-      let has_comparefn = args.length() > 0 && !(args[0] is Undefined)
+      let has_comparefn = !(comparefn is Undefined)
       let mut caught_error : Error? = None
       if has_comparefn {
-        let comparefn = args[0]
         let loc = @token.Loc::default()
         temp.sort_by(fn(a, b) {
           if caught_error is Some(_) {
@@ -2513,6 +2524,9 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
+      if len > 0 {
+        interp.reject_unobserved_native_progress()
+      }
       // Collect elements with original indices so toSorted remains stable even
       // though MoonBit's Array::sort_by is intentionally unstable.
       let elements : Array[(Double, Int)] = []
@@ -3220,6 +3234,7 @@ pub fn setup_typedarray_builtins(
             // From array-like or iterable arrays
             Array(_) => {
               let loc = @token.Loc::default()
+              let proto = resolve_ctor_proto()
               let iterator_sym = interp.realm_state.well_known_symbols.iterator
               let iterator_method = interp.get_computed_property(
                 first,
@@ -3235,10 +3250,7 @@ pub fn setup_typedarray_builtins(
                     )
                   }
                   let result = make_typedarray_object(
-                    type_name,
-                    len,
-                    resolve_ctor_proto(),
-                    env,
+                    type_name, len, proto, env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3262,10 +3274,7 @@ pub fn setup_typedarray_builtins(
                   )
                   let len = values.length()
                   let result = make_typedarray_object(
-                    type_name,
-                    len,
-                    resolve_ctor_proto(),
-                    env,
+                    type_name, len, proto, env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3285,6 +3294,7 @@ pub fn setup_typedarray_builtins(
             // From generic object with length
             Object(_) => {
               let loc = @token.Loc::default()
+              let proto = resolve_ctor_proto()
               let iterator_sym = interp.realm_state.well_known_symbols.iterator
               let iterator_method = interp.get_computed_property(
                 first,
@@ -3300,10 +3310,7 @@ pub fn setup_typedarray_builtins(
                     )
                   }
                   let result = make_typedarray_object(
-                    type_name,
-                    len,
-                    resolve_ctor_proto(),
-                    env,
+                    type_name, len, proto, env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3327,10 +3334,7 @@ pub fn setup_typedarray_builtins(
                   )
                   let len = values.length()
                   let result = make_typedarray_object(
-                    type_name,
-                    len,
-                    resolve_ctor_proto(),
-                    env,
+                    type_name, len, proto, env,
                   )
                   match result {
                     Object(result_data) =>
