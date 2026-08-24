@@ -493,6 +493,10 @@ fn setup_map_builtins(
           }
 
           let next_method = interp.get_iterator_next_method(iterator, loc)
+          let _ = {
+            errdefer interp.iterator_close_throw(iterator, loc)
+            interp.reject_unobserved_native_progress()
+          }
 
           // Iterate over the iterator
           while true {
@@ -564,6 +568,10 @@ fn setup_map_builtins(
             )
           }
           let next_method = interp.get_iterator_next_method(iterator, loc)
+          let _ = {
+            errdefer interp.iterator_close_throw(iterator, loc)
+            interp.reject_unobserved_native_progress()
+          }
           let group_keys : Array[Value] = []
           let group_arrays : Array[Array[Value]] = []
           let mut k = 0

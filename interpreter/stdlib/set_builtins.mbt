@@ -427,6 +427,10 @@ fn setup_set_builtins(
         loc,
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
+      let _ = {
+        errdefer interp.iterator_close_throw(key_iter, loc)
+        interp.reject_unobserved_native_progress()
+      }
       let result_values : Array[Value] = []
       for i, v in data.values {
         let is_tombstoned = match data.tombstones {
@@ -483,6 +487,9 @@ fn setup_set_builtins(
         // the live [[SetData]] List, so elements added by has() must be visited).
         // Don't advance i if has() deleted the current element (it compacts the
         // array, so the element at i+1 shifts to i and must not be skipped).
+        if this_size > 0.0 {
+          interp.reject_unobserved_native_progress()
+        }
         let mut i = 0
         while i < data.values.length() {
           let is_tombstoned = match data.tombstones {
@@ -518,6 +525,10 @@ fn setup_set_builtins(
           loc,
         )
         let next_method = interp.get_iterator_next_method(key_iter, loc)
+        let _ = {
+          errdefer interp.iterator_close_throw(key_iter, loc)
+          interp.reject_unobserved_native_progress()
+        }
         while true {
           let iter_result = match
             interp.iterator_step_result(key_iter, next_method, loc) {
@@ -566,6 +577,9 @@ fn setup_set_builtins(
         // has-path: live index loop (§24.2.3.3 step 5 iterates the live [[SetData]],
         // so elements added by has() must be visited). Deletion-safe: don't advance
         // i when has() deletes the current element and compacts the array.
+        if this_size > 0.0 {
+          interp.reject_unobserved_native_progress()
+        }
         let mut i = 0
         while i < data.values.length() {
           let is_tombstoned = match data.tombstones {
@@ -594,6 +608,7 @@ fn setup_set_builtins(
         }
       } else {
         // keys-path: start with copy of live elements, remove keys found in other
+        interp.reject_unobserved_native_progress()
         for i, v in data.values {
           let is_tombstoned = match data.tombstones {
             None => false
@@ -661,6 +676,10 @@ fn setup_set_builtins(
         loc,
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
+      let _ = {
+        errdefer interp.iterator_close_throw(key_iter, loc)
+        interp.reject_unobserved_native_progress()
+      }
       // Start result as copy of live elements, then toggle membership based on other.keys()
       let result_values : Array[Value] = []
       for i, v in data.values {
@@ -728,6 +747,9 @@ fn setup_set_builtins(
       // Live index loop (§24.2.3.5 step 5 iterates the live [[SetData]], so
       // elements added by has() must be checked — they may not be in other).
       // Deletion-safe: don't advance i when has() deletes the current element.
+      if this_size > 0.0 {
+        interp.reject_unobserved_native_progress()
+      }
       let mut i = 0
       while i < data.values.length() {
         let is_tombstoned = match data.tombstones {
@@ -782,6 +804,10 @@ fn setup_set_builtins(
         loc,
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
+      let _ = {
+        errdefer interp.iterator_close_throw(key_iter, loc)
+        interp.reject_unobserved_native_progress()
+      }
       while true {
         let iter_result = match
           interp.iterator_step_result(key_iter, next_method, loc) {
@@ -822,6 +848,9 @@ fn setup_set_builtins(
         // has-path: live index loop (§24.2.3.7 step 3 iterates the live [[SetData]],
         // so elements added by has() must be checked). Deletion-safe: don't advance
         // i when has() deletes the current element and compacts the array.
+        if this_size > 0.0 {
+          interp.reject_unobserved_native_progress()
+        }
         let mut i = 0
         while i < data.values.length() {
           let is_tombstoned = match data.tombstones {
@@ -855,6 +884,10 @@ fn setup_set_builtins(
           loc,
         )
         let next_method = interp.get_iterator_next_method(key_iter, loc)
+        let _ = {
+          errdefer interp.iterator_close_throw(key_iter, loc)
+          interp.reject_unobserved_native_progress()
+        }
         while true {
           let iter_result = match
             interp.iterator_step_result(key_iter, next_method, loc) {
@@ -1012,6 +1045,10 @@ fn setup_set_builtins(
           }
 
           let next_method = interp.get_iterator_next_method(iterator, loc)
+          let _ = {
+            errdefer interp.iterator_close_throw(iterator, loc)
+            interp.reject_unobserved_native_progress()
+          }
 
           // Iterate over the iterator
           while true {
