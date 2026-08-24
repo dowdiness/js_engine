@@ -79,6 +79,7 @@ priv struct ExecutionControlState {
 priv enum ExecutionControlEvent {
   ObserveStep(Bool)
   ObserveActivation(Bool)
+  RejectUnobservedNativeProgress(Bool)
   ReleaseActivation
 }
 
@@ -135,6 +136,12 @@ fn reduce_execution_control(
           ActivationObserved,
         )
       }
+    RejectUnobservedNativeProgress(interrupted) =>
+      if interrupted {
+        (state, Rejected(Interrupted))
+      } else {
+        (state, Rejected(ExecutionLimit))
+      }
     ReleaseActivation =>
       if state.active_depth == 0L {
         (state, Rejected(StaleActivationRelease))
@@ -162,6 +169,9 @@ const EXECUTION_CONTROL_ACTIVATION = "activation"
 
 ///|
 const EXECUTION_CONTROL_RELEASE = "release"
+
+///|
+const EXECUTION_CONTROL_UNOBSERVED_NATIVE_PROGRESS = "unobserved-native-progress"
 
 ///|
 const STACK_DEPTH_LIMIT_MESSAGE = "Maximum call stack size exceeded"
@@ -273,6 +283,12 @@ fn execution_control_observer(control : ExecutionControl) -> Value {
               Ok(_) => Undefined
               Err(failure) => raise ExecutionControlError(failure)
             }
+          [String_(operation)] if operation ==
+            EXECUTION_CONTROL_UNOBSERVED_NATIVE_PROGRESS =>
+            match control.reject_unobserved_native_progress() {
+              Ok(_) => Undefined
+              Err(failure) => raise ExecutionControlError(failure)
+            }
           _ =>
             match control.observe_step() {
               Ok(_) => Undefined
@@ -311,6 +327,32 @@ pub fn Interpreter::observe_execution_step(
           match data.callable {
             Some(NonConstructableCallable(_, observe)) => {
               let _ = observe([])
+            }
+            _ => ()
+          }
+        _ => ()
+      }
+    None => ()
+  }
+}
+
+///|
+// Fail closed before a runtime-owned operation begins work that has no
+// incremental execution observation. The active carrier decides whether the
+// operation is bounded; unbounded compatibility paths have no carrier and are
+// therefore unchanged.
+pub fn Interpreter::reject_unobserved_native_progress(
+  self : Interpreter,
+) -> Unit raise Error {
+  match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
+    Some(binding) =>
+      match binding.value {
+        Object(data) =>
+          match data.callable {
+            Some(NonConstructableCallable(_, observe)) => {
+              let _ = observe([
+                String_(EXECUTION_CONTROL_UNOBSERVED_NATIVE_PROGRESS),
+              ])
             }
             _ => ()
           }
@@ -394,6 +436,19 @@ fn ExecutionControl::observe_activation(
 ) -> Result[Unit, ExecutionControlFailure] {
   match self.transition(ObserveActivation(self.interruption.is_requested())) {
     ActivationObserved => Ok(())
+    Rejected(failure) => Err(failure)
+    _ => Err(ExecutionLimit)
+  }
+}
+
+///|
+fn ExecutionControl::reject_unobserved_native_progress(
+  self : ExecutionControl,
+) -> Result[Unit, ExecutionControlFailure] {
+  match
+    self.transition(
+      RejectUnobservedNativeProgress(self.interruption.is_requested()),
+    ) {
     Rejected(failure) => Err(failure)
     _ => Err(ExecutionLimit)
   }

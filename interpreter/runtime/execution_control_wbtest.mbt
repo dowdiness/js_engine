@@ -478,3 +478,35 @@ test "execution control reducer reaches maximum depth without wraparound" {
   inspect(after_rejection.remaining_steps, content="0")
   inspect(after_rejection.active_depth, content="2147483647")
 }
+
+///|
+test "unobserved native progress is rejected without charging the carrier" {
+  let control = ExecutionControl(
+    remaining_steps=7,
+    maximum_active_depth=3,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  match control.reject_unobserved_native_progress() {
+    Err(ExecutionControlFailure::ExecutionLimit) => ()
+    _ => fail("unobserved native progress must fail closed")
+  }
+  inspect(control.remaining_steps(), content="7")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "interruption takes precedence for unobserved native progress" {
+  let interruption = ExecutionInterruptionRequest()
+  interruption.request()
+  let control = ExecutionControl(
+    remaining_steps=7,
+    maximum_active_depth=3,
+    interruption~,
+  )
+  match control.reject_unobserved_native_progress() {
+    Err(ExecutionControlFailure::Interrupted) => ()
+    _ => fail("interruption must precede the fail-closed execution limit")
+  }
+  inspect(control.remaining_steps(), content="7")
+  inspect(control.active_depth(), content="0")
+}

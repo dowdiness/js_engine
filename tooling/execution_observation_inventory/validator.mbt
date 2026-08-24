@@ -243,7 +243,8 @@ fn validate_status_and_ownership(
     "observed-exactly-once"
     | "duplicate-observed"
     | "unobserved"
-    | "bounded-by-proof" => ()
+    | "bounded-by-proof"
+    | "guarded-by-bounded-execution" => ()
     _ => return Err(path + ": invalid status: " + status)
   }
   let owner = match
@@ -290,6 +291,32 @@ fn validate_status_and_ownership(
       Ok(())
     }
   }
+}
+
+///|
+fn validate_guarded_row_evidence(
+  data : Map[String, Json],
+  public_facade_evidence : Array[String],
+  path : String,
+) -> Result[Unit, String] {
+  let status = match required_string(data, "status", path) {
+    Ok(value) => value
+    Err(message) => return Err(message)
+  }
+  if status == "guarded-by-bounded-execution" {
+    let required = match
+      required_bool(data, "public_facade_evidence_required", path) {
+      Ok(value) => value
+      Err(message) => return Err(message)
+    }
+    if !required || public_facade_evidence.length() == 0 {
+      return Err(
+        path +
+        ": guarded-by-bounded-execution requires permanent public_facade_evidence",
+      )
+    }
+  }
+  Ok(())
 }
 
 ///|
@@ -400,6 +427,10 @@ fn validate_manifest_and_collect_evidence(
     let public_facade_evidence = match
       validate_public_facade_evidence(row, row_path) {
       Ok(value) => value
+      Err(message) => return Err(message)
+    }
+    match validate_guarded_row_evidence(row, public_facade_evidence, row_path) {
+      Ok(_) => ()
       Err(message) => return Err(message)
     }
     for reference in public_facade_evidence {

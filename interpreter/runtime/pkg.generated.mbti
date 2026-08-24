@@ -1130,6 +1130,7 @@ pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> Pa
 pub fn Interpreter::perform_eval(Self, String, Environment, Bool, caller_strict? : Bool) -> Value raise
 pub fn Interpreter::prepare_executor_callable_call(Self, ExecutorCallableData, Value, Value, Array[Value]) -> PreparedExecutorActivation raise
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
+pub fn Interpreter::reject_unobserved_native_progress(Self) -> Unit raise
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_bounded(Self, Array[@ast.Stmt], ExecutionPolicy) -> Value raise
 pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise
