@@ -22,6 +22,7 @@ fn setup_json_builtins(
       } else {
         ""
       }
+      interp.reject_unobserved_native_progress()
       let result = json_parse(str, interp)
       // Handle reviver
       if args.length() > 1 && @runtime.is_callable(args[1]) {
@@ -123,6 +124,9 @@ fn setup_json_builtins(
         if @runtime.is_array(args[1]) {
           let loc = @token.Loc::default()
           let len = @runtime.to_array_like_length_interp(args[1], interp)
+          if len > 0L {
+            interp.reject_unobserved_native_progress()
+          }
           let keys : Array[String] = []
           for i in 0L..<len {
             let elem = interp.get_property(args[1], i.to_string(), loc)
@@ -616,6 +620,19 @@ fn json_write_close_indent(
 }
 
 ///|
+/// Stop bounded execution immediately before JSON enters native work whose
+/// progress is not incrementally observed. Unbounded callers have no active
+/// execution-control carrier, so this remains a no-op for compatibility.
+fn json_reject_unobserved_native_progress(
+  interp : Interpreter?,
+) -> Unit raise Error {
+  match interp {
+    Some(ip) => ip.reject_unobserved_native_progress()
+    None => ()
+  }
+}
+
+///|
 /// SerializeJSONArray (ES2024 §25.5.8.2) via LengthOfArrayLike and indexed [[Get]].
 fn json_serialize_json_array(
   ip : Interpreter,
@@ -789,9 +806,15 @@ fn json_stringify_value(
       } else {
         Value::String_(val.to_string())
       }
-    Value::String_(s) => Value::String_(json_escape_string(s))
+    Value::String_(s) => {
+      if s.length() > 0 {
+        json_reject_unobserved_native_progress(interp)
+      }
+      Value::String_(json_escape_string(s))
+    }
     Symbol(_) => Undefined // Symbols are omitted from JSON
-    Map(_) | Set(_) | Promise(_) =>
+    Map(_) | Set(_) | Promise(_) => {
+      json_reject_unobserved_native_progress(interp)
       match interp {
         Some(ip) =>
           json_serialize_json_object(
@@ -805,10 +828,16 @@ fn json_stringify_value(
           )
         None => Value::String_("{}")
       }
-    Value::Proxy(proxy_data) =>
+    }
+    Value::Proxy(proxy_data) => {
+      if @runtime.is_callable(val) {
+        return Undefined // Callable objects are not serialized
+      }
+      let is_array = @runtime.is_array(val)
+      json_reject_unobserved_native_progress(interp)
       match interp {
         Some(ip) =>
-          if @runtime.is_array(val) {
+          if is_array {
             json_serialize_json_array(
               ip,
               val,
@@ -844,7 +873,9 @@ fn json_stringify_value(
             None => Value::String_("{}")
           }
       }
-    Value::Array(_) =>
+    }
+    Value::Array(_) => {
+      json_reject_unobserved_native_progress(interp)
       match interp {
         Some(ip) =>
           json_serialize_json_array(
@@ -858,6 +889,7 @@ fn json_stringify_value(
           )
         None => Value::String_("[]")
       }
+    }
     Object(data) =>
       if @runtime.is_callable(val) {
         Undefined // Functions are not serialized
@@ -874,10 +906,24 @@ fn json_stringify_value(
             _ => ()
           }
         } else if data.class_name == "String" {
-          match data.bag.internal_slots.get(@runtime.StringData) {
-            Some(Value::String_(s)) =>
+          match interp {
+            Some(ip) => {
+              let s = ip.to_js_string(val)
+              if s.length() > 0 {
+                json_reject_unobserved_native_progress(interp)
+              }
               return Value::String_(json_escape_string(s))
-            _ => ()
+            }
+            None =>
+              match data.bag.internal_slots.get(@runtime.StringData) {
+                Some(Value::String_(s)) => {
+                  if s.length() > 0 {
+                    json_reject_unobserved_native_progress(interp)
+                  }
+                  return Value::String_(json_escape_string(s))
+                }
+                _ => ()
+              }
           }
         } else if data.class_name == "Boolean" {
           match data.bag.internal_slots.get(@runtime.BooleanData) {
@@ -885,6 +931,7 @@ fn json_stringify_value(
             _ => ()
           }
         }
+        json_reject_unobserved_native_progress(interp)
         match interp {
           Some(ip) =>
             if @runtime.is_array(val) {
