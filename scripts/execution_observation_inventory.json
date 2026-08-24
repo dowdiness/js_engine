@@ -372,7 +372,7 @@
       "id": "bounded-evaluation-map-set-loops",
       "accounting_entry_id": "bounded-evaluation-map-set-loops-entry",
       "operation_family": "bounded evaluation",
-      "entry_category": "Map and Set native loops",
+      "entry_category": "Residual Map and Set native loops excluding the #973 protocol-driven constructors, Map.groupBy, and Set composition/protocol branches; direct lookup/mutation/forEach/iterator-next work remains in the #972 follow-up",
       "contract_observation_category": "script-controlled-execution-time-loop",
       "current_accounting_owner": "interpreter/stdlib/map_builtins.mbt#setup_map_builtins; interpreter/stdlib/map_builtins.mbt#map_iterator_next; interpreter/stdlib/set_builtins.mbt#setup_set_builtins; interpreter/stdlib/set_builtins.mbt#set_iterator_next",
       "intended_final_accounting_owner": "bounded-evaluation-map-set-native-loop-observation",
@@ -383,6 +383,21 @@
       "focused_evidence": ["interpreter/stdlib/map_builtins.mbt#setup_map_builtins", "interpreter/stdlib/map_builtins.mbt#map_iterator_next", "interpreter/stdlib/set_builtins.mbt#setup_set_builtins", "interpreter/stdlib/set_builtins.mbt#set_iterator_next"],
       "public_facade_evidence_required": true,
       "public_facade_evidence": ["pkg.generated.mbti#Engine::eval_bounded"]
+    },
+    {
+      "id": "bounded-evaluation-map-set-complex-guarded",
+      "accounting_entry_id": "bounded-evaluation-map-set-complex-guarded-entry",
+      "operation_family": "bounded evaluation",
+      "entry_category": "Map and Set protocol-driven constructors, Map.groupBy, and Set composition/protocol native work",
+      "contract_observation_category": "script-controlled-execution-time-loop",
+      "current_accounting_owner": "interpreter/stdlib/map_builtins.mbt#Map constructor and Map.groupBy; interpreter/stdlib/set_builtins.mbt#Set constructor and Set union/intersection/difference/symmetricDifference/isSubsetOf/isSupersetOf/isDisjointFrom",
+      "intended_final_accounting_owner": "bounded-evaluation-map-set-complex-native-progress-guard",
+      "status": "guarded-by-bounded-execution",
+      "duplicate_charge_risk": "The shared guard runs only after each consumer's receiver, constructor, GetSetRecord, callback, iterator, and early-size prelude; iterator-driven branches close an acquired iterator exactly once on guard failure, while direct HasSetData scans guard only when logical work is nonempty. Direct Map/Set lookup, mutation, forEach, and iterator-next work remain owned by #972 and are excluded.",
+      "owning_implementation_or_issue": "interpreter/stdlib/map_builtins.mbt and interpreter/stdlib/set_builtins.mbt#issue-973 keyed-collection complex guards",
+      "focused_evidence": ["interpreter/stdlib/map_builtins.mbt#map_ctor =", "interpreter/stdlib/map_builtins.mbt#groupBy", "interpreter/stdlib/set_builtins.mbt#set_ctor =", "interpreter/stdlib/set_builtins.mbt#set_proto_props[\"union\"]", "compiler/issue_973_keyed_collection_guard_wbtest.mbt#candidate keyed collection guards select Bytecode before native work"],
+      "public_facade_evidence_required": true,
+      "public_facade_evidence": ["integration/external_consumer/issue_973_keyed_collection_guard_test.mbt#default keyed collection guards cover frozen consumers", "integration/external_consumer_candidate/issue_973_keyed_collection_guard_test.mbt#candidate keyed collection guards cover frozen consumers"]
     },
     {
       "id": "bounded-evaluation-json-loops",
