@@ -120,6 +120,115 @@ test "candidate JSON.stringify preserves revoked Proxy IsArray error precedence"
 }
 
 ///|
+test "candidate JSON.stringify treats callable Proxy as undefined without native progress" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var issue976CandidateCallableProxy = new Proxy(function() {}, {}); " +
+    "function issue976CandidateStringifyCallableProxy() { " +
+    "return JSON.stringify(issue976CandidateCallableProxy); }",
+  )
+  match
+    engine.call_json_bounded(
+      "issue976CandidateStringifyCallableProxy",
+      [],
+      issue_976_candidate_policy(),
+    ) {
+    Ok(_) =>
+      fail("candidate callable Proxy must not enter native JSON progress")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="json-conversion-error")
+      inspect(diagnostic.phase_code(), content="result-conversion")
+    }
+  }
+  let unbounded_kind = try {
+    let _ = engine.call_json("issue976CandidateStringifyCallableProxy", [])
+    "completed"
+  } catch {
+    @js_engine.JsonConversionError(_) => "json-conversion-error"
+    _ => "other-error"
+  }
+  inspect(unbounded_kind, content="json-conversion-error")
+}
+
+///|
+test "candidate JSON.stringify observes boxed String ToPrimitive before native escaping" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var issue976CandidateBoxEvents = ''; " +
+    "var issue976CandidateBoxReplacement = 'a'.repeat(100000); " +
+    "var issue976CandidateBox = new String('original'); " +
+    "issue976CandidateBox[Symbol.toPrimitive] = function(hint) { " +
+    "issue976CandidateBoxEvents += hint; " +
+    "return issue976CandidateBoxReplacement; }; " +
+    "function issue976CandidateStringifyBox() { " +
+    "return JSON.stringify(issue976CandidateBox); } " +
+    "function issue976CandidateBoxUsesReplacement() { " +
+    "return JSON.stringify(issue976CandidateBox) === " +
+    "JSON.stringify(issue976CandidateBoxReplacement); } " +
+    "function issue976CandidateReadBoxEvents() { " +
+    "return issue976CandidateBoxEvents; } " +
+    "var issue976CandidateThrowBox = new String('original'); " +
+    "issue976CandidateThrowBox[Symbol.toPrimitive] = function(hint) { " +
+    "issue976CandidateBoxEvents += hint; " +
+    "throw new Error('boxed conversion'); }; " +
+    "function issue976CandidateStringifyThrowBox() { " +
+    "return JSON.stringify(issue976CandidateThrowBox); } " +
+    "var issue976CandidateFallbackBoxEvents = ''; " +
+    "var issue976CandidateFallbackBox = new String('original'); " +
+    "issue976CandidateFallbackBox.toString = function() { " +
+    "issue976CandidateFallbackBoxEvents += 't'; " +
+    "return issue976CandidateBoxReplacement; }; " +
+    "function issue976CandidateFallbackBoxUsesReplacement() { " +
+    "return JSON.stringify(issue976CandidateFallbackBox) === " +
+    "JSON.stringify(issue976CandidateBoxReplacement); } " +
+    "function issue976CandidateReadFallbackBoxEvents() { " +
+    "return issue976CandidateFallbackBoxEvents; }",
+  )
+  match
+    engine.call_json_bounded(
+      "issue976CandidateStringifyBox",
+      [],
+      issue_976_candidate_policy(),
+    ) {
+    Ok(_) =>
+      fail("candidate boxed String replacement must reach execution control")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
+  }
+  json_inspect(
+    engine.call_json("issue976CandidateReadBoxEvents", []),
+    content="string",
+  )
+  json_inspect(
+    engine.call_json("issue976CandidateBoxUsesReplacement", []),
+    content=true,
+  )
+  match
+    engine.call_json_bounded(
+      "issue976CandidateStringifyThrowBox",
+      [],
+      issue_976_candidate_policy(),
+    ) {
+    Ok(_) =>
+      fail("candidate boxed String conversion throw must precede control")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+  }
+  json_inspect(
+    engine.call_json("issue976CandidateReadBoxEvents", []),
+    content="stringstringstring",
+  )
+  json_inspect(
+    engine.call_json("issue976CandidateFallbackBoxUsesReplacement", []),
+    content=true,
+  )
+  json_inspect(
+    engine.call_json("issue976CandidateReadFallbackBoxEvents", []),
+    content="t",
+  )
+}
+
+///|
 test "candidate JSON.stringify trivial primitive remains bounded" {
   let engine = @js_engine.Engine()
   engine.eval(

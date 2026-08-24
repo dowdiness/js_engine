@@ -830,6 +830,9 @@ fn json_stringify_value(
       }
     }
     Value::Proxy(proxy_data) => {
+      if @runtime.is_callable(val) {
+        return Undefined // Callable objects are not serialized
+      }
       let is_array = @runtime.is_array(val)
       json_reject_unobserved_native_progress(interp)
       match interp {
@@ -903,14 +906,24 @@ fn json_stringify_value(
             _ => ()
           }
         } else if data.class_name == "String" {
-          match data.bag.internal_slots.get(@runtime.StringData) {
-            Some(Value::String_(s)) => {
+          match interp {
+            Some(ip) => {
+              let s = ip.to_js_string(val)
               if s.length() > 0 {
                 json_reject_unobserved_native_progress(interp)
               }
               return Value::String_(json_escape_string(s))
             }
-            _ => ()
+            None =>
+              match data.bag.internal_slots.get(@runtime.StringData) {
+                Some(Value::String_(s)) => {
+                  if s.length() > 0 {
+                    json_reject_unobserved_native_progress(interp)
+                  }
+                  return Value::String_(json_escape_string(s))
+                }
+                _ => ()
+              }
           }
         } else if data.class_name == "Boolean" {
           match data.bag.internal_slots.get(@runtime.BooleanData) {

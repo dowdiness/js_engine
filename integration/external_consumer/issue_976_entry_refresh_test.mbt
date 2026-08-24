@@ -144,6 +144,101 @@ test "JSON.stringify preserves revoked Proxy IsArray error precedence" {
 }
 
 ///|
+test "JSON.stringify treats callable Proxy as undefined without native progress" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var issue976CallableProxy = new Proxy(function() {}, {}); " +
+    "function issue976StringifyCallableProxy() { " +
+    "return JSON.stringify(issue976CallableProxy); }",
+  )
+  match
+    engine.call_json_bounded(
+      "issue976StringifyCallableProxy",
+      [],
+      issue_976_policy(),
+    ) {
+    Ok(_) => fail("callable Proxy must not enter native JSON progress")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="json-conversion-error")
+      inspect(diagnostic.phase_code(), content="result-conversion")
+    }
+  }
+  let unbounded_kind = try {
+    let _ = engine.call_json("issue976StringifyCallableProxy", [])
+    "completed"
+  } catch {
+    @js_engine.JsonConversionError(_) => "json-conversion-error"
+    _ => "other-error"
+  }
+  inspect(unbounded_kind, content="json-conversion-error")
+}
+
+///|
+test "JSON.stringify observes boxed String ToPrimitive before native escaping" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var issue976BoxEvents = ''; " +
+    "var issue976BoxReplacement = 'a'.repeat(100000); " +
+    "var issue976Box = new String('original'); " +
+    "issue976Box[Symbol.toPrimitive] = function(hint) { " +
+    "issue976BoxEvents += hint; return issue976BoxReplacement; }; " +
+    "function issue976StringifyBox() { return JSON.stringify(issue976Box); } " +
+    "function issue976BoxUsesReplacement() { " +
+    "return JSON.stringify(issue976Box) === " +
+    "JSON.stringify(issue976BoxReplacement); } " +
+    "function issue976ReadBoxEvents() { return issue976BoxEvents; } " +
+    "var issue976ThrowBox = new String('original'); " +
+    "issue976ThrowBox[Symbol.toPrimitive] = function(hint) { " +
+    "issue976BoxEvents += hint; throw new Error('boxed conversion'); }; " +
+    "function issue976StringifyThrowBox() { " +
+    "return JSON.stringify(issue976ThrowBox); } " +
+    "var issue976FallbackBoxEvents = ''; " +
+    "var issue976FallbackBox = new String('original'); " +
+    "issue976FallbackBox.toString = function() { " +
+    "issue976FallbackBoxEvents += 't'; return issue976BoxReplacement; }; " +
+    "function issue976FallbackBoxUsesReplacement() { " +
+    "return JSON.stringify(issue976FallbackBox) === " +
+    "JSON.stringify(issue976BoxReplacement); } " +
+    "function issue976ReadFallbackBoxEvents() { " +
+    "return issue976FallbackBoxEvents; }",
+  )
+  match
+    engine.call_json_bounded(
+      "issue976StringifyBox",
+      [],
+      issue_976_policy(),
+    ) {
+    Ok(_) => fail("boxed String replacement must reach execution control")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
+  }
+  json_inspect(engine.call_json("issue976ReadBoxEvents", []), content="string")
+  json_inspect(engine.call_json("issue976BoxUsesReplacement", []), content=true)
+  match
+    engine.call_json_bounded(
+      "issue976StringifyThrowBox",
+      [],
+      issue_976_policy(),
+    ) {
+    Ok(_) => fail("boxed String conversion throw must precede execution control")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+  }
+  json_inspect(
+    engine.call_json("issue976ReadBoxEvents", []),
+    content="stringstringstring",
+  )
+  json_inspect(
+    engine.call_json("issue976FallbackBoxUsesReplacement", []),
+    content=true,
+  )
+  json_inspect(
+    engine.call_json("issue976ReadFallbackBoxEvents", []),
+    content="t",
+  )
+}
+
+///|
 test "JSON.stringify replacer list stops before first element Get" {
   let engine = @js_engine.Engine()
   engine.eval(
