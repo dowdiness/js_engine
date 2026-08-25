@@ -1,3 +1,10 @@
 import {
   "dowdiness/js_engine",
 } for "test"
+
+// Diago application graduation follows the default-policy switch. Keep this
+// readiness fixture on the explicit Tree-walker oracle until that phase.
+
+options(
+  overrides: [ "dowdiness/js_engine/internal/engine_candidate_mode_disabled" ],
+)
