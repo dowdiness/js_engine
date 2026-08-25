@@ -44,6 +44,7 @@ priv enum CandidateFunctionSignature {
 priv struct CandidateIdentityPlan {
   source_point_owner : SourcePointOwnerId
   children : Array[CandidateIdentityPlan]
+  lowering_supported : Bool
 }
 
 ///|
@@ -1257,6 +1258,7 @@ fn candidate_assign_identity_plan(
     identity_plan: Some({
       source_point_owner: owner,
       children: children.map(c => c.identity_plan.unwrap()),
+      lowering_supported: plan.lowering is CandidateLowered,
     }),
   }
 }
@@ -1274,11 +1276,16 @@ fn candidate_bytecode_identity_plan(
         children.push({
           source_point_owner: child_identity.source_point_owner,
           children: [],
+          lowering_supported: false,
         })
       CandidateLowered => children.push(candidate_bytecode_identity_plan(child))
     }
   }
-  { source_point_owner: identity_plan.source_point_owner, children }
+  {
+    source_point_owner: identity_plan.source_point_owner,
+    children,
+    lowering_supported: identity_plan.lowering_supported,
+  }
 }
 
 ///|

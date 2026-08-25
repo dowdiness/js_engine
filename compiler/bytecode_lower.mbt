@@ -1989,6 +1989,10 @@ fn BytecodeBuilder::add_function(
     }
     None => None
   }
+  let child_lowering_supported = match candidate_identity_plan {
+    Some(identity_plan) => identity_plan.lowering_supported
+    None => true
+  }
   let header = BytecodeHeaderProvenance(
     self.owner_allocator.val.program_identity,
     name,
@@ -2002,6 +2006,8 @@ fn BytecodeBuilder::add_function(
   )
   let child : BytecodeFunction? = if self.candidate_pending_unsupported_child {
     self.candidate_pending_unsupported_child = false
+    None
+  } else if !child_lowering_supported {
     None
   } else {
     Some(
