@@ -51,13 +51,43 @@ fn apply_class_constructor_return(
 /// Install instance field initializers onto `this_arg`.
 /// Used for base-class construction (before constructor body) and for
 /// derived-class implicit constructors (after super() returns).
+fn Interpreter::eval_class_field_initializer(
+  self : Interpreter,
+  this_arg : Value,
+  field : ClassFieldInit,
+) -> Value raise Error {
+  match field.initializer {
+    Some(expr) => {
+      let init_env = Environment::new(parent=Some(field.closure))
+      init_env.def_builtin("this", this_arg)
+      // Per ES262 §15.7 ClassFieldDefinitionEvaluation: a class field
+      // initializer is its own function-like execution context. Bind
+      // `<new.target>` (always Undefined here — fields are invoked
+      // implicitly during construction, never via `new`) so that direct
+      // eval inside the field correctly classifies as "in function" and
+      // permits `eval('new.target')` (matches V8). The
+      // `[[InClassFieldInitializer]]` marker is consumed by perform_eval
+      // (§19.2.1.1) to forbid `Contains arguments` in the eval source.
+      init_env.def_builtin("<new.target>", Undefined)
+      init_env.def_builtin("[[InClassFieldInitializer]]", Bool(true))
+      let field_ctx : ExecContext = { strict: true, current_generator: None }
+      // A retained class may be constructed under an unrelated candidate
+      // activation. Restore the capability captured by its defining source
+      // so nested callables cannot consume the caller's syntax plan.
+      self.with_function_materializer(field.materializer, fn() raise {
+        self.eval_expr(field_ctx, expr, init_env)
+      })
+    }
+    None => Undefined
+  }
+}
+
+///|
 fn Interpreter::install_instance_fields(
   self : Interpreter,
   this_arg : Value,
   fields : Array[ClassFieldInit],
 ) -> Unit raise Error {
-  // Class field initializers are always evaluated as strict code per spec
-  let field_ctx : ExecContext = { strict: true, current_generator: None }
   let field_desc : PropDescriptor = {
     writable: true,
     enumerable: true,
@@ -67,24 +97,7 @@ fn Interpreter::install_instance_fields(
     is_accessor: false,
   }
   for field in fields {
-    let field_value : Value = match field.initializer {
-      Some(expr) => {
-        let init_env = Environment::new(parent=Some(field.closure))
-        init_env.def_builtin("this", this_arg)
-        // Per ES262 §15.7 ClassFieldDefinitionEvaluation: a class field
-        // initializer is its own function-like execution context. Bind
-        // `<new.target>` (always Undefined here — fields are invoked
-        // implicitly during construction, never via `new`) so that direct
-        // eval inside the field correctly classifies as "in function" and
-        // permits `eval('new.target')` (matches V8). The
-        // `[[InClassFieldInitializer]]` marker is consumed by perform_eval
-        // (§19.2.1.1) to forbid `Contains arguments` in the eval source.
-        init_env.def_builtin("<new.target>", Undefined)
-        init_env.def_builtin("[[InClassFieldInitializer]]", Bool(true))
-        self.eval_expr(field_ctx, expr, init_env)
-      }
-      None => Undefined
-    }
+    let field_value = self.eval_class_field_initializer(this_arg, field)
     match this_arg {
       Object(data) =>
         // CreateDataPropertyOrThrow semantics: check [[DefineOwnProperty]]
@@ -314,18 +327,8 @@ fn Interpreter::install_private_fields(
     _ => abort("PrivateBrandStore must be an Object")
   }
   // Evaluate and install each private field
-  let field_ctx : ExecContext = { strict: true, current_generator: None }
   for field in fields {
-    let field_value : Value = match field.initializer {
-      Some(expr) => {
-        let init_env = Environment::new(parent=Some(field.closure))
-        init_env.def_builtin("this", this_arg)
-        init_env.def_builtin("<new.target>", Undefined)
-        init_env.def_builtin("[[InClassFieldInitializer]]", Bool(true))
-        self.eval_expr(field_ctx, expr, init_env)
-      }
-      None => Undefined
-    }
+    let field_value = self.eval_class_field_initializer(this_arg, field)
     // For private fields, key is always String_(name)
     let field_name : String = match field.key {
       String_(s) => s
@@ -1269,6 +1272,7 @@ fn Interpreter::construct_value_impl(
               super_proto,
               instance_fields,
               private_instance_fields,
+              materializer,
               private_brand,
               ..,
             }
@@ -1355,9 +1359,11 @@ fn Interpreter::construct_value_impl(
                 // Class constructors are always strict — validate params
                 check_duplicate_params_ext(params, rest_param)
                 validate_strict_param_binding_names_ext(params, rest_param)
-                let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
-                  params, rest_param, body, ctor, args, ctor_env, class_ctx,
-                )
+                let exec_result = self.run_materialized_function(materializer, fn() raise {
+                  self.bind_class_ctor_params_and_exec_body_signal(
+                    params, rest_param, body, ctor, args, ctor_env, class_ctx,
+                  )
+                })
                 raise_if_break_continue(exec_result)
                 match exec_result {
                   Normal(_) =>

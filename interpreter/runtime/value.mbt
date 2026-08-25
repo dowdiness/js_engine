@@ -116,6 +116,7 @@ pub(all) struct ClassFieldInit {
   key : Value // already-evaluated key (String_ for string keys, Symbol for symbol keys)
   initializer : @ast.Expr? // None if no `= expr`; evaluated with `this` = new instance
   closure : Environment // lexical closure for evaluating the initializer
+  materializer : FunctionMaterializer? // candidate capability owned by the defining source
 }
 
 ///|
@@ -128,6 +129,7 @@ pub(all) struct ClassConstructorData {
   super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
   instance_fields : Array[ClassFieldInit] // instance field initializers, run before ctor body
   private_instance_fields : Array[ClassFieldInit] // private instance field initializers, run before ctor body
+  materializer : FunctionMaterializer? // defining-source capability for deferred constructor execution
   source_text : String?
   private_brand : Value // Brand symbol for private field/method access checks
   private_methods : Map[String, Value] // Private method values keyed by name string

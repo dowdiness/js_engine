@@ -7,6 +7,7 @@ priv enum BytecodeUnsupportedReason {
   AsyncGeneratorExpression
   BlockFunctionDeclaration
   BlockLexicalDeclaration
+  ClassConstructor
   ClassDeclaration
   ClassExpression
   CompoundAssignmentTarget
@@ -112,6 +113,7 @@ fn BytecodeUnsupportedReason::display_text(
     AsyncGeneratorExpression => "async generator expression"
     BlockFunctionDeclaration => "block function declaration"
     BlockLexicalDeclaration => "block lexical declaration"
+    ClassConstructor => "class constructor"
     ClassDeclaration => "class declaration"
     ClassExpression => "class expression"
     CompoundAssignmentTarget => "compound assignment target"

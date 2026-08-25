@@ -11,6 +11,7 @@ fn bytecode_unsupported_reason_matches(
     AsyncGeneratorExpression => actual is AsyncGeneratorExpression
     BlockFunctionDeclaration => actual is BlockFunctionDeclaration
     BlockLexicalDeclaration => actual is BlockLexicalDeclaration
+    ClassConstructor => actual is ClassConstructor
     ClassDeclaration => actual is ClassDeclaration
     ClassExpression => actual is ClassExpression
     CompoundAssignmentTarget => actual is CompoundAssignmentTarget

@@ -80,6 +80,20 @@ pub fn FunctionMaterializer::FunctionMaterializer(
 }
 
 ///|
+// Retain only source-owned function materialization for deferred syntax such
+// as instance field initializers. Lifecycle hooks belong to the activation
+// that is currently executing and must not be retained after it completes.
+fn Interpreter::capture_deferred_function_materializer(
+  self : Interpreter,
+) -> FunctionMaterializer? {
+  self.active_function_materializer.map(materializer => {
+    begin: materializer.begin,
+    materialize: materializer.materialize,
+    hooks: None,
+  })
+}
+
+///|
 fn function_materialization_name(
   form : FunctionMaterializationForm,
   name : String?,
@@ -243,16 +257,21 @@ pub fn[T] Interpreter::run_materialized_function(
 
 ///|
 fn callable_has_function_materializer(value : Value) -> Bool {
+  retained_function_materializer(value) is Some(_)
+}
+
+///|
+fn retained_function_materializer(value : Value) -> FunctionMaterializer? {
   match value {
     Object(data) =>
       match data.callable {
-        Some(UserFunc(func_data)) => func_data.materializer is Some(_)
-        Some(UserFuncExt(func_data)) => func_data.materializer is Some(_)
-        Some(ArrowFunc(func_data)) => func_data.materializer is Some(_)
-        Some(ArrowFuncExt(func_data)) => func_data.materializer is Some(_)
-        _ => false
+        Some(UserFunc(func_data)) => func_data.materializer
+        Some(UserFuncExt(func_data)) => func_data.materializer
+        Some(ArrowFunc(func_data)) => func_data.materializer
+        Some(ArrowFuncExt(func_data)) => func_data.materializer
+        _ => None
       }
-    _ => false
+    _ => None
   }
 }
 

@@ -446,26 +446,37 @@ fn candidate_collect_method_expr(
   consumer_form : BytecodeFunctionConsumerForm,
   enclosing_strict : Bool,
   plans : Array[CandidateFunctionPlan],
+  class_constructor? : Bool = false,
 ) -> Unit raise Error {
   match expr {
     FuncExpr(name, params, body, loc, source_text) => {
       let strict = candidate_function_strict(enclosing_strict, body)
       let children : Array[CandidateFunctionPlan] = []
       candidate_collect_function_body(body, strict, children)
+      let plan = candidate_prepare_plan(
+        name,
+        CandidateSimpleSignature(params.copy()),
+        Ok((params.copy(), None)),
+        body,
+        source_text,
+        true,
+        Some(consumer_form),
+        strict,
+        FunctionActivation,
+        children,
+        Some(loc),
+      )
       plans.push(
-        candidate_prepare_plan(
-          name,
-          CandidateSimpleSignature(params.copy()),
-          Ok((params.copy(), None)),
-          body,
-          source_text,
-          true,
-          Some(consumer_form),
-          strict,
-          FunctionActivation,
-          children,
-          Some(loc),
-        ),
+        if class_constructor {
+          {
+            ..plan,
+            lowering: CandidateLoweringUnsupported(
+              BytecodeUnsupported(ClassConstructor, loc),
+            ),
+          }
+        } else {
+          plan
+        },
       )
     }
     FuncExprExt(name, params, rest_param, body, loc, source_text) => {
@@ -473,20 +484,30 @@ fn candidate_collect_method_expr(
       let children : Array[CandidateFunctionPlan] = []
       candidate_collect_params(params, strict, children)
       candidate_collect_function_body(body, strict, children)
+      let plan = candidate_prepare_plan(
+        name,
+        CandidateExtendedSignature(params.copy(), rest_param),
+        candidate_normalize_ext_params(params, rest_param, loc),
+        body,
+        source_text,
+        true,
+        Some(consumer_form),
+        strict,
+        FunctionActivation,
+        children,
+        Some(loc),
+      )
       plans.push(
-        candidate_prepare_plan(
-          name,
-          CandidateExtendedSignature(params.copy(), rest_param),
-          candidate_normalize_ext_params(params, rest_param, loc),
-          body,
-          source_text,
-          true,
-          Some(consumer_form),
-          strict,
-          FunctionActivation,
-          children,
-          Some(loc),
-        ),
+        if class_constructor {
+          {
+            ..plan,
+            lowering: CandidateLoweringUnsupported(
+              BytecodeUnsupported(ClassConstructor, loc),
+            ),
+          }
+        } else {
+          plan
+        },
       )
     }
     GeneratorExpr(name, params, body, loc, source_text) =>
@@ -667,6 +688,11 @@ fn candidate_collect_class_member(
   match class_member {
     Method(method_def) => {
       candidate_collect_expr(method_def.key, enclosing_strict, plans)
+      let class_constructor = !method_def.computed &&
+        !method_def.is_static &&
+        !method_def.is_private &&
+        method_def.kind is @ast.PropKind::Init &&
+        method_def.key is @ast.Expr::StringLit("constructor", _, _, _)
       let consumer_form = if method_def.computed {
         ComputedMethodFunctionConsumer
       } else {
@@ -677,6 +703,7 @@ fn candidate_collect_class_member(
         consumer_form,
         enclosing_strict,
         plans,
+        class_constructor~,
       )
     }
     Field(field) => {
