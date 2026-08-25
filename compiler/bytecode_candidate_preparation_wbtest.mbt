@@ -3021,6 +3021,49 @@ test "RED: lowering-unsupported children occupy non-executable candidate slots" 
 }
 
 ///|
+test "lowering-unsupported child with eligible descendant stays tree-local" {
+  let source =
+    #|function fromIndexThrow() {
+    #|  var position = { valueOf() { throw "position"; } };
+    #|  try { [1].includes(1, position); } catch (error) { return error; }
+    #|  return "missing";
+    #|}
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  match root.selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible script root lost bytecode")
+  }
+  guard root.children.length() == 1 else {
+    fail("script root lost its lowering-unsupported child")
+  }
+  let outer = root.children[0]
+  match outer.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+    UseTreeWalker(_) => fail("outer function lost its lowering reason")
+    UseBytecode(_) => fail("lowering-unsupported outer selected bytecode")
+  }
+  guard outer.children.length() == 1 else {
+    fail("tree-only outer lost its eligible descendant")
+  }
+  match outer.children[0].selection {
+    UseBytecode(_) => ()
+    UseTreeWalker(_) => fail("eligible nested method lost bytecode")
+  }
+  let root_bytecode = root.bytecode.unwrap()
+  guard root_bytecode.function.children.is_empty() else {
+    fail("tree-only outer became an executable bytecode child")
+  }
+  guard root_bytecode.child_slots.length() == 1 else {
+    fail("root lost the typed child slot")
+  }
+  match root_bytecode.child_slots[0] {
+    CandidateTreeChild(CandidateLoweringUnsupported(_)) => ()
+    CandidateTreeChild(_) => fail("tree slot lost its lowering reason")
+    CandidateBytecodeChild(_) => fail("tree-only outer became executable")
+  }
+}
+
+///|
 test "candidate extended signatures keep lowering fallback local" {
   let source =
     #|function parent() { return 1; }
