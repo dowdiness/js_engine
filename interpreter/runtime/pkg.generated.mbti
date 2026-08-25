@@ -639,6 +639,7 @@ pub(all) struct ClassConstructorData {
   super_proto : Value
   instance_fields : Array[ClassFieldInit]
   private_instance_fields : Array[ClassFieldInit]
+  materializer : FunctionMaterializer?
   source_text : String?
   private_brand : Value
   private_methods : Map[String, Value]
@@ -648,6 +649,7 @@ pub(all) struct ClassFieldInit {
   key : Value
   initializer : @ast.Expr?
   closure : Environment
+  materializer : FunctionMaterializer?
 }
 
 pub struct CompiledScriptEarlyErrorSettlement {

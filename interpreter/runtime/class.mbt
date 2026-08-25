@@ -125,6 +125,7 @@ fn Interpreter::create_class(
   let static_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
   // Track constructor method
   let mut ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])? = None
+  let mut ctor_materializer = self.capture_deferred_function_materializer()
   let mut ctor_param_count : Int = 0
   let mut constructor_overridden : Bool = false
   // Collect instance field initializers (evaluated during construction)
@@ -193,6 +194,7 @@ fn Interpreter::create_class(
           } else {
             instance_method_env
           },
+          materializer: self.capture_deferred_function_materializer(),
         }
         if f.is_private {
           if f.is_static {
@@ -241,7 +243,7 @@ fn Interpreter::create_class(
           // Extract constructor params and body
           // Class bodies are always strict, so ensure constructor body has "use strict"
           match m.value {
-            FuncExpr(_, param_names, body, _, _) => {
+            FuncExpr(fn_name, param_names, body, loc, method_source_text) => {
               let strict_body = ensure_strict_body(body)
               validate_function_signature(true, None, param_names, strict_body)
               // Wrap plain names as Param objects (no defaults/rest/patterns)
@@ -256,8 +258,22 @@ fn Interpreter::create_class(
               })
               ctor_fn = Some((params, None, strict_body))
               ctor_param_count = param_names.length()
+              ctor_materializer = retained_function_materializer(
+                self.materialize_function(
+                  FunctionMaterializationRequest(
+                    form=MethodFunction,
+                    site=loc,
+                    name=fn_name,
+                    parameters=SimpleFunctionParameters(param_names),
+                    body=strict_body,
+                    closure=instance_method_env,
+                    strict=true,
+                    source_text=method_source_text,
+                  ),
+                ),
+              )
             }
-            FuncExprExt(_, params, rest, body, _, _) => {
+            FuncExprExt(fn_name, params, rest, body, loc, method_source_text) => {
               let strict_body = ensure_strict_body(body)
               validate_function_signature_ext(
                 true,
@@ -268,6 +284,20 @@ fn Interpreter::create_class(
               )
               ctor_fn = Some((params, rest, strict_body))
               ctor_param_count = expected_argument_count_ext(params)
+              ctor_materializer = retained_function_materializer(
+                self.materialize_function(
+                  FunctionMaterializationRequest(
+                    form=MethodFunction,
+                    site=loc,
+                    name=fn_name,
+                    parameters=ExtendedFunctionParameters(params, rest),
+                    body=strict_body,
+                    closure=instance_method_env,
+                    strict=true,
+                    source_text=method_source_text,
+                  ),
+                ),
+              )
             }
             _ => ()
           }
@@ -650,6 +680,7 @@ fn Interpreter::create_class(
           super_proto,
           instance_fields,
           private_instance_fields,
+          materializer: ctor_materializer,
           source_text,
           private_brand,
           private_methods,
