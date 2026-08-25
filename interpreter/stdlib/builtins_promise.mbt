@@ -63,8 +63,8 @@ fn get_promise_iterator_record(
 ///|
 /// Handle abrupt completion in Promise combinators:
 /// - If iteration is not done, attempt IteratorClose (ThrowCompletion path).
-/// - Preserve the original abrupt reason.
-/// - Reject the result capability and return its promise.
+/// - Re-raise typed execution-control failures after cleanup.
+/// - Reject the result capability for ordinary JavaScript abrupt completions.
 fn reject_combinator_abrupt(
   interp : Interpreter,
   result_promise : Value,
@@ -75,10 +75,13 @@ fn reject_combinator_abrupt(
   err : Error,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let reason = @runtime.js_error_to_value_with_env(err, Some(interp.global))
   if has_iterator && !iterator_done {
     interp.iterator_close_throw(iterator, loc)
   }
+  if @runtime.execution_control_failure_code(err) is Some(_) {
+    raise err
+  }
+  let reason = @runtime.js_error_to_value_with_env(err, Some(interp.global))
   let _ = interp.call_value(reject, Undefined, [reason], loc)
   result_promise
 }
@@ -621,6 +624,7 @@ pub fn setup_promise(
         )
         iterator = iter
         has_iterator = true
+        interp.reject_unobserved_native_progress()
         while true {
           let next_result = {
             errdefer {
@@ -712,8 +716,9 @@ pub fn setup_promise(
 
   // Promise.race(iterable)
   // NOTE: PerformPromiseRace synchronously consumes the ENTIRE iterator before
-  // any promise settles. IteratorClose is only invoked for abrupt completion
-  // during iteration (e.g., next() throws), NOT when a promise settles first.
+  // any promise settles. IteratorStepValue failures mark the iterator record
+  // done and do not close it; later PromiseResolve/then failures still close an
+  // unfinished iterator. Settlement alone never short-circuits consumption.
   promise_ctor_props["race"] = @runtime.make_interp_method_func(
     name="race",
     length=1,
@@ -734,6 +739,7 @@ pub fn setup_promise(
         )
         iterator = iter
         has_iterator = true
+        interp.reject_unobserved_native_progress()
         // Per PerformPromiseRace, iteration is synchronous and continues until
         // iterator completion or abrupt completion. We do not stop consuming
         // the iterator when one already-enqueued promise settles.
@@ -812,6 +818,7 @@ pub fn setup_promise(
         )
         iterator = iter
         has_iterator = true
+        interp.reject_unobserved_native_progress()
         while true {
           let next_result = {
             errdefer {
@@ -986,6 +993,7 @@ pub fn setup_promise(
         )
         iterator = iter
         has_iterator = true
+        interp.reject_unobserved_native_progress()
         // As in the spec algorithm, this loop consumes the iterator
         // synchronously; resolving early does not short-circuit iteration.
         while true {
