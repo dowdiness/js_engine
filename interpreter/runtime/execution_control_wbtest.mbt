@@ -220,6 +220,84 @@ test "execution control aliases share monotonic interruption state" {
 }
 
 ///|
+fn execution_control_carrier_cache_state_for_wb(interp : Interpreter) -> String {
+  match interp.realm_state.execution_control_carrier_cache.val {
+    UnresolvedExecutionControlCarrier => "unresolved"
+    ResolvedExecutionControlCarrier(None) => "absent"
+    ResolvedExecutionControlCarrier(Some(_)) => "present"
+  }
+}
+
+///|
+test "unbounded observation resolves the absent carrier once" {
+  let interp = Interpreter::new()
+  inspect(
+    execution_control_carrier_cache_state_for_wb(interp),
+    content="unresolved",
+  )
+  interp.observe_execution_step()
+  inspect(
+    execution_control_carrier_cache_state_for_wb(interp),
+    content="absent",
+  )
+  interp.observe_execution_step()
+  inspect(
+    execution_control_carrier_cache_state_for_wb(interp),
+    content="absent",
+  )
+}
+
+///|
+test "bounded scope restores the warmed unbounded carrier cache" {
+  let interp = Interpreter::new()
+  interp.observe_execution_step()
+  let control = ExecutionControl(
+    remaining_steps=1,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  interp.with_execution_control(control, () => {
+    inspect(
+      execution_control_carrier_cache_state_for_wb(interp),
+      content="present",
+    )
+    interp.observe_execution_step()
+  })
+  inspect(control.remaining_steps(), content="0")
+  inspect(
+    execution_control_carrier_cache_state_for_wb(interp),
+    content="absent",
+  )
+  interp.observe_execution_step()
+}
+
+///|
+test "abrupt bounded scope restores the warmed unbounded carrier cache" {
+  let interp = Interpreter::new()
+  interp.observe_execution_step()
+  let control = ExecutionControl(
+    remaining_steps=1,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let message = try {
+    let _ : Unit = interp.with_execution_control(control, () => {
+      raise @errors.RangeError(message="cache restoration sentinel")
+    })
+    "no error"
+  } catch {
+    @errors.RangeError(message~) => message
+    _ => "wrong error"
+  }
+  inspect(message, content="cache restoration sentinel")
+  inspect(
+    execution_control_carrier_cache_state_for_wb(interp),
+    content="absent",
+  )
+  interp.observe_execution_step()
+}
+
+///|
 test "execution control decrements maximum portable counter without overflow" {
   let control = ExecutionControl(
     remaining_steps=2147483647,
