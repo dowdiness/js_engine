@@ -74,22 +74,26 @@ fn Interpreter::make_async_function(
           ip : Interpreter,
           this_val : Value,
           args : Array[Value],
-        ) -> Value {
-          run_async_body(
-            ip,
-            this_val,
-            args,
-            name,
-            params,
-            None,
-            rest_param,
-            body,
-            strict,
-            effective_closure,
-            is_method~,
-            is_arrow~,
-            callee=self_val[0],
-          )
+        ) -> Value raise {
+          // Async lowering is not candidate-owned yet. Keep its deferred body
+          // from borrowing an unrelated Bytecode caller's source materializer.
+          ip.run_materialized_function(None, fn() {
+            run_async_body(
+              ip,
+              this_val,
+              args,
+              name,
+              params,
+              None,
+              rest_param,
+              body,
+              strict,
+              effective_closure,
+              is_method~,
+              is_arrow~,
+              callee=self_val[0],
+            )
+          })
         }),
       ),
       class_name: "AsyncFunction",
@@ -184,22 +188,25 @@ fn Interpreter::make_async_function_ext(
           ip : Interpreter,
           this_val : Value,
           args : Array[Value],
-        ) -> Value {
-          run_async_body(
-            ip,
-            this_val,
-            args,
-            name,
-            [],
-            Some(params),
-            rest_param,
-            body,
-            strict,
-            effective_closure,
-            is_method~,
-            is_arrow~,
-            callee=self_val_ext[0],
-          )
+        ) -> Value raise {
+          // Extended parameters share the same pre-start Tree-walker boundary.
+          ip.run_materialized_function(None, fn() {
+            run_async_body(
+              ip,
+              this_val,
+              args,
+              name,
+              [],
+              Some(params),
+              rest_param,
+              body,
+              strict,
+              effective_closure,
+              is_method~,
+              is_arrow~,
+              callee=self_val_ext[0],
+            )
+          })
         }),
       ),
       class_name: "AsyncFunction",
