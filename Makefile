@@ -1,4 +1,4 @@
-.PHONY: build test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test cli-shell-test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
@@ -15,6 +15,10 @@ build:
 # Run MoonBit unit tests
 test:
 	moon test
+	bash scripts/test_cli_shell.sh
+
+cli-shell-test:
+	bash scripts/test_cli_shell.sh
 
 # Check and test the standalone stable-facade consumer against this checkout.
 external-consumer-test: TARGET ?= native
@@ -281,7 +285,7 @@ test262-runner-mbt: test262-runner-mbt-test
 test262: build test262-download
 	moon build --target native cmd/test262_runner
 	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
-		--engine "moon run cmd/main --" \
+		--engine "moon run cmd/main -- -e" \
 		--test262 ./test262 \
 		--output test262-results.json
 
@@ -289,7 +293,7 @@ test262: build test262-download
 test262-quick: build test262-download
 	moon build --target native cmd/test262_runner
 	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
-		--engine "moon run cmd/main --" \
+		--engine "moon run cmd/main -- -e" \
 		--test262 ./test262 \
 		--filter "language/literals" \
 		--timeout 120 \
@@ -300,7 +304,7 @@ test262-quick: build test262-download
 test262-filter: build test262-download
 	moon build --target native cmd/test262_runner
 	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
-		--engine "moon run cmd/main --" \
+		--engine "moon run cmd/main -- -e" \
 		--test262 ./test262 \
 		--filter "$(FILTER)" \
 		--timeout 120 \

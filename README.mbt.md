@@ -1,6 +1,6 @@
 # js_engine
 
-A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript engine. It uses a tree-walking interpreter and runs on MoonBit's native, JavaScript, Wasm, and Wasm-GC targets.
+A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript engine. The stateful engine and CLI use the verified bytecode candidate by default and fall back to the tree-walking executor for unsupported source. It runs on MoonBit's native, JavaScript, Wasm, and Wasm-GC targets.
 
 - Conformance on [test262](https://github.com/tc39/test262): each file is run in strict and non-strict modes and reported per mode. Do not sum the modes. Generate current numbers from CI artifacts with `make test262-report`; see [docs/TEST262.md](docs/TEST262.md).
 - Cross-target embedding: the same stateful `Engine` API is tested on native, JavaScript, Wasm, and Wasm-GC.
@@ -12,12 +12,12 @@ A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript
 ### CLI
 
 ```sh
-moon run cmd/main -- 'console.log(1 + 2)'
+moon run cmd/main -- -e 'console.log(1 + 2)'
 # 3
 ```
 
 ```sh
-moon run cmd/main -- '
+moon run cmd/main -- -e '
 function fib(n) {
   if (n <= 1) { return n; }
   return fib(n - 1) + fib(n - 2);
@@ -26,6 +26,17 @@ console.log(fib(10));
 '
 # 55
 ```
+
+Pass a script filename to run a file, and put script arguments after `--`:
+
+```sh
+moon run cmd/main -- path/to/script.js -- first --second
+```
+
+The shell provides `load()`, `read()` / `readFile()`, `print()`, `console`,
+`arguments`, `scriptArgs`, and monotonic `performance.now()`. `load()` evaluates
+in the current realm and resolves nested relative paths from the loading file.
+`read(path, "binary")` returns an `ArrayBuffer`.
 
 More sample programs live in [`example/`](example/).
 
@@ -172,7 +183,7 @@ lexer/          Tokenizer
 ast/            AST node definitions
 parser/         Recursive descent parser with Pratt precedence
 static_semantics/  Early-error and declaration-fact analysis
-compiler/       Opt-in closure-conversion prototype
+compiler/       Bytecode compiler plus legacy closure-conversion experiments
 interpreter/    Wiring layer for runtime + standard library
 interpreter/runtime/  Tree-walking evaluator, value model, host state
 interpreter/stdlib/   JavaScript built-ins

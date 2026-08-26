@@ -24,11 +24,12 @@ JS externs for CLI exit handling and benchmark timing.
 Source Code (MoonBit)
     ↓  moon build [--target wasm-gc]
 WASM binary
-    ↓  moon run cmd/main -- '<js code>'
+    ↓  moon run cmd/main -- -e '<js code>'
 Output (via moonrun / V8)
 ```
 
-The engine is a tree-walking interpreter with 3 stages:
+The engine uses the verified bytecode candidate by default, with a tree-walking
+fallback for unsupported source:
 - **Lexer** (`lexer/`) → tokens
 - **Parser** (`parser/`) → AST
 - **Interpreter** (`interpreter/`) → execution result
@@ -113,7 +114,7 @@ All of these compile to JavaScript without issues. `Map` becomes a JS `Map`, `Ar
 
 ```bash
 moon build --target js
-moon run cmd/main --target js -- 'console.log(1 + 2)'
+moon run cmd/main --target js -- -e 'console.log(1 + 2)'
 ```
 
 This should work with **zero code changes** given the clean audit above.
@@ -137,7 +138,7 @@ Update the Makefile to support a JS-target test runner:
 test262-js: build-js test262-download
 	moon build --target native cmd/test262_runner
 	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
-		--engine "node target/js/release/build/cmd/main/main.mjs" \
+		--engine "node target/js/release/build/cmd/main/main.mjs -e" \
 		--test262 ./test262 \
 		--output test262-results-js.json
 ```
@@ -271,7 +272,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 
 1. ~~Run `moon build --target js`~~ — builds with zero errors
 2. ~~Run `moon test --target js`~~ — all 763 tests pass
-3. ~~Manually test~~ — `node ./target/js/release/build/cmd/main/main.js 'console.log(1 + 2)'` outputs `3`
+3. ~~Manually test~~ — `node ./target/js/release/build/cmd/main/main.js -e 'console.log(1 + 2)'` outputs `3`
 4. ~~Fix `@env.args()` index offset~~ — solved with backend-specific `args.js.mbt`
 
 ### Phase B: Test262 on JS Target — DONE
@@ -279,7 +280,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 1. ~~Add CI workflow for JS-compiled engine~~ — `.github/workflows/test262.yml` builds with `moon build --target js` and runs via `node`
 2. ~~Run full Test262 suite against JS-compiled engine~~ — see
    [ROADMAP.md](../ROADMAP.md) for the latest pass/skip/fail snapshot
-3. CI used `node target/js/release/build/cmd/main/main.js` directly
+3. CI used `node target/js/release/build/cmd/main/main.js -e` directly
    (faster than `moon run`). Verify the current thread count, per-test
    timeout, and job timeout in `.github/workflows/test262.yml` and
    `scripts/test262-runner.py`.
@@ -309,7 +310,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 | FFI calls ported | **0** (none needed) |
 | Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |
-| Run command | `node ./target/js/release/build/cmd/main/main.js '<code>'` |
+| Run command | `node ./target/js/release/build/cmd/main/main.js -e '<code>'` |
 | Test262 pass rate | See [ROADMAP.md](../ROADMAP.md) for latest totals |
 
 The codebase's pure-MoonBit, zero-FFI architecture made JS-target compilation straightforward. The only issues encountered were the `process.argv` offset difference (solved with backend-specific files) and Error object toString formatting (solved by checking `class_name`).

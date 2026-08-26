@@ -23,7 +23,7 @@ interfaces:
 | `lexer` | Source text to token stream. |
 | `parser` | Token stream to AST. |
 | `static_semantics` | Early-error checks and declaration-fact analysis. |
-| `compiler` | Opt-in closure-conversion prototype used by benchmarks and `run_compiled`. |
+| `compiler` | Default bytecode candidate pipeline plus legacy closure-conversion experiments. |
 | `interpreter` | Wiring layer that creates a runtime interpreter with stdlib hooks. |
 | `interpreter/runtime` | Tree-walking evaluator, value model, environments, property dispatch, modules, event-loop state. |
 | `interpreter/stdlib` | JavaScript built-ins and stdlib/runtime hook implementations. |
@@ -282,7 +282,7 @@ them as ordinary JavaScript symbol properties.
 For hosted process-level startup snapshots, use the manual-only Startup
 Hyperfine workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS
 release CLI, times repeated invocations of
-`node _build/js/release/build/cmd/main/main.js "1 + 1"` against Node.js and Bun,
+`node _build/js/release/build/cmd/main/main.js -e "1 + 1"` against Node.js and Bun,
 uploads the raw Hyperfine artifacts, and writes a reporting-only job summary.
 It does not publish `gh-pages`, comment on PRs, or enforce thresholds.
 

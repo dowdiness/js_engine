@@ -88,6 +88,12 @@ pub(all) enum EngineIntegrity {
   NotApplicable
 }
 
+pub struct LoadedScript {
+  identity : String
+  source : String
+}
+pub fn LoadedScript::LoadedScript(identity~ : String, source~ : String) -> Self
+
 pub(all) enum PendingJobs {
   None
   Present
@@ -99,6 +105,19 @@ pub(all) enum RetainedEffects {
   MayRemain
   Unknown
 }
+
+pub struct Shell {
+  engine : Engine
+  load_source : (String, String?) -> LoadedScript raise
+  read_bytes : ((String, String?) -> Bytes raise)?
+  load_stack : Array[String]
+}
+pub fn Shell::Shell(load_source~ : (String, String?) -> LoadedScript raise, read_bytes? : ((String, String?) -> Bytes raise)?, now_millis? : (() -> Double)?, annex_b? : Bool) -> Self
+pub fn Shell::drain_jobs(Self) -> Unit raise EngineError
+pub fn Shell::eval(Self, String) -> Unit raise EngineError
+pub fn Shell::run_file(Self, String) -> Unit raise EngineError
+pub fn Shell::set_arguments(Self, String, Array[String]) -> Unit raise EngineError
+pub fn Shell::take_output(Self) -> Array[String]
 
 pub struct SourceLocation {
   start_ : SourcePosition

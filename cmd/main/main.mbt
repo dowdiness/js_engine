@@ -13,7 +13,12 @@ fn extract_fixtures(
   let rest : Array[String] = []
   let mut i = 0
   while i < args.length() {
-    if args[i] == "--fixture" {
+    if args[i] == "--" {
+      for j = i; j < args.length(); j = j + 1 {
+        rest.push(args[j])
+      }
+      return (fixtures, rest)
+    } else if args[i] == "--fixture" {
       // `--fixture` always consumes the next two argv slots. Erroring here
       // (rather than letting it fall through to argparse) is required because
       // argparse also declares `--fixture` for help rendering, so a malformed
@@ -41,8 +46,67 @@ fn extract_fixtures(
 }
 
 ///|
+/// argparse cannot distinguish eval-mode arguments after `--` from the file
+/// positional. Remove that delimiter only when an eval option precedes it.
+fn split_eval_arguments(args : Array[String]) -> (Array[String], Array[String]) {
+  let mut separator = -1
+  let mut has_eval = false
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "-e" || args[i] == "--eval" || args[i].has_prefix("--eval=") {
+      has_eval = true
+    }
+    if args[i] == "--" {
+      separator = i
+      break
+    }
+  }
+  if !has_eval || separator < 0 {
+    return (args, [])
+  }
+  let command_args : Array[String] = []
+  let script_args : Array[String] = []
+  for i = 0; i < separator; i = i + 1 {
+    command_args.push(args[i])
+  }
+  for i = separator + 1; i < args.length(); i = i + 1 {
+    script_args.push(args[i])
+  }
+  (command_args, script_args)
+}
+
+///|
+fn resolve_shell_identity(request : String, referrer : String?) -> String {
+  let base = match referrer {
+    Some(path) => @path.Path::dirname(path).to_string()
+    None => @env.current_dir().unwrap_or(".")
+  }
+  if @path.Path::is_absolute(request) {
+    @path.Path::normalize(request).to_string()
+  } else {
+    @path.Path::normalize(@path.Path::join(base, request).to_string()).to_string()
+  }
+}
+
+///|
+fn resolve_shell_script(
+  request : String,
+  referrer : String?,
+) -> @lib.LoadedScript raise {
+  let identity = resolve_shell_identity(request, referrer)
+  let source = @fs.read_file_to_string(identity)
+  @lib.LoadedScript(identity~, source~)
+}
+
+///|
+fn resolve_shell_bytes(request : String, referrer : String?) -> Bytes raise {
+  let identity = resolve_shell_identity(request, referrer)
+  @fs.read_file_to_bytes(identity)
+}
+
+///|
 fn main {
   let (fixtures, remaining) = extract_fixtures(program_args(@env.args()))
+  let (command_args, eval_arguments) = split_eval_arguments(remaining)
   let cmd = @argparse.Command(
     "js_engine",
     flags=[
@@ -51,12 +115,13 @@ fn main {
         "annex-b",
         about="Enable Annex B (web compat) semantics",
       ),
-      @argparse.FlagArg(
-        "closure-conversion",
-        about="Run scripts through the opt-in closure-conversion prototype",
-      ),
     ],
     options=[
+      @argparse.OptionArg(
+        "eval",
+        short='e',
+        about="Evaluate JavaScript source instead of reading a script file",
+      ),
       // Documented for --help only; the actual `--fixture <spec> <src>` triples
       // are pre-extracted from argv by extract_fixtures() before argparse runs,
       // because argparse OptionArgs accept a single value per occurrence.
@@ -71,12 +136,18 @@ fn main {
       ),
     ],
     positionals=[
-      @argparse.PositionArg("source", about="JavaScript source to execute"),
+      @argparse.PositionArg("script", about="JavaScript file to execute"),
+      @argparse.PositionArg(
+        "script_args",
+        num_args=@argparse.ValueRange(lower=0),
+        allow_hyphen_values=true,
+        about="Arguments exposed to the script as globalThis.arguments",
+      ),
     ],
     about="JavaScript interpreter",
     version="0.8.0",
   )
-  let matches = cmd.parse(argv=remaining[:], env=Map([])) catch {
+  let matches = cmd.parse(argv=command_args[:], env=Map([])) catch {
     err => {
       println("\{err}")
       exit_with_error()
@@ -85,31 +156,46 @@ fn main {
   }
   let is_module = matches.flags.get_or_default("module", false)
   let annex_b = matches.flags.get_or_default("annex-b", false)
-  let use_closure_conversion = matches.flags.get_or_default(
-    "closure-conversion", false,
-  )
-  let source : String? = match matches.values.get("source") {
-    Some(arr) if arr.length() > 0 => Some(arr[0])
+  let eval_source : String? = match matches.values.get("eval") {
+    Some(values) if values.length() > 0 => Some(values[0])
     _ => None
+  }
+  let script : String? = match matches.values.get("script") {
+    Some(values) if values.length() > 0 => Some(values[0])
+    _ => None
+  }
+  let positional_script_args = match matches.values.get("script_args") {
+    Some(values) => values
+    None => []
+  }
+  let script_args = if eval_arguments.length() > 0 {
+    eval_arguments
+  } else {
+    positional_script_args
+  }
+  if eval_source is Some(_) && script is Some(_) {
+    println("error: --eval cannot be combined with a script file")
+    exit_with_error()
+    return
   }
   let main_module_specifier = match matches.values.get("module-specifier") {
     Some(arr) if arr.length() > 0 => arr[0]
     _ => "<test>"
   }
-  match source {
-    None => {
+  match (eval_source, script) {
+    (None, None) => {
       println(
-        "Usage: js_engine [--module] [--annex-b] [--closure-conversion] [--fixture <spec> <src>]... <javascript-code>",
+        "Usage: js_engine [--module] [--annex-b] [--fixture <spec> <src>]... <script.js>",
       )
-      println("Example: js_engine 'console.log(1 + 2)'")
+      println("       js_engine -e <javascript-code>")
     }
-    Some(src) =>
+    _ =>
       try {
         if is_module {
-          if use_closure_conversion {
-            println("error: --closure-conversion does not support --module")
-            exit_with_error()
-            return
+          let src = match (eval_source, script) {
+            (Some(source), _) => source
+            (_, Some(path)) => @fs.read_file_to_string(path)
+            _ => ""
           }
           let registered_specifiers : @set.Set[String] = Default::default()
           for fixture in fixtures {
@@ -140,24 +226,46 @@ fn main {
           for line in output {
             println(line)
           }
-        } else if use_closure_conversion {
-          let (output, result) = @lib.run_compiled(src, annex_b~)
-          for line in output {
-            println(line)
-          }
-          if result != "undefined" {
-            println(result)
-          }
         } else {
-          let (output, result) = @lib.run(src, annex_b~)
-          for line in output {
+          let clock_origin = @bench.monotonic_clock_start()
+          let shell = @lib.Shell(
+            load_source=resolve_shell_script,
+            read_bytes=Some(resolve_shell_bytes),
+            now_millis=Some(() => {
+              @bench.monotonic_clock_end(clock_origin) / 1000.0
+            }),
+            annex_b~,
+          )
+          let script_name = match script {
+            Some(path) => path
+            None => "-e"
+          }
+          shell.set_arguments(script_name, script_args)
+          let execution : Result[Unit, Error] = Ok(
+            {
+              match (eval_source, script) {
+                (Some(source), _) => shell.eval(source)
+                (_, Some(path)) => shell.run_file(path)
+                _ => ()
+              }
+              shell.drain_jobs()
+            },
+          ) catch {
+            err => Err(err)
+          }
+          for line in shell.take_output() {
             println(line)
           }
-          if result != "undefined" {
-            println(result)
+          match execution {
+            Ok(_) => ()
+            Err(err) => raise err
           }
         }
       } catch {
+        @lib.JavaScriptException(message) => {
+          println(message)
+          exit_with_error()
+        }
         @runtime.JsException(value) => {
           match value {
             Object(data) if data.class_name.has_suffix("Error") => {

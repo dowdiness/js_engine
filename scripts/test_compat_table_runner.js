@@ -67,6 +67,7 @@ test("CLI separates standard and Annex B and writes reproducible reports", () =>
       {
         spawn(_engine, args) {
           const annexB = args[0] === "--annex-b";
+          assert.equal(args[args.length - 2], "-e");
           const source = args[args.length - 1] || "";
           const passed =
             (source.includes("PASS_STANDARD") && !annexB) ||

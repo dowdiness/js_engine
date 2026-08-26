@@ -270,9 +270,9 @@ if ((include_bun)); then
   expect_stdout "Bun native expression" "$expected_output" bun -p "$startup_source"
 fi
 expect_usage_output "js_engine load/no-source" node "$js_engine_cli"
-expect_stdout "js_engine CLI expression" "$expected_output" node "$js_engine_cli" "$startup_source"
+expect_stdout "js_engine CLI expression" "$expected_output" node "$js_engine_cli" -e "$startup_source"
 if ((include_bun)); then
-  expect_stdout "Bun-hosted js_engine CLI expression" "$expected_output" bun "$js_engine_cli" "$startup_source"
+  expect_stdout "Bun-hosted js_engine CLI expression" "$expected_output" bun "$js_engine_cli" -e "$startup_source"
 fi
 
 declare -a command_names=()
@@ -292,9 +292,9 @@ if ((include_bun)); then
   add_probe "Bun native expression" bun -p "$startup_source"
 fi
 add_probe "js_engine load/no-source" node "$js_engine_cli"
-add_probe "js_engine CLI expression" node "$js_engine_cli" "$startup_source"
+add_probe "js_engine CLI expression" node "$js_engine_cli" -e "$startup_source"
 if ((include_bun)); then
-  add_probe "Bun-hosted js_engine CLI expression" bun "$js_engine_cli" "$startup_source"
+  add_probe "Bun-hosted js_engine CLI expression" bun "$js_engine_cli" -e "$startup_source"
 fi
 
 if [[ "$output_root" != /* ]]; then

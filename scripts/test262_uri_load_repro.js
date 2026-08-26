@@ -30,7 +30,7 @@ function reviewPath(root, file) {
 }
 
 function defaultEngine(root) {
-  return `node ${path.join(root, "_build/js/release/build/cmd/main/main.js")}`;
+  return `node ${path.join(root, "_build/js/release/build/cmd/main/main.js")} -e`;
 }
 
 function gitOutput(cwd, args) {

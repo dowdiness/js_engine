@@ -2101,15 +2101,39 @@ pub fn Interpreter::get_console_member(
   self : Interpreter,
   prop : String,
 ) -> Value raise Error {
-  if prop == "log" {
-    let output = self.host.output
-    make_native_func(name="log", realm_state=Some(self.realm_state), fn(args) {
-      let parts : Array[String] = args.map(fn(a) { a.to_string() })
-      output.push(parts.join(" "))
-      Undefined
-    })
-  } else {
-    raise @errors.TypeError(message="console.\{prop} is not supported")
+  match prop {
+    "log" => {
+      let output = self.host.output
+      make_native_func(name="log", realm_state=Some(self.realm_state), fn(
+        args,
+      ) {
+        let parts : Array[String] = args.map(a => a.to_string())
+        output.push(parts.join(" "))
+        Undefined
+      })
+    }
+    "assert" =>
+      make_native_func(
+        name="assert",
+        length=1,
+        realm_state=Some(self.realm_state),
+        fn(args) raise {
+          if args.length() == 0 || !is_truthy(args[0]) {
+            let details : Array[String] = []
+            for i = 1; i < args.length(); i = i + 1 {
+              details.push(args[i].to_string())
+            }
+            let message = if details.length() == 0 {
+              "Assertion failed"
+            } else {
+              "Assertion failed: " + details.join(" ")
+            }
+            raise @errors.TypeError(message~)
+          }
+          Undefined
+        },
+      )
+    _ => raise @errors.TypeError(message="console.\{prop} is not supported")
   }
 }
 

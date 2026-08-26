@@ -3,6 +3,9 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/set",
   "moonbitlang/core/argparse",
+  "moonbitlang/core/bench",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/path",
   "dowdiness/js_engine/interpreter/runtime",
   "dowdiness/js_engine/errors",
 }

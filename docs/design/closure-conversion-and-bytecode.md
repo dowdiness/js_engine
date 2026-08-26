@@ -15,18 +15,19 @@ Closure conversion is a legacy experimental path. It stays as an opt-in
 benchmark comparison path only. Do not expand it into a second complete
 JavaScript interpreter.
 
-Execution-speed work now has an initial compact, opt-in bytecode prototype.
-Future broadening should continue in that direction. Closure analysis remains
+Execution-speed work now uses verified bytecode as the default candidate, with
+tree-walking fallback for unsupported source. Future broadening should continue
+in that direction. Closure analysis remains
 useful there, but the representation should be explicit locals, environment
 slots, and captured variables rather than one MoonBit closure per AST node.
 
 ## Current Closure-Conversion Role
 
 The closure-conversion prototype is useful because it measures a real source of
-overhead: repeatedly matching AST nodes while evaluating hot code. It currently
-has public opt-in entry points through `run_compiled` and the
-`--closure-conversion` CLI flag, and benchmark coverage for the primary
-comparison workloads.
+overhead: repeatedly matching AST nodes while evaluating hot code. It retains
+the public opt-in `run_compiled` library entry point and benchmark coverage for
+the primary comparison workloads. The general CLI no longer exposes a separate
+closure-conversion policy switch.
 
 Primary metrics:
 
@@ -86,8 +87,8 @@ Useful findings:
 - The primary metrics now make before/after comparisons reproducible.
 - Function bodies, calls, property access, assignments, constructor calls, and
   loop control can be compiled enough to exercise realistic hot paths.
-- `run_compiled` and `--closure-conversion` give an opt-in surface for
-  experiments without changing the default interpreter.
+- `run_compiled` keeps an opt-in library surface for closure-legacy experiments
+  without changing the default bytecode candidate policy.
 
 Correctness traps encountered:
 
