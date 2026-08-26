@@ -69,6 +69,12 @@ if [[ "$actual" != "true true" ]]; then
   exit 1
 fi
 
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'print("arguments" in globalThis, "scriptArgs" in globalThis);')"
+if [[ "$actual" != "false false" ]]; then
+  printf 'expected argument globals to be absent without eval arguments, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
 actual="$(_build/native/debug/build/cmd/main/main.exe -e 'console.assert(true); print("ok");')"
 if [[ "$actual" != "ok" ]]; then
   printf 'expected a successful console.assert() to be silent, got:\n%s\n' "$actual" >&2

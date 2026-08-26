@@ -37,6 +37,8 @@ The shell provides `load()`, `read()` / `readFile()`, `print()`, `console`,
 `arguments`, `scriptArgs`, and monotonic `performance.now()`. `load()` evaluates
 in the current realm and resolves nested relative paths from the loading file.
 `read(path, "binary")` returns an `ArrayBuffer`.
+File execution installs the argument globals even when no arguments are passed.
+Eval mode installs them only when arguments follow `--`.
 
 More sample programs live in [`example/`](example/).
 

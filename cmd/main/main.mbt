@@ -240,7 +240,9 @@ fn main {
             Some(path) => path
             None => "-e"
           }
-          shell.set_arguments(script_name, script_args)
+          if script is Some(_) || script_args.length() > 0 {
+            shell.set_arguments(script_name, script_args)
+          }
           let execution : Result[Unit, Error] = Ok(
             {
               match (eval_source, script) {
