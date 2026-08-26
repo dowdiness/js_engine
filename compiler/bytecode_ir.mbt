@@ -1130,6 +1130,9 @@ fn BytecodeFunction::BytecodeFunction(
 }
 
 ///|
+// White-box verification and the observation microbenchmark resolve retained
+// metadata explicitly; verified execution consumes only the observation ID.
+#warnings("-unused_value")
 fn BytecodeFunction::resolve_source_point(
   self : BytecodeFunction,
   id : SourcePointId,
