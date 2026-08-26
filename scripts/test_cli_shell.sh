@@ -75,6 +75,72 @@ if [[ "$actual" != "ok" ]]; then
   exit 1
 fi
 
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'function* value() { return 42; } let iterator = value(); print(iterator.next().value, iterator.next().done);')"
+if [[ "$actual" != "42 true" ]]; then
+  printf 'expected bytecode-default CLI to preserve generator semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let iterator = (function* () { return 42; })(); print(iterator.next().value);')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve generator expression semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'async function value() { return 42; } value().then(result => print(result));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async function semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let value = async function () { return 42; }; value().then(result => print(result));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async function expression semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let value = async () => 42; value().then(result => print(result));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async arrow semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'async function* value() { return 42; } value().next().then(result => print(result.value));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async generator semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let value = async function* () { return 42; }; value().next().then(result => print(result.value));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async generator expression semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let holder = { *value() { return 42; } }; print(holder.value().next().value);')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve generator method semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let holder = { async value() { return 42; } }; holder.value().then(result => print(result));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async method semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let holder = { async *value() { return 42; } }; holder.value().next().then(result => print(result.value));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI to preserve async generator method semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'function outer() { var value = 42; function inner(input) { try { throw input; } catch (_) { return value; } } return inner(null); } print(outer());')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected bytecode-default CLI fallback to preserve captured bindings, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
 actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let g = runString("globalThis.answer = 41"); print(g !== globalThis, g.answer); g.loadString("globalThis.answer += 1"); print(g.answer);')"
 if [[ "$actual" != $'true 41\n42' ]]; then
   printf 'expected runString() to create and retain an isolated realm, got:\n%s\n' "$actual" >&2

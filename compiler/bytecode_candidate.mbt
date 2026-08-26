@@ -161,6 +161,19 @@ fn candidate_normalize_ext_params(
 }
 
 ///|
+fn candidate_first_unsupported_child(
+  children : Array[CandidateFunctionPlan],
+) -> BytecodeUnsupported? {
+  for child in children {
+    match child.lowering {
+      CandidateLoweringUnsupported(unsupported) => return Some(unsupported)
+      CandidateLowered => ()
+    }
+  }
+  None
+}
+
+///|
 fn candidate_prepare_plan(
   name : String?,
   signature : CandidateFunctionSignature,
@@ -177,21 +190,26 @@ fn candidate_prepare_plan(
   function_form_loc? : @token.Loc? = None,
 ) -> CandidateFunctionPlan raise Error {
   let strict = candidate_function_strict(enclosing_strict, body)
-  let lowering = match params {
-    Ok((simple_params, simple_rest)) =>
-      candidate_lower_function(
-        name,
-        simple_params,
-        body,
-        simple_rest,
-        source_text,
-        strict,
-        is_method,
-        activation_kind,
-        function_form~,
-        function_form_loc~,
-      )
-    Err(unsupported) => CandidateLoweringUnsupported(unsupported)
+  let lowering : CandidateFunctionLowering = match
+    candidate_first_unsupported_child(children) {
+    Some(unsupported) => CandidateLoweringUnsupported(unsupported)
+    None =>
+      match params {
+        Ok((simple_params, simple_rest)) =>
+          candidate_lower_function(
+            name,
+            simple_params,
+            body,
+            simple_rest,
+            source_text,
+            strict,
+            is_method,
+            activation_kind,
+            function_form~,
+            function_form_loc~,
+          )
+        Err(unsupported) => CandidateLoweringUnsupported(unsupported)
+      }
   }
   let (simple_params, simple_rest) = match params {
     Ok((simple_params, simple_rest)) => (simple_params, simple_rest)

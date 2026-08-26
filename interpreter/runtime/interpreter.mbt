@@ -153,7 +153,6 @@ fn make_console_logger(
   kind : ConsoleOutputKind,
 ) -> Value {
   make_native_func(name~, realm_state=Some(realm_state), fn(arguments) raise {
-    guard arguments.length() > 0 else { return Undefined }
     let parts : Array[String] = arguments.map(value => value.to_string())
     host.emit_console_output(kind, parts.join(" "))
     Undefined

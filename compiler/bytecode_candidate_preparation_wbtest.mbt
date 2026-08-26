@@ -74,10 +74,9 @@ test "candidate aggregate evidence retains no per-call storage" {
 }
 
 ///|
-// RED characterization for the first production seam: both parent directions
-// are already visible in the pure candidate tree, but neither is materialized
-// into an Engine activation yet.
-test "RED: candidate tree retains both mixed parent directions" {
+// A bytecode parent cannot safely retain a tree child until their closure
+// storage is executor-neutral. A tree parent may still retain bytecode children.
+test "candidate tree retains only the safe mixed parent direction" {
   let source =
     #|function bytecodeParent() {
     #|  function treeChild() { for (var value of [1]) {} }
@@ -90,8 +89,8 @@ test "RED: candidate tree retains both mixed parent directions" {
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
   let bytecode_parent = root.children[0]
   let tree_parent = root.children[1]
-  guard bytecode_parent.bytecode is Some(_) else {
-    fail("bytecode parent lost candidate carrier")
+  guard bytecode_parent.bytecode is None else {
+    fail("parent retained bytecode around a tree child")
   }
   guard tree_parent.bytecode is Some(_) else {
     fail("tree parent fixture did not retain a candidate carrier")
@@ -2632,7 +2631,7 @@ test "candidate runner starts unsupported root through tree before effects" {
 }
 
 ///|
-test "candidate runner materializes bytecode parent with tree child" {
+test "candidate runner falls back parent with tree child before activation" {
   let source =
     #|function parent() {
     #|  function child() { for (var value of [1]) {} }
@@ -2641,24 +2640,19 @@ test "candidate runner materializes bytecode parent with tree child" {
     #|parent();
   let program = prepare_candidate_program(@parser.parse(source).stmts)
   let parent = program.root.children[0]
-  guard parent.bytecode is Some(bytecode) else {
-    fail("mixed parent was not bytecode")
-  }
-  if bytecode.function.preparation.function_declarations.length() != 1 {
-    fail("mixed bytecode parent did not retain its declaration")
-  }
+  guard parent.bytecode is None else { fail("mixed parent retained bytecode") }
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   if value.to_string() != "undefined" {
     fail("mixed bytecode-parent result was unexpected")
   }
   let starts = candidate_started_executors_for_wb(evidence)
   guard starts.length() >= 3 else {
-    fail("mixed bytecode-parent route did not start root, parent, and child")
+    fail("mixed parent route did not start root, parent, and child")
   }
   if starts[0] != CandidateBytecodeExecutor ||
-    starts[1] != CandidateBytecodeExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateTreeWalkerExecutor {
-    fail("bytecode parent did not retain an independent tree child route")
+    fail("tree child did not conservatively move its parent to tree execution")
   }
 }
 
@@ -2932,7 +2926,7 @@ test "candidate tree retains eligible descendants of an unsupported parent" {
 }
 
 ///|
-test "candidate eligible nested parent keeps lowering fallback local" {
+test "candidate nested fallback stops at the nearest safe tree parent" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
@@ -2940,8 +2934,13 @@ test "candidate eligible nested parent keeps lowering fallback local" {
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
-    UseBytecode(_) => ()
-    UseTreeWalker(_) => fail("eligible outer should remain bytecode")
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("outer fallback lost the descendant lowering reason")
+      }
+    UseTreeWalker(_) => fail("outer fallback was not lowering unsupported")
+    UseBytecode(_) => fail("outer retained bytecode around a tree child")
   }
   match outer.children[0].selection {
     UseBytecode(_) => ()
@@ -3087,15 +3086,26 @@ test "candidate extended signatures keep lowering fallback local" {
 }
 
 ///|
-test "candidate lowering owns unsupported nested function-form outcomes" {
+test "candidate tree parent owns unsupported nested function-form outcomes" {
   let source =
     #|function parent() {
     #|  function* child() { yield 1; }
     #|  var asyncChild = async function named() { return 1; };
     #|}
   let parent = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
-  guard parent.bytecode is Some(_) else {
-    fail("eligible parent lost bytecode around unsupported function forms")
+  guard parent.bytecode is None else {
+    fail(
+      "parent retained bytecode without a form-preserving child materializer",
+    )
+  }
+  match parent.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        GeneratorDeclaration => ()
+        _ => fail("parent fallback lost the first unsupported function form")
+      }
+    UseTreeWalker(_) => fail("parent fallback was not owned by lowering")
+    UseBytecode(_) => fail("parent selected bytecode around unsupported forms")
   }
   guard parent.children.length() == 2 else {
     fail("unsupported function forms were not retained as child slots")
@@ -3122,7 +3132,7 @@ test "candidate lowering owns unsupported nested function-form outcomes" {
 }
 
 ///|
-test "candidate object method forms retain ordered typed slots" {
+test "candidate object method forms keep their parent on the tree walker" {
   let source =
     #|var holder = {
     #|  *generator() { yield 1; },
@@ -3130,8 +3140,17 @@ test "candidate object method forms retain ordered typed slots" {
     #|  async *combined() { yield 1; },
     #|};
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
-  guard root.bytecode is Some(_) else {
-    fail("object method parent lost bytecode")
+  guard root.bytecode is None else {
+    fail("object method parent retained bytecode without form preservation")
+  }
+  match root.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ObjectLiteralGeneratorMethodProperty => ()
+        _ => fail("object method parent lost its first unsupported form")
+      }
+    UseTreeWalker(_) => fail("object method parent fallback left lowering")
+    UseBytecode(_) => fail("object method parent selected bytecode")
   }
   guard root.children.length() == 3 else {
     fail("object method consumer order was not retained")

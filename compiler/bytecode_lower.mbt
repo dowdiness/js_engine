@@ -2047,66 +2047,6 @@ fn BytecodeBuilder::add_function(
 }
 
 ///|
-// Candidate lowering retains the parent's instruction and preparation facts
-// while reserving a typed, non-executable child slot.  Ordinary lowering never
-// calls this path and keeps its existing unsupported rejection.
-fn BytecodeBuilder::add_candidate_unsupported_function(
-  self : BytecodeBuilder,
-  consumer_form : BytecodeFunctionConsumerForm,
-) -> Int raise Error {
-  guard self.candidate_mode else {
-    raise @errors.InternalError(
-      message="unsupported candidate child slot escaped candidate lowering",
-    )
-  }
-  let idx = self.candidate_child_slot_count
-  self.candidate_child_slot_count += 1
-  ignore(consumer_form)
-  idx
-}
-
-///|
-fn BytecodeBuilder::compile_candidate_unsupported_declaration(
-  self : BytecodeBuilder,
-  name : String,
-  consumer_form : BytecodeFunctionConsumerForm,
-  loc : @token.Loc,
-) -> Unit raise Error {
-  let fn_idx = self.add_candidate_unsupported_function(consumer_form)
-  self.function_declarations.push({
-    name,
-    child_index: fn_idx,
-    loc,
-    source_identity: self.child_source_identity(fn_idx, consumer_form),
-  })
-  let _ = self.emit(DeclareFunction(name, fn_idx))
-  self.emit_undefined_completion()
-}
-
-///|
-fn BytecodeBuilder::compile_candidate_unsupported_expression(
-  self : BytecodeBuilder,
-  name : String?,
-  consumer_form : BytecodeFunctionConsumerForm,
-  loc : @token.Loc,
-) -> Unit raise Error {
-  let fn_idx = self.add_candidate_unsupported_function(consumer_form)
-  let instruction = match consumer_form {
-    FunctionConsumer => MakeFunction(fn_idx)
-    NamedFunctionConsumer(name) => MakeNamedFunction(fn_idx, name)
-    MethodFunctionConsumer => MakeMethodFunction(fn_idx)
-    ComputedMethodFunctionConsumer => MakeComputedMethodFunction(fn_idx)
-    ArrowFunctionConsumer => MakeArrowFunction(fn_idx)
-    DeclareFunctionConsumer(_) =>
-      raise @errors.InternalError(
-        message="declaration consumer reached expression candidate lowering",
-      )
-  }
-  ignore(name)
-  let _ = self.emit_with_source_locations(instruction, [(ExpressionEntry, loc)])
-}
-
-///|
 fn BytecodeBuilder::child_source_identity(
   self : BytecodeBuilder,
   child_index : Int,
@@ -2706,66 +2646,13 @@ fn BytecodeBuilder::compile_stmt_body(
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
-    GeneratorDecl(name, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(GeneratorDeclaration, loc)
-      }
-    GeneratorDeclExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(GeneratorDeclaration, loc)
-      }
-    AsyncFuncDecl(name, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncFunctionDeclaration, loc)
-      }
-    AsyncFuncDeclExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncFunctionDeclaration, loc)
-      }
-    AsyncGeneratorDecl(name, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncGeneratorDeclaration, loc)
-      }
-    AsyncGeneratorDeclExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncGeneratorDeclaration, loc)
-      }
+    GeneratorDecl(_, _, _, loc, _) | GeneratorDeclExt(_, _, _, _, loc, _) =>
+      bytecode_reject(GeneratorDeclaration, loc)
+    AsyncFuncDecl(_, _, _, loc, _) | AsyncFuncDeclExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncFunctionDeclaration, loc)
+    AsyncGeneratorDecl(_, _, _, loc, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncGeneratorDeclaration, loc)
     ClassDecl(_, _, _, loc, _) => bytecode_reject(ClassDeclaration, loc)
     WithStmt(_, _, loc) => bytecode_reject(WithStatement, loc)
     ImportDecl(_, _, _, _, _, loc) => bytecode_reject(ImportDeclaration, loc)
@@ -4109,28 +3996,19 @@ fn BytecodeBuilder::compile_object_method(
         is_method=true,
       )
     }
-    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.add_candidate_unsupported_function(consumer_form)
-      } else {
-        bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
-        0
-      }
-    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.add_candidate_unsupported_function(consumer_form)
-      } else {
-        bytecode_reject(ObjectLiteralAsyncMethodProperty, loc)
-        0
-      }
+    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) => {
+      bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
+      0
+    }
+    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) => {
+      bytecode_reject(ObjectLiteralAsyncMethodProperty, loc)
+      0
+    }
     AsyncGeneratorExpr(_, _, _, loc, _)
-    | AsyncGeneratorExprExt(_, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.add_candidate_unsupported_function(consumer_form)
-      } else {
-        bytecode_reject(ObjectLiteralAsyncGeneratorMethodProperty, loc)
-        0
-      }
+    | AsyncGeneratorExprExt(_, _, _, _, loc, _) => {
+      bytecode_reject(ObjectLiteralAsyncGeneratorMethodProperty, loc)
+      0
+    }
     _ => {
       let loc = bytecode_expr_loc(prop.value)
       raise @errors.InternalError(
@@ -5129,20 +5007,8 @@ fn BytecodeBuilder::compile_expr_body(
           ", col " +
           loc.col.to_string(),
       )
-    GeneratorExpr(name, _, _, loc, _)
-    | GeneratorExprExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_expression(
-          name,
-          match name {
-            Some(name) => NamedFunctionConsumer(name)
-            None => FunctionConsumer
-          },
-          loc,
-        )
-      } else {
-        bytecode_reject(GeneratorExpression, loc)
-      }
+    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) =>
+      bytecode_reject(GeneratorExpression, loc)
     YieldExpr(_, _, loc) =>
       raise @errors.InternalError(
         message="bytecode yield expression escaped generator lowering at line " +
@@ -5150,44 +5016,13 @@ fn BytecodeBuilder::compile_expr_body(
           ", col " +
           loc.col.to_string(),
       )
-    AsyncFuncExpr(name, _, _, loc, _)
-    | AsyncFuncExprExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_expression(
-          name,
-          match name {
-            Some(name) => NamedFunctionConsumer(name)
-            None => FunctionConsumer
-          },
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncFunctionExpression, loc)
-      }
+    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncFunctionExpression, loc)
     AsyncArrowFunc(_, _, loc, _) | AsyncArrowFuncExt(_, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_expression(
-          None,
-          ArrowFunctionConsumer,
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncArrowFunction, loc)
-      }
-    AsyncGeneratorExpr(name, _, _, loc, _)
-    | AsyncGeneratorExprExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_expression(
-          name,
-          match name {
-            Some(name) => NamedFunctionConsumer(name)
-            None => FunctionConsumer
-          },
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncGeneratorExpression, loc)
-      }
+      bytecode_reject(AsyncArrowFunction, loc)
+    AsyncGeneratorExpr(_, _, _, loc, _)
+    | AsyncGeneratorExprExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncGeneratorExpression, loc)
     AwaitExpr(_, loc) =>
       raise @errors.InternalError(
         message="bytecode await expression escaped async lowering at line " +

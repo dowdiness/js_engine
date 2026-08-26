@@ -61,6 +61,27 @@ test "Shell host functions are ordinary global object properties" {
 }
 
 ///|
+test "Shell preserves empty Console messages" {
+  let shell = @js_engine.Shell(load_source=fn(_, _) raise {
+    fail("load is not expected")
+  })
+  shell.eval("console.log(); console.info();")
+  json_inspect(shell.take_output(), content=["", ""])
+}
+
+///|
+test "runString child Realm shares its Shell Console destination" {
+  let shell = @js_engine.Shell(load_source=fn(_, _) raise {
+    fail("load is not expected")
+  })
+  let source =
+    #|runString('console.log("child")');
+    #|console.log("parent");
+  shell.eval(source)
+  json_inspect(shell.take_output(), content=["child", "parent"])
+}
+
+///|
 test "runString reads child resources into the child Realm" {
   let load_source = fn(request, referrer) raise {
     match (request, referrer) {

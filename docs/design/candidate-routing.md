@@ -1,10 +1,10 @@
 # Candidate execution routing
 
-Candidate execution is an opt-in build-time mode for the stable engine
-facade. The default build keeps the existing tree-walking path: it does not
-prepare, lower, or allocate candidate execution data. A build that replaces
-the virtual policy implementation enables candidate preparation once at the
-start of each evaluation.
+Candidate execution is the build-time default for the stable engine facade.
+It prepares an execution candidate once at the start of each evaluation and
+selects verified bytecode only for supported source. A replacement virtual
+policy may disable candidate preparation and keep the existing tree-walking
+path.
 
 Preparation produces an immutable, verified program plan. Each function
 activation keeps its own selected route and may start either bytecode or the
@@ -26,8 +26,11 @@ prepared → start(bytecode | tree walker) → complete(normal | abrupt)
 
 The selected route is checked against the prepared decision before start. A
 started activation cannot be downgraded or replayed through another executor.
-Mixed trees are therefore expected: a bytecode parent can own a tree-walking
-child, and a tree-walking parent can own a bytecode child.
+Mixed trees are deliberately asymmetric until captured binding storage is
+executor-neutral. A tree-walking parent can own a bytecode child. If a child
+requires the tree walker, its nearest bytecode-candidate parent also selects
+the tree walker before activation, so a tree child never loses bindings held
+in bytecode-local slots.
 
 Candidate mode does not change the public engine API, the default executor,
 or the set of JavaScript operations supported by the interpreter. It is an

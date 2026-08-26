@@ -124,6 +124,19 @@ pub fn Engine::Engine(annex_b? : Bool = false) -> Engine {
 }
 
 ///|
+fn Engine::with_console_output_sink(
+  annex_b : Bool,
+  console_output_sink : (@runtime.ConsoleOutputKind, String) -> Unit raise Error,
+) -> Engine {
+  {
+    interp: @interpreter.new_interpreter(
+      annex_b~,
+      console_output_sink=Some(console_output_sink),
+    ),
+  }
+}
+
+///|
 fn classify_engine_runtime_error(err : Error) -> EngineError {
   match @errors.name_message_if_js_error(err) {
     Some(("InternalError", message)) => InternalError(message)
@@ -408,7 +421,12 @@ pub fn Shell::Shell(
       } else {
         shell.engine.interp.to_js_string(args[0])
       }
-      let child = Engine(annex_b~)
+      let child = Engine::with_console_output_sink(annex_b, fn(
+        kind,
+        text,
+      ) raise {
+        shell.engine.interp.host.emit_console_output(kind, text)
+      })
       let child_load_stack : Array[String] = []
       let child_referrer = () => {
         if child_load_stack.length() == 0 {
