@@ -3623,16 +3623,19 @@ test "bytecode lowers new.target expressions to a dedicated load instruction" {
 }
 
 ///|
-test "bytecode lowers console members to a shared host helper load" {
+test "bytecode lowers console through ordinary binding and property operations" {
   let bytecode = parse_bytecode_for_wb("console.log(1);")
-  let mut saw_console = false
+  let mut saw_binding = false
+  let mut saw_property = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      LoadConsoleMember("log") => saw_console = true
+      LoadName("console") => saw_binding = true
+      PreparePlainPropertyCall("log", _) => saw_property = true
       _ => ()
     }
   }
-  guard saw_console else { abort("expected console member load") }
+  guard saw_binding else { abort("expected ordinary console binding load") }
+  guard saw_property else { abort("expected ordinary log property call") }
 }
 
 ///|

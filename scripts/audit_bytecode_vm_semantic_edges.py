@@ -188,7 +188,7 @@ WRAPPER_FIXTURE = r'''///|
 fn semantic_edge_audit_cross_file_wrapper(
   interp : Interpreter,
 ) -> Unit raise Error {
-  ignore(interp.get_console_member("log"))
+  interp.observe_execution_step()
 }
 '''
 
@@ -1574,7 +1574,7 @@ def _main() -> int:
             (
                 "semantic_edge_audit_cross_file_wrapper",
                 "runtime",
-                "@runtime.Interpreter::get_console_member",
+                "@runtime.Interpreter::observe_execution_step",
             ),
             (
                 "semantic_edge_audit_startup_fixture_root",

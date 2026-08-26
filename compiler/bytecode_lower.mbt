@@ -4915,11 +4915,6 @@ fn BytecodeBuilder::compile_expr_body(
         }
       }
     }
-    Member(Ident("console", _), prop, loc) => {
-      let _ = self.emit_with_source_locations(LoadConsoleMember(prop), [
-        (MemberAccess, loc),
-      ])
-    }
     Member(obj, prop, loc) => {
       self.compile_expr(obj)
       let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
@@ -5034,12 +5029,6 @@ fn BytecodeBuilder::compile_expr_body(
           )
         _ => self.compile_optional_plain_call(callee, args, loc)
       }
-    Call(Member(Ident("console", _), prop, member_loc), args, loc) => {
-      let _ = self.emit_with_source_locations(LoadConsoleMember(prop), [
-        (MemberAccess, member_loc),
-      ])
-      self.emit_call(args, loc)
-    }
     Call(SuperMember(prop, member_loc), args, loc) => {
       self.has_this = true
       self.emit_super_property_call_prepare(prop, member_loc)

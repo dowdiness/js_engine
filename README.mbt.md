@@ -68,6 +68,14 @@ test "README stateful rule engine" {
 
 `Engine` keeps one global realm alive across calls. Its strict JSON boundary copies plain data directly: it does not consult a mutable global `JSON`, call getters or `toJSON`, or execute Proxy traps. Promise results and non-JSON values are rejected. This API is intended for trusted application scripts, not as a security sandbox. See [`example/rule_engine/`](example/rule_engine/) for the runnable example.
 
+For application-owned Host Capabilities and lifecycle checks, use
+`HostEnvironment` to select the immutable capability set, bind concrete
+services with `SessionBindings`, and execute through an `ExecutionSession`.
+This higher-level path automatically completes the Promise-job checkpoint for
+each Hosted Turn. Console output, Script Resources, and application-scheduled
+one-shot timers cross purpose-specific typed boundaries without exposing
+Runtime Values. See the [stable embedding guide](docs/EMBEDDING.md#application-embedding-with-selected-host-capabilities).
+
 The [stable embedding guide](docs/EMBEDDING.md) defines the JSON boundary,
 lookup rules, queue checkpoints, retained-state behavior, error reuse limits,
 and four-target contract.
@@ -85,8 +93,9 @@ test "README one-shot facade" {
 The public entry points are defined in [`js_engine.mbt`](js_engine.mbt) and
 classified in the stable guide:
 
-- **Stable embedding:** `run`, `Engine`, `EngineError`, and the unbounded
-  persistent `Engine` methods listed in the guide.
+- **Stable embedding:** `run`; `Engine`, `EngineError`, and its explicit-queue
+  methods; plus `HostEnvironment`, `SessionBindings`, `ExecutionSession`, and
+  their typed Host Capability contracts listed in the guide.
 - **Staged Stage 4 availability:** `Engine::eval_bounded`,
   `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`,
   `Engine::run_timer_checkpoint_bounded`, `ExecutionPolicy`,

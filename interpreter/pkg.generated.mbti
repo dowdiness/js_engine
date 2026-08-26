@@ -6,7 +6,7 @@ import {
 }
 
 // Values
-pub fn new_interpreter(annex_b? : Bool, module_loader? : @runtime.ModuleLoader?) -> @runtime.Interpreter
+pub fn new_interpreter(annex_b? : Bool, module_loader? : @runtime.ModuleLoader?, console_enabled? : Bool, console_output_sink? : ((@runtime.ConsoleOutputKind, String) -> Unit raise)?, setup_test262_harness? : Bool) -> @runtime.Interpreter
 
 // Errors
 

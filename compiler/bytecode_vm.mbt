@@ -705,7 +705,6 @@ fn BytecodeFrame::step_bytecode(
         let key = frame.pop()
         stack.push(interp.eval_super_computed_property(env, key, loc))
       }
-      LoadConsoleMember(prop) => stack.push(interp.get_console_member(prop))
       LoadDirectEvalCallee =>
         match
           @runtime.begin_executor_binding_direct_eval(

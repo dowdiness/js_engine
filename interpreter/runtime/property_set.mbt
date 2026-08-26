@@ -2097,47 +2097,6 @@ pub fn Interpreter::set_computed_property(
 }
 
 ///|
-pub fn Interpreter::get_console_member(
-  self : Interpreter,
-  prop : String,
-) -> Value raise Error {
-  match prop {
-    "log" => {
-      let output = self.host.output
-      make_native_func(name="log", realm_state=Some(self.realm_state), fn(
-        args,
-      ) {
-        let parts : Array[String] = args.map(a => a.to_string())
-        output.push(parts.join(" "))
-        Undefined
-      })
-    }
-    "assert" =>
-      make_native_func(
-        name="assert",
-        length=1,
-        realm_state=Some(self.realm_state),
-        fn(args) raise {
-          if args.length() == 0 || !is_truthy(args[0]) {
-            let details : Array[String] = []
-            for i = 1; i < args.length(); i = i + 1 {
-              details.push(args[i].to_string())
-            }
-            let message = if details.length() == 0 {
-              "Assertion failed"
-            } else {
-              "Assertion failed: " + details.join(" ")
-            }
-            raise @errors.TypeError(message~)
-          }
-          Undefined
-        },
-      )
-    _ => raise @errors.TypeError(message="console.\{prop} is not supported")
-  }
-}
-
-///|
 fn Interpreter::eval_member(
   self : Interpreter,
   ctx : ExecContext,
@@ -2146,14 +2105,8 @@ fn Interpreter::eval_member(
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // Special case: console.log
-  match obj_expr {
-    Ident("console", _) => self.get_console_member(prop)
-    _ => {
-      let obj = self.eval_expr(ctx, obj_expr, env)
-      self.get_property(obj, prop, loc)
-    }
-  }
+  let obj = self.eval_expr(ctx, obj_expr, env)
+  self.get_property(obj, prop, loc)
 }
 
 ///|

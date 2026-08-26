@@ -287,7 +287,6 @@ fn bytecode_instruction_transfer(
     | LoadThis
     | LoadNewTarget
     | LoadSuperProperty(_, _)
-    | LoadConsoleMember(_)
     | LoadDirectEvalCallee
     | LoadName(_)
     | LoadAssignmentName(_)
@@ -1677,7 +1676,6 @@ fn bytecode_indexed_operand(
     | LoadNewTarget
     | LoadSuperProperty(_, _)
     | LoadSuperComputed(_)
-    | LoadConsoleMember(_)
     | LoadDirectEvalCallee
     | LoadName(_)
     | LoadAssignmentName(_)

@@ -38,7 +38,29 @@ pub(all) suberror EngineError {
 } derive(@debug.Debug)
 pub impl Show for EngineError
 
+pub(all) suberror ExecutionSessionError {
+  ExecutionFailure(EngineDiagnostic)
+  HostFailure(capability~ : String, detail~ : String)
+  SessionBusy
+  SessionClosed
+  SessionFaulted
+  ScheduledTurnUnavailable
+}
+pub impl Show for ExecutionSessionError
+
+pub(all) suberror SessionCreationError {
+  BindingForAbsentCapability(String)
+  MissingBindingForCapability(String)
+} derive(@debug.Debug)
+pub impl Show for SessionCreationError
+
 // Types and methods
+pub struct ConsoleOutput {
+  // private fields
+}
+pub fn ConsoleOutput::kind(Self) -> @runtime.ConsoleOutputKind
+pub fn ConsoleOutput::text(Self) -> String
+
 pub struct Engine {
   interp : @runtime.Interpreter
 }
@@ -88,6 +110,20 @@ pub(all) enum EngineIntegrity {
   NotApplicable
 }
 
+pub struct ExecutionSession {
+  // private fields
+}
+pub fn ExecutionSession::call_json(Self, String, Array[Json]) -> Json raise ExecutionSessionError
+pub fn ExecutionSession::close(Self) -> Unit raise ExecutionSessionError
+pub fn ExecutionSession::evaluate(Self, String) -> Unit raise ExecutionSessionError
+pub fn ExecutionSession::resume_scheduled_turn(Self, ScheduledTurn) -> Unit raise ExecutionSessionError
+
+pub struct HostEnvironment {
+  // private fields
+}
+pub fn HostEnvironment::HostEnvironment(annex_b? : Bool, console? : Bool, script_resources? : Bool, timers? : Bool) -> Self
+pub fn HostEnvironment::create_session(Self, bindings? : SessionBindings) -> ExecutionSession raise SessionCreationError
+
 pub struct LoadedScript {
   identity : String
   source : String
@@ -105,6 +141,28 @@ pub(all) enum RetainedEffects {
   MayRemain
   Unknown
 }
+
+pub struct ScheduledTurn {
+  // private fields
+}
+
+pub struct ScriptResource {
+  // private fields
+}
+pub fn ScriptResource::ScriptResource(identity~ : String, source~ : String) -> Self
+pub fn ScriptResource::identity(Self) -> String
+pub fn ScriptResource::source(Self) -> String
+
+pub struct ScriptResourceRequest {
+  // private fields
+}
+pub fn ScriptResourceRequest::referrer(Self) -> String?
+pub fn ScriptResourceRequest::request(Self) -> String
+
+pub struct SessionBindings {
+  // private fields
+}
+pub fn SessionBindings::SessionBindings(console_output_sink? : ((ConsoleOutput) -> Unit raise)?, script_resource_resolver? : ((ScriptResourceRequest) -> ScriptResource? raise)?, timer_scheduler? : ((TimerSchedule) -> Unit raise)?) -> Self
 
 pub struct Shell {
   engine : Engine
@@ -135,7 +193,15 @@ pub fn SourcePosition::column(Self) -> Int
 pub fn SourcePosition::line(Self) -> Int
 pub fn SourcePosition::offset(Self) -> Int
 
+pub struct TimerSchedule {
+  // private fields
+}
+pub fn TimerSchedule::delay_milliseconds(Self) -> Int
+pub fn TimerSchedule::turn(Self) -> ScheduledTurn
+
 // Type aliases
+pub using @runtime {type ConsoleOutputKind}
+
 pub using @runtime {type ExecutionPolicy}
 
 pub using @runtime {type ExecutionPolicyError}
