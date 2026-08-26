@@ -32,6 +32,12 @@ fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> RuntimeIt
 /// owner record, not in module-level caches. This includes intrinsic/prototype
 /// caches, symbol registries, backing stores, and side tables whose lifetime is
 /// the lifetime of a realm.
+priv enum ExecutionControlCarrierCache {
+  UnresolvedExecutionControlCarrier
+  ResolvedExecutionControlCarrier(Binding?)
+}
+
+///|
 pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
@@ -56,6 +62,10 @@ pub(all) struct RealmState {
   // Managed execution compares identity against this private per-realm
   // capability rather than the mutable property currently exposed to JS.
   priv canonical_array_for_each : Ref[Value?]
+  // Resolve the private execution-control carrier once on the unbounded hot
+  // path. Scoped bounded execution replaces and restores this cache together
+  // with the reserved environment binding.
+  priv execution_control_carrier_cache : Ref[ExecutionControlCarrierCache]
   // Detailed operations enable this only while atomically observing a failure.
   // The error object distinguishes unhandled propagation from a later throw.
   observing_source_failure : Ref[Bool]
@@ -113,6 +123,7 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     constructor_prototype_registry,
     canonical_proxy_constructor: { val: None },
     canonical_array_for_each: { val: None },
+    execution_control_carrier_cache: { val: UnresolvedExecutionControlCarrier },
     observing_source_failure: { val: false },
     observed_source_failure: { val: None },
     observed_source_identity: { val: None },

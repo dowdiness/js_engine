@@ -304,23 +304,39 @@ fn execution_control_observer(control : ExecutionControl) -> Value {
 }
 
 ///|
-fn restore_execution_control_binding(
-  global : Environment,
-  previous : Binding?,
-) -> Unit {
-  match previous {
-    Some(binding) => global.bindings[EXECUTION_CONTROL_BINDING] = binding
-    None => {
-      let _ = global.bindings.remove(EXECUTION_CONTROL_BINDING)
+fn Interpreter::execution_control_carrier(self : Interpreter) -> Binding? {
+  match self.realm_state.execution_control_carrier_cache.val {
+    ResolvedExecutionControlCarrier(binding) => binding
+    UnresolvedExecutionControlCarrier => {
+      let binding = self.global.bindings.get(EXECUTION_CONTROL_BINDING)
+      self.realm_state.execution_control_carrier_cache.val = ResolvedExecutionControlCarrier(
+        binding,
+      )
+      binding
     }
   }
+}
+
+///|
+fn restore_execution_control_binding(
+  interp : Interpreter,
+  previous_binding : Binding?,
+  previous_cache : ExecutionControlCarrierCache,
+) -> Unit {
+  match previous_binding {
+    Some(binding) => interp.global.bindings[EXECUTION_CONTROL_BINDING] = binding
+    None => {
+      let _ = interp.global.bindings.remove(EXECUTION_CONTROL_BINDING)
+    }
+  }
+  interp.realm_state.execution_control_carrier_cache.val = previous_cache
 }
 
 ///|
 pub fn Interpreter::observe_execution_step(
   self : Interpreter,
 ) -> Unit raise Error {
-  match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
+  match self.execution_control_carrier() {
     Some(binding) =>
       match binding.value {
         Object(data) =>
@@ -415,17 +431,24 @@ fn[T] Interpreter::with_execution_control(
   control : ExecutionControl,
   action : () -> T raise Error,
 ) -> T raise Error {
-  let previous = self.global.bindings.get(EXECUTION_CONTROL_BINDING)
-  self.global.bindings[EXECUTION_CONTROL_BINDING] = {
+  let previous_binding = self.global.bindings.get(EXECUTION_CONTROL_BINDING)
+  let previous_cache = self.realm_state.execution_control_carrier_cache.val
+  let binding : Binding = {
     value: execution_control_observer(control),
     kind: VarBinding,
     initialized: true,
     annex_b_hoisted: false,
     is_parameter: false,
   }
-  errdefer restore_execution_control_binding(self.global, previous)
+  self.global.bindings[EXECUTION_CONTROL_BINDING] = binding
+  self.realm_state.execution_control_carrier_cache.val = ResolvedExecutionControlCarrier(
+    Some(binding),
+  )
+  errdefer restore_execution_control_binding(
+    self, previous_binding, previous_cache,
+  )
   let result = action()
-  restore_execution_control_binding(self.global, previous)
+  restore_execution_control_binding(self, previous_binding, previous_cache)
   result
 }
 
