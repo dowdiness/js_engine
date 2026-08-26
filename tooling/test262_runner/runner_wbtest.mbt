@@ -78,6 +78,23 @@ test "command tokenization matches subprocess helper contract" {
 }
 
 ///|
+test "module flags precede the trailing eval source option" {
+  json_inspect(
+    append_engine_flags(
+      ["moon", "run", "cmd/main", "--", "-e"],
+      "/suite/test/language/module-code/example.js",
+      "export const value = 1;",
+      true,
+      true,
+    ),
+    content=[
+      "moon", "run", "cmd/main", "--", "--module", "--module-specifier", "./example.js",
+      "--annex-b", "-e",
+    ],
+  )
+}
+
+///|
 test "task selection mirrors Python runner helpers" {
   let tasks : Array[(String, String)] = []
   for i in 0..<10 {
