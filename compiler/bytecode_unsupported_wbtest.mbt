@@ -34,6 +34,7 @@ fn bytecode_unsupported_reason_matches(
     GeneratorDeclaration => actual is GeneratorDeclaration
     GeneratorExpression => actual is GeneratorExpression
     ImportDeclaration => actual is ImportDeclaration
+    NamedFunctionExpression => actual is NamedFunctionExpression
     ObjectLiteralAsyncGeneratorMethodProperty =>
       actual is ObjectLiteralAsyncGeneratorMethodProperty
     ObjectLiteralAsyncMethodProperty =>

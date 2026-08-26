@@ -45,7 +45,7 @@ fn candidate_request_form(
 fn candidate_child_index_for_request(
   candidate : CandidateFunction,
   request : @runtime.FunctionMaterializationRequest,
-) -> Int raise Error {
+) -> Int? raise Error {
   let site = request.site
   let mut found : Int? = None
   for child_index, child in candidate.children {
@@ -74,12 +74,26 @@ fn candidate_child_index_for_request(
     }
   }
   match found {
-    Some(child_index) => child_index
-    None =>
-      raise @errors.InternalError(
-        message="candidate materialization site is absent from verified plan",
-      )
+    Some(child_index) => Some(child_index)
+    None => None
   }
+}
+
+///|
+fn candidate_descendant_has_request(
+  candidate : CandidateFunction,
+  request : @runtime.FunctionMaterializationRequest,
+) -> Bool raise Error {
+  for child in candidate.children {
+    match candidate_child_index_for_request(child, request) {
+      Some(_) => return true
+      None =>
+        if candidate_descendant_has_request(child, request) {
+          return true
+        }
+    }
+  }
+  false
 }
 
 ///|
@@ -184,9 +198,20 @@ fn candidate_materializer_instance(
   @runtime.FunctionMaterializer(
     begin=fn() { candidate_materializer_instance(candidate, evidence) },
     materialize=fn(interp, request) raise {
-      let child_index = candidate_child_index_for_request(candidate, request)
-      let child = candidate.children[child_index]
-      candidate_make_callable(interp, child, evidence, request)
+      match candidate_child_index_for_request(candidate, request) {
+        Some(child_index) => {
+          let child = candidate.children[child_index]
+          candidate_make_callable(interp, child, evidence, request)
+        }
+        None =>
+          if candidate_descendant_has_request(candidate, request) {
+            @runtime.make_materialized_tree_function(request, None)
+          } else {
+            raise @errors.InternalError(
+              message="candidate materialization site is absent from verified plan",
+            )
+          }
+      }
     },
     hooks=Some(hooks),
   )
@@ -306,6 +331,60 @@ fn candidate_make_callable(
 }
 
 ///|
+fn candidate_requires_plain_tree_execution(
+  candidate : CandidateFunction,
+) -> Bool {
+  let current_requires_plain = match candidate.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        GeneratorDeclaration
+        | GeneratorExpression
+        | AsyncFunctionDeclaration
+        | AsyncFunctionExpression
+        | AsyncArrowFunction
+        | AsyncGeneratorDeclaration
+        | AsyncGeneratorExpression
+        | NamedFunctionExpression
+        | ObjectLiteralGeneratorMethodProperty
+        | ObjectLiteralAsyncMethodProperty
+        | ObjectLiteralAsyncGeneratorMethodProperty => true
+        _ => false
+      }
+    _ => false
+  }
+  if current_requires_plain {
+    return true
+  }
+  for child in candidate.children {
+    if candidate_requires_plain_tree_execution(child) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn run_candidate_plain_tree_program(
+  interp : @runtime.Interpreter,
+  stmts : Array[@ast.Stmt],
+  root : CandidateFunction,
+  evidence : Ref[CandidateRouteEvidence],
+) -> @runtime.Value raise Error {
+  let activation = candidate_route_prepare(
+    evidence,
+    root.source_identity,
+    root.selection,
+  )
+  candidate_route_start(activation, CandidateTreeWalkerExecutor)
+  let result = {
+    errdefer candidate_route_complete(activation, CandidateRouteAbrupt)
+    interp.run(stmts)
+  }
+  candidate_route_complete(activation, CandidateRouteNormal)
+  result
+}
+
+///|
 impl @runtime.ExecutorCode for CandidateBytecodeExecutorCode with fn start(
   self,
   interp,
@@ -393,10 +472,16 @@ fn run_candidate_program_with_recorder(
 ) -> @runtime.Value raise Error {
   let program = prepare_candidate_program(stmts)
   match program.root.selection {
-    UseTreeWalker(_) => {
-      let materializer = candidate_materializer_template(program.root, evidence)
-      interp.run_with_function_materializer(stmts, materializer)
-    }
+    UseTreeWalker(_) =>
+      if candidate_requires_plain_tree_execution(program.root) {
+        run_candidate_plain_tree_program(interp, stmts, program.root, evidence)
+      } else {
+        let materializer = candidate_materializer_template(
+          program.root,
+          evidence,
+        )
+        interp.run_with_function_materializer(stmts, materializer)
+      }
     UseBytecode(_) => {
       let bytecode = match program.root.bytecode {
         Some(bytecode) => bytecode

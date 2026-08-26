@@ -32,6 +32,14 @@ requires the tree walker, its nearest bytecode-candidate parent also selects
 the tree walker before activation, so a tree child never loses bindings held
 in bytecode-local slots.
 
+Function forms that the executor-neutral materialization contract cannot yet
+represent, including generator and async functions, use a stricter boundary.
+If any such form occurs in the prepared source unit, that evaluation runs on
+the plain tree walker without installing a candidate materializer. This keeps
+function kind, constructor identity, parameter initialization, and nested
+function creation under one established semantic owner. Fully supported
+source continues to use verified bytecode by default.
+
 Candidate mode does not change the public engine API, the default executor,
 or the set of JavaScript operations supported by the interpreter. It is an
 execution-routing boundary only; unsupported lowering or activation is

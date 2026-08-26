@@ -75,7 +75,7 @@ if [[ "$actual" != "ok" ]]; then
   exit 1
 fi
 
-actual="$(_build/native/debug/build/cmd/main/main.exe -e 'function* value() { return 42; } let iterator = value(); print(iterator.next().value, iterator.next().done);')"
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'function earlierFallback() { try { return 1; } catch (_) { return 0; } } function* value() { return 42; } let iterator = value(); print(iterator.next().value, iterator.next().done);')"
 if [[ "$actual" != "42 true" ]]; then
   printf 'expected bytecode-default CLI to preserve generator semantics, got:\n%s\n' "$actual" >&2
   exit 1
@@ -84,6 +84,12 @@ fi
 actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let iterator = (function* () { return 42; })(); print(iterator.next().value);')"
 if [[ "$actual" != "42" ]]; then
   printf 'expected bytecode-default CLI to preserve generator expression semantics, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let factorial = function self(value) { return value === 1 ? 1 : self(value - 1) * value; }; print(factorial(3));')"
+if [[ "$actual" != "6" ]]; then
+  printf 'expected bytecode-default CLI to preserve named function expression self-binding, got:\n%s\n' "$actual" >&2
   exit 1
 fi
 
