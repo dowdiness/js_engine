@@ -81,6 +81,11 @@ raises `SessionCreationError`. The current capability surfaces are:
 | `script_resources=true` | `script_resource_resolver` | `load(request)` |
 | `timers=true` | `timer_scheduler` | `setTimeout` and `clearTimeout` |
 
+Console output is delivered as rendered text with a distinct `Log`, `Debug`,
+`Info`, `Warn`, or `Error` kind. An Execution Session does not retain the
+low-level Engine compatibility output buffer: omitting the optional sink
+discards Console output.
+
 A Script Resource resolver receives a `ScriptResourceRequest` containing an
 opaque request and optional opaque referrer. Returning `Some(ScriptResource)`
 loads its source under its identity. Returning `None` produces a JavaScript

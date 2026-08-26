@@ -72,6 +72,7 @@ pub(all) struct ModuleLoader((String) -> Map[String, Value] raise Error)
 /// Stable category of Realm-independent console output.
 pub(all) enum ConsoleOutputKind {
   Log
+  Debug
   Info
   Warn
   Error
@@ -96,17 +97,16 @@ pub(all) struct HostEnv {
 }
 
 ///|
-/// Record console output in the compatibility buffer, then notify the Host
-/// destination. If the destination fails, the buffered output remains.
+/// Deliver console output to the configured Host destination. Interpreters
+/// without a destination retain the legacy compatibility buffer instead.
 pub fn HostEnv::emit_console_output(
   self : HostEnv,
   kind : ConsoleOutputKind,
   text : String,
 ) -> Unit raise Error {
-  self.output.push(text)
   match self.console_output_sink {
     Some(sink) => sink(kind, text)
-    None => ()
+    None => self.output.push(text)
   }
 }
 
@@ -164,7 +164,7 @@ fn make_console_logger(
 fn Interpreter::install_console_global(self : Interpreter) -> Unit {
   let host = self.host
   let log = make_console_logger(host, self.realm_state, "log", Log)
-  let debug = make_console_logger(host, self.realm_state, "debug", Log)
+  let debug = make_console_logger(host, self.realm_state, "debug", Debug)
   let info = make_console_logger(host, self.realm_state, "info", Info)
   let warn = make_console_logger(host, self.realm_state, "warn", Warn)
   let error = make_console_logger(host, self.realm_state, "error", Error)

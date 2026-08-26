@@ -669,6 +669,7 @@ pub fn CompiledScriptPreparation::with_early_error_settlement(strict~ : Bool, va
 
 pub(all) enum ConsoleOutputKind {
   Log
+  Debug
   Info
   Warn
   Error

@@ -165,10 +165,7 @@ pub struct SessionBindings {
 pub fn SessionBindings::SessionBindings(console_output_sink? : ((ConsoleOutput) -> Unit raise)?, script_resource_resolver? : ((ScriptResourceRequest) -> ScriptResource? raise)?, timer_scheduler? : ((TimerSchedule) -> Unit raise)?) -> Self
 
 pub struct Shell {
-  engine : Engine
-  load_source : (String, String?) -> LoadedScript raise
-  read_bytes : ((String, String?) -> Bytes raise)?
-  load_stack : Array[String]
+  // private fields
 }
 pub fn Shell::Shell(load_source~ : (String, String?) -> LoadedScript raise, read_bytes? : ((String, String?) -> Bytes raise)?, now_millis? : (() -> Double)?, annex_b? : Bool) -> Self
 pub fn Shell::drain_jobs(Self) -> Unit raise EngineError

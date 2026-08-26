@@ -163,6 +163,7 @@ test "Console logging methods preserve output kind and assert reports output" {
       console_output_sink=Some(output => {
         let kind = match output.kind() {
           @js_engine.ConsoleOutputKind::Log => "log"
+          @js_engine.ConsoleOutputKind::Debug => "debug"
           @js_engine.ConsoleOutputKind::Info => "info"
           @js_engine.ConsoleOutputKind::Warn => "warn"
           @js_engine.ConsoleOutputKind::Error => "error"
@@ -174,6 +175,7 @@ test "Console logging methods preserve output kind and assert reports output" {
   session.evaluate(
     (
       #|console.log("log");
+      #|console.debug("debug");
       #|console.info("info");
       #|console.warn("warn");
       #|console.error("error");
@@ -182,7 +184,7 @@ test "Console logging methods preserve output kind and assert reports output" {
     ),
   )
   json_inspect(observed, content=[
-    "log:log", "info:info", "warn:warn", "error:error", "error:Assertion failed: detail",
+    "log:log", "debug:debug", "info:info", "warn:warn", "error:error", "error:Assertion failed: detail",
   ])
 }
 

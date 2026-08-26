@@ -606,12 +606,12 @@ pub fn HostEnvironment::create_session(
     raise MissingBindingForCapability("Timers")
   }
   let host_binding = SessionHostBinding(bindings)
-  let console_output_sink = match bindings.console_output_sink {
-    Some(_) =>
-      Some(fn(kind, text) raise {
-        host_binding.emit_console_output(ConsoleOutput(kind~, text~))
-      })
-    None => None
+  let console_output_sink = if self.console {
+    Some(fn(kind, text) raise {
+      host_binding.emit_console_output(ConsoleOutput(kind~, text~))
+    })
+  } else {
+    None
   }
   let engine = Engine::for_host_environment(
     self.annex_b,

@@ -277,14 +277,91 @@ pub fn LoadedScript::LoadedScript(
 }
 
 ///|
+fn Engine::install_shell_global(
+  self : Engine,
+  name : String,
+  value : @runtime.Value,
+) -> Unit {
+  self.interp.global.def_builtin(name, value)
+  self.install_host_global(name, value)
+}
+
+///|
+fn Engine::make_shell_reader(
+  self : Engine,
+  load_source : (String, String?) -> LoadedScript raise,
+  read_bytes : ((String, String?) -> Bytes raise)?,
+  current_referrer : () -> String?,
+) -> @runtime.Value {
+  @runtime.make_native_func(
+    name="read",
+    length=1,
+    realm_state=Some(self.interp.realm_state),
+    fn(args) raise {
+      guard args.length() > 0 else {
+        raise @errors.TypeError(message="read() requires a file name")
+      }
+      let request = self.interp.to_js_string(args[0])
+      let binary = args.length() > 1 &&
+        self.interp.to_js_string(args[1]) == "binary"
+      if binary {
+        let reader = match read_bytes {
+          Some(reader) => reader
+          None =>
+            raise @errors.InternalError(
+              message="binary file reads are not available in this host",
+            )
+        }
+        let bytes = reader(request, current_referrer()) catch {
+          err =>
+            raise @errors.InternalError(
+              message="cannot read '\{request}': \{err}",
+            )
+        }
+        let prototype = self.interp.global.get("[[ArrayBufferPrototype]]")
+        let buffer = @stdlib.make_arraybuffer_object(
+          self.interp.realm_state,
+          bytes.length(),
+          prototype,
+        )
+        let buffer_id = match @stdlib.get_buffer_id(buffer) {
+          Some(buffer_id) => buffer_id
+          None =>
+            raise @errors.InternalError(
+              message="failed to allocate ArrayBuffer",
+            )
+        }
+        let destination = match
+          @stdlib.get_arraybuffer_bytes(self.interp.realm_state, buffer_id) {
+          Some(destination) => destination
+          None =>
+            raise @errors.InternalError(message="failed to access ArrayBuffer")
+        }
+        for i in 0..<bytes.length() {
+          destination[i] = bytes[i].to_int()
+        }
+        return buffer
+      }
+      let loaded = load_source(request, current_referrer()) catch {
+        err =>
+          raise @errors.InternalError(
+            message="cannot read '\{request}': \{err}",
+          )
+      }
+      @runtime.String_(loaded.source)
+    },
+  )
+}
+
+///|
 /// A persistent JavaScript shell realm. The host owns filesystem policy and
 /// supplies script loading as a capability; the shell owns evaluation order,
 /// the load stack, and JavaScript-visible host functions.
 pub struct Shell {
-  engine : Engine
-  load_source : (String, String?) -> LoadedScript raise
-  read_bytes : ((String, String?) -> Bytes raise)?
-  load_stack : Array[String]
+  priv engine : Engine
+  priv load_source : (String, String?) -> LoadedScript raise
+  priv read_bytes : ((String, String?) -> Bytes raise)?
+  priv load_stack : Array[String]
 }
 
 ///|
@@ -313,72 +390,14 @@ pub fn Shell::Shell(
       @runtime.Undefined
     },
   )
-  shell.engine.interp.global.def_builtin("load", load)
-  let read = @runtime.make_native_func(
-    name="read",
-    length=1,
-    realm_state=Some(shell.engine.interp.realm_state),
-    fn(args) raise {
-      guard args.length() > 0 else {
-        raise @errors.TypeError(message="read() requires a file name")
-      }
-      let request = shell.engine.interp.to_js_string(args[0])
-      let binary = args.length() > 1 &&
-        shell.engine.interp.to_js_string(args[1]) == "binary"
-      if binary {
-        let reader = match shell.read_bytes {
-          Some(reader) => reader
-          None =>
-            raise @errors.InternalError(
-              message="binary file reads are not available in this host",
-            )
-        }
-        let bytes = reader(request, shell.load_referrer()) catch {
-          err =>
-            raise @errors.InternalError(
-              message="cannot read '\{request}': \{err}",
-            )
-        }
-        let prototype = shell.engine.interp.global.get(
-          "[[ArrayBufferPrototype]]",
-        )
-        let buffer = @stdlib.make_arraybuffer_object(
-          shell.engine.interp.realm_state,
-          bytes.length(),
-          prototype,
-        )
-        let buffer_id = match @stdlib.get_buffer_id(buffer) {
-          Some(buffer_id) => buffer_id
-          None =>
-            raise @errors.InternalError(
-              message="failed to allocate ArrayBuffer",
-            )
-        }
-        let destination = match
-          @stdlib.get_arraybuffer_bytes(
-            shell.engine.interp.realm_state,
-            buffer_id,
-          ) {
-          Some(destination) => destination
-          None =>
-            raise @errors.InternalError(message="failed to access ArrayBuffer")
-        }
-        for i = 0; i < bytes.length(); i = i + 1 {
-          destination[i] = bytes[i].to_int()
-        }
-        return buffer
-      }
-      let loaded = (shell.load_source)(request, shell.load_referrer()) catch {
-        err =>
-          raise @errors.InternalError(
-            message="cannot read '\{request}': \{err}",
-          )
-      }
-      @runtime.String_(loaded.source)
-    },
+  shell.engine.install_shell_global("load", load)
+  let read = shell.engine.make_shell_reader(
+    shell.load_source,
+    shell.read_bytes,
+    () => shell.load_referrer(),
   )
-  shell.engine.interp.global.def_builtin("read", read)
-  shell.engine.interp.global.def_builtin("readFile", read)
+  shell.engine.install_shell_global("read", read)
+  shell.engine.install_shell_global("readFile", read)
   let run_string = @runtime.make_native_func(
     name="runString",
     length=1,
@@ -391,6 +410,18 @@ pub fn Shell::Shell(
       }
       let child = Engine(annex_b~)
       let child_load_stack : Array[String] = []
+      let child_referrer = () => {
+        if child_load_stack.length() == 0 {
+          shell.load_referrer()
+        } else {
+          Some(child_load_stack[child_load_stack.length() - 1])
+        }
+      }
+      let child_read = child.make_shell_reader(
+        shell.load_source,
+        shell.read_bytes,
+        child_referrer,
+      )
       let load_string = @runtime.make_native_func(
         name="loadString",
         length=1,
@@ -413,11 +444,7 @@ pub fn Shell::Shell(
             raise @errors.TypeError(message="load() requires a script name")
           }
           let request = child.interp.to_js_string(load_args[0])
-          let referrer = if child_load_stack.length() == 0 {
-            shell.load_referrer()
-          } else {
-            Some(child_load_stack[child_load_stack.length() - 1])
-          }
+          let referrer = child_referrer()
           let loaded = (shell.load_source)(request, referrer) catch {
             err =>
               raise @errors.InternalError(
@@ -437,57 +464,15 @@ pub fn Shell::Shell(
           }
         },
       )
-      child.interp.global.def_builtin("loadString", load_string)
-      child.interp.global.def_builtin("load", child_load)
-      child.interp.global.def_builtin("read", read)
-      child.interp.global.def_builtin("readFile", read)
-      ignore(
-        child.interp.set_property(
-          child.interp.global_this,
-          "load",
-          child_load,
-          @token.Loc::default(),
-        ),
-      )
-      ignore(
-        child.interp.set_property(
-          child.interp.global_this,
-          "loadString",
-          load_string,
-          @token.Loc::default(),
-        ),
-      )
-      ignore(
-        child.interp.set_property(
-          child.interp.global_this,
-          "read",
-          read,
-          @token.Loc::default(),
-        ),
-      )
-      ignore(
-        child.interp.set_property(
-          child.interp.global_this,
-          "readFile",
-          read,
-          @token.Loc::default(),
-        ),
-      )
+      child.install_shell_global("loadString", load_string)
+      child.install_shell_global("load", child_load)
+      child.install_shell_global("read", child_read)
+      child.install_shell_global("readFile", child_read)
       child.eval_shell_loaded(source)
       child.interp.global_this
     },
   )
-  shell.engine.interp.global.def_builtin("runString", run_string)
-  ignore(
-    shell.engine.interp.set_property(
-      shell.engine.interp.global_this,
-      "runString",
-      run_string,
-      @token.Loc::default(),
-    ),
-  ) catch {
-    _ => ()
-  }
+  shell.engine.install_shell_global("runString", run_string)
   match now_millis {
     Some(clock) => {
       let now = @runtime.make_native_func(
@@ -518,7 +503,7 @@ pub fn Shell::Shell(
           ("measure", measure),
         ]),
       )
-      shell.engine.interp.global.def_builtin("performance", performance)
+      shell.engine.install_shell_global("performance", performance)
     }
     None => ()
   }
