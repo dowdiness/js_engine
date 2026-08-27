@@ -57,6 +57,26 @@ fn environment_requires_managed_binding(
 }
 
 ///|
+fn binding_assignment_requires_managed_resolution(
+  env : Environment,
+  name : String,
+) -> Bool {
+  match env.with_object {
+    Some(_) => true
+    None =>
+      match env.bindings.get(name) {
+        Some(_) => false
+        None =>
+          match env.parent {
+            Some(parent) =>
+              binding_assignment_requires_managed_resolution(parent, name)
+            None => true
+          }
+      }
+  }
+}
+
+///|
 fn executor_binding_global_value(
   interp : Interpreter,
   name : String,
@@ -65,9 +85,9 @@ fn executor_binding_global_value(
     Object(data) =>
       match data.bag.properties.get(name) {
         Some(value) => value
-        None => raise @errors.ReferenceError(message="{name} is not defined")
+        None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
-    _ => raise @errors.ReferenceError(message="{name} is not defined")
+    _ => raise @errors.ReferenceError(message="\{name} is not defined")
   }
 }
 
@@ -79,7 +99,7 @@ fn executor_binding_unresolved(
   match request.operation {
     ExecutorBindingLoad => executor_binding_global_value(interp, request.name)
     ExecutorBindingAssignmentLoad | ExecutorBindingDirectEvalCallee =>
-      raise @errors.ReferenceError(message="{request.name} is not defined")
+      raise @errors.ReferenceError(message="\{request.name} is not defined")
     ExecutorBindingTypeof =>
       match interp.global_this {
         Object(data) =>
@@ -93,13 +113,13 @@ fn executor_binding_unresolved(
       if interp.is_immutable_global(request.name) {
         if request.ctx.strict {
           raise @errors.TypeError(
-            message="Cannot assign to read only property '{request.name}' of object '[object global]'",
+            message="Cannot assign to read only property '\{request.name}' of object '[object global]'",
           )
         }
         return value
       }
       if request.ctx.strict {
-        raise @errors.ReferenceError(message="{request.name} is not defined")
+        raise @errors.ReferenceError(message="\{request.name} is not defined")
       }
       interp.global.def(request.name, value, VarBinding)
       interp.mirror_to_global(request.name, value, configurable=true)
@@ -148,12 +168,17 @@ fn begin_executor_binding_operation(
       )
     _ => ()
   }
-  if !environment_requires_managed_binding(request.env, request.name) {
+  let requires_managed_resolution = match request.operation {
+    ExecutorBindingAssignmentLoad | ExecutorBindingStore(_) =>
+      binding_assignment_requires_managed_resolution(request.env, request.name)
+    _ => environment_requires_managed_binding(request.env, request.name)
+  }
+  if !requires_managed_resolution {
     match request.operation {
       ExecutorBindingStore(value) if interp.is_immutable_global(request.name) => {
         if request.ctx.strict {
           raise @errors.TypeError(
-            message="Cannot assign to read only property '{request.name}' of object '[object global]'",
+            message="Cannot assign to read only property '\{request.name}' of object '[object global]'",
           )
         }
         return ExecutorBindingCompleted(value)
@@ -270,6 +295,7 @@ pub fn begin_executor_binding_direct_eval(
 ///|
 priv enum ExecutorBindingPhase {
   ExecutorBindingNeedEnvironment(Environment)
+  ExecutorBindingAwaitGlobalHas(Value, ExecutorDeleteHasPropertyOperation)
   ExecutorBindingAwaitHas(
     Environment,
     Value,
@@ -315,11 +341,57 @@ fn ExecutorBindingFrame::parent_or_unresolved(
       self.phase = ExecutorBindingNeedEnvironment(parent)
       ExecutorActivationContinue
     }
-    None => {
-      let value = executor_binding_unresolved(interp, self.request)
-      self.phase = ExecutorBindingComplete(value)
-      ExecutorActivationNormal(value)
+    None =>
+      match self.request.operation {
+        ExecutorBindingAssignmentLoad | ExecutorBindingStore(_) =>
+          self.begin_global_has(interp)
+        _ => {
+          let value = executor_binding_unresolved(interp, self.request)
+          self.phase = ExecutorBindingComplete(value)
+          ExecutorActivationNormal(value)
+        }
+      }
+  }
+}
+
+///|
+fn ExecutorBindingFrame::begin_global_has(
+  self : ExecutorBindingFrame,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  let obj = interp.global_this
+  let operation = ExecutorDeleteHasPropertyOperation(
+    target=obj,
+    key=String_(self.request.name),
+    loc=self.request.loc,
+  )
+  match operation.step(interp) {
+    ExecutorActivationNormal(Bool(has_property)) =>
+      self.after_global_has(obj, has_property, interp)
+    ExecutorActivationNormal(_) =>
+      raise @errors.InternalError(
+        message="global binding HasProperty returned a non-boolean",
+      )
+    step => {
+      self.phase = ExecutorBindingAwaitGlobalHas(obj, operation)
+      step
     }
+  }
+}
+
+///|
+fn ExecutorBindingFrame::after_global_has(
+  self : ExecutorBindingFrame,
+  obj : Value,
+  has_property : Bool,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  if has_property {
+    self.finish_with_object(obj)
+  } else {
+    let value = executor_binding_unresolved(interp, self.request)
+    self.phase = ExecutorBindingComplete(value)
+    ExecutorActivationNormal(value)
   }
 }
 
@@ -440,7 +512,7 @@ fn ExecutorBindingFrame::after_recheck(
       ExecutorBindingStore(value) => {
         if self.request.ctx.strict {
           raise @errors.ReferenceError(
-            message="{self.request.name} is not defined",
+            message="\{self.request.name} is not defined",
           )
         }
         self.phase = ExecutorBindingAwaitSet
@@ -455,7 +527,7 @@ fn ExecutorBindingFrame::after_recheck(
       ExecutorBindingTypeof => {
         if self.request.ctx.strict {
           raise @errors.ReferenceError(
-            message="{self.request.name} is not defined",
+            message="\{self.request.name} is not defined",
           )
         }
         let result = String_("undefined")
@@ -465,7 +537,7 @@ fn ExecutorBindingFrame::after_recheck(
       _ => {
         if self.request.ctx.strict {
           raise @errors.ReferenceError(
-            message="{self.request.name} is not defined",
+            message="\{self.request.name} is not defined",
           )
         }
         self.phase = ExecutorBindingComplete(Undefined)
@@ -522,6 +594,19 @@ fn ExecutorBindingFrame::step_environment(
 impl ExecutorActivationFrame for ExecutorBindingFrame with fn step(self, interp) {
   match self.phase {
     ExecutorBindingNeedEnvironment(env) => self.step_environment(env, interp)
+    ExecutorBindingAwaitGlobalHas(obj, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          self.after_global_has(obj, has_property, interp)
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="global binding HasProperty returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingAwaitGlobalHas(obj, operation)
+          step
+        }
+      }
     ExecutorBindingAwaitHas(env, obj, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
@@ -600,6 +685,10 @@ impl ExecutorActivationFrame for ExecutorBindingFrame with fn deliver_activation
       )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
+        ExecutorBindingAwaitGlobalHas(_, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
         ExecutorBindingAwaitHas(_, _, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),

@@ -1839,14 +1839,140 @@ test "bytecode identifier compound assignment captures outer bindings" {
 }
 
 ///|
-test "bytecode identifier compound assignment uses assignment reference reads" {
+test "bytecode identifier compound assignment resolves global object bindings" {
   let src =
     #|globalThis.x = 1;
     #|x += 2;
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode identifier logical assignment resolves global object bindings" {
+  let src =
+    #|globalThis.a = 0;
+    #|globalThis.b = 1;
+    #|globalThis.c = null;
+    #|a ||= 2;
+    #|b &&= 3;
+    #|c ??= 4;
+    #|a + "," + b + "," + c;
+  inspect(bytecode_compare(src), content="value:2,3,4")
+}
+
+///|
+test "bytecode assignment retains an unresolvable reference across its rhs" {
+  let src =
+    #|"use strict";
+    #|delete globalThis.x;
+    #|x = (globalThis.x = 1, 2);
   inspect(
     bytecode_compare(src),
     content="throw:ReferenceError: x is not defined",
   )
+}
+
+///|
+test "bytecode assignment rechecks a global object binding before put" {
+  let src =
+    #|"use strict";
+    #|var checks = 0;
+    #|var proto = new Proxy({ x: 1 }, {
+    #|  has: function(target, key) {
+    #|    if (key === "x") {
+    #|      checks++;
+    #|      print("has", checks);
+    #|      return checks === 1;
+    #|    }
+    #|    return key in target;
+    #|  }
+    #|});
+    #|Object.setPrototypeOf(globalThis, proto);
+    #|x = 2;
+  inspect(
+    bytecode_compare_with_output(src),
+    content="throw:ReferenceError: x is not defined; output:has 1|has 2",
+  )
+}
+
+///|
+test "bytecode compound assignment retains its selected object reference" {
+  let src =
+    #|var events = [];
+    #|var target = { x: 1 };
+    #|var proto = new Proxy(target, {
+    #|  has: function(object, key) { if (key === "x") events.push("h"); return Reflect.has(object, key); },
+    #|  get: function(object, key, receiver) { if (key === "x") events.push("g"); return Reflect.get(object, key, receiver); },
+    #|  set: function(object, key, value, receiver) { if (key === "x") events.push("s"); return Reflect.set(object, key, value, receiver); }
+    #|});
+    #|Object.setPrototypeOf(globalThis, proto);
+    #|x += (delete target.x, 2);
+    #|events.join("") + ":" + String(globalThis.x) + ":" + String(target.x);
+  inspect(bytecode_outcome(src), content="value:hhghs:3:undefined")
+}
+
+///|
+test "bytecode logical assignment retains its selected object reference" {
+  let src =
+    #|var events = [];
+    #|var target = { x: 0 };
+    #|var proto = new Proxy(target, {
+    #|  has: function(object, key) { if (key === "x") events.push("h"); return Reflect.has(object, key); },
+    #|  get: function(object, key, receiver) { if (key === "x") events.push("g"); return Reflect.get(object, key, receiver); },
+    #|  set: function(object, key, value, receiver) { if (key === "x") events.push("s"); return Reflect.set(object, key, value, receiver); }
+    #|});
+    #|Object.setPrototypeOf(globalThis, proto);
+    #|x ||= (delete target.x, 2);
+    #|events.join("") + ":" + String(globalThis.x) + ":" + String(target.x);
+  inspect(bytecode_outcome(src), content="value:hhghs:2:undefined")
+}
+
+///|
+test "bytecode identifier update uses global object accessors" {
+  let src =
+    #|var log = "";
+    #|Object.defineProperty(globalThis, "x", {
+    #|  get: function() { log += "g"; return 1; },
+    #|  set: function(value) { log += "s" + value; },
+    #|  configurable: true
+    #|});
+    #|x++;
+    #|log;
+  inspect(bytecode_compare(src), content="value:gs2")
+}
+
+///|
+test "bytecode identifier update resolves inherited global object bindings" {
+  let src =
+    #|var proto = { x: 1 };
+    #|Object.setPrototypeOf(globalThis, proto);
+    #|x++;
+    #|x + "," + globalThis.x + "," + proto.x;
+  inspect(bytecode_compare(src), content="value:2,2,1")
+}
+
+///|
+test "bytecode identifier update rechecks a global object binding before get" {
+  let src =
+    #|var log = "";
+    #|var checks = 0;
+    #|var proto = new Proxy({ x: 1 }, {
+    #|  has: function(target, key) {
+    #|    if (key === "x") {
+    #|      checks++;
+    #|      log += "h";
+    #|      return checks === 1;
+    #|    }
+    #|    return key in target;
+    #|  },
+    #|  get: function(target, key) {
+    #|    if (key === "x") { log += "g"; }
+    #|    return target[key];
+    #|  }
+    #|});
+    #|Object.setPrototypeOf(globalThis, proto);
+    #|x++;
+    #|log + ":" + globalThis.x;
+  inspect(bytecode_compare(src), content="value:hhh:NaN")
 }
 
 ///|
@@ -3703,6 +3829,18 @@ test "bytecode direct eval inherits caller strictness" {
     #|}
     #|f();
   inspect(bytecode_compare(src), content="value:undefined")
+}
+
+///|
+test "bytecode strict direct eval keeps global var declarations isolated" {
+  let src =
+    #|"use strict";
+    #|eval("var strict_eval_global = 7;");
+    #|strict_eval_global = 9;
+  inspect(
+    bytecode_compare(src),
+    content="throw:ReferenceError: strict_eval_global is not defined",
+  )
 }
 
 ///|

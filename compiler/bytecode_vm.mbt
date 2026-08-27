@@ -10,6 +10,7 @@ priv struct BytecodeForInState {
 ///|
 priv enum BytecodeActivationResultDestination {
   PushValue
+  PushBindingReference
   PushReceiverAndValue(Value)
   NoStackChange
   AppendArraySpread
@@ -23,6 +24,7 @@ priv struct BytecodeFrame {
   candidate_child_materializer : CandidateChildMaterializer?
   preparation : BytecodePreparation
   stack : Array[Value]
+  binding_references : Array[@runtime.ResolvedBindingReference]
   arg_lists : Array[Array[Value]]
   for_in_iters : Array[BytecodeForInState]
   locals : Array[Value]
@@ -76,6 +78,7 @@ fn BytecodeFrame::BytecodeFrame(
     candidate_child_materializer: None,
     preparation: verified_func_def.preparation,
     stack: [],
+    binding_references: [],
     arg_lists: [],
     for_in_iters: [],
     locals,
@@ -122,6 +125,7 @@ fn BytecodeFrame::candidate(
     candidate_child_materializer: Some(execution.child_materializer),
     preparation: func_def.preparation,
     stack: [],
+    binding_references: [],
     arg_lists: [],
     for_in_iters: [],
     locals,
@@ -267,13 +271,21 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
   }
   self.pending_activation_result = None
   match completion {
-    @runtime.ExecutorActivationCompletionReference(_) =>
-      raise @errors.InternalError(
-        message="bytecode frame received an unexpected binding reference completion",
-      )
+    @runtime.ExecutorActivationCompletionReference(reference) =>
+      match destination {
+        PushBindingReference => self.binding_references.push(reference)
+        _ =>
+          raise @errors.InternalError(
+            message="bytecode frame received an unexpected binding reference completion",
+          )
+      }
     @runtime.ExecutorActivationCompletionNormal(value) =>
       match destination {
         PushValue => self.stack.push(value)
+        PushBindingReference =>
+          raise @errors.InternalError(
+            message="bytecode binding reference resolution returned a value",
+          )
         PushReceiverAndValue(receiver) => {
           self.stack.push(receiver)
           self.stack.push(value)
@@ -665,6 +677,7 @@ fn run_bytecode_function(
         message="executor activation coordinator returned a pending binding resolution",
       )
     @runtime.ExecutorActivationBindingReference(_)
+    | @runtime.ExecutorActivationBindingReferenceAccess(_)
     | @runtime.ExecutorActivationBindingUpdate(_)
     | @runtime.ExecutorActivationReference(_) =>
       raise @errors.InternalError(
@@ -738,23 +751,6 @@ fn BytecodeFrame::step_bytecode(
             )
           }
         }
-      LoadAssignmentName(name) =>
-        match
-          @runtime.begin_executor_binding_assignment_load(
-            interp,
-            ctx,
-            env,
-            name,
-            @token.Loc::default(),
-          ) {
-          @runtime.ExecutorBindingCompleted(value) => stack.push(value)
-          @runtime.ExecutorBindingSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_binding_request(request),
-            )
-          }
-        }
       StoreName(name) => {
         let value = frame.pop()
         match
@@ -774,6 +770,47 @@ fn BytecodeFrame::step_bytecode(
             )
           }
         }
+      }
+      ResolveNameReference(name) => {
+        frame.pending_activation_result = Some(PushBindingReference)
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_binding_reference_resolution(
+            ctx,
+            env,
+            name,
+            @token.Loc::default(),
+          ),
+        )
+      }
+      GetNameReference => {
+        let reference = frame.binding_references
+          .last()
+          .unwrap_or_else(() => {
+            fail("bytecode binding reference stack underflow")
+          })
+        frame.pending_activation_result = Some(PushValue)
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_binding_reference_get(reference),
+        )
+      }
+      StoreNameReference => {
+        let value = frame.pop()
+        let reference = frame.binding_references
+          .pop()
+          .unwrap_or_else(() => {
+            fail("bytecode binding reference stack underflow")
+          })
+        frame.pending_activation_result = Some(PushValue)
+        return BytecodeFrameSuspended(
+          @runtime.executor_activation_binding_reference_put(reference, value),
+        )
+      }
+      DropNameReference => {
+        let _ = frame.binding_references
+          .pop()
+          .unwrap_or_else(() => {
+            fail("bytecode binding reference stack underflow")
+          })
       }
       LoadLocal(slot) => stack.push(locals[slot])
       StoreLocal(slot) => {

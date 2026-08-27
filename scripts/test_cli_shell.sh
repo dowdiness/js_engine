@@ -111,6 +111,24 @@ if [[ "$actual" != "42" ]]; then
   exit 1
 fi
 
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'this.bridge = null; class Runner { run() { bridge = 42; return bridge; } } print(new Runner().run(), globalThis.bridge);')"
+if [[ "$actual" != "42 42" ]]; then
+  printf 'expected strict class code to assign an existing global object binding, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'this.bridge = 1; class Runner { deleteDuringRhs() { try { bridge = (delete globalThis.bridge, 42); } catch (error) { print(error.name, typeof globalThis.bridge); } } createDuringRhs() { delete globalThis.bridge; try { bridge = (globalThis.bridge = 1, 42); } catch (error) { print(error.name, globalThis.bridge); } } } let runner = new Runner(); runner.deleteDuringRhs(); runner.createDuringRhs();')"
+if [[ "$actual" != $'ReferenceError undefined\nReferenceError 1' ]]; then
+  printf 'expected global binding resolution to remain fixed across RHS evaluation, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'this.bridge = null; class Runner { async run() { const promise = new Promise(resolve => { bridge = resolve; }); bridge(42); return promise; } } new Runner().run().then(value => print(value));')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected an async class method to retain an existing global object binding, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
 actual="$(_build/native/debug/build/cmd/main/main.exe -e 'async function value() { return 42; } value().then(result => print(result));')"
 if [[ "$actual" != "42" ]]; then
   printf 'expected bytecode-default CLI to preserve async function semantics, got:\n%s\n' "$actual" >&2

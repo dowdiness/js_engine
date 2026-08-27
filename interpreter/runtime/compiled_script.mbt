@@ -79,7 +79,15 @@ pub fn Interpreter::assign_compiled_name(
   }
   env.assign_with_strict(name, value, ctx.strict) catch {
     @errors.ReferenceError(_) =>
-      if !ctx.strict {
+      if self.has_property_key(self.global_this, String_(name)) {
+        let _ = self.set_property(
+          self.global_this,
+          name,
+          value,
+          @token.Loc::default(),
+          strict=ctx.strict,
+        )
+      } else if !ctx.strict {
         self.global.def(name, value, VarBinding)
         self.mirror_to_global(name, value, configurable=true)
       } else {

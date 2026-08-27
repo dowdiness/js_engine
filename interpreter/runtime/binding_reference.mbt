@@ -46,7 +46,156 @@ priv enum ExecutorBindingReferenceStart {
 #warnings("-unused_constructor")
 priv enum ExecutorBindingReferenceGetStart {
   ExecutorBindingReferenceGetCompleted(Value)
-  ExecutorBindingReferenceGetSuspended(ExecutorActivationStep)
+  ExecutorBindingReferenceGetSuspended(ExecutorBindingReferenceGetOperation)
+}
+
+///|
+priv enum ExecutorBindingReferenceGetPhase {
+  ExecutorBindingReferenceGetNeedHas(Value)
+  ExecutorBindingReferenceGetAwaitHas(Value, ExecutorDeleteHasPropertyOperation)
+  ExecutorBindingReferenceGetNeedGet(Value)
+  ExecutorBindingReferenceGetAwaitGet
+  ExecutorBindingReferenceGetComplete(Value)
+  ExecutorBindingReferenceGetDone
+}
+
+///|
+priv struct ExecutorBindingReferenceGetOperation {
+  reference : ResolvedBindingReference
+  mut phase : ExecutorBindingReferenceGetPhase
+}
+
+///|
+fn ExecutorBindingReferenceGetOperation::ExecutorBindingReferenceGetOperation(
+  reference : ResolvedBindingReference,
+  obj : Value,
+  recheck : Bool,
+) -> ExecutorBindingReferenceGetOperation {
+  {
+    reference,
+    phase: if recheck {
+      ExecutorBindingReferenceGetNeedHas(obj)
+    } else {
+      ExecutorBindingReferenceGetNeedGet(obj)
+    },
+  }
+}
+
+///|
+fn ExecutorBindingReferenceGetOperation::after_has(
+  self : ExecutorBindingReferenceGetOperation,
+  obj : Value,
+  has_property : Bool,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  if !has_property {
+    if self.reference.strict {
+      raise @errors.ReferenceError(
+        message="\{self.reference.name} is not defined",
+      )
+    }
+    self.phase = ExecutorBindingReferenceGetComplete(Undefined)
+    return ExecutorActivationNormal(Undefined)
+  }
+  self.phase = ExecutorBindingReferenceGetNeedGet(obj)
+  self.step(interp)
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingReferenceGetOperation with fn step(
+  self,
+  interp,
+) {
+  match self.phase {
+    ExecutorBindingReferenceGetNeedHas(obj) => {
+      let operation = ExecutorDeleteHasPropertyOperation(
+        target=obj,
+        key=String_(self.reference.name),
+        loc=self.reference.loc,
+      )
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          self.after_has(obj, has_property, interp)
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="binding reference GetValue HasProperty returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingReferenceGetAwaitHas(obj, operation)
+          step
+        }
+      }
+    }
+    ExecutorBindingReferenceGetAwaitHas(obj, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          self.after_has(obj, has_property, interp)
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="binding reference GetValue HasProperty returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingReferenceGetAwaitHas(obj, operation)
+          step
+        }
+      }
+    ExecutorBindingReferenceGetNeedGet(obj) => {
+      self.phase = ExecutorBindingReferenceGetAwaitGet
+      executor_activation_managed_property_get(
+        obj,
+        self.reference.name,
+        self.reference.loc,
+      )
+    }
+    ExecutorBindingReferenceGetAwaitGet =>
+      raise @errors.InternalError(
+        message="binding reference GetValue stepped while awaiting Get",
+      )
+    ExecutorBindingReferenceGetComplete(value) => {
+      self.phase = ExecutorBindingReferenceGetDone
+      ExecutorActivationNormal(value)
+    }
+    ExecutorBindingReferenceGetDone =>
+      raise @errors.InternalError(
+        message="binding reference GetValue stepped after completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingReferenceGetOperation with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match completion {
+    ExecutorActivationCompletionAbrupt(error) => raise error
+    ExecutorActivationCompletionReference(_) =>
+      raise @errors.InternalError(
+        message="binding reference GetValue received a nested reference",
+      )
+    ExecutorActivationCompletionNormal(value) =>
+      match self.phase {
+        ExecutorBindingReferenceGetAwaitHas(_, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
+        ExecutorBindingReferenceGetAwaitGet =>
+          self.phase = ExecutorBindingReferenceGetComplete(value)
+        ExecutorBindingReferenceGetNeedHas(_)
+        | ExecutorBindingReferenceGetNeedGet(_)
+        | ExecutorBindingReferenceGetComplete(_)
+        | ExecutorBindingReferenceGetDone =>
+          raise @errors.InternalError(
+            message="binding reference GetValue received an unexpected child completion",
+          )
+      }
+  }
+}
+
+///|
+extend ExecutorBindingReferenceGetOperation with ExecutorActivationFrame::{
+  step,
+  deliver_activation_completion,
 }
 
 ///|
@@ -59,7 +208,7 @@ priv enum ExecutorBindingReferencePutStart {
 ///|
 priv enum ExecutorBindingReferencePutPhase {
   ExecutorBindingReferencePutNeedHas(Value)
-  ExecutorBindingReferencePutAwaitHas(ExecutorDeleteHasPropertyOperation)
+  ExecutorBindingReferencePutAwaitHas(Value, ExecutorDeleteHasPropertyOperation)
   ExecutorBindingReferencePutAwaitSet
   ExecutorBindingReferencePutComplete
   ExecutorBindingReferencePutDone
@@ -88,7 +237,9 @@ fn ExecutorBindingReferencePutOperation::after_has(
   has_property : Bool,
 ) -> ExecutorActivationStep raise Error {
   if !has_property && self.reference.strict {
-    raise @errors.ReferenceError(message="{self.reference.name} is not defined")
+    raise @errors.ReferenceError(
+      message="\{self.reference.name} is not defined",
+    )
   }
   self.phase = ExecutorBindingReferencePutAwaitSet
   executor_activation_managed_property_set(
@@ -120,28 +271,21 @@ impl ExecutorActivationFrame for ExecutorBindingReferencePutOperation with fn st
             message="binding reference PutValue HasProperty returned a non-boolean",
           )
         step => {
-          self.phase = ExecutorBindingReferencePutAwaitHas(operation)
+          self.phase = ExecutorBindingReferencePutAwaitHas(obj, operation)
           step
         }
       }
     }
-    ExecutorBindingReferencePutAwaitHas(operation) =>
+    ExecutorBindingReferencePutAwaitHas(obj, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
-          match self.reference.kind {
-            ResolvedBindingWithObject(obj, _) =>
-              self.after_has(obj, has_property)
-            _ =>
-              raise @errors.InternalError(
-                message="binding reference PutValue lost its with-object base",
-              )
-          }
+          self.after_has(obj, has_property)
         ExecutorActivationNormal(_) =>
           raise @errors.InternalError(
             message="binding reference PutValue HasProperty returned a non-boolean",
           )
         step => {
-          self.phase = ExecutorBindingReferencePutAwaitHas(operation)
+          self.phase = ExecutorBindingReferencePutAwaitHas(obj, operation)
           step
         }
       }
@@ -173,7 +317,7 @@ impl ExecutorActivationFrame for ExecutorBindingReferencePutOperation with fn de
       )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
-        ExecutorBindingReferencePutAwaitHas(operation) =>
+        ExecutorBindingReferencePutAwaitHas(_, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
@@ -193,6 +337,184 @@ impl ExecutorActivationFrame for ExecutorBindingReferencePutOperation with fn de
 extend ExecutorBindingReferencePutOperation with ExecutorActivationFrame::{
   step,
   deliver_activation_completion,
+}
+
+///|
+priv enum ExecutorBindingReferenceAccessKind {
+  ExecutorBindingReferenceAccessGet
+  ExecutorBindingReferenceAccessPut(Value)
+}
+
+///|
+pub struct ExecutorBindingReferenceAccessRequest {
+  priv reference : ResolvedBindingReference
+  priv kind : ExecutorBindingReferenceAccessKind
+}
+
+///|
+priv enum ExecutorBindingReferenceAccessPhase {
+  ExecutorBindingReferenceAccessNeedOperation
+  ExecutorBindingReferenceAccessAwaitGet(ExecutorBindingReferenceGetOperation)
+  ExecutorBindingReferenceAccessAwaitPut(ExecutorBindingReferencePutOperation)
+  ExecutorBindingReferenceAccessComplete(Value)
+  ExecutorBindingReferenceAccessDone
+}
+
+///|
+priv struct ExecutorBindingReferenceAccessFrame {
+  request : ExecutorBindingReferenceAccessRequest
+  mut phase : ExecutorBindingReferenceAccessPhase
+}
+
+///|
+fn ExecutorBindingReferenceAccessFrame::ExecutorBindingReferenceAccessFrame(
+  request : ExecutorBindingReferenceAccessRequest,
+) -> ExecutorBindingReferenceAccessFrame {
+  { request, phase: ExecutorBindingReferenceAccessNeedOperation }
+}
+
+///|
+fn ExecutorBindingReferenceAccessFrame::advance_get(
+  self : ExecutorBindingReferenceAccessFrame,
+  operation : ExecutorBindingReferenceGetOperation,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match operation.step(interp) {
+    ExecutorActivationNormal(value) => {
+      self.phase = ExecutorBindingReferenceAccessComplete(value)
+      ExecutorActivationNormal(value)
+    }
+    step => {
+      self.phase = ExecutorBindingReferenceAccessAwaitGet(operation)
+      step
+    }
+  }
+}
+
+///|
+fn ExecutorBindingReferenceAccessFrame::advance_put(
+  self : ExecutorBindingReferenceAccessFrame,
+  operation : ExecutorBindingReferencePutOperation,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  match operation.step(interp) {
+    ExecutorActivationNormal(value) => {
+      self.phase = ExecutorBindingReferenceAccessComplete(value)
+      ExecutorActivationNormal(value)
+    }
+    step => {
+      self.phase = ExecutorBindingReferenceAccessAwaitPut(operation)
+      step
+    }
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingReferenceAccessFrame with fn step(
+  self,
+  interp,
+) {
+  match self.phase {
+    ExecutorBindingReferenceAccessNeedOperation =>
+      match self.request.kind {
+        ExecutorBindingReferenceAccessGet =>
+          match
+            begin_executor_binding_reference_get(interp, self.request.reference) {
+            ExecutorBindingReferenceGetCompleted(value) => {
+              self.phase = ExecutorBindingReferenceAccessComplete(value)
+              ExecutorActivationNormal(value)
+            }
+            ExecutorBindingReferenceGetSuspended(operation) =>
+              self.advance_get(operation, interp)
+          }
+        ExecutorBindingReferenceAccessPut(value) =>
+          match
+            begin_executor_binding_reference_put(
+              interp,
+              self.request.reference,
+              value,
+            ) {
+            ExecutorBindingReferencePutCompleted(result) => {
+              self.phase = ExecutorBindingReferenceAccessComplete(result)
+              ExecutorActivationNormal(result)
+            }
+            ExecutorBindingReferencePutSuspended(operation) =>
+              self.advance_put(operation, interp)
+          }
+      }
+    ExecutorBindingReferenceAccessAwaitGet(operation) =>
+      self.advance_get(operation, interp)
+    ExecutorBindingReferenceAccessAwaitPut(operation) =>
+      self.advance_put(operation, interp)
+    ExecutorBindingReferenceAccessComplete(value) => {
+      self.phase = ExecutorBindingReferenceAccessDone
+      ExecutorActivationNormal(value)
+    }
+    ExecutorBindingReferenceAccessDone =>
+      raise @errors.InternalError(
+        message="binding reference access stepped after completion",
+      )
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorBindingReferenceAccessFrame with fn deliver_activation_completion(
+  self,
+  completion,
+) {
+  match self.phase {
+    ExecutorBindingReferenceAccessAwaitGet(operation) =>
+      operation.deliver_activation_completion(completion)
+    ExecutorBindingReferenceAccessAwaitPut(operation) =>
+      operation.deliver_activation_completion(completion)
+    ExecutorBindingReferenceAccessNeedOperation
+    | ExecutorBindingReferenceAccessComplete(_)
+    | ExecutorBindingReferenceAccessDone =>
+      raise @errors.InternalError(
+        message="binding reference access received an unexpected child completion",
+      )
+  }
+}
+
+///|
+#warnings("-unused_value")
+extend ExecutorBindingReferenceAccessFrame with ExecutorActivationFrame::{
+  step,
+  deliver_activation_completion,
+}
+
+///|
+pub fn executor_activation_binding_reference_resolution(
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+  loc : @token.Loc,
+) -> ExecutorActivationStep raise Error {
+  @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
+  ExecutorActivationBindingReference(
+    ExecutorBindingReferenceRequest(ctx~, env~, name~, loc~),
+  )
+}
+
+///|
+pub fn executor_activation_binding_reference_get(
+  reference : ResolvedBindingReference,
+) -> ExecutorActivationStep {
+  ExecutorActivationBindingReferenceAccess({
+    reference,
+    kind: ExecutorBindingReferenceAccessGet,
+  })
+}
+
+///|
+pub fn executor_activation_binding_reference_put(
+  reference : ResolvedBindingReference,
+  value : Value,
+) -> ExecutorActivationStep {
+  ExecutorActivationBindingReferenceAccess({
+    reference,
+    kind: ExecutorBindingReferenceAccessPut(value),
+  })
 }
 
 ///|
@@ -265,7 +587,7 @@ fn begin_executor_binding_reference(
 ) -> ExecutorBindingReferenceStart raise Error {
   @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
   let request = ExecutorBindingReferenceRequest(ctx~, env~, name~, loc~)
-  if !environment_requires_managed_binding(env, name) {
+  if !binding_assignment_requires_managed_resolution(env, name) {
     return ExecutorBindingReferenceCompleted(
       executor_binding_reference_plain(interp, request),
     )
@@ -282,24 +604,20 @@ fn begin_executor_binding_reference_get(
   match reference.kind {
     ResolvedBindingLexical(slot) =>
       ExecutorBindingReferenceGetCompleted(slot.read())
-    ResolvedBindingWithObject(obj, missing) =>
-      if missing {
-        ExecutorBindingReferenceGetCompleted(Undefined)
-      } else {
-        ExecutorBindingReferenceGetSuspended(
-          executor_activation_managed_property_get(
-            obj,
-            reference.name,
-            reference.loc,
-          ),
-        )
-      }
+    ResolvedBindingWithObject(obj, _) =>
+      ExecutorBindingReferenceGetSuspended(
+        ExecutorBindingReferenceGetOperation(reference, obj, true),
+      )
     ResolvedBindingGlobal =>
-      ExecutorBindingReferenceGetCompleted(
-        executor_binding_global_value(interp, reference.name),
+      ExecutorBindingReferenceGetSuspended(
+        ExecutorBindingReferenceGetOperation(
+          reference,
+          interp.global_this,
+          true,
+        ),
       )
     ResolvedBindingUnresolvable =>
-      raise @errors.ReferenceError(message="{reference.name} is not defined")
+      raise @errors.ReferenceError(message="\{reference.name} is not defined")
   }
 }
 
@@ -312,13 +630,13 @@ fn executor_binding_reference_put_unresolved(
   if interp.is_immutable_global(reference.name) {
     if reference.strict {
       raise @errors.TypeError(
-        message="Cannot assign to read only property '{reference.name}' of object '[object global]'",
+        message="Cannot assign to read only property '\{reference.name}' of object '[object global]'",
       )
     }
     return value
   }
   if reference.strict {
-    raise @errors.ReferenceError(message="{reference.name} is not defined")
+    raise @errors.ReferenceError(message="\{reference.name} is not defined")
   }
   interp.global.def(reference.name, value, VarBinding)
   interp.mirror_to_global(reference.name, value, configurable=true)
@@ -345,7 +663,15 @@ fn begin_executor_binding_reference_put(
       ExecutorBindingReferencePutSuspended(
         ExecutorBindingReferencePutOperation(reference, value, obj),
       )
-    ResolvedBindingGlobal | ResolvedBindingUnresolvable =>
+    ResolvedBindingGlobal =>
+      ExecutorBindingReferencePutSuspended(
+        ExecutorBindingReferencePutOperation(
+          reference,
+          value,
+          interp.global_this,
+        ),
+      )
+    ResolvedBindingUnresolvable =>
       ExecutorBindingReferencePutCompleted(
         executor_binding_reference_put_unresolved(interp, reference, value),
       )
@@ -355,12 +681,11 @@ fn begin_executor_binding_reference_put(
 ///|
 priv enum ExecutorBindingReferencePhase {
   ExecutorBindingReferenceNeedEnvironment(Environment)
-  ExecutorBindingReferenceAwaitHas(
-    Environment,
+  ExecutorBindingReferenceAwaitGlobalHas(
     Value,
     ExecutorDeleteHasPropertyOperation
   )
-  ExecutorBindingReferenceAwaitRecheck(
+  ExecutorBindingReferenceAwaitHas(
     Environment,
     Value,
     ExecutorDeleteHasPropertyOperation
@@ -391,21 +716,59 @@ fn ExecutorBindingReferenceFrame::parent_or_global(
   self : ExecutorBindingReferenceFrame,
   env : Environment,
   interp : Interpreter,
-) -> ExecutorActivationStep {
+) -> ExecutorActivationStep raise Error {
   match env.parent {
     Some(parent) => {
       self.phase = ExecutorBindingReferenceNeedEnvironment(parent)
       ExecutorActivationContinue
     }
-    None => {
-      let reference = executor_binding_reference_global_or_unresolvable(
-        interp,
-        self.request,
+    None => self.begin_global_has(interp)
+  }
+}
+
+///|
+fn ExecutorBindingReferenceFrame::begin_global_has(
+  self : ExecutorBindingReferenceFrame,
+  interp : Interpreter,
+) -> ExecutorActivationStep raise Error {
+  let obj = interp.global_this
+  let operation = ExecutorDeleteHasPropertyOperation(
+    target=obj,
+    key=String_(self.request.name),
+    loc=self.request.loc,
+  )
+  match operation.step(interp) {
+    ExecutorActivationNormal(Bool(has_property)) =>
+      self.complete_global(has_property)
+    ExecutorActivationNormal(_) =>
+      raise @errors.InternalError(
+        message="global binding reference HasProperty returned a non-boolean",
       )
-      self.phase = ExecutorBindingReferenceComplete(reference)
-      ExecutorActivationReference(reference)
+    step => {
+      self.phase = ExecutorBindingReferenceAwaitGlobalHas(obj, operation)
+      step
     }
   }
+}
+
+///|
+fn ExecutorBindingReferenceFrame::complete_global(
+  self : ExecutorBindingReferenceFrame,
+  has_property : Bool,
+) -> ExecutorActivationStep {
+  let kind = if has_property {
+    ResolvedBindingGlobal
+  } else {
+    ResolvedBindingUnresolvable
+  }
+  let reference = resolved_binding_reference(
+    kind,
+    self.request.name,
+    self.request.ctx,
+    self.request.loc,
+  )
+  self.phase = ExecutorBindingReferenceComplete(reference)
+  ExecutorActivationReference(reference)
 }
 
 ///|
@@ -447,7 +810,7 @@ fn ExecutorBindingReferenceFrame::after_has(
   obj : Value,
   has_property : Bool,
   interp : Interpreter,
-) -> ExecutorActivationStep {
+) -> ExecutorActivationStep raise Error {
   if !has_property {
     return self.parent_or_global(env, interp)
   }
@@ -465,8 +828,7 @@ fn ExecutorBindingReferenceFrame::after_unscopables(
   env : Environment,
   obj : Value,
   unscopables : Value,
-  interp : Interpreter,
-) -> ExecutorActivationStep raise Error {
+) -> ExecutorActivationStep {
   if is_object_value(unscopables) {
     self.phase = ExecutorBindingReferenceAwaitUnscopablesName(env, obj)
     return executor_activation_managed_property_get(
@@ -475,7 +837,7 @@ fn ExecutorBindingReferenceFrame::after_unscopables(
       self.request.loc,
     )
   }
-  self.begin_recheck(env, obj, interp)
+  self.complete_with_object(obj, false)
 }
 
 ///|
@@ -489,48 +851,7 @@ fn ExecutorBindingReferenceFrame::after_unscopables_name(
   if is_truthy(unscopables_value) {
     self.parent_or_global(env, interp)
   } else {
-    self.begin_recheck(env, obj, interp)
-  }
-}
-
-///|
-fn ExecutorBindingReferenceFrame::begin_recheck(
-  self : ExecutorBindingReferenceFrame,
-  env : Environment,
-  obj : Value,
-  interp : Interpreter,
-) -> ExecutorActivationStep raise Error {
-  let operation = ExecutorDeleteHasPropertyOperation(
-    target=obj,
-    key=String_(self.request.name),
-    loc=self.request.loc,
-  )
-  match operation.step(interp) {
-    ExecutorActivationNormal(Bool(has_property)) =>
-      self.after_recheck(obj, has_property)
-    ExecutorActivationNormal(_) =>
-      raise @errors.InternalError(
-        message="binding reference HasProperty recheck returned a non-boolean",
-      )
-    step => {
-      self.phase = ExecutorBindingReferenceAwaitRecheck(env, obj, operation)
-      step
-    }
-  }
-}
-
-///|
-fn ExecutorBindingReferenceFrame::after_recheck(
-  self : ExecutorBindingReferenceFrame,
-  obj : Value,
-  has_property : Bool,
-) -> ExecutorActivationStep raise Error {
-  if has_property {
     self.complete_with_object(obj, false)
-  } else if self.request.ctx.strict {
-    raise @errors.ReferenceError(message="{self.request.name} is not defined")
-  } else {
-    self.complete_with_object(obj, true)
   }
 }
 
@@ -576,6 +897,19 @@ impl ExecutorActivationFrame for ExecutorBindingReferenceFrame with fn step(
   match self.phase {
     ExecutorBindingReferenceNeedEnvironment(env) =>
       self.step_environment(env, interp)
+    ExecutorBindingReferenceAwaitGlobalHas(obj, operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(Bool(has_property)) =>
+          self.complete_global(has_property)
+        ExecutorActivationNormal(_) =>
+          raise @errors.InternalError(
+            message="global binding reference HasProperty returned a non-boolean",
+          )
+        step => {
+          self.phase = ExecutorBindingReferenceAwaitGlobalHas(obj, operation)
+          step
+        }
+      }
     ExecutorBindingReferenceAwaitHas(env, obj, operation) =>
       match operation.step(interp) {
         ExecutorActivationNormal(Bool(has_property)) =>
@@ -589,25 +923,12 @@ impl ExecutorActivationFrame for ExecutorBindingReferenceFrame with fn step(
           step
         }
       }
-    ExecutorBindingReferenceAwaitRecheck(env, obj, operation) =>
-      match operation.step(interp) {
-        ExecutorActivationNormal(Bool(has_property)) =>
-          self.after_recheck(obj, has_property)
-        ExecutorActivationNormal(_) =>
-          raise @errors.InternalError(
-            message="binding reference HasProperty recheck returned a non-boolean",
-          )
-        step => {
-          self.phase = ExecutorBindingReferenceAwaitRecheck(env, obj, operation)
-          step
-        }
-      }
     ExecutorBindingReferenceAwaitUnscopables(_, _) =>
       raise @errors.InternalError(
         message="binding reference frame stepped while awaiting unscopables",
       )
     ExecutorBindingReferenceHaveUnscopables(env, obj, value) =>
-      self.after_unscopables(env, obj, value, interp)
+      self.after_unscopables(env, obj, value)
     ExecutorBindingReferenceAwaitUnscopablesName(_, _) =>
       raise @errors.InternalError(
         message="binding reference frame stepped while awaiting unscopables name",
@@ -638,11 +959,11 @@ impl ExecutorActivationFrame for ExecutorBindingReferenceFrame with fn deliver_a
       )
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
-        ExecutorBindingReferenceAwaitHas(_, _, operation) =>
+        ExecutorBindingReferenceAwaitGlobalHas(_, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )
-        ExecutorBindingReferenceAwaitRecheck(_, _, operation) =>
+        ExecutorBindingReferenceAwaitHas(_, _, operation) =>
           operation.deliver_activation_completion(
             ExecutorActivationCompletionNormal(value),
           )

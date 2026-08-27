@@ -1,4 +1,60 @@
 ///|
+fn complete_binding_reference_put_for_wb(
+  interp : Interpreter,
+  start : ExecutorBindingReferencePutStart,
+) -> Value raise Error {
+  match start {
+    ExecutorBindingReferencePutCompleted(value) => value
+    ExecutorBindingReferencePutSuspended(operation) =>
+      match
+        interp.run_executor_activation_coordinator(
+          operation as &ExecutorActivationFrame,
+        ) {
+        ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+          value
+        _ => fail("binding reference PutValue must return its assigned value")
+      }
+  }
+}
+
+///|
+fn complete_binding_reference_for_wb(
+  interp : Interpreter,
+  start : ExecutorBindingReferenceStart,
+) -> ResolvedBindingReference raise Error {
+  match start {
+    ExecutorBindingReferenceCompleted(reference) => reference
+    ExecutorBindingReferenceSuspended(request) =>
+      match
+        interp.run_executor_activation_coordinator(
+          ExecutorBindingReferenceFrame(request) as &ExecutorActivationFrame,
+        ) {
+        ExecutorActivationReference(reference) => reference
+        _ => fail("binding reference resolution must return a reference")
+      }
+  }
+}
+
+///|
+fn complete_binding_reference_get_for_wb(
+  interp : Interpreter,
+  start : ExecutorBindingReferenceGetStart,
+) -> Value raise Error {
+  match start {
+    ExecutorBindingReferenceGetCompleted(value) => value
+    ExecutorBindingReferenceGetSuspended(operation) =>
+      match
+        interp.run_executor_activation_coordinator(
+          operation as &ExecutorActivationFrame,
+        ) {
+        ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+          value
+        _ => fail("binding reference GetValue must return its current value")
+      }
+  }
+}
+
+///|
 test "issue 933 retains one lexical binding reference across read and write" {
   let interp = Interpreter::new()
   let env = Environment::new(parent=Some(interp.global))
@@ -171,30 +227,25 @@ test "issue 933 global and unresolved references preserve current assignment rul
     Object(data) => data.bag.properties["global_value"] = Number(7.0)
     _ => fail("Interpreter::new must provide a global object")
   }
-  let global_reference = match
+  let global_reference = complete_binding_reference_for_wb(
+    interp,
     begin_executor_binding_reference(
       interp,
       ctx,
       env,
       "global_value",
       @token.Loc::default(),
-    ) {
-    ExecutorBindingReferenceCompleted(reference) => reference
-    ExecutorBindingReferenceSuspended(_) =>
-      fail("global reference resolution must be synchronous")
-  }
-  match begin_executor_binding_reference_get(interp, global_reference) {
-    ExecutorBindingReferenceGetCompleted(value) =>
-      assert_eq(value.to_string(), "7")
-    ExecutorBindingReferenceGetSuspended(_) =>
-      fail("global reference read must be synchronous")
-  }
-  let global_write = match
-    begin_executor_binding_reference_put(interp, global_reference, Number(8.0)) {
-    ExecutorBindingReferencePutCompleted(value) => value
-    ExecutorBindingReferencePutSuspended(_) =>
-      fail("global reference write must be synchronous")
-  }
+    ),
+  )
+  let global_value = complete_binding_reference_get_for_wb(
+    interp,
+    begin_executor_binding_reference_get(interp, global_reference),
+  )
+  assert_eq(global_value.to_string(), "7")
+  let global_write = complete_binding_reference_put_for_wb(
+    interp,
+    begin_executor_binding_reference_put(interp, global_reference, Number(8.0)),
+  )
   assert_eq(global_write.to_string(), "8")
   match interp.global_this {
     Object(data) =>
@@ -202,18 +253,16 @@ test "issue 933 global and unresolved references preserve current assignment rul
     _ => fail("global object must remain available")
   }
 
-  let unresolved_reference = match
+  let unresolved_reference = complete_binding_reference_for_wb(
+    interp,
     begin_executor_binding_reference(
       interp,
       ctx,
       env,
       "implicit_value",
       @token.Loc::default(),
-    ) {
-    ExecutorBindingReferenceCompleted(reference) => reference
-    ExecutorBindingReferenceSuspended(_) =>
-      fail("unresolved reference resolution must be synchronous")
-  }
+    ),
+  )
   let implicit_write = match
     begin_executor_binding_reference_put(
       interp,
@@ -240,18 +289,16 @@ test "issue 933 global and unresolved references preserve current assignment rul
   }
 
   let strict_ctx : ExecContext = { strict: true, current_generator: None }
-  let strict_unresolved = match
+  let strict_unresolved = complete_binding_reference_for_wb(
+    interp,
     begin_executor_binding_reference(
       interp,
       strict_ctx,
       env,
       "strict_missing",
       @token.Loc::default(),
-    ) {
-    ExecutorBindingReferenceCompleted(reference) => reference
-    ExecutorBindingReferenceSuspended(_) =>
-      fail("strict unresolved reference resolution must be synchronous")
-  }
+    ),
+  )
   let strict_write : Result[ExecutorBindingReferencePutStart, Error] = Ok(
     begin_executor_binding_reference_put(
       interp,
@@ -284,51 +331,48 @@ test "issue 933 global and unresolved references preserve current assignment rul
     }
     _ => fail("global object must remain available")
   }
-  let immutable_reference = match
+  let immutable_reference = complete_binding_reference_for_wb(
+    interp,
     begin_executor_binding_reference(
       interp,
       ctx,
       env,
       "immutable_value",
       @token.Loc::default(),
-    ) {
-    ExecutorBindingReferenceCompleted(reference) => reference
-    ExecutorBindingReferenceSuspended(_) =>
-      fail("immutable global reference resolution must be synchronous")
-  }
-  let immutable_sloppy = match
+    ),
+  )
+  let immutable_sloppy = complete_binding_reference_put_for_wb(
+    interp,
     begin_executor_binding_reference_put(
       interp,
       immutable_reference,
       Number(2.0),
-    ) {
-    ExecutorBindingReferencePutCompleted(value) => value
-    ExecutorBindingReferencePutSuspended(_) =>
-      fail("immutable global write must be synchronous")
-  }
+    ),
+  )
   assert_eq(immutable_sloppy.to_string(), "2")
   match interp.global_this {
     Object(data) =>
       assert_eq(data.bag.properties["immutable_value"].to_string(), "1")
     _ => fail("global object must remain available")
   }
-  let immutable_strict_reference = match
+  let immutable_strict_reference = complete_binding_reference_for_wb(
+    interp,
     begin_executor_binding_reference(
       interp,
       strict_ctx,
       env,
       "immutable_value",
       @token.Loc::default(),
-    ) {
-    ExecutorBindingReferenceCompleted(reference) => reference
-    ExecutorBindingReferenceSuspended(_) =>
-      fail("strict immutable global resolution must be synchronous")
-  }
-  let immutable_strict : Result[ExecutorBindingReferencePutStart, Error] = Ok(
-    begin_executor_binding_reference_put(
+    ),
+  )
+  let immutable_strict : Result[Value, Error] = Ok(
+    complete_binding_reference_put_for_wb(
       interp,
-      immutable_strict_reference,
-      Number(3.0),
+      begin_executor_binding_reference_put(
+        interp,
+        immutable_strict_reference,
+        Number(3.0),
+      ),
     ),
   ) catch {
     error => Err(error)
@@ -348,7 +392,7 @@ priv enum Issue933ReferenceProbePhase {
   Issue933ReferenceProbeNeedResolve
   Issue933ReferenceProbeAwaitResolve
   Issue933ReferenceProbeNeedGet
-  Issue933ReferenceProbeAwaitGet
+  Issue933ReferenceProbeAwaitGet(ExecutorBindingReferenceGetOperation)
   Issue933ReferenceProbeNeedInterveningGet
   Issue933ReferenceProbeAwaitInterveningGet
   Issue933ReferenceProbeNeedPut
@@ -432,16 +476,24 @@ impl ExecutorActivationFrame for Issue933ReferenceProbe with fn step(
           self.phase = Issue933ReferenceProbeNeedInterveningGet
           ExecutorActivationContinue
         }
-        ExecutorBindingReferenceGetSuspended(step) => {
-          self.phase = Issue933ReferenceProbeAwaitGet
-          step
+        ExecutorBindingReferenceGetSuspended(operation) => {
+          self.phase = Issue933ReferenceProbeAwaitGet(operation)
+          operation.step(interp)
         }
       }
     }
-    Issue933ReferenceProbeAwaitGet =>
-      raise @errors.InternalError(
-        message="reference probe stepped while awaiting get",
-      )
+    Issue933ReferenceProbeAwaitGet(operation) =>
+      match operation.step(interp) {
+        ExecutorActivationNormal(value) => {
+          self.read_value = Some(value)
+          self.phase = Issue933ReferenceProbeNeedInterveningGet
+          ExecutorActivationContinue
+        }
+        step => {
+          self.phase = Issue933ReferenceProbeAwaitGet(operation)
+          step
+        }
+      }
     Issue933ReferenceProbeNeedInterveningGet =>
       match self.intervening {
         Some(target) => {
@@ -514,10 +566,10 @@ impl ExecutorActivationFrame for Issue933ReferenceProbe with fn deliver_activati
       }
     ExecutorActivationCompletionNormal(value) =>
       match self.phase {
-        Issue933ReferenceProbeAwaitGet => {
-          self.read_value = Some(value)
-          self.phase = Issue933ReferenceProbeNeedInterveningGet
-        }
+        Issue933ReferenceProbeAwaitGet(operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
+          )
         Issue933ReferenceProbeAwaitInterveningGet =>
           self.phase = Issue933ReferenceProbeNeedPut
         Issue933ReferenceProbeAwaitPut(operation) =>

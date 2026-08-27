@@ -121,6 +121,12 @@ pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interprete
 
 pub fn execution_control_failure_code(Error) -> String?
 
+pub fn executor_activation_binding_reference_get(ResolvedBindingReference) -> ExecutorActivationStep
+
+pub fn executor_activation_binding_reference_put(ResolvedBindingReference, Value) -> ExecutorActivationStep
+
+pub fn executor_activation_binding_reference_resolution(ExecContext, Environment, String, @token.Loc) -> ExecutorActivationStep raise
+
 pub fn executor_activation_binding_request(ExecutorBindingRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_binding_update_request(ExecutorBindingUpdateRequest) -> ExecutorActivationStep
@@ -764,8 +770,13 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
   ExecutorActivationBinding(ExecutorBindingRequest)
   ExecutorActivationBindingReference(ExecutorBindingReferenceRequest)
+  ExecutorActivationBindingReferenceAccess(ExecutorBindingReferenceAccessRequest)
   ExecutorActivationBindingUpdate(ExecutorBindingUpdateRequest)
   ExecutorActivationReference(ResolvedBindingReference)
+}
+
+pub struct ExecutorBindingReferenceAccessRequest {
+  // private fields
 }
 
 pub struct ExecutorBindingReferenceRequest {

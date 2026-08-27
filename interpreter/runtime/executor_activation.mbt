@@ -30,6 +30,9 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
   ExecutorActivationBinding(ExecutorBindingRequest)
   ExecutorActivationBindingReference(ExecutorBindingReferenceRequest)
+  ExecutorActivationBindingReferenceAccess(
+    ExecutorBindingReferenceAccessRequest
+  )
   ExecutorActivationBindingUpdate(ExecutorBindingUpdateRequest)
   ExecutorActivationReference(ResolvedBindingReference)
 }
@@ -915,7 +918,10 @@ priv enum ExecutorBindingUpdatePhase {
   ExecutorBindingUpdateNeedReference(ExecutorBindingReferenceRequest)
   ExecutorBindingUpdateAwaitReference
   ExecutorBindingUpdateNeedGet(ResolvedBindingReference)
-  ExecutorBindingUpdateAwaitGet(ResolvedBindingReference)
+  ExecutorBindingUpdateAwaitGet(
+    ResolvedBindingReference,
+    ExecutorBindingReferenceGetOperation
+  )
   ExecutorBindingUpdateHaveCurrent(ResolvedBindingReference, Value)
   ExecutorBindingUpdateAwaitToPrimitive(
     ResolvedBindingReference,
@@ -1136,6 +1142,25 @@ fn ExecutorBindingUpdateFrame::begin_to_primitive(
 }
 
 ///|
+fn ExecutorBindingUpdateFrame::advance_get(
+  self : ExecutorBindingUpdateFrame,
+  interp : Interpreter,
+  reference : ResolvedBindingReference,
+  operation : ExecutorBindingReferenceGetOperation,
+) -> ExecutorActivationStep raise Error {
+  match operation.step(interp) {
+    ExecutorActivationNormal(value) => {
+      self.request.phase = ExecutorBindingUpdateHaveCurrent(reference, value)
+      self.step_frame(interp)
+    }
+    step => {
+      self.request.phase = ExecutorBindingUpdateAwaitGet(reference, operation)
+      step
+    }
+  }
+}
+
+///|
 fn ExecutorBindingUpdateFrame::step_frame(
   self : ExecutorBindingUpdateFrame,
   interp : Interpreter,
@@ -1153,10 +1178,8 @@ fn ExecutorBindingUpdateFrame::step_frame(
           )
           self.step_frame(interp)
         }
-        ExecutorBindingReferenceGetSuspended(step) => {
-          self.request.phase = ExecutorBindingUpdateAwaitGet(reference)
-          step
-        }
+        ExecutorBindingReferenceGetSuspended(operation) =>
+          self.advance_get(interp, reference, operation)
       }
     ExecutorBindingUpdateHaveCurrent(reference, current) =>
       if is_js_object(current) {
@@ -1183,6 +1206,8 @@ fn ExecutorBindingUpdateFrame::step_frame(
           step
         }
       }
+    ExecutorBindingUpdateAwaitGet(reference, operation) =>
+      self.advance_get(interp, reference, operation)
     ExecutorBindingUpdateAwaitPut(operation, result) =>
       match operation.step(interp) {
         ExecutorActivationNormal(_) => {
@@ -1195,7 +1220,7 @@ fn ExecutorBindingUpdateFrame::step_frame(
         }
       }
     ExecutorBindingUpdateComplete(result) => ExecutorActivationNormal(result)
-    ExecutorBindingUpdateAwaitReference | ExecutorBindingUpdateAwaitGet(_) =>
+    ExecutorBindingUpdateAwaitReference =>
       raise @errors.InternalError(
         message="binding update stepped while awaiting a child completion",
       )
@@ -1228,9 +1253,9 @@ impl ExecutorActivationFrame for ExecutorBindingUpdateFrame with fn deliver_acti
       }
     ExecutorActivationCompletionNormal(value) =>
       match self.request.phase {
-        ExecutorBindingUpdateAwaitGet(reference) =>
-          self.request.phase = ExecutorBindingUpdateHaveCurrent(
-            reference, value,
+        ExecutorBindingUpdateAwaitGet(_, operation) =>
+          operation.deliver_activation_completion(
+            ExecutorActivationCompletionNormal(value),
           )
         ExecutorBindingUpdateAwaitToPrimitive(_, _, operation) =>
           operation.deliver_activation_completion(
@@ -1575,6 +1600,7 @@ priv enum ExecutorChildCompletion {
   ExecutorChildCopyDataProperties
   ExecutorChildBinding
   ExecutorChildBindingReference
+  ExecutorChildBindingReferenceAccess
   ExecutorChildBindingUpdate
 }
 
@@ -2164,6 +2190,8 @@ fn Interpreter::complete_executor_step(
     Some(ExecutorChildBinding) => executor_binding_completion(step)
     Some(ExecutorChildBindingReference) =>
       executor_binding_reference_completion(step)
+    Some(ExecutorChildBindingReferenceAccess) =>
+      executor_binding_completion(step)
     Some(ExecutorChildBindingUpdate) => executor_binding_update_completion(step)
     None => ExecutorActivationCompletionNormal(Undefined)
   }
@@ -2567,6 +2595,16 @@ fn Interpreter::handle_executor_activation_step(
       stack.push({
         frame: binding_frame as &ExecutorActivationFrame,
         completion: Some(ExecutorChildBindingReference),
+        cleanup: None,
+        graph_cursor: None,
+      })
+      None
+    }
+    ExecutorActivationBindingReferenceAccess(request) => {
+      let binding_frame = ExecutorBindingReferenceAccessFrame(request)
+      stack.push({
+        frame: binding_frame as &ExecutorActivationFrame,
+        completion: Some(ExecutorChildBindingReferenceAccess),
         cleanup: None,
         graph_cursor: None,
       })
@@ -3303,6 +3341,7 @@ fn executor_call_completion(
         | ExecutorActivationCopyDataProperties(_)
         | ExecutorActivationBinding(_) => Undefined
         ExecutorActivationBindingReference(_)
+        | ExecutorActivationBindingReferenceAccess(_)
         | ExecutorActivationReference(_) =>
           raise @errors.InternalError(
             message="executor call completed with a binding reference",
@@ -3329,6 +3368,7 @@ fn executor_call_completion(
         | ExecutorActivationCopyDataProperties(_)
         | ExecutorActivationBinding(_) => Undefined
         ExecutorActivationBindingReference(_)
+        | ExecutorActivationBindingReferenceAccess(_)
         | ExecutorActivationReference(_) =>
           raise @errors.InternalError(
             message="executor arrow call completed with a binding reference",
@@ -3364,7 +3404,9 @@ fn executor_construct_completion(
     | ExecutorActivationIterableSpread(_)
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_) => instance
-    ExecutorActivationBindingReference(_) | ExecutorActivationReference(_) =>
+    ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
+    | ExecutorActivationReference(_) =>
       raise @errors.InternalError(
         message="executor construct completed with a binding reference",
       )
@@ -3402,6 +3444,7 @@ fn executor_property_get_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
@@ -3435,6 +3478,7 @@ fn executor_property_update_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
@@ -3468,6 +3512,7 @@ fn executor_coercing_addition_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
@@ -3501,6 +3546,7 @@ fn executor_coercing_relational_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
@@ -3534,6 +3580,7 @@ fn executor_coercing_subtraction_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
@@ -3567,6 +3614,7 @@ fn executor_coercing_multiplicative_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
@@ -3600,6 +3648,7 @@ fn executor_property_delete_completion(
     | ExecutorActivationCopyDataProperties(_)
     | ExecutorActivationBinding(_)
     | ExecutorActivationBindingReference(_)
+    | ExecutorActivationBindingReferenceAccess(_)
     | ExecutorActivationReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(

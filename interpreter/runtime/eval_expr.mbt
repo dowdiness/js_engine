@@ -1202,14 +1202,10 @@ fn Interpreter::eval_identifier_reference(
         raise @errors.ReferenceError(message="\{name} is not defined")
       } else if message == "\{name} is not defined" {
         // Fallback: check global object (globalThis) for properties set via this.x = y
-        match self.global_this {
-          Object(data) =>
-            match data.bag.properties.get(name) {
-              Some(v) => v
-              None =>
-                raise @errors.ReferenceError(message="\{name} is not defined")
-            }
-          _ => raise @errors.ReferenceError(message="\{name} is not defined")
+        if self.has_property_key(self.global_this, String_(name)) {
+          self.get_property(self.global_this, name, @token.Loc::default())
+        } else {
+          raise @errors.ReferenceError(message="\{name} is not defined")
         }
       } else {
         raise @errors.ReferenceError(message~)
@@ -1241,6 +1237,10 @@ fn Interpreter::eval_expr(
     Assign(name, value_expr, _) => {
       @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
       let resolved_env = env.resolve_binding_env(name)
+      let resolved_global_object_binding = match resolved_env {
+        None => self.has_property_key(self.global_this, String_(name))
+        Some(_) => false
+      }
       let value = self.eval_named_expr(ctx, value_expr, env, name)
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
@@ -1274,16 +1274,28 @@ fn Interpreter::eval_expr(
             }
             e => raise e
           }
-        None => {
-          if ctx.strict {
+        None =>
+          if resolved_global_object_binding {
+            if ctx.strict &&
+              !self.has_property_key(self.global_this, String_(name)) {
+              raise @errors.ReferenceError(message="\{name} is not defined")
+            }
+            let _ = self.set_property(
+              self.global_this,
+              name,
+              value,
+              @token.Loc::default(),
+              strict=ctx.strict,
+            )
+          } else if ctx.strict {
             raise @errors.ReferenceError(message="\{name} is not defined")
+          } else {
+            // In non-strict mode, assigning to an undeclared variable creates
+            // a global property (sloppy mode implicit global) using the
+            // reference resolution result captured before RHS evaluation.
+            self.global.def(name, value, VarBinding)
+            self.mirror_to_global(name, value, configurable=true)
           }
-          // In non-strict mode, assigning to an undeclared variable creates
-          // a global property (sloppy mode implicit global) using the
-          // reference resolution result captured before RHS evaluation.
-          self.global.def(name, value, VarBinding)
-          self.mirror_to_global(name, value, configurable=true)
-        }
       }
       value
     }
