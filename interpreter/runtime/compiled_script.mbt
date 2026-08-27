@@ -119,23 +119,36 @@ pub fn Interpreter::define_compiled_binding(
     ConstKind => ConstBinding
     VarKind => VarBinding
   }
-  if binding_kind == VarBinding &&
-    (env.bindings.contains(name) || env.has_var(name)) {
-    if has_initializer {
-      env.assign_var(name, value)
-      if physical_equal(env.find_var_env(), self.global) {
+  match binding_kind {
+    VarBinding => {
+      // A var declaration belongs to this activation's nearest variable
+      // environment. A same-named var in an enclosing activation must not
+      // suppress creation of the local cell: captured bytecode slots retain
+      // that cell before function declarations initialize it.
+      let var_env = env.find_var_env()
+      let binding_existed = var_env.bindings.contains(name)
+      if binding_existed {
+        if has_initializer {
+          var_env.assign_var(name, value)
+        }
+      } else {
+        var_env.def(name, value, VarBinding)
+      }
+      if physical_equal(var_env, self.global) &&
+        (has_initializer || !binding_existed) {
         self.mirror_to_global(name, value)
       }
     }
-  } else if (binding_kind == LetBinding || binding_kind == ConstBinding) &&
-    env.bindings.contains(name) {
-    env.initialize(name, value)
-  } else {
-    env.def(name, value, binding_kind)
-    if binding_kind == VarBinding &&
-      physical_equal(env.find_var_env(), self.global) {
-      self.mirror_to_global(name, value)
-    }
+    LetBinding | ConstBinding =>
+      if env.bindings.contains(name) {
+        env.initialize(name, value)
+      } else {
+        env.def(name, value, binding_kind)
+      }
+    FunctionNameBinding =>
+      raise @errors.InternalError(
+        message="compiled declaration cannot define a function-name binding",
+      )
   }
 }
 
