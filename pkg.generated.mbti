@@ -171,6 +171,7 @@ pub fn Shell::Shell(load_source~ : (String, String?) -> LoadedScript raise, read
 pub fn Shell::drain_jobs(Self) -> Unit raise EngineError
 pub fn Shell::eval(Self, String) -> Unit raise EngineError
 pub fn Shell::run_file(Self, String) -> Unit raise EngineError
+pub fn Shell::run_modules(Self, Array[(String, String)]) -> Unit raise EngineError
 pub fn Shell::set_arguments(Self, String, Array[String]) -> Unit raise EngineError
 pub fn Shell::take_output(Self) -> Array[String]
 

@@ -191,77 +191,73 @@ fn main {
     }
     _ =>
       try {
-        if is_module {
-          let src = match (eval_source, script) {
-            (Some(source), _) => source
-            (_, Some(path)) => @fs.read_file_to_string(path)
-            _ => ""
-          }
-          let registered_specifiers : @set.Set[String] = Default::default()
-          for fixture in fixtures {
-            let (specifier, _) = fixture
-            if registered_specifiers.contains(specifier) {
-              println("error: duplicate module specifier '\{specifier}'")
-              exit_with_error()
-              return
-            }
-            registered_specifiers.add(specifier)
-          }
-          if registered_specifiers.contains(main_module_specifier) {
-            println(
-              "error: duplicate module specifier '\{main_module_specifier}'",
-            )
-            exit_with_error()
-            return
-          }
-          // Run fixture modules plus the main module through the graph runner.
-          // run_modules pre-registers each module's exports under its specifier
-          // so the main test's `import` lookups succeed.
-          let modules : Array[(String, String)] = []
-          for f in fixtures {
-            modules.push(f)
-          }
-          modules.push((main_module_specifier, src))
-          let (output, _) = @lib.run_modules(modules, annex_b~)
-          for line in output {
-            println(line)
-          }
-        } else {
-          let clock_origin = @bench.monotonic_clock_start()
-          let shell = @lib.Shell(
-            load_source=resolve_shell_script,
-            read_bytes=Some(resolve_shell_bytes),
-            now_millis=Some(() => {
-              @bench.monotonic_clock_end(clock_origin) / 1000.0
-            }),
-            annex_b~,
-          )
-          let script_name = match script {
-            Some(path) => path
-            None => "-e"
-          }
-          if script is Some(_) || script_args.length() > 0 {
-            shell.set_arguments(script_name, script_args)
-          }
-          let execution : Result[Unit, Error] = Ok(
-            {
+        let clock_origin = @bench.monotonic_clock_start()
+        let shell = @lib.Shell(
+          load_source=resolve_shell_script,
+          read_bytes=Some(resolve_shell_bytes),
+          now_millis=Some(() => {
+            @bench.monotonic_clock_end(clock_origin) / 1000.0
+          }),
+          annex_b~,
+        )
+        let script_name = match script {
+          Some(path) => path
+          None => "-e"
+        }
+        if script is Some(_) || script_args.length() > 0 {
+          shell.set_arguments(script_name, script_args)
+        }
+        let execution : Result[Unit, Error] = Ok(
+          {
+            if is_module {
+              let src = match (eval_source, script) {
+                (Some(source), _) => source
+                (_, Some(path)) => @fs.read_file_to_string(path)
+                _ => ""
+              }
+              let registered_specifiers : @set.Set[String] = Default::default()
+              for fixture in fixtures {
+                let (specifier, _) = fixture
+                if registered_specifiers.contains(specifier) {
+                  println("error: duplicate module specifier '\{specifier}'")
+                  exit_with_error()
+                  return
+                }
+                registered_specifiers.add(specifier)
+              }
+              if registered_specifiers.contains(main_module_specifier) {
+                println(
+                  "error: duplicate module specifier '\{main_module_specifier}'",
+                )
+                exit_with_error()
+                return
+              }
+              // Run fixture modules plus the main module through the graph
+              // runner in the same Realm that owns the Shell host globals.
+              let modules : Array[(String, String)] = []
+              for f in fixtures {
+                modules.push(f)
+              }
+              modules.push((main_module_specifier, src))
+              shell.run_modules(modules)
+            } else {
               match (eval_source, script) {
                 (Some(source), _) => shell.eval(source)
                 (_, Some(path)) => shell.run_file(path)
                 _ => ()
               }
-              shell.drain_jobs()
-            },
-          ) catch {
-            err => Err(err)
-          }
-          for line in shell.take_output() {
-            println(line)
-          }
-          match execution {
-            Ok(_) => ()
-            Err(err) => raise err
-          }
+            }
+            shell.drain_jobs()
+          },
+        ) catch {
+          err => Err(err)
+        }
+        for line in shell.take_output() {
+          println(line)
+        }
+        match execution {
+          Ok(_) => ()
+          Err(err) => raise err
         }
       } catch {
         @lib.JavaScriptException(message) => {

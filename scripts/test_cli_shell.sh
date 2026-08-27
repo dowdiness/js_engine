@@ -69,6 +69,12 @@ if [[ "$actual" != "true true" ]]; then
   exit 1
 fi
 
+actual="$(_build/native/debug/build/cmd/main/main.exe --module -e 'console.log(typeof load, typeof read, typeof readFile, typeof runString, typeof performance, typeof arguments === "undefined" ? "missing" : arguments.join("|"), typeof scriptArgs === "undefined" ? "missing" : scriptArgs.join("|"));' -- alpha)"
+if [[ "$actual" != "function function function function object alpha -e|alpha" ]]; then
+  printf 'expected module execution to use the general Shell host, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
 actual="$(_build/native/debug/build/cmd/main/main.exe -e 'print("arguments" in globalThis, "scriptArgs" in globalThis);')"
 if [[ "$actual" != "false false" ]]; then
   printf 'expected argument globals to be absent without eval arguments, got:\n%s\n' "$actual" >&2

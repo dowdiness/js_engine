@@ -119,7 +119,7 @@ or experimental execution paths and are not used by this guide.
 | Classification | Root entry points |
 |---|---|
 | **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint`; `HostEnvironment`, `SessionBindings`, `ExecutionSession`, `ExecutionSessionError`, `SessionCreationError`; `ConsoleOutputKind`, `ConsoleOutput`, `ScriptResourceRequest`, `ScriptResource`, `TimerSchedule`, `ScheduledTurn` |
-| **Stable shell** | `LoadedScript`; `Shell`, `Shell::Shell`, `Shell::eval`, `Shell::run_file`, `Shell::set_arguments`, `Shell::take_output`, `Shell::drain_jobs` |
+| **Stable shell** | `LoadedScript`; `Shell`, `Shell::Shell`, `Shell::eval`, `Shell::run_file`, `Shell::run_modules`, `Shell::set_arguments`, `Shell::take_output`, `Shell::drain_jobs` |
 | **Stable diagnostics** | `run_diagnostic`; `Engine::eval_diagnostic`, `Engine::call_json_diagnostic`, `Engine::run_microtask_checkpoint_diagnostic`, `Engine::run_timer_checkpoint_diagnostic`; `EngineDiagnostic` and its accessors; `EngineIntegrity`, `RetainedEffects`, `PendingJobs`; `SourceLocation`, `SourcePosition` |
 | **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`, `Engine::run_timer_checkpoint_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
 | **Compatibility** | `run_module`, `run_modules` |

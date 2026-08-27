@@ -573,6 +573,12 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "Shell::run_modules",
+      "category": "stable_shell",
+      "reason": "documented general-shell module graph execution operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "Shell::set_arguments",
       "category": "stable_shell",
       "reason": "documented general-shell script argument operation"

@@ -592,6 +592,19 @@ pub fn Shell::eval(self : Shell, source : String) -> Unit raise EngineError {
 }
 
 ///|
+/// Evaluate a pre-resolved module graph in this Shell's Realm. Host globals,
+/// output, arguments, and pending jobs are shared with script evaluation.
+pub fn Shell::run_modules(
+  self : Shell,
+  modules : Array[(String, String)],
+) -> Unit raise EngineError {
+  ignore(self.engine.interp.run_modules(modules)) catch {
+    @runtime.JsException(value) => raise JavaScriptException(value.to_string())
+    err => raise classify_engine_runtime_error(err)
+  }
+}
+
+///|
 /// Install command-line arguments without parsing an extra JavaScript setup
 /// program. `arguments` follows d8/JSC and excludes the script name;
 /// `scriptArgs` follows QuickJS and includes it as element zero.
