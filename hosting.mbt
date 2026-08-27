@@ -119,6 +119,9 @@ pub fn TimerSchedule::turn(self : TimerSchedule) -> ScheduledTurn {
 }
 
 ///|
+const MAX_SCHEDULED_TURN_ID : Int = 0x7FFFFFFF
+
+///|
 /// Reusable application-owned configuration for creating independent
 /// Execution Sessions.
 pub struct HostEnvironment {
@@ -218,6 +221,19 @@ priv struct SessionHostFailure {
 priv struct ScheduledCallback {
   callback : @runtime.Value
   arguments : Array[@runtime.Value]
+}
+
+///|
+priv suberror ScheduledTurnAllocationFailure {
+  ScheduledTurnIdSpaceExhausted
+}
+
+///|
+impl Show for ScheduledTurnAllocationFailure with fn output(self, logger) {
+  match self {
+    ScheduledTurnIdSpaceExhausted =>
+      logger.write_string("Scheduled Turn ID space is exhausted")
+  }
 }
 
 ///|
@@ -325,6 +341,12 @@ fn SessionHostBinding::schedule_timer(
 ) -> Int raise Error {
   guard self.timer_scheduler is Some(schedule) else {
     fail("selected Timers capability has no Session binding")
+  }
+  guard self.next_scheduled_turn_id >= 1 &&
+    self.next_scheduled_turn_id < MAX_SCHEDULED_TURN_ID else {
+    let error : Error = ScheduledTurnIdSpaceExhausted
+    self.record_failure("Timer Scheduler", error)
+    raise error
   }
   let id = self.next_scheduled_turn_id
   self.next_scheduled_turn_id += 1
