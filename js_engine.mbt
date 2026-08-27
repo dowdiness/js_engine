@@ -124,6 +124,19 @@ pub fn Engine::Engine(annex_b? : Bool = false) -> Engine {
 }
 
 ///|
+fn Engine::with_console_output_sink(
+  annex_b : Bool,
+  console_output_sink : (@runtime.ConsoleOutputKind, String) -> Unit raise Error,
+) -> Engine {
+  {
+    interp: @interpreter.new_interpreter(
+      annex_b~,
+      console_output_sink=Some(console_output_sink),
+    ),
+  }
+}
+
+///|
 fn classify_engine_runtime_error(err : Error) -> EngineError {
   match @errors.name_message_if_js_error(err) {
     Some(("InternalError", message)) => InternalError(message)
@@ -150,6 +163,21 @@ pub fn Engine::eval(self : Engine, source : String) -> Unit raise EngineError {
         raise JavaScriptException(value.to_string())
       err => raise classify_engine_runtime_error(err)
     }
+  }
+}
+
+///|
+/// Evaluate a script loaded by a host function while preserving JavaScript
+/// exceptions for the currently-active execution. Parse failures become
+/// JavaScript SyntaxErrors at this boundary.
+fn Engine::eval_shell_loaded(self : Engine, source : String) -> Unit raise {
+  let program = @parser.parse(source) catch {
+    err => raise @errors.SyntaxError(message=err.to_string())
+  }
+  if @engine_candidate_mode.candidate_mode_enabled() {
+    ignore(@compiler.run_candidate_program(self.interp, program.stmts))
+  } else {
+    ignore(self.interp.run(program.stmts))
   }
 }
 
@@ -243,6 +271,401 @@ pub fn Engine::run_timer_checkpoint(self : Engine) -> Unit raise EngineError {
     @runtime.JsException(value) => raise JavaScriptException(value.to_string())
     err => raise classify_engine_runtime_error(err)
   }
+}
+
+///|
+/// Source returned by a shell host after resolving a requested script name.
+/// `identity` is used as the referrer for nested `load()` calls.
+pub struct LoadedScript {
+  identity : String
+  source : String
+}
+
+///|
+pub fn LoadedScript::LoadedScript(
+  identity~ : String,
+  source~ : String,
+) -> LoadedScript {
+  { identity, source }
+}
+
+///|
+fn Engine::install_shell_global(
+  self : Engine,
+  name : String,
+  value : @runtime.Value,
+) -> Unit {
+  self.interp.global.def_builtin(name, value)
+  self.install_host_global(name, value)
+}
+
+///|
+fn Engine::make_shell_reader(
+  self : Engine,
+  load_source : (String, String?) -> LoadedScript raise,
+  read_bytes : ((String, String?) -> Bytes raise)?,
+  current_referrer : () -> String?,
+) -> @runtime.Value {
+  @runtime.make_native_func(
+    name="read",
+    length=1,
+    realm_state=Some(self.interp.realm_state),
+    fn(args) raise {
+      guard args.length() > 0 else {
+        raise @errors.TypeError(message="read() requires a file name")
+      }
+      let request = self.interp.to_js_string(args[0])
+      let binary = args.length() > 1 &&
+        self.interp.to_js_string(args[1]) == "binary"
+      if binary {
+        let reader = match read_bytes {
+          Some(reader) => reader
+          None =>
+            raise @errors.InternalError(
+              message="binary file reads are not available in this host",
+            )
+        }
+        let bytes = reader(request, current_referrer()) catch {
+          err =>
+            raise @errors.InternalError(
+              message="cannot read '\{request}': \{err}",
+            )
+        }
+        let prototype = self.interp.global.get("[[ArrayBufferPrototype]]")
+        let buffer = @stdlib.make_arraybuffer_object(
+          self.interp.realm_state,
+          bytes.length(),
+          prototype,
+        )
+        let buffer_id = match @stdlib.get_buffer_id(buffer) {
+          Some(buffer_id) => buffer_id
+          None =>
+            raise @errors.InternalError(
+              message="failed to allocate ArrayBuffer",
+            )
+        }
+        let destination = match
+          @stdlib.get_arraybuffer_bytes(self.interp.realm_state, buffer_id) {
+          Some(destination) => destination
+          None =>
+            raise @errors.InternalError(message="failed to access ArrayBuffer")
+        }
+        for i in 0..<bytes.length() {
+          destination[i] = bytes[i].to_int()
+        }
+        return buffer
+      }
+      let loaded = load_source(request, current_referrer()) catch {
+        err =>
+          raise @errors.InternalError(
+            message="cannot read '\{request}': \{err}",
+          )
+      }
+      @runtime.String_(loaded.source)
+    },
+  )
+}
+
+///|
+/// A persistent JavaScript shell realm. The host owns filesystem policy and
+/// supplies script loading as a capability; the shell owns evaluation order,
+/// the load stack, and JavaScript-visible host functions.
+pub struct Shell {
+  priv engine : Engine
+  priv load_source : (String, String?) -> LoadedScript raise
+  priv read_bytes : ((String, String?) -> Bytes raise)?
+  priv load_stack : Array[String]
+}
+
+///|
+pub fn Shell::Shell(
+  load_source~ : (String, String?) -> LoadedScript raise,
+  read_bytes? : ((String, String?) -> Bytes raise)? = None,
+  now_millis? : (() -> Double)? = None,
+  annex_b? : Bool = false,
+) -> Shell {
+  let shell = {
+    engine: Engine(annex_b~),
+    load_source,
+    read_bytes,
+    load_stack: [],
+  }
+  let load = @runtime.make_native_func(
+    name="load",
+    length=1,
+    realm_state=Some(shell.engine.interp.realm_state),
+    fn(args) raise {
+      guard args.length() > 0 else {
+        raise @errors.TypeError(message="load() requires a script name")
+      }
+      let request = shell.engine.interp.to_js_string(args[0])
+      shell.load_runtime(request)
+      @runtime.Undefined
+    },
+  )
+  shell.engine.install_shell_global("load", load)
+  let read = shell.engine.make_shell_reader(
+    shell.load_source,
+    shell.read_bytes,
+    () => shell.load_referrer(),
+  )
+  shell.engine.install_shell_global("read", read)
+  shell.engine.install_shell_global("readFile", read)
+  let run_string = @runtime.make_native_func(
+    name="runString",
+    length=1,
+    realm_state=Some(shell.engine.interp.realm_state),
+    fn(args) raise {
+      let source = if args.length() == 0 {
+        ""
+      } else {
+        shell.engine.interp.to_js_string(args[0])
+      }
+      let child = Engine::with_console_output_sink(annex_b, fn(
+        kind,
+        text,
+      ) raise {
+        shell.engine.interp.host.emit_console_output(kind, text)
+      })
+      let child_load_stack : Array[String] = []
+      let child_referrer = () => {
+        if child_load_stack.length() == 0 {
+          shell.load_referrer()
+        } else {
+          Some(child_load_stack[child_load_stack.length() - 1])
+        }
+      }
+      let child_read = child.make_shell_reader(
+        shell.load_source,
+        shell.read_bytes,
+        child_referrer,
+      )
+      let load_string = @runtime.make_native_func(
+        name="loadString",
+        length=1,
+        realm_state=Some(child.interp.realm_state),
+        fn(load_args) raise {
+          guard load_args.length() > 0 else {
+            raise @errors.TypeError(message="loadString() requires source text")
+          }
+          let loaded_source = child.interp.to_js_string(load_args[0])
+          child.eval_shell_loaded(loaded_source)
+          @runtime.Undefined
+        },
+      )
+      let child_load = @runtime.make_native_func(
+        name="load",
+        length=1,
+        realm_state=Some(child.interp.realm_state),
+        fn(load_args) raise {
+          guard load_args.length() > 0 else {
+            raise @errors.TypeError(message="load() requires a script name")
+          }
+          let request = child.interp.to_js_string(load_args[0])
+          let referrer = child_referrer()
+          let loaded = (shell.load_source)(request, referrer) catch {
+            err =>
+              raise @errors.InternalError(
+                message="cannot load '\{request}': \{err}",
+              )
+          }
+          child_load_stack.push(loaded.identity)
+          let evaluated : Result[Unit, Error] = Ok(
+            child.eval_shell_loaded(loaded.source),
+          ) catch {
+            err => Err(err)
+          }
+          ignore(child_load_stack.pop())
+          match evaluated {
+            Ok(_) => @runtime.Undefined
+            Err(err) => raise err
+          }
+        },
+      )
+      child.install_shell_global("loadString", load_string)
+      child.install_shell_global("load", child_load)
+      child.install_shell_global("read", child_read)
+      child.install_shell_global("readFile", child_read)
+      child.eval_shell_loaded(source)
+      child.interp.global_this
+    },
+  )
+  shell.engine.install_shell_global("runString", run_string)
+  match now_millis {
+    Some(clock) => {
+      let now = @runtime.make_native_func(
+        name="now",
+        realm_state=Some(shell.engine.interp.realm_state),
+        fn(_args) { @runtime.Number(clock()) },
+      )
+      let mark = @runtime.make_native_func(
+        name="mark",
+        length=1,
+        realm_state=Some(shell.engine.interp.realm_state),
+        fn(_args) { @runtime.Undefined },
+      )
+      let measure = @runtime.make_native_func(
+        name="measure",
+        length=1,
+        realm_state=Some(shell.engine.interp.realm_state),
+        fn(_args) { @runtime.Undefined },
+      )
+      let performance = @runtime.make_host_object(
+        name="Performance",
+        proto=@runtime.get_obj_proto(
+          realm_state=Some(shell.engine.interp.realm_state),
+        ),
+        methods=Map::from_array([
+          ("now", now),
+          ("mark", mark),
+          ("measure", measure),
+        ]),
+      )
+      shell.engine.install_shell_global("performance", performance)
+    }
+    None => ()
+  }
+  shell
+}
+
+///|
+fn Shell::load_referrer(self : Shell) -> String? {
+  if self.load_stack.length() == 0 {
+    None
+  } else {
+    Some(self.load_stack[self.load_stack.length() - 1])
+  }
+}
+
+///|
+fn Shell::load(self : Shell, request : String) -> Unit raise EngineError {
+  let referrer = self.load_referrer()
+  let loaded = (self.load_source)(request, referrer) catch {
+    err => raise InternalError("cannot load '\{request}': \{err}")
+  }
+  self.load_stack.push(loaded.identity)
+  let evaluated : Result[Unit, EngineError] = Ok(
+    self.engine.eval(loaded.source),
+  ) catch {
+    err => Err(err)
+  }
+  ignore(self.load_stack.pop())
+  match evaluated {
+    Ok(_) => ()
+    Err(err) => raise err
+  }
+}
+
+///|
+/// `load()` runs inside an active JavaScript call. Keep runtime exceptions in
+/// their native form so the outer evaluation reports the original JS error.
+fn Shell::load_runtime(self : Shell, request : String) -> Unit raise {
+  let referrer = self.load_referrer()
+  let loaded = (self.load_source)(request, referrer) catch {
+    err =>
+      raise @errors.InternalError(message="cannot load '\{request}': \{err}")
+  }
+  self.load_stack.push(loaded.identity)
+  let evaluated : Result[Unit, Error] = Ok(
+    self.engine.eval_shell_loaded(loaded.source),
+  ) catch {
+    err => Err(err)
+  }
+  ignore(self.load_stack.pop())
+  match evaluated {
+    Ok(_) => ()
+    Err(err) => raise err
+  }
+}
+
+///|
+/// Resolve and execute a script as the shell entry point.
+pub fn Shell::run_file(self : Shell, path : String) -> Unit raise EngineError {
+  self.load(path)
+}
+
+///|
+/// Evaluate source in the shell's persistent realm without changing the load
+/// referrer. This is the implementation of the command-line `-e` mode.
+pub fn Shell::eval(self : Shell, source : String) -> Unit raise EngineError {
+  self.engine.eval(source)
+}
+
+///|
+/// Evaluate a pre-resolved module graph in this Shell's Realm. Host globals,
+/// output, arguments, and pending jobs are shared with script evaluation.
+pub fn Shell::run_modules(
+  self : Shell,
+  modules : Array[(String, String)],
+) -> Unit raise EngineError {
+  ignore(self.engine.interp.run_modules(modules)) catch {
+    @runtime.JsException(value) => raise JavaScriptException(value.to_string())
+    err => raise classify_engine_runtime_error(err)
+  }
+}
+
+///|
+/// Install command-line arguments without parsing an extra JavaScript setup
+/// program. `arguments` follows d8/JSC and excludes the script name;
+/// `scriptArgs` follows QuickJS and includes it as element zero.
+pub fn Shell::set_arguments(
+  self : Shell,
+  script_name : String,
+  args : Array[String],
+) -> Unit raise EngineError {
+  let arguments_json = Json::array(args.map(arg => Json::string(arg)))
+  let script_args : Array[String] = [script_name]
+  for arg in args {
+    script_args.push(arg)
+  }
+  let script_args_json = Json::array(script_args.map(arg => Json::string(arg)))
+  let arguments = @runtime.json_to_realm_value(
+    self.engine.interp.realm_state,
+    arguments_json,
+  ) catch {
+    @runtime.JsonBridgeFailure(message) => raise JsonConversionError(message)
+  }
+  let script_arguments = @runtime.json_to_realm_value(
+    self.engine.interp.realm_state,
+    script_args_json,
+  ) catch {
+    @runtime.JsonBridgeFailure(message) => raise JsonConversionError(message)
+  }
+  self.engine.interp.global.def_builtin("arguments", arguments)
+  self.engine.interp.global.def_builtin("scriptArgs", script_arguments)
+  ignore(
+    self.engine.interp.set_property(
+      self.engine.interp.global_this,
+      "arguments",
+      arguments,
+      @token.Loc::default(),
+    ),
+  ) catch {
+    err => raise classify_engine_runtime_error(err)
+  }
+  ignore(
+    self.engine.interp.set_property(
+      self.engine.interp.global_this,
+      "scriptArgs",
+      script_arguments,
+      @token.Loc::default(),
+    ),
+  ) catch {
+    err => raise classify_engine_runtime_error(err)
+  }
+}
+
+///|
+pub fn Shell::take_output(self : Shell) -> Array[String] {
+  self.engine.take_output()
+}
+
+///|
+pub fn Shell::drain_jobs(self : Shell) -> Unit raise EngineError {
+  while self.engine.has_pending_microtasks() {
+    ignore(self.engine.run_microtask_checkpoint())
+  }
+  self.engine.run_timer_checkpoint()
 }
 
 ///|

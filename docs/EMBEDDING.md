@@ -45,6 +45,70 @@ One `Engine` owns one realm. Repeated `eval` and `call_json` calls observe the
 same globals and lexical bindings. Separate engines do not share those
 bindings. `eval` and `call_json` do not run pending microtasks or timers.
 
+## Application embedding with selected Host Capabilities
+
+Use `HostEnvironment` and `ExecutionSession` for application integrations that
+need an explicit Host Capability Set, per-Session service bindings, lifecycle
+checks, and automatic Promise-job checkpoints. A `HostEnvironment` is an
+immutable, reusable plan. Each created `ExecutionSession` owns an independent
+Realm and accepts only one Hosted Turn at a time.
+
+```moonbit
+let output : Array[String] = []
+let environment = @js_engine.HostEnvironment(console=true)
+let session = environment.create_session(
+  bindings=@js_engine.SessionBindings(
+    console_output_sink=Some(event => output.push(event.text())),
+  ),
+)
+session.evaluate(
+  #|let count = 0;
+  #|function next() { return ++count; }
+  #|Promise.resolve().then(() => console.log("ready"));
+)
+json_inspect(output, content=["ready"])
+json_inspect(session.call_json("next", []), content=1)
+session.close()
+```
+
+The selected capabilities are fixed when the environment is constructed.
+Supplying a binding for an absent capability, or omitting a required binding,
+raises `SessionCreationError`. The current capability surfaces are:
+
+| Selection | Required Session binding | JavaScript surface |
+|---|---|---|
+| `console=true` | optional `console_output_sink` | ordinary `console` global with `assert`, `debug`, `error`, `info`, `log`, and `warn` |
+| `script_resources=true` | `script_resource_resolver` | `load(request)` |
+| `timers=true` | `timer_scheduler` | `setTimeout` and `clearTimeout` |
+
+Console output is delivered as rendered text with a distinct `Log`, `Debug`,
+`Info`, `Warn`, or `Error` kind. An Execution Session does not retain the
+low-level Engine compatibility output buffer: omitting the optional sink
+discards Console output.
+
+A Script Resource resolver receives a `ScriptResourceRequest` containing an
+opaque request and optional opaque referrer. Returning `Some(ScriptResource)`
+loads its source under its identity. Returning `None` produces a JavaScript
+`Error` that script code may catch. Raising from the resolver is a Host Failure
+and faults only the invoking Session.
+
+The timer scheduler receives a `TimerSchedule` with a non-negative delay and
+an opaque `ScheduledTurn`. It does not receive a Runtime Value or JavaScript
+callback. The application later passes the token to
+`ExecutionSession::resume_scheduled_turn`; the Session checks ownership and
+lifecycle, consumes the token exactly once, runs the callback as a new Hosted
+Turn, and performs the required Promise-job checkpoint. Timer tasks never run
+as part of the checkpoint that ends the scheduling turn. Closing or faulting a
+Session invalidates all of its outstanding tokens.
+
+`evaluate`, `call_json`, and `resume_scheduled_turn` report
+`ExecutionSessionError`. Parse, JavaScript, and data-copy failures retain the
+full `EngineDiagnostic`. A reusable diagnostic returns the Session to its
+available state; discard, unknown, Host Failure, and Promise-job checkpoint
+failure fault it. Requests against a running, closed, or faulted Session are
+rejected before starting JavaScript. An application may close an available or
+faulted Session, but closing a running Session is rejected.
+
 ## Root public-surface classification
 
 The generated root interface is classified as follows. Stable embedding APIs
@@ -54,7 +118,8 @@ or experimental execution paths and are not used by this guide.
 
 | Classification | Root entry points |
 |---|---|
-| **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` |
+| **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint`; `HostEnvironment`, `SessionBindings`, `ExecutionSession`, `ExecutionSessionError`, `SessionCreationError`; `ConsoleOutputKind`, `ConsoleOutput`, `ScriptResourceRequest`, `ScriptResource`, `TimerSchedule`, `ScheduledTurn` |
+| **Stable shell** | `LoadedScript`; `Shell`, `Shell::Shell`, `Shell::eval`, `Shell::run_file`, `Shell::run_modules`, `Shell::set_arguments`, `Shell::take_output`, `Shell::drain_jobs` |
 | **Stable diagnostics** | `run_diagnostic`; `Engine::eval_diagnostic`, `Engine::call_json_diagnostic`, `Engine::run_microtask_checkpoint_diagnostic`, `Engine::run_timer_checkpoint_diagnostic`; `EngineDiagnostic` and its accessors; `EngineIntegrity`, `RetainedEffects`, `PendingJobs`; `SourceLocation`, `SourcePosition` |
 | **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`, `Engine::run_timer_checkpoint_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
 | **Compatibility** | `run_module`, `run_modules` |

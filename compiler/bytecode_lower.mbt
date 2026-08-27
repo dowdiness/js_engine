@@ -29,6 +29,7 @@ priv enum BytecodeUnsupportedReason {
   GeneratorDeclaration
   GeneratorExpression
   ImportDeclaration
+  NamedFunctionExpression
   ObjectLiteralAsyncGeneratorMethodProperty
   ObjectLiteralAsyncMethodProperty
   ObjectLiteralDataPropertySuper
@@ -135,6 +136,7 @@ fn BytecodeUnsupportedReason::display_text(
     GeneratorDeclaration => "generator declaration"
     GeneratorExpression => "generator expression"
     ImportDeclaration => "import declaration"
+    NamedFunctionExpression => "named function expression"
     ObjectLiteralAsyncGeneratorMethodProperty =>
       "object literal async generator method property"
     ObjectLiteralAsyncMethodProperty => "object literal async method property"
@@ -2047,9 +2049,10 @@ fn BytecodeBuilder::add_function(
 }
 
 ///|
-// Candidate lowering retains the parent's instruction and preparation facts
-// while reserving a typed, non-executable child slot.  Ordinary lowering never
-// calls this path and keeps its existing unsupported rejection.
+// Candidate lowering reserves a typed child slot for a function form that the
+// bytecode executor cannot run. The enclosing candidate is selected for the
+// tree walker before activation, but the slot remains necessary for the tree
+// walker's function-materialization mapping.
 fn BytecodeBuilder::add_candidate_unsupported_function(
   self : BytecodeBuilder,
   consumer_form : BytecodeFunctionConsumerForm,
@@ -2706,7 +2709,8 @@ fn BytecodeBuilder::compile_stmt_body(
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
-    GeneratorDecl(name, _, _, loc, _) =>
+    GeneratorDecl(name, _, _, loc, _)
+    | GeneratorDeclExt(name, _, _, _, loc, _) =>
       if self.candidate_mode {
         self.compile_candidate_unsupported_declaration(
           name,
@@ -2716,17 +2720,8 @@ fn BytecodeBuilder::compile_stmt_body(
       } else {
         bytecode_reject(GeneratorDeclaration, loc)
       }
-    GeneratorDeclExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(GeneratorDeclaration, loc)
-      }
-    AsyncFuncDecl(name, _, _, loc, _) =>
+    AsyncFuncDecl(name, _, _, loc, _)
+    | AsyncFuncDeclExt(name, _, _, _, loc, _) =>
       if self.candidate_mode {
         self.compile_candidate_unsupported_declaration(
           name,
@@ -2736,27 +2731,8 @@ fn BytecodeBuilder::compile_stmt_body(
       } else {
         bytecode_reject(AsyncFunctionDeclaration, loc)
       }
-    AsyncFuncDeclExt(name, _, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncFunctionDeclaration, loc)
-      }
-    AsyncGeneratorDecl(name, _, _, loc, _) =>
-      if self.candidate_mode {
-        self.compile_candidate_unsupported_declaration(
-          name,
-          DeclareFunctionConsumer(name),
-          loc,
-        )
-      } else {
-        bytecode_reject(AsyncGeneratorDeclaration, loc)
-      }
-    AsyncGeneratorDeclExt(name, _, _, _, loc, _) =>
+    AsyncGeneratorDecl(name, _, _, loc, _)
+    | AsyncGeneratorDeclExt(name, _, _, _, loc, _) =>
       if self.candidate_mode {
         self.compile_candidate_unsupported_declaration(
           name,
@@ -4915,11 +4891,6 @@ fn BytecodeBuilder::compile_expr_body(
         }
       }
     }
-    Member(Ident("console", _), prop, loc) => {
-      let _ = self.emit_with_source_locations(LoadConsoleMember(prop), [
-        (MemberAccess, loc),
-      ])
-    }
     Member(obj, prop, loc) => {
       self.compile_expr(obj)
       let _ = self.emit_with_source_locations(GetProperty(prop, loc), [
@@ -5034,12 +5005,6 @@ fn BytecodeBuilder::compile_expr_body(
           )
         _ => self.compile_optional_plain_call(callee, args, loc)
       }
-    Call(Member(Ident("console", _), prop, member_loc), args, loc) => {
-      let _ = self.emit_with_source_locations(LoadConsoleMember(prop), [
-        (MemberAccess, member_loc),
-      ])
-      self.emit_call(args, loc)
-    }
     Call(SuperMember(prop, member_loc), args, loc) => {
       self.has_this = true
       self.emit_super_property_call_prepare(prop, member_loc)

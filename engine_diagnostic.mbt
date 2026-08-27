@@ -478,7 +478,11 @@ pub fn Engine::eval_diagnostic(
   let observed = @runtime.observe_source_failure(self.interp.realm_state, fn() raise {
     ignore(
       @runtime.with_source_identity(self.interp.realm_state, source_id, fn() raise {
-        self.interp.run(program.stmts)
+        if @engine_candidate_mode.candidate_mode_enabled() {
+          @compiler.run_candidate_program(self.interp, program.stmts)
+        } else {
+          self.interp.run(program.stmts)
+        }
       }),
     )
   })

@@ -375,6 +375,228 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "ConsoleOutputKind",
+      "category": "stable_embedding",
+      "reason": "documented realm-independent Console output classification"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ConsoleOutput",
+      "category": "stable_embedding",
+      "reason": "documented realm-independent Console output record"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ConsoleOutput::kind",
+      "category": "stable_embedding",
+      "reason": "documented Console output classification accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ConsoleOutput::text",
+      "category": "stable_embedding",
+      "reason": "documented Console output text accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostEnvironment",
+      "category": "stable_embedding",
+      "reason": "documented immutable application capability selection"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostEnvironment::HostEnvironment",
+      "category": "stable_embedding",
+      "reason": "documented Host Environment constructor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostEnvironment::create_session",
+      "category": "stable_embedding",
+      "reason": "documented application Session creation boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SessionBindings",
+      "category": "stable_embedding",
+      "reason": "documented application capability binding set"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SessionBindings::SessionBindings",
+      "category": "stable_embedding",
+      "reason": "documented Session binding constructor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SessionCreationError",
+      "category": "stable_embedding",
+      "reason": "documented capability and binding validation failure"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSession",
+      "category": "stable_embedding",
+      "reason": "documented single-Realm Hosted Turn owner"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSessionError",
+      "category": "stable_embedding",
+      "reason": "documented Hosted Turn and Session lifecycle failure"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSession::evaluate",
+      "category": "stable_embedding",
+      "reason": "documented Hosted Turn source evaluation boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSession::call_json",
+      "category": "stable_embedding",
+      "reason": "documented Hosted Turn JSON call boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSession::close",
+      "category": "stable_embedding",
+      "reason": "documented explicit Session lifecycle boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSession::resume_scheduled_turn",
+      "category": "stable_embedding",
+      "reason": "documented application-scheduled Hosted Turn boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResourceRequest",
+      "category": "stable_embedding",
+      "reason": "documented opaque application resource request"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResourceRequest::request",
+      "category": "stable_embedding",
+      "reason": "documented resource request accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResourceRequest::referrer",
+      "category": "stable_embedding",
+      "reason": "documented resource referrer accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResource",
+      "category": "stable_embedding",
+      "reason": "documented application-resolved JavaScript source"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResource::ScriptResource",
+      "category": "stable_embedding",
+      "reason": "documented resolved Script Resource constructor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResource::identity",
+      "category": "stable_embedding",
+      "reason": "documented Script Resource identity accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScriptResource::source",
+      "category": "stable_embedding",
+      "reason": "documented Script Resource source accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "TimerSchedule",
+      "category": "stable_embedding",
+      "reason": "documented application scheduling request"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "TimerSchedule::delay_milliseconds",
+      "category": "stable_embedding",
+      "reason": "documented timer delay accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "TimerSchedule::turn",
+      "category": "stable_embedding",
+      "reason": "documented opaque Scheduled Turn accessor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ScheduledTurn",
+      "category": "stable_embedding",
+      "reason": "documented opaque single-use Session scheduling token"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "LoadedScript",
+      "category": "stable_shell",
+      "reason": "documented source record supplied to the general JavaScript shell"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "LoadedScript::LoadedScript",
+      "category": "stable_shell",
+      "reason": "documented general-shell source record constructor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell",
+      "category": "stable_shell",
+      "reason": "documented persistent general JavaScript shell Realm"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::Shell",
+      "category": "stable_shell",
+      "reason": "documented general JavaScript shell constructor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::eval",
+      "category": "stable_shell",
+      "reason": "documented general-shell source evaluation operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::run_file",
+      "category": "stable_shell",
+      "reason": "documented general-shell resource execution operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::run_modules",
+      "category": "stable_shell",
+      "reason": "documented general-shell module graph execution operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::set_arguments",
+      "category": "stable_shell",
+      "reason": "documented general-shell script argument operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::take_output",
+      "category": "stable_shell",
+      "reason": "documented general-shell output retrieval operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Shell::drain_jobs",
+      "category": "stable_shell",
+      "reason": "documented general-shell job and timer drain operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "run_module",
       "category": "compatibility",
       "reason": "existing module facade returns raw runtime Value exports and is not the stable embedding model"

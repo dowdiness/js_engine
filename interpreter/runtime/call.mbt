@@ -750,20 +750,12 @@ fn Interpreter::eval_call(
         }
         // For member and super references, grouping preserves the Reference,
         // so ((a.b))() correctly calls with this=a.
-        Member(obj_expr, prop, mloc) =>
-          match obj_expr {
-            Ident("console", _) => {
-              let callee = self.eval_member(ctx, obj_expr, prop, env, mloc)
-              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-              self.call_value(callee, Undefined, args, loc)
-            }
-            _ => {
-              let obj = self.eval_expr(ctx, obj_expr, env)
-              let func_val = self.get_property(obj, prop, mloc)
-              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-              self.call_value(func_val, obj, args, loc)
-            }
-          }
+        Member(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let func_val = self.get_property(obj, prop, mloc)
+          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+          self.call_value(func_val, obj, args, loc)
+        }
         ComputedMember(obj_expr, key_expr, mloc) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
           let key = self.eval_expr(ctx, key_expr, env)

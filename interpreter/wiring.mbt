@@ -12,10 +12,15 @@ pub using @runtime {type Value, type Interpreter, type Environment}
 pub fn new_interpreter(
   annex_b? : Bool = false,
   module_loader? : @runtime.ModuleLoader? = None,
+  console_enabled? : Bool = true,
+  console_output_sink? : ((@runtime.ConsoleOutputKind, String) -> Unit raise Error)? = None,
+  setup_test262_harness? : Bool = true,
 ) -> @runtime.Interpreter {
   @runtime.Interpreter::new(
     annex_b~,
     module_loader~,
+    console_enabled~,
+    console_output_sink~,
     setup_builtins=fn(env, output, realm_state, ab) {
       @stdlib.setup_builtins_with_realm_state(
         env,
@@ -25,7 +30,9 @@ pub fn new_interpreter(
       )
     },
     setup_harness=fn(env, output, global_this) {
-      @stdlib.setup_harness_builtins(env, output, global_this)
+      if setup_test262_harness {
+        @stdlib.setup_harness_builtins(env, output, global_this)
+      }
     },
     stdlib_hooks=make_stdlib_hooks(),
   )

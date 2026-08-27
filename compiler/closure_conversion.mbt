@@ -121,8 +121,6 @@ fn compile_expr_to_closure_inner(
     ArrowFuncExt(params, rest_param, body, _, _) =>
       compile_arrow_func_ext(params, rest_param, body)
     Call(callee, args, loc) => compile_call(callee, args, loc)
-    Member(Ident("console", _), prop, loc) =>
-      fn(interp, _, _) raise { compiled_console_member(interp, prop, loc) }
     Member(obj, prop, loc) => {
       let obj_fn = compile_expr_to_closure_inner(obj)
       fn(interp, ctx, env) raise {
@@ -886,12 +884,6 @@ fn compile_call(
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   let compiled_args = compile_args(args)
   match callee {
-    Member(Ident("console", _), prop, member_loc) =>
-      fn(interp, ctx, env) raise {
-        let callee_value = compiled_console_member(interp, prop, member_loc)
-        let values = eval_compiled_args(interp, ctx, env, compiled_args)
-        interp.call_value(callee_value, Value::Undefined, values, loc)
-      }
     Member(obj_expr, prop, member_loc) => {
       let obj_fn = compile_expr_to_closure_inner(obj_expr)
       fn(interp, ctx, env) raise {
@@ -925,28 +917,6 @@ fn compile_call(
           interp.call_value(callee_value, Value::Undefined, values, loc)
         }
       }
-  }
-}
-
-///|
-fn compiled_console_member(
-  interp : Interpreter,
-  prop : String,
-  _loc : @token.Loc,
-) -> Value raise Error {
-  if prop == "log" {
-    let output = interp.host.output
-    @runtime.make_native_func(
-      name="log",
-      realm_state=Some(interp.realm_state),
-      fn(args) {
-        let parts : Array[String] = args.map(fn(a) { a.to_string() })
-        output.push(parts.join(" "))
-        Value::Undefined
-      },
-    )
-  } else {
-    raise @errors.TypeError(message="console.\{prop} is not supported")
   }
 }
 

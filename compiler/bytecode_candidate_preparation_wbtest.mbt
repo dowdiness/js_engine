@@ -74,10 +74,9 @@ test "candidate aggregate evidence retains no per-call storage" {
 }
 
 ///|
-// RED characterization for the first production seam: both parent directions
-// are already visible in the pure candidate tree, but neither is materialized
-// into an Engine activation yet.
-test "RED: candidate tree retains both mixed parent directions" {
+// A bytecode parent cannot safely retain a tree child until their closure
+// storage is executor-neutral. A tree parent may still retain bytecode children.
+test "candidate tree retains only the safe mixed parent direction" {
   let source =
     #|function bytecodeParent() {
     #|  function treeChild() { for (var value of [1]) {} }
@@ -90,8 +89,8 @@ test "RED: candidate tree retains both mixed parent directions" {
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
   let bytecode_parent = root.children[0]
   let tree_parent = root.children[1]
-  guard bytecode_parent.bytecode is Some(_) else {
-    fail("bytecode parent lost candidate carrier")
+  guard bytecode_parent.bytecode is None else {
+    fail("parent retained bytecode around a tree child")
   }
   guard tree_parent.bytecode is Some(_) else {
     fail("tree parent fixture did not retain a candidate carrier")
@@ -107,10 +106,7 @@ test "RED: candidate tree retains both mixed parent directions" {
 }
 
 ///|
-// RED for the pure candidate seam: this intentionally names the API that the
-// next slice introduces.  It must preserve an eligible parent candidate while
-// retaining a typed tree-only child candidate.
-test "RED: candidate preparation keeps eligible parent with lowering-unsupported child" {
+test "candidate preparation retains independently selected children" {
   let source =
     #|function parent() { return 1; }
     #|function child() { for (var value of [1]) {} }
@@ -125,8 +121,8 @@ test "candidate tree separates parent and child outcomes" {
     #|function parent() { return 1; }
     #|function child() { for (var value of [1]) {} }
   let program = prepare_candidate_program(@parser.parse(source).stmts)
-  guard program.root.bytecode is Some(_) else {
-    fail("candidate root should retain bytecode")
+  guard program.root.bytecode is None else {
+    fail("candidate root retained bytecode around a tree child")
   }
   guard program.root.children.length() == 2 else {
     fail("candidate root should retain both declarations")
@@ -2632,7 +2628,7 @@ test "candidate runner starts unsupported root through tree before effects" {
 }
 
 ///|
-test "candidate runner materializes bytecode parent with tree child" {
+test "candidate runner falls back parent with tree child before activation" {
   let source =
     #|function parent() {
     #|  function child() { for (var value of [1]) {} }
@@ -2641,24 +2637,19 @@ test "candidate runner materializes bytecode parent with tree child" {
     #|parent();
   let program = prepare_candidate_program(@parser.parse(source).stmts)
   let parent = program.root.children[0]
-  guard parent.bytecode is Some(bytecode) else {
-    fail("mixed parent was not bytecode")
-  }
-  if bytecode.function.preparation.function_declarations.length() != 1 {
-    fail("mixed bytecode parent did not retain its declaration")
-  }
+  guard parent.bytecode is None else { fail("mixed parent retained bytecode") }
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   if value.to_string() != "undefined" {
     fail("mixed bytecode-parent result was unexpected")
   }
   let starts = candidate_started_executors_for_wb(evidence)
   guard starts.length() >= 3 else {
-    fail("mixed bytecode-parent route did not start root, parent, and child")
+    fail("mixed parent route did not start root, parent, and child")
   }
-  if starts[0] != CandidateBytecodeExecutor ||
-    starts[1] != CandidateBytecodeExecutor ||
+  if starts[0] != CandidateTreeWalkerExecutor ||
+    starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateTreeWalkerExecutor {
-    fail("bytecode parent did not retain an independent tree child route")
+    fail("tree child did not conservatively move its parent to tree execution")
   }
 }
 
@@ -2679,7 +2670,7 @@ test "candidate runner materializes tree parent with bytecode child" {
   guard starts.length() >= 3 else {
     fail("mixed tree-parent route did not start root, parent, and child")
   }
-  if starts[0] != CandidateBytecodeExecutor ||
+  if starts[0] != CandidateTreeWalkerExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor {
     fail("tree parent did not retain an independent bytecode child route")
@@ -2713,7 +2704,7 @@ test "RED: tree materialization resolves an executed anonymous site" {
   guard starts.length() >= 3 else {
     fail("tree anonymous site did not start root, parent, and child")
   }
-  if starts[0] != CandidateBytecodeExecutor ||
+  if starts[0] != CandidateTreeWalkerExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor {
     fail("executed anonymous site did not retain its bytecode selection")
@@ -2738,7 +2729,7 @@ test "candidate tree routes hoisted declarations by syntax site" {
   guard starts.length() >= 4 else {
     fail("hoisted declaration route did not start both children")
   }
-  if starts[0] != CandidateBytecodeExecutor ||
+  if starts[0] != CandidateTreeWalkerExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor ||
     starts[3] != CandidateBytecodeExecutor {
@@ -2767,7 +2758,7 @@ test "candidate tree repeats one materialization site without consumption" {
   guard starts.length() >= 4 else {
     fail("repeated materialization site did not start both iterations")
   }
-  if starts[0] != CandidateBytecodeExecutor ||
+  if starts[0] != CandidateTreeWalkerExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor ||
     starts[3] != CandidateBytecodeExecutor {
@@ -2799,16 +2790,9 @@ test "candidate tree separates same-name same-signature siblings" {
     fail("same-name sibling route returned an unexpected value")
   }
   let starts = candidate_started_executors_for_wb(evidence)
-  guard starts.length() >= 5 else {
-    fail("same-name sibling route did not start both activations")
-  }
-  if starts[0] != CandidateBytecodeExecutor ||
-    starts[1] != CandidateTreeWalkerExecutor ||
-    starts[2] != CandidateBytecodeExecutor ||
-    starts[3] != CandidateTreeWalkerExecutor ||
-    starts[4] != CandidateTreeWalkerExecutor {
+  if starts.length() != 1 || starts[0] != CandidateTreeWalkerExecutor {
     fail(
-      "same-name siblings were paired by runtime order: " +
+      "named function source did not remain on the plain tree route: " +
       candidate_started_executor_labels_for_wb(evidence),
     )
   }
@@ -2871,7 +2855,7 @@ test "candidate tree excludes fresh direct eval definitions from its plan" {
   guard starts.length() >= 3 else {
     fail("direct eval route did not retain the later candidate child")
   }
-  if starts[0] != CandidateBytecodeExecutor ||
+  if starts[0] != CandidateTreeWalkerExecutor ||
     starts[1] != CandidateTreeWalkerExecutor ||
     starts[2] != CandidateBytecodeExecutor {
     fail("direct eval changed the enclosing child route")
@@ -2932,7 +2916,7 @@ test "candidate tree retains eligible descendants of an unsupported parent" {
 }
 
 ///|
-test "candidate eligible nested parent keeps lowering fallback local" {
+test "candidate nested fallback stops at the nearest safe tree parent" {
   let source =
     #|function outer() {
     #|  function parent() { return 1; }
@@ -2940,8 +2924,13 @@ test "candidate eligible nested parent keeps lowering fallback local" {
     #|}
   let outer = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
   match outer.selection {
-    UseBytecode(_) => ()
-    UseTreeWalker(_) => fail("eligible outer should remain bytecode")
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("outer fallback lost the descendant lowering reason")
+      }
+    UseTreeWalker(_) => fail("outer fallback was not lowering unsupported")
+    UseBytecode(_) => fail("outer retained bytecode around a tree child")
   }
   match outer.children[0].selection {
     UseBytecode(_) => ()
@@ -2995,28 +2984,31 @@ test "RED: strictness lineage reaches bytecode below a tree-only ancestor" {
 }
 
 ///|
-test "RED: lowering-unsupported children occupy non-executable candidate slots" {
+test "lowering-unsupported child moves the script root to tree execution" {
   let source =
     #|function parent() { return 1; }
     #|function child() { for (var value of [1]) {} }
   let program = prepare_candidate_program(@parser.parse(source).stmts)
-  let root_bytecode = program.root.bytecode.unwrap()
-  guard root_bytecode.function.children.length() == 1 else {
-    fail("candidate bytecode retained a fabricated executable child")
+  guard program.root.bytecode is None else {
+    fail("script root retained bytecode around a tree child")
   }
-  guard root_bytecode.child_slots.length() == 2 else {
-    fail("candidate bytecode lost a typed child slot")
-  }
-  match root_bytecode.child_slots[1] {
-    CandidateTreeChild(CandidateLoweringUnsupported(unsupported)) =>
+  match program.root.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
       match unsupported.reason {
         ForOfStatement => ()
-        _ => fail("tree child slot lost its lowering reason")
+        _ => fail("script fallback lost the child lowering reason")
       }
-    CandidateTreeChild(_) =>
-      fail("tree child slot has the wrong fallback reason")
-    CandidateBytecodeChild(_) =>
-      fail("lowering-unsupported child became an executable candidate")
+    UseTreeWalker(_) => fail("script fallback was not owned by lowering")
+    UseBytecode(_) => fail("script selected bytecode around a tree child")
+  }
+  match program.root.children[1].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("tree child lost its lowering reason")
+      }
+    UseTreeWalker(_) => fail("tree child has the wrong fallback reason")
+    UseBytecode(_) => fail("lowering-unsupported child selected bytecode")
   }
 }
 
@@ -3030,8 +3022,9 @@ test "lowering-unsupported child with eligible descendant stays tree-local" {
     #|}
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
   match root.selection {
-    UseBytecode(_) => ()
-    UseTreeWalker(_) => fail("eligible script root lost bytecode")
+    UseTreeWalker(CandidateLoweringUnsupported(_)) => ()
+    UseTreeWalker(_) => fail("script root lost its lowering reason")
+    UseBytecode(_) => fail("script root retained bytecode around a tree child")
   }
   guard root.children.length() == 1 else {
     fail("script root lost its lowering-unsupported child")
@@ -3048,18 +3041,6 @@ test "lowering-unsupported child with eligible descendant stays tree-local" {
   match outer.children[0].selection {
     UseBytecode(_) => ()
     UseTreeWalker(_) => fail("eligible nested method lost bytecode")
-  }
-  let root_bytecode = root.bytecode.unwrap()
-  guard root_bytecode.function.children.is_empty() else {
-    fail("tree-only outer became an executable bytecode child")
-  }
-  guard root_bytecode.child_slots.length() == 1 else {
-    fail("root lost the typed child slot")
-  }
-  match root_bytecode.child_slots[0] {
-    CandidateTreeChild(CandidateLoweringUnsupported(_)) => ()
-    CandidateTreeChild(_) => fail("tree slot lost its lowering reason")
-    CandidateBytecodeChild(_) => fail("tree-only outer became executable")
   }
 }
 
@@ -3087,15 +3068,26 @@ test "candidate extended signatures keep lowering fallback local" {
 }
 
 ///|
-test "candidate lowering owns unsupported nested function-form outcomes" {
+test "candidate tree parent owns unsupported nested function-form outcomes" {
   let source =
     #|function parent() {
     #|  function* child() { yield 1; }
     #|  var asyncChild = async function named() { return 1; };
     #|}
   let parent = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
-  guard parent.bytecode is Some(_) else {
-    fail("eligible parent lost bytecode around unsupported function forms")
+  guard parent.bytecode is None else {
+    fail(
+      "parent retained bytecode without a form-preserving child materializer",
+    )
+  }
+  match parent.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        GeneratorDeclaration => ()
+        _ => fail("parent fallback lost the first unsupported function form")
+      }
+    UseTreeWalker(_) => fail("parent fallback was not owned by lowering")
+    UseBytecode(_) => fail("parent selected bytecode around unsupported forms")
   }
   guard parent.children.length() == 2 else {
     fail("unsupported function forms were not retained as child slots")
@@ -3122,7 +3114,41 @@ test "candidate lowering owns unsupported nested function-form outcomes" {
 }
 
 ///|
-test "candidate object method forms retain ordered typed slots" {
+test "candidate root falls back around a generator declaration" {
+  let source =
+    #|function* value() { return 42; }
+    #|let iterator = value();
+    #|iterator.next().value;
+  let root = prepare_candidate_program(@parser.parse(source).stmts).root
+  match root.children[0].selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        GeneratorDeclaration => ()
+        _ => fail("generator child fallback lost its declaration reason")
+      }
+    UseTreeWalker(_) =>
+      fail("generator child fallback was not owned by lowering")
+    UseBytecode(_) => fail("generator child selected bytecode")
+  }
+  match root.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        GeneratorDeclaration => ()
+        _ => fail("root fallback lost the generator declaration reason")
+      }
+    UseTreeWalker(_) =>
+      fail("root generator fallback was not owned by lowering")
+    UseBytecode(_) =>
+      fail("root selected bytecode around a generator declaration")
+  }
+  let (value, _) = candidate_run_with_evidence_for_wb(source)
+  if value.to_string() != "42" {
+    fail("tree fallback did not preserve generator declaration semantics")
+  }
+}
+
+///|
+test "candidate object method forms keep their parent on the tree walker" {
   let source =
     #|var holder = {
     #|  *generator() { yield 1; },
@@ -3130,8 +3156,17 @@ test "candidate object method forms retain ordered typed slots" {
     #|  async *combined() { yield 1; },
     #|};
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
-  guard root.bytecode is Some(_) else {
-    fail("object method parent lost bytecode")
+  guard root.bytecode is None else {
+    fail("object method parent retained bytecode without form preservation")
+  }
+  match root.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ObjectLiteralGeneratorMethodProperty => ()
+        _ => fail("object method parent lost its first unsupported form")
+      }
+    UseTreeWalker(_) => fail("object method parent fallback left lowering")
+    UseBytecode(_) => fail("object method parent selected bytecode")
   }
   guard root.children.length() == 3 else {
     fail("object method consumer order was not retained")

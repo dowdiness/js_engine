@@ -667,6 +667,14 @@ pub struct CompiledScriptPreparation {
 pub fn CompiledScriptPreparation::CompiledScriptPreparation(strict~ : Bool, var_names~ : Array[String], function_names~ : Array[String], lexical_bindings~ : Array[CompiledScriptLexicalBinding]) -> Self
 pub fn CompiledScriptPreparation::with_early_error_settlement(strict~ : Bool, var_names~ : Array[String], function_names~ : Array[String], lexical_bindings~ : Array[CompiledScriptLexicalBinding], settlement~ : CompiledScriptEarlyErrorSettlement) -> Self
 
+pub(all) enum ConsoleOutputKind {
+  Log
+  Debug
+  Info
+  Warn
+  Error
+}
+
 pub struct DestructurePlan {
   // private fields
 }
@@ -1034,6 +1042,7 @@ pub(all) struct GeneratorObject {
 
 pub(all) struct HostEnv {
   output : Array[String]
+  console_output_sink : ((ConsoleOutputKind, String) -> Unit raise)?
   microtask_queue : Array[Microtask]
   timer_queue : @priority_queue.PriorityQueue[TimerTask]
   timer_id_counter : @ref.Ref[Int]
@@ -1041,6 +1050,7 @@ pub(all) struct HostEnv {
   cancelled_timer_ids : Map[Int, Bool]
   module_loader : ModuleLoader?
 }
+pub fn HostEnv::emit_console_output(Self, ConsoleOutputKind, String) -> Unit raise
 
 pub(all) struct HostSlotKey {
   // private fields
@@ -1111,7 +1121,6 @@ pub fn Interpreter::eval_update_property(Self, ExecContext, Value, String, @ast.
 pub fn Interpreter::get_cached_tagged_template_object(Self, String, Array[(String, String?)]) -> Value
 pub fn Interpreter::get_compiled_name(Self, Environment, String) -> Value raise
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
-pub fn Interpreter::get_console_member(Self, String) -> Value raise
 pub fn Interpreter::get_iterator_next_method(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Value)? raise
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
@@ -1124,7 +1133,7 @@ pub fn Interpreter::iterator_close_throw(Self, Value, @token.Loc) -> Unit
 pub fn Interpreter::iterator_result_value(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::iterator_step_result(Self, Value, Value, @token.Loc) -> Value? raise
 pub fn Interpreter::iterator_step_value(Self, Value, Value, @token.Loc) -> Value? raise
-pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
+pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, console_enabled? : Bool, console_output_sink? : ((ConsoleOutputKind, String) -> Unit raise)?, setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
 pub fn Interpreter::observe_execution_step(Self) -> Unit raise
 pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::own_property_keys(Self, Value) -> Array[Value] raise

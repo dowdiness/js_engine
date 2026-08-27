@@ -26,7 +26,8 @@ This single command will:
 
 ### 1. Build an engine
 
-Local `make test262` runs the MoonBit CLI through `moon run cmd/main --`.
+Local `make test262` runs source through the MoonBit CLI's explicit eval mode,
+`moon run cmd/main -- -e`.
 For direct runner use, you may also build the JS target and let the runner
 auto-detect the compiled Node.js bundle:
 
@@ -189,7 +190,7 @@ The native runner auto-detects the engine. Pass `--engine` to override:
 RUNNER=./_build/native/debug/build/cmd/test262_runner/test262_runner.exe
 
 # Use the WASM-GC backend (slower, ~3 tests/sec)
-$RUNNER --engine "moon run cmd/main --" --test262 ./test262
+$RUNNER --engine "moon run cmd/main -- -e" --test262 ./test262
 
 # Use the JS backend via node (faster, ~60 tests/sec)
 moon build --target js

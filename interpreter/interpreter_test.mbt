@@ -1317,7 +1317,7 @@ test "Stage B.3: Proxy has trap via prototype and with" {
     #|with (proxy) { console.log(attr); }
     #|console.log(log.join(","));
   let output = run_output(src)
-  json_inspect(output, content=["true", "42", "1,attr,attr"])
+  json_inspect(output, content=["true", "42", "1,console,attr,attr"])
 }
 
 ///|

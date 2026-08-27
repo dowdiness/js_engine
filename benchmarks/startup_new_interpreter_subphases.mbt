@@ -104,6 +104,7 @@ fn make_startup_host(output : Array[String]) -> HostEnv {
   let module_loader : ModuleLoader? = None
   {
     output,
+    console_output_sink: None,
     microtask_queue: [],
     timer_queue: @priority_queue.PriorityQueue([]),
     timer_id_counter: { val: 1 },

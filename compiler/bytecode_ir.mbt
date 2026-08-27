@@ -366,7 +366,6 @@ priv enum BytecodeInstr {
   LoadNewTarget
   LoadSuperProperty(String, @token.Loc)
   LoadSuperComputed(@token.Loc)
-  LoadConsoleMember(String)
   LoadDirectEvalCallee
   LoadName(String)
   LoadAssignmentName(String)
@@ -535,8 +534,6 @@ fn bytecode_instruction_contract(
       ])
     LoadDirectEvalCallee =>
       bytecode_contract(true, ManagedSuspension, [BindingAccess, DirectEval])
-    LoadConsoleMember(_) =>
-      bytecode_contract(true, SynchronousLeaf, [MemberAccess])
     LoadSuperProperty(_, _) =>
       bytecode_contract(
         true,

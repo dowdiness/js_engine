@@ -2,6 +2,7 @@ import {
   "dowdiness/js_engine/parser",
   "dowdiness/js_engine/interpreter",
   "dowdiness/js_engine/interpreter/runtime",
+  "dowdiness/js_engine/interpreter/stdlib",
   "dowdiness/js_engine/compiler",
   "dowdiness/js_engine/internal/engine_candidate_mode",
   "dowdiness/js_engine/errors",

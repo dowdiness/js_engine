@@ -1,6 +1,6 @@
 # js_engine
 
-A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript engine. It uses a tree-walking interpreter and runs on MoonBit's native, JavaScript, Wasm, and Wasm-GC targets.
+A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript engine. The stateful engine and CLI use the verified bytecode candidate by default and fall back to the tree-walking executor for unsupported source. It runs on MoonBit's native, JavaScript, Wasm, and Wasm-GC targets.
 
 - Conformance on [test262](https://github.com/tc39/test262): each file is run in strict and non-strict modes and reported per mode. Do not sum the modes. Generate current numbers from CI artifacts with `make test262-report`; see [docs/TEST262.md](docs/TEST262.md).
 - Cross-target embedding: the same stateful `Engine` API is tested on native, JavaScript, Wasm, and Wasm-GC.
@@ -12,12 +12,12 @@ A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript
 ### CLI
 
 ```sh
-moon run cmd/main -- 'console.log(1 + 2)'
+moon run cmd/main -- -e 'console.log(1 + 2)'
 # 3
 ```
 
 ```sh
-moon run cmd/main -- '
+moon run cmd/main -- -e '
 function fib(n) {
   if (n <= 1) { return n; }
   return fib(n - 1) + fib(n - 2);
@@ -26,6 +26,19 @@ console.log(fib(10));
 '
 # 55
 ```
+
+Pass a script filename to run a file, and put script arguments after `--`:
+
+```sh
+moon run cmd/main -- path/to/script.js -- first --second
+```
+
+The shell provides `load()`, `read()` / `readFile()`, `print()`, `console`,
+`arguments`, `scriptArgs`, and monotonic `performance.now()`. `load()` evaluates
+in the current realm and resolves nested relative paths from the loading file.
+`read(path, "binary")` returns an `ArrayBuffer`.
+File execution installs the argument globals even when no arguments are passed.
+Eval mode installs them only when arguments follow `--`.
 
 More sample programs live in [`example/`](example/).
 
@@ -57,6 +70,14 @@ test "README stateful rule engine" {
 
 `Engine` keeps one global realm alive across calls. Its strict JSON boundary copies plain data directly: it does not consult a mutable global `JSON`, call getters or `toJSON`, or execute Proxy traps. Promise results and non-JSON values are rejected. This API is intended for trusted application scripts, not as a security sandbox. See [`example/rule_engine/`](example/rule_engine/) for the runnable example.
 
+For application-owned Host Capabilities and lifecycle checks, use
+`HostEnvironment` to select the immutable capability set, bind concrete
+services with `SessionBindings`, and execute through an `ExecutionSession`.
+This higher-level path automatically completes the Promise-job checkpoint for
+each Hosted Turn. Console output, Script Resources, and application-scheduled
+one-shot timers cross purpose-specific typed boundaries without exposing
+Runtime Values. See the [stable embedding guide](docs/EMBEDDING.md#application-embedding-with-selected-host-capabilities).
+
 The [stable embedding guide](docs/EMBEDDING.md) defines the JSON boundary,
 lookup rules, queue checkpoints, retained-state behavior, error reuse limits,
 and four-target contract.
@@ -74,8 +95,9 @@ test "README one-shot facade" {
 The public entry points are defined in [`js_engine.mbt`](js_engine.mbt) and
 classified in the stable guide:
 
-- **Stable embedding:** `run`, `Engine`, `EngineError`, and the unbounded
-  persistent `Engine` methods listed in the guide.
+- **Stable embedding:** `run`; `Engine`, `EngineError`, and its explicit-queue
+  methods; plus `HostEnvironment`, `SessionBindings`, `ExecutionSession`, and
+  their typed Host Capability contracts listed in the guide.
 - **Staged Stage 4 availability:** `Engine::eval_bounded`,
   `Engine::call_json_bounded`, `Engine::run_microtask_checkpoint_bounded`,
   `Engine::run_timer_checkpoint_bounded`, `ExecutionPolicy`,
@@ -172,7 +194,7 @@ lexer/          Tokenizer
 ast/            AST node definitions
 parser/         Recursive descent parser with Pratt precedence
 static_semantics/  Early-error and declaration-fact analysis
-compiler/       Opt-in closure-conversion prototype
+compiler/       Bytecode compiler plus legacy closure-conversion experiments
 interpreter/    Wiring layer for runtime + standard library
 interpreter/runtime/  Tree-walking evaluator, value model, host state
 interpreter/stdlib/   JavaScript built-ins

@@ -85,6 +85,12 @@
     },
     {
       "from": ".",
+      "to": "interpreter/stdlib",
+      "scope": "prod",
+      "reason": "the general shell converts host-owned byte reads into the standard ArrayBuffer representation"
+    },
+    {
+      "from": ".",
       "to": "errors",
       "scope": "prod",
       "reason": "stateful Engine classifies runtime JavaScript errors for its stable facade"

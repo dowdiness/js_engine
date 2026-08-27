@@ -3578,13 +3578,10 @@ test "bytecode console member expression returns callable log function" {
 }
 
 ///|
-test "bytecode console member errors like interpreter for unsupported methods" {
+test "bytecode console warn matches ordinary interpreter method behavior" {
   let src =
     #|console.warn(1);
-  inspect(
-    bytecode_compare(src),
-    content="throw:TypeError: console.warn is not supported",
-  )
+  inspect(bytecode_compare(src), content="value:undefined")
 }
 
 ///|

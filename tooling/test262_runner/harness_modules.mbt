@@ -185,15 +185,6 @@ fn resolve_fixtures(
 }
 
 ///|
-fn copy_args(args : Array[String]) -> Array[String] {
-  let out : Array[String] = []
-  for arg in args {
-    out.push(arg)
-  }
-  out
-}
-
-///|
 fn append_engine_flags(
   engine_cmd : Array[String],
   test_path : String,
@@ -203,7 +194,24 @@ fn append_engine_flags(
   test262_dir? : String = "",
   harness_options? : HarnessOptions = HarnessOptions(),
 ) -> Array[String] raise {
-  let cmd = copy_args(engine_cmd)
+  let trailing_source_option = if engine_cmd.length() > 0 &&
+    (
+      engine_cmd[engine_cmd.length() - 1] == "-e" ||
+      engine_cmd[engine_cmd.length() - 1] == "--eval"
+    ) {
+    Some(engine_cmd[engine_cmd.length() - 1])
+  } else {
+    None
+  }
+  let prefix_length = if trailing_source_option is Some(_) {
+    engine_cmd.length() - 1
+  } else {
+    engine_cmd.length()
+  }
+  let cmd : Array[String] = []
+  for i = 0; i < prefix_length; i = i + 1 {
+    cmd.push(engine_cmd[i])
+  }
   if is_module {
     let main_specifier = "./" + @path_utils.basename(test_path)
     cmd.push("--module")
@@ -223,6 +231,10 @@ fn append_engine_flags(
   }
   if is_annex_b {
     cmd.push("--annex-b")
+  }
+  match trailing_source_option {
+    Some(option) => cmd.push(option)
+    None => ()
   }
   cmd
 }

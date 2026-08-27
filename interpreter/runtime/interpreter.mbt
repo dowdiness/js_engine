@@ -69,6 +69,16 @@ pub(all) struct TimerTask {
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise Error)
 
 ///|
+/// Stable category of Realm-independent console output.
+pub(all) enum ConsoleOutputKind {
+  Log
+  Debug
+  Info
+  Warn
+  Error
+}
+
+///|
 /// Host environment state — concerns that belong to the runtime container
 /// rather than the JavaScript execution model itself.
 ///
@@ -77,12 +87,27 @@ pub(all) struct ModuleLoader((String) -> Map[String, Value] raise Error)
 /// semantics, or module resolution) without touching execution internals.
 pub(all) struct HostEnv {
   output : Array[String] // console.log / print accumulator
+  console_output_sink : ((ConsoleOutputKind, String) -> Unit raise Error)?
   microtask_queue : Array[Microtask] // Promise microtask queue (WHATWG spec)
   timer_queue : @priority_queue.PriorityQueue[TimerTask] // setTimeout / setInterval task queue
   timer_id_counter : Ref[Int] // Next timer ID (monotonically increasing)
   timer_insertion_counter : Ref[Int] // Stable-sort tiebreaker for equal delays
   cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during an active callback
   module_loader : ModuleLoader? // Optional host-provided module resolver
+}
+
+///|
+/// Deliver console output to the configured Host destination. Interpreters
+/// without a destination retain the legacy compatibility buffer instead.
+pub fn HostEnv::emit_console_output(
+  self : HostEnv,
+  kind : ConsoleOutputKind,
+  text : String,
+) -> Unit raise Error {
+  match self.console_output_sink {
+    Some(sink) => sink(kind, text)
+    None => self.output.push(text)
+  }
 }
 
 ///|
@@ -121,9 +146,87 @@ pub(all) struct Interpreter {
 }
 
 ///|
+fn make_console_logger(
+  host : HostEnv,
+  realm_state : RealmState,
+  name : String,
+  kind : ConsoleOutputKind,
+) -> Value {
+  make_native_func(name~, realm_state=Some(realm_state), fn(arguments) raise {
+    let parts : Array[String] = arguments.map(value => value.to_string())
+    host.emit_console_output(kind, parts.join(" "))
+    Undefined
+  })
+}
+
+///|
+fn Interpreter::install_console_global(self : Interpreter) -> Unit {
+  let host = self.host
+  let log = make_console_logger(host, self.realm_state, "log", Log)
+  let debug = make_console_logger(host, self.realm_state, "debug", Debug)
+  let info = make_console_logger(host, self.realm_state, "info", Info)
+  let warn = make_console_logger(host, self.realm_state, "warn", Warn)
+  let error = make_console_logger(host, self.realm_state, "error", Error)
+  let assert_ = make_native_func(
+    name="assert",
+    length=1,
+    realm_state=Some(self.realm_state),
+    fn(arguments) raise {
+      if arguments.length() == 0 || !is_truthy(arguments[0]) {
+        let parts : Array[String] = []
+        if arguments.length() < 2 {
+          parts.push("Assertion failed")
+        } else {
+          match arguments[1] {
+            String_(first) => parts.push("Assertion failed: " + first)
+            value => {
+              parts.push("Assertion failed")
+              parts.push(value.to_string())
+            }
+          }
+          for i = 2; i < arguments.length(); i = i + 1 {
+            parts.push(arguments[i].to_string())
+          }
+        }
+        host.emit_console_output(ConsoleOutputKind::Error, parts.join(" "))
+      }
+      Undefined
+    },
+  )
+  let object_prototype = match self.global.bindings.get("[[ObjectPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  let console = make_host_object(name="console", proto=object_prototype, methods={
+    "assert": assert_,
+    "debug": debug,
+    "error": error,
+    "info": info,
+    "log": log,
+    "warn": warn,
+  })
+  match self.global_this {
+    Object(data) => {
+      data.bag.properties["console"] = console
+      data.bag.descriptors["console"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 pub fn Interpreter::new(
   annex_b? : Bool = false,
   module_loader? : ModuleLoader? = None,
+  console_enabled? : Bool = true,
+  console_output_sink? : ((ConsoleOutputKind, String) -> Unit raise Error)? = None,
   setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit = fn(
     _,
     _,
@@ -154,6 +257,7 @@ pub fn Interpreter::new(
   let symbols = realm_state.symbols
   let host : HostEnv = {
     output,
+    console_output_sink,
     microtask_queue: [],
     timer_queue: @priority_queue.PriorityQueue([]),
     timer_id_counter: { val: 1 },
@@ -195,6 +299,9 @@ pub fn Interpreter::new(
     // Bind 'this' and 'globalThis' in global scope
     global.def_builtin("this", global_this)
     global.def_builtin("globalThis", global_this)
+    if console_enabled {
+      interp.install_console_global()
+    }
     // Mirror global built-in functions onto the global object (globalThis.X)
     // so that this.isFinite, this.isNaN, etc. work correctly per the ES spec
     let global_func_names = [

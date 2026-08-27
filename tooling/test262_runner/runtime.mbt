@@ -34,7 +34,7 @@ fn auto_detect_engine() -> String? {
       "_build/js/release/build/cmd/main/main.js", "_build/js/debug/build/cmd/main/main.js",
     ] {
     if is_readable_file(path) {
-      return Some("node " + path)
+      return Some("node " + path + " -e")
     }
   }
   None

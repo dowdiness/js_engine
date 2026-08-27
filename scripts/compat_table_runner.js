@@ -289,7 +289,7 @@ function runSubtest(options, testCode, createIterableHelper, annexB, spawn) {
   }
   const source = makeScript(testCode, createIterableHelper);
   const args = options.engineArgs.concat(
-    annexB ? ["--annex-b", source] : [source],
+    annexB ? ["--annex-b", "-e", source] : ["-e", source],
   );
   const started = process.hrtime.bigint();
   const run = spawn(options.engine, args, {

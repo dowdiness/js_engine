@@ -114,7 +114,6 @@
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::eval_update_computed_property"},
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::get_cached_tagged_template_object"},
     {"count":2,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::get_computed_property"},
-    {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::get_console_member"},
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::observe_execution_step"},
     {"count":2,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::set_computed_property"},
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"runtime","reachable_from":["BytecodeFrame::step"],"target":"@runtime.Interpreter::set_property"},

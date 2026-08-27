@@ -105,6 +105,858 @@ test "Engine preserves state and isolates realms" {
 }
 
 ///|
+test "HostEnvironment creates isolated Execution Sessions" {
+  let environment = @js_engine.HostEnvironment(console=true)
+  let first = environment.create_session()
+  let second = environment.create_session()
+  let first_source =
+    #|let count = 0;
+    #|function next(delta) { count += delta; return count; }
+  let second_source =
+    #|let count = 100;
+    #|function next(delta) { count += delta; return count; }
+  first.evaluate(first_source)
+  second.evaluate(second_source)
+  json_inspect(first.call_json("next", [Json::number(2.0)]), content=2)
+  json_inspect(first.call_json("next", [Json::number(3.0)]), content=5)
+  json_inspect(second.call_json("next", [Json::number(1.0)]), content=101)
+}
+
+///|
+test "Execution Sessions bind distinct Console Output Sinks" {
+  let first_output : Array[String] = []
+  let second_output : Array[String] = []
+  let environment = @js_engine.HostEnvironment(console=true)
+  let first = environment.create_session(
+    bindings=@js_engine.SessionBindings(
+      console_output_sink=Some(fn(output) {
+        let kind = match output.kind() {
+          @js_engine.ConsoleOutputKind::Log => "log"
+          _ => "other"
+        }
+        first_output.push(kind + ":" + output.text())
+      }),
+    ),
+  )
+  let second = environment.create_session(
+    bindings=@js_engine.SessionBindings(
+      console_output_sink=Some(fn(output) {
+        let kind = match output.kind() {
+          @js_engine.ConsoleOutputKind::Log => "log"
+          _ => "other"
+        }
+        second_output.push(kind + ":" + output.text())
+      }),
+    ),
+  )
+  first.evaluate("console.log('first')")
+  second.evaluate("console.log('second')")
+  json_inspect(first_output, content=["log:first"])
+  json_inspect(second_output, content=["log:second"])
+}
+
+///|
+test "Console logging methods preserve output kind and assert reports output" {
+  let observed : Array[String] = []
+  let session = @js_engine.HostEnvironment(console=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      console_output_sink=Some(output => {
+        let kind = match output.kind() {
+          @js_engine.ConsoleOutputKind::Log => "log"
+          @js_engine.ConsoleOutputKind::Debug => "debug"
+          @js_engine.ConsoleOutputKind::Info => "info"
+          @js_engine.ConsoleOutputKind::Warn => "warn"
+          @js_engine.ConsoleOutputKind::Error => "error"
+        }
+        observed.push(kind + ":" + output.text())
+      }),
+    ),
+  )
+  session.evaluate(
+    (
+      #|console.log("log");
+      #|console.debug("debug");
+      #|console.info("info");
+      #|console.warn("warn");
+      #|console.error("error");
+      #|console.assert(true, "hidden");
+      #|console.assert(false, "detail");
+    ),
+  )
+  json_inspect(observed, content=[
+    "log:log", "debug:debug", "info:info", "warn:warn", "error:error", "error:Assertion failed: detail",
+  ])
+}
+
+///|
+test "Execution Sessions may explicitly share one Console Output Sink" {
+  let observed : Array[String] = []
+  let bindings = @js_engine.SessionBindings(
+    console_output_sink=Some(fn(output) { observed.push(output.text()) }),
+  )
+  let environment = @js_engine.HostEnvironment(console=true)
+  let first = environment.create_session(bindings~)
+  let second = environment.create_session(bindings~)
+  first.evaluate("console.log('first')")
+  second.evaluate("console.log('second')")
+  json_inspect(observed, content=["first", "second"])
+}
+
+///|
+test "Execution Session rejects re-entry while a Hosted Turn is running" {
+  let session_ref : Ref[@js_engine.ExecutionSession?] = { val: None }
+  let observed : Array[String] = []
+  let bindings = @js_engine.SessionBindings(
+    console_output_sink=Some(fn(output) raise {
+      observed.push(output.text())
+      guard session_ref.val is Some(session) else {
+        fail("Execution Session was not bound before Console output")
+      }
+      let failure : @js_engine.ExecutionSessionError? = try {
+        session.evaluate("1 + 1")
+        None
+      } catch {
+        error => Some(error)
+      }
+      match failure {
+        Some(@js_engine.SessionBusy) => observed.push("busy")
+        Some(error) => fail("expected SessionBusy, got " + error.to_string())
+        None => fail("busy Execution Session accepted a nested Hosted Turn")
+      }
+    }),
+  )
+  let session = @js_engine.HostEnvironment(console=true).create_session(
+    bindings~,
+  )
+  session_ref.val = Some(session)
+  session.evaluate("console.log('outer')")
+  session.evaluate("function answer() { return 42; }")
+  json_inspect(observed, content=["outer", "busy"])
+  json_inspect(session.call_json("answer", []), content=42)
+}
+
+///|
+test "closed Execution Session rejects later Hosted Turns" {
+  let session = @js_engine.HostEnvironment().create_session()
+  session.evaluate("function answer() { return 42; }")
+  session.close()
+  let evaluate_failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate("1 + 1")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match evaluate_failure {
+    Some(@js_engine.SessionClosed) => ()
+    Some(error) => fail("expected SessionClosed, got " + error.to_string())
+    None => fail("closed Execution Session accepted evaluate")
+  }
+  let call_failure : @js_engine.ExecutionSessionError? = try {
+    let _ = session.call_json("answer", [])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match call_failure {
+    Some(@js_engine.SessionClosed) => ()
+    Some(error) => fail("expected SessionClosed, got " + error.to_string())
+    None => fail("closed Execution Session accepted call_json")
+  }
+}
+
+///|
+test "closing a busy Execution Session does not interrupt its Hosted Turn" {
+  let session_ref : Ref[@js_engine.ExecutionSession?] = { val: None }
+  let observed : Array[String] = []
+  let bindings = @js_engine.SessionBindings(
+    console_output_sink=Some(fn(_output) raise {
+      guard session_ref.val is Some(session) else {
+        fail("Execution Session was not bound before Console output")
+      }
+      let failure : @js_engine.ExecutionSessionError? = try {
+        session.close()
+        None
+      } catch {
+        error => Some(error)
+      }
+      match failure {
+        Some(@js_engine.SessionBusy) => observed.push("busy")
+        Some(error) => fail("expected SessionBusy, got " + error.to_string())
+        None => fail("busy Execution Session was closed")
+      }
+    }),
+  )
+  let session = @js_engine.HostEnvironment(console=true).create_session(
+    bindings~,
+  )
+  session_ref.val = Some(session)
+  session.evaluate("console.log('outer')")
+  session.evaluate("function answer() { return 42; }")
+  json_inspect(session.call_json("answer", []), content=42)
+  json_inspect(observed, content=["busy"])
+  session.close()
+}
+
+///|
+test "general Execution Session does not install shell print" {
+  let session = @js_engine.HostEnvironment().create_session()
+  session.evaluate("function printType() { return typeof print; }")
+  json_inspect(session.call_json("printType", []), content="undefined")
+}
+
+///|
+test "HostEnvironment fixes whether Sessions install Console" {
+  let without_console = @js_engine.HostEnvironment().create_session()
+  without_console.evaluate("function consoleType() { return typeof console; }")
+  json_inspect(
+    without_console.call_json("consoleType", []),
+    content="undefined",
+  )
+  let absent_failure : @js_engine.ExecutionSessionError? = try {
+    without_console.evaluate("console.log('not installed')")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match absent_failure {
+    Some(@js_engine.ExecutionFailure(diagnostic)) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+    Some(error) =>
+      fail(
+        "expected JavaScriptException for absent Console, got " +
+        error.to_string(),
+      )
+    None => fail("absent Console remained callable")
+  }
+  let with_console = @js_engine.HostEnvironment(console=true).create_session()
+  with_console.evaluate(
+    "function consoleShape() { " +
+    "return [typeof console, globalThis.console === console]; }",
+  )
+  json_inspect(with_console.call_json("consoleShape", []), content=[
+    "object", true,
+  ])
+}
+
+///|
+test "Console uses ordinary lexical shadowing and member-call semantics" {
+  let session = @js_engine.HostEnvironment(console=true).create_session()
+  session.evaluate(
+    (
+      #|function shadowedConsole() {
+      #|  let console = {
+      #|    marker: "local",
+      #|    log(value) { return this.marker + ":" + value; }
+      #|  };
+      #|  return console.log("value");
+      #|}
+    ),
+  )
+  json_inspect(session.call_json("shadowedConsole", []), content="local:value")
+}
+
+///|
+test "bytecode-default Engine gives Console ordinary member semantics" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|function shadowedConsole() {
+      #|  let console = {
+      #|    marker: "bytecode",
+      #|    log(value) { return this.marker + ":" + value; }
+      #|  };
+      #|  return console.log("value");
+      #|}
+    ),
+  )
+  json_inspect(
+    engine.call_json("shadowedConsole", []),
+    content="bytecode:value",
+  )
+}
+
+///|
+test "Console global can be replaced like an ordinary global property" {
+  let session = @js_engine.HostEnvironment(console=true).create_session()
+  session.evaluate(
+    (
+      #|globalThis.console = {
+      #|  marker: "replacement",
+      #|  log(value) { return this.marker + ":" + value; }
+      #|};
+      #|function replacedConsole() { return console.log("value"); }
+    ),
+  )
+  json_inspect(
+    session.call_json("replacedConsole", []),
+    content="replacement:value",
+  )
+}
+
+///|
+test "Session creation rejects Console binding for absent capability" {
+  let bindings = @js_engine.SessionBindings(
+    console_output_sink=Some(fn(_output) { () }),
+  )
+  let failure : @js_engine.SessionCreationError? = try {
+    let _ = @js_engine.HostEnvironment().create_session(bindings~)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.BindingForAbsentCapability(capability)) =>
+      inspect(capability, content="Console")
+    Some(error) =>
+      fail("expected BindingForAbsentCapability, got " + error.to_string())
+    None => fail("absent Console capability accepted a Console binding")
+  }
+}
+
+///|
+test "Script Resource Capability forwards requests and opaque referrers" {
+  let observed : Array[String] = []
+  let bindings = @js_engine.SessionBindings(
+    script_resource_resolver=Some(request => {
+      observed.push(
+        request.request() + "<-" + request.referrer().unwrap_or("none"),
+      )
+      match request.request() {
+        "entry" =>
+          Some(
+            @js_engine.ScriptResource(
+              identity="virtual:entry",
+              source="load('dependency'); var entryValue = dependencyValue + 1;",
+            ),
+          )
+        "dependency" =>
+          Some(
+            @js_engine.ScriptResource(
+              identity="virtual:dependency",
+              source="var dependencyValue = 41;",
+            ),
+          )
+        _ => None
+      }
+    }),
+  )
+  let session = @js_engine.HostEnvironment(script_resources=true).create_session(
+    bindings~,
+  )
+  session.evaluate(
+    "load('entry'); function resourceAnswer() { return entryValue; }",
+  )
+  json_inspect(observed, content=["entry<-none", "dependency<-virtual:entry"])
+  json_inspect(session.call_json("resourceAnswer", []), content=42)
+}
+
+///|
+test "Script Resource Capability is fixed and requires its Session binding" {
+  let absent = @js_engine.HostEnvironment().create_session()
+  absent.evaluate("function loadType() { return typeof load; }")
+  json_inspect(absent.call_json("loadType", []), content="undefined")
+  let missing : @js_engine.SessionCreationError? = try {
+    let _ = @js_engine.HostEnvironment(script_resources=true).create_session()
+    None
+  } catch {
+    error => Some(error)
+  }
+  match missing {
+    Some(@js_engine.MissingBindingForCapability(capability)) =>
+      inspect(capability, content="Script Resources")
+    Some(error) => fail("expected missing binding, got " + error.to_string())
+    None => fail("Script Resources capability accepted no resolver")
+  }
+  let unexpected = @js_engine.SessionBindings(
+    script_resource_resolver=Some(_request => None),
+  )
+  let extra : @js_engine.SessionCreationError? = try {
+    let _ = @js_engine.HostEnvironment().create_session(bindings=unexpected)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match extra {
+    Some(@js_engine.BindingForAbsentCapability(capability)) =>
+      inspect(capability, content="Script Resources")
+    Some(error) => fail("expected absent capability, got " + error.to_string())
+    None => fail("absent Script Resources capability accepted a resolver")
+  }
+}
+
+///|
+test "unavailable Script Resource is catchable and keeps the Session reusable" {
+  let session = @js_engine.HostEnvironment(script_resources=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      script_resource_resolver=Some(_request => None),
+    ),
+  )
+  session.evaluate(
+    (
+      #|let unavailable;
+      #|try {
+      #|  load("missing");
+      #|} catch (error) {
+      #|  unavailable = [error.name, error.message];
+      #|}
+      #|function unavailableResult() { return unavailable; }
+      #|function afterUnavailable() { return 42; }
+    ),
+  )
+  json_inspect(session.call_json("unavailableResult", []), content=[
+    "Error", "Script resource is unavailable: missing",
+  ])
+  json_inspect(session.call_json("afterUnavailable", []), content=42)
+}
+
+///|
+test "Script Resource Resolver failure faults only its Execution Session" {
+  let failing = @js_engine.SessionBindings(
+    script_resource_resolver=Some(fn(_request) raise {
+      fail("requested Script Resource Resolver failure")
+    }),
+  )
+  let environment = @js_engine.HostEnvironment(script_resources=true)
+  let first = environment.create_session(bindings=failing)
+  let second = environment.create_session(
+    bindings=@js_engine.SessionBindings(
+      script_resource_resolver=Some(_request => None),
+    ),
+  )
+  let turn_failure : @js_engine.ExecutionSessionError? = try {
+    first.evaluate("load('resource')")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match turn_failure {
+    Some(@js_engine.HostFailure(capability~, detail~)) => {
+      inspect(capability, content="Script Resource Resolver")
+      assert_true(detail.contains("requested Script Resource Resolver failure"))
+    }
+    Some(error) => fail("expected HostFailure, got " + error.to_string())
+    None => fail("expected Script Resource Resolver failure")
+  }
+  let rejected : @js_engine.ExecutionSessionError? = try {
+    first.evaluate("1 + 1")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match rejected {
+    Some(@js_engine.SessionFaulted) => ()
+    Some(error) => fail("expected SessionFaulted, got " + error.to_string())
+    None => fail("faulted Execution Session accepted another Hosted Turn")
+  }
+  second.evaluate("function answer() { return 42; }")
+  json_inspect(second.call_json("answer", []), content=42)
+}
+
+///|
+test "loaded Script Resource errors remain JavaScript-catchable" {
+  let session = @js_engine.HostEnvironment(script_resources=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      script_resource_resolver=Some(_request => {
+        Some(
+          @js_engine.ScriptResource(
+            identity="virtual:throwing",
+            source="throw new Error('loaded failure');",
+          ),
+        )
+      }),
+    ),
+  )
+  session.evaluate(
+    (
+      #|let message;
+      #|try { load("throwing"); } catch (error) { message = error.message; }
+      #|function caughtLoadedFailure() { return message; }
+    ),
+  )
+  json_inspect(
+    session.call_json("caughtLoadedFailure", []),
+    content="loaded failure",
+  )
+}
+
+///|
+test "application resumes an opaque Scheduled Turn exactly once" {
+  let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None }
+  let delays : Array[Int] = []
+  let session = @js_engine.HostEnvironment(timers=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      timer_scheduler=Some(schedule => {
+        delays.push(schedule.delay_milliseconds())
+        scheduled.val = Some(schedule.turn())
+      }),
+    ),
+  )
+  session.evaluate(
+    (
+      #|let events = [];
+      #|setTimeout((value) => {
+      #|  events.push(value);
+      #|  Promise.resolve().then(() => events.push("promise"));
+      #|}, 25, "timer");
+      #|function timerEvents() { return events; }
+    ),
+  )
+  json_inspect(session.call_json("timerEvents", []), content=[])
+  json_inspect(delays, content=[25])
+  guard scheduled.val is Some(turn) else { fail("expected a Scheduled Turn") }
+  session.resume_scheduled_turn(turn)
+  json_inspect(session.call_json("timerEvents", []), content=[
+    "timer", "promise",
+  ])
+  let repeated : @js_engine.ExecutionSessionError? = try {
+    session.resume_scheduled_turn(turn)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match repeated {
+    Some(@js_engine.ScheduledTurnUnavailable) => ()
+    Some(error) =>
+      fail("expected ScheduledTurnUnavailable, got " + error.to_string())
+    None => fail("Scheduled Turn was resumed twice")
+  }
+}
+
+///|
+test "Timers Capability is absent unless selected and requires a scheduler" {
+  let absent = @js_engine.HostEnvironment().create_session()
+  absent.evaluate("function timerType() { return typeof setTimeout; }")
+  json_inspect(absent.call_json("timerType", []), content="undefined")
+  let missing : @js_engine.SessionCreationError? = try {
+    let _ = @js_engine.HostEnvironment(timers=true).create_session()
+    None
+  } catch {
+    error => Some(error)
+  }
+  match missing {
+    Some(@js_engine.MissingBindingForCapability(capability)) =>
+      inspect(capability, content="Timers")
+    Some(error) => fail("expected missing binding, got " + error.to_string())
+    None => fail("Timers capability accepted no scheduler")
+  }
+}
+
+///|
+test "clearTimeout and Session ownership invalidate Scheduled Turns" {
+  let turns : Array[@js_engine.ScheduledTurn] = []
+  let environment = @js_engine.HostEnvironment(timers=true)
+  let first = environment.create_session(
+    bindings=@js_engine.SessionBindings(
+      timer_scheduler=Some(schedule => turns.push(schedule.turn())),
+    ),
+  )
+  let second = environment.create_session(
+    bindings=@js_engine.SessionBindings(timer_scheduler=Some(_schedule => ())),
+  )
+  first.evaluate(
+    "let id = setTimeout(() => {}, 0); clearTimeout(id); " +
+    "setTimeout(() => {}, 0);",
+  )
+  guard turns.length() == 2 else { fail("expected two timer schedules") }
+  let cancelled : @js_engine.ExecutionSessionError? = try {
+    first.resume_scheduled_turn(turns[0])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match cancelled {
+    Some(@js_engine.ScheduledTurnUnavailable) => ()
+    Some(error) => fail("expected cancelled turn, got " + error.to_string())
+    None => fail("clearTimeout did not invalidate its Scheduled Turn")
+  }
+  let foreign : @js_engine.ExecutionSessionError? = try {
+    second.resume_scheduled_turn(turns[1])
+    None
+  } catch {
+    error => Some(error)
+  }
+  match foreign {
+    Some(@js_engine.ScheduledTurnUnavailable) => ()
+    Some(error) =>
+      fail("expected foreign turn rejection, got " + error.to_string())
+    None => fail("another Execution Session resumed a foreign Scheduled Turn")
+  }
+  first.resume_scheduled_turn(turns[1])
+}
+
+///|
+test "Timer Scheduler failure faults the Execution Session" {
+  let session = @js_engine.HostEnvironment(timers=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      timer_scheduler=Some(fn(_schedule) raise {
+        fail("requested Timer Scheduler failure")
+      }),
+    ),
+  )
+  let failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate("setTimeout(() => {}, 0)")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.HostFailure(capability~, detail~)) => {
+      inspect(capability, content="Timer Scheduler")
+      assert_true(detail.contains("requested Timer Scheduler failure"))
+    }
+    Some(error) => fail("expected HostFailure, got " + error.to_string())
+    None => fail("expected Timer Scheduler failure")
+  }
+  let rejected : @js_engine.ExecutionSessionError? = try {
+    session.evaluate("1 + 1")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match rejected {
+    Some(@js_engine.SessionFaulted) => ()
+    Some(error) => fail("expected SessionFaulted, got " + error.to_string())
+    None => fail("faulted Execution Session accepted another Hosted Turn")
+  }
+}
+
+///|
+test "closing a Session rejects its retained Scheduled Turns" {
+  let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None }
+  let session = @js_engine.HostEnvironment(timers=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      timer_scheduler=Some(schedule => scheduled.val = Some(schedule.turn())),
+    ),
+  )
+  session.evaluate("setTimeout(() => {}, 0)")
+  guard scheduled.val is Some(turn) else { fail("expected a Scheduled Turn") }
+  session.close()
+  let rejected : @js_engine.ExecutionSessionError? = try {
+    session.resume_scheduled_turn(turn)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match rejected {
+    Some(@js_engine.SessionClosed) => ()
+    Some(error) => fail("expected SessionClosed, got " + error.to_string())
+    None => fail("closed Execution Session resumed a Scheduled Turn")
+  }
+}
+
+///|
+test "Console Output Sink failure faults only its Execution Session" {
+  let failing = @js_engine.SessionBindings(
+    console_output_sink=Some(fn(_output) raise {
+      fail("requested Console Output Sink failure")
+    }),
+  )
+  let environment = @js_engine.HostEnvironment(console=true)
+  let first = environment.create_session(bindings=failing)
+  let second = environment.create_session()
+  let turn_failure : @js_engine.ExecutionSessionError? = try {
+    first.evaluate("console.log('first')")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match turn_failure {
+    Some(@js_engine.HostFailure(capability~, detail~)) => {
+      inspect(capability, content="Console Output Sink")
+      assert_true(detail.contains("requested Console Output Sink failure"))
+    }
+    Some(error) => fail("expected HostFailure, got " + error.to_string())
+    None => fail("expected Console Output Sink failure")
+  }
+  let rejected : @js_engine.ExecutionSessionError? = try {
+    first.evaluate("1 + 1")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match rejected {
+    Some(@js_engine.SessionFaulted) => ()
+    Some(error) => fail("expected SessionFaulted, got " + error.to_string())
+    None => fail("faulted Execution Session accepted another turn")
+  }
+  second.evaluate("function answer() { return 42; }")
+  json_inspect(second.call_json("answer", []), content=42)
+}
+
+///|
+test "uncaught JavaScript error does not fault its Execution Session" {
+  let session = @js_engine.HostEnvironment().create_session()
+  let failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate("throw new Error('expected')")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.ExecutionFailure(diagnostic)) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+    Some(error) =>
+      fail("expected JavaScriptException, got " + error.to_string())
+    None => fail("expected uncaught JavaScript error")
+  }
+  session.evaluate("function answer() { return 42; }")
+  json_inspect(session.call_json("answer", []), content=42)
+}
+
+///|
+test "Execution Session preserves reusable Engine diagnostics" {
+  let session = @js_engine.HostEnvironment().create_session()
+  let failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate("let =")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.ExecutionFailure(diagnostic)) => {
+      inspect(diagnostic.failure_kind_code(), content="parse-error")
+      inspect(diagnostic.operation_code(), content="eval")
+      inspect(diagnostic.phase_code(), content="parse")
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Reusable,
+      )
+      assert_true(diagnostic.source_location() is Some(_))
+    }
+    Some(error) => fail("expected ExecutionFailure, got " + error.to_string())
+    None => fail("expected parser diagnostic")
+  }
+  session.evaluate("function answer() { return 42; }")
+  json_inspect(session.call_json("answer", []), content=42)
+}
+
+///|
+test "Execution Session drains Promise jobs at the end of a Hosted Turn" {
+  let session = @js_engine.HostEnvironment().create_session()
+  session.evaluate(
+    (
+      #|let events = [];
+      #|Promise.resolve().then(() => {
+      #|  events.push("first");
+      #|  Promise.resolve().then(() => events.push("nested"));
+      #|});
+      #|events.push("synchronous");
+      #|function snapshot() { return events; }
+    ),
+  )
+  json_inspect(session.call_json("snapshot", []), content=[
+    "synchronous", "first", "nested",
+  ])
+}
+
+///|
+test "Execution Session Promise checkpoint does not run timer tasks" {
+  let scheduled : Array[@js_engine.ScheduledTurn] = []
+  let session = @js_engine.HostEnvironment(timers=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      timer_scheduler=Some(schedule => scheduled.push(schedule.turn())),
+    ),
+  )
+  session.evaluate(
+    (
+      #|let events = [];
+      #|setTimeout(() => events.push("timer"), 0);
+      #|Promise.resolve().then(() => events.push("promise"));
+      #|function snapshot() { return events; }
+    ),
+  )
+  json_inspect(session.call_json("snapshot", []), content=["promise"])
+  assert_eq(scheduled.length(), 1)
+}
+
+///|
+test "Execution Session checkpoints Promise jobs after a reusable script failure" {
+  let observed : Array[String] = []
+  let session = @js_engine.HostEnvironment(console=true).create_session(
+    bindings=@js_engine.SessionBindings(
+      console_output_sink=Some(output => observed.push(output.text())),
+    ),
+  )
+  let failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate(
+      "queueMicrotask(() => console.log('microtask')); " +
+      "throw new Error('synchronous');",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.ExecutionFailure(diagnostic)) => {
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+      inspect(diagnostic.operation_code(), content="eval")
+    }
+    Some(error) => fail("expected ExecutionFailure, got " + error.to_string())
+    None => fail("expected synchronous JavaScript failure")
+  }
+  json_inspect(observed, content=["microtask"])
+}
+
+///|
+test "Promise job failure takes precedence and faults the Execution Session" {
+  let session = @js_engine.HostEnvironment().create_session()
+  let failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate(
+      "queueMicrotask(() => { throw new Error('job failure'); });",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.ExecutionFailure(diagnostic)) => {
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+      inspect(diagnostic.operation_code(), content="microtask-checkpoint")
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Discard,
+      )
+    }
+    Some(error) => fail("expected ExecutionFailure, got " + error.to_string())
+    None => fail("expected Promise job failure")
+  }
+  let rejected : @js_engine.ExecutionSessionError? = try {
+    session.evaluate("1 + 1")
+    None
+  } catch {
+    error => Some(error)
+  }
+  match rejected {
+    Some(@js_engine.SessionFaulted) => ()
+    Some(error) => fail("expected SessionFaulted, got " + error.to_string())
+    None => fail("faulted Execution Session accepted another Hosted Turn")
+  }
+}
+
+///|
+test "Promise job failure overrides a reusable synchronous failure" {
+  let session = @js_engine.HostEnvironment().create_session()
+  let failure : @js_engine.ExecutionSessionError? = try {
+    session.evaluate(
+      "queueMicrotask(() => { throw new Error('job failure'); }); " +
+      "throw new Error('synchronous failure');",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match failure {
+    Some(@js_engine.ExecutionFailure(diagnostic)) => {
+      inspect(diagnostic.operation_code(), content="microtask-checkpoint")
+      assert_true(diagnostic.message().contains("job failure"))
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Discard,
+      )
+    }
+    Some(error) => fail("expected ExecutionFailure, got " + error.to_string())
+    None => fail("expected Promise job failure")
+  }
+}
+
+///|
 test "Engine plain addition coercion remains reusable after abrupt completion" {
   let engine = @js_engine.Engine()
   engine.eval("function add(left, right) { return left + right; }")
