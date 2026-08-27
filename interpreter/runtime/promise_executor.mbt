@@ -12,6 +12,7 @@ priv enum PromiseResolutionKind {
 
 ///|
 priv struct PromiseResolutionExecutorCode {
+  owner : Interpreter
   promise_data : PromiseData
   already_resolved : Ref[Bool]
   kind : PromiseResolutionKind
@@ -19,11 +20,12 @@ priv struct PromiseResolutionExecutorCode {
 
 ///|
 fn PromiseResolutionExecutorCode::PromiseResolutionExecutorCode(
+  owner~ : Interpreter,
   promise_data~ : PromiseData,
   already_resolved~ : Ref[Bool],
   kind~ : PromiseResolutionKind,
 ) -> PromiseResolutionExecutorCode {
-  { promise_data, already_resolved, kind }
+  { owner, promise_data, already_resolved, kind }
 }
 
 ///|
@@ -38,6 +40,7 @@ priv enum PromiseResolutionPhase {
 
 ///|
 priv struct PromiseResolutionExecutorFrame {
+  owner : Interpreter
   promise_data : PromiseData
   already_resolved : Ref[Bool]
   kind : PromiseResolutionKind
@@ -49,6 +52,7 @@ priv struct PromiseResolutionExecutorFrame {
 
 ///|
 fn PromiseResolutionExecutorFrame::PromiseResolutionExecutorFrame(
+  owner~ : Interpreter,
   promise_data~ : PromiseData,
   already_resolved~ : Ref[Bool],
   kind~ : PromiseResolutionKind,
@@ -56,6 +60,7 @@ fn PromiseResolutionExecutorFrame::PromiseResolutionExecutorFrame(
   resolution~ : Value,
 ) -> PromiseResolutionExecutorFrame {
   {
+    owner,
     promise_data,
     already_resolved,
     kind,
@@ -138,18 +143,18 @@ fn PromiseResolutionExecutorFrame::step_frame(
   match self.phase {
     PromiseResolutionNeedStart => self.step_start(interp)
     PromiseResolutionNeedFulfill(value) => {
-      fulfill_promise(interp, self.promise_data, value)
+      fulfill_promise(self.owner, self.promise_data, value)
       self.phase = PromiseResolutionComplete
       ExecutorActivationReturn(Undefined)
     }
     PromiseResolutionNeedReject(reason) => {
-      reject_promise(interp, self.promise_data, reason)
+      reject_promise(self.owner, self.promise_data, reason)
       self.phase = PromiseResolutionComplete
       ExecutorActivationReturn(Undefined)
     }
     PromiseResolutionNeedThenableJob => {
       enqueue_promise_thenable_job(
-        interp,
+        self.owner,
         self.promise_data,
         self.resolution,
         self.then_value,
@@ -223,16 +228,17 @@ impl ExecutorActivationFrame for PromiseResolutionExecutorFrame with fn deliver_
 ///|
 impl ExecutorCode for PromiseResolutionExecutorCode with fn start(
   self,
-  interp,
+  _interp,
   prepared,
 ) {
   let args = prepared.arguments()
   let resolution = if args.length() > 0 { args[0] } else { Undefined }
   PromiseResolutionExecutorFrame(
+    owner=self.owner,
     promise_data=self.promise_data,
     already_resolved=self.already_resolved,
     kind=self.kind,
-    global=interp.global,
+    global=self.owner.global,
     resolution~,
   )
   as &ExecutorActivationFrame
@@ -253,6 +259,7 @@ fn make_promise_resolving_functions(
     interp.global,
     true,
     PromiseResolutionExecutorCode(
+      owner=interp,
       promise_data~,
       already_resolved~,
       kind=PromiseResolutionResolve,
@@ -266,6 +273,7 @@ fn make_promise_resolving_functions(
     interp.global,
     true,
     PromiseResolutionExecutorCode(
+      owner=interp,
       promise_data~,
       already_resolved~,
       kind=PromiseResolutionReject,

@@ -171,6 +171,12 @@ if [[ "$actual" != $'true 41\n42' ]]; then
   exit 1
 fi
 
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'let resolve; let result = new Promise(callback => { resolve = callback; }); result.then(value => print(value)); let child = runString(""); child.resolveFromParentRealm = resolve; child.loadString("resolveFromParentRealm(42);");')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected a Promise reaction registered in the parent realm to drain after child-realm resolution, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
 printf '\001\002\377' >"$fixture_root/data.bin"
 printf '%s\n' \
   'let bytes = new Uint8Array(read("./data.bin", "binary"));' \
