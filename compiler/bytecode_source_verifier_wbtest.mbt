@@ -1575,6 +1575,33 @@ test "frame-shape verifier rejects argument-list underflow" {
 }
 
 ///|
+test "frame-shape verifier rejects binding-reference underflow" {
+  let effect = match bytecode_instruction_transfer(StoreNameReference) {
+    Fallthrough(effect) => effect
+    _ => abort("expected fallthrough transfer")
+  }
+  let mut defect : BytecodeFrameShapeDefect? = None
+  try {
+    let _ = apply_bytecode_resource_effect(
+      bytecode_abstract_frame_shape(1, 0, 0),
+      effect,
+      [],
+      0,
+    )
+  } catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  match defect.invariant {
+    ResourceUnderflow => ()
+    _ => fail("expected resource-underflow invariant")
+  }
+  assert_eq(defect.expected.binding_reference_depth, 1)
+  assert_eq(defect.actual.binding_reference_depth, 0)
+}
+
+///|
 test "frame-shape verifier rejects unequal control-flow joins" {
   let program = unverified_source_program_for_wb(
     "if (condition) { value = 1; } else { value = 2; }",
@@ -1614,6 +1641,41 @@ test "frame-shape verifier rejects unequal control-flow joins" {
 }
 
 ///|
+test "frame-shape verifier rejects unequal binding-reference joins" {
+  let program = unverified_source_program_for_wb("x ||= 1;")
+  let mut mutated = false
+  for instruction_index, instruction in program.main.code {
+    match instruction {
+      DropNameReference => {
+        program.main.code[instruction_index] = SetCompletionValue(
+          Value::Undefined,
+        )
+        mutated = true
+        break
+      }
+      _ => ()
+    }
+  }
+  guard mutated else { abort("expected DropNameReference instruction") }
+  let mut defect : BytecodeFrameShapeDefect? = None
+  try {
+    let _ = finalize_bytecode_program(program)
+  } catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  match defect.invariant {
+    ControlFlowJoin => ()
+    _ => fail("expected control-flow-join invariant")
+  }
+  assert_true(
+    defect.expected.binding_reference_depth !=
+    defect.actual.binding_reference_depth,
+  )
+}
+
+///|
 test "frame-shape verifier rejects terminal auxiliary-state residue" {
   let program = unverified_source_program_for_wb("f(...values);")
   let mut call_index : Int? = None
@@ -1642,6 +1704,26 @@ test "frame-shape verifier rejects terminal auxiliary-state residue" {
   }
   assert_eq(defect.expected.argument_list_depth, 0)
   assert_eq(defect.actual.argument_list_depth, 1)
+}
+
+///|
+test "frame-shape verifier rejects terminal binding-reference residue" {
+  let mut defect : BytecodeFrameShapeDefect? = None
+  verify_bytecode_terminator_shape(
+    bytecode_abstract_frame_shape(0, 0, 0, binding_reference_depth=1),
+    [],
+    0,
+  ) catch {
+    BytecodeFrameShapeDefect(actual) => defect = Some(actual)
+    _ => fail("expected typed frame-shape defect")
+  }
+  let defect = defect.unwrap()
+  match defect.invariant {
+    TerminalShape => ()
+    _ => fail("expected terminal-shape invariant")
+  }
+  assert_eq(defect.expected.binding_reference_depth, 0)
+  assert_eq(defect.actual.binding_reference_depth, 1)
 }
 
 ///|

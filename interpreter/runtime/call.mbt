@@ -517,6 +517,9 @@ fn Interpreter::perform_eval_unscoped(
   // For indirect eval, parent to global scope since it runs as a fresh script.
   let exec_parent = if direct { caller_env } else { self.global }
   let exec_env = Environment::new(parent=Some(exec_parent))
+  if eval_strict {
+    exec_env.is_var_scope = true
+  }
   let eval_ctx : ExecContext = { strict: eval_strict, current_generator: None }
   if eval_strict {
     // Strict eval: all declarations stay in the eval scope (isolated)

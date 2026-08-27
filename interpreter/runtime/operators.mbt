@@ -258,7 +258,7 @@ fn Interpreter::eval_compound_assign(
   }
   match target {
     Ident(name, _) => {
-      let current = get_assignment_name_value(ctx, env, name)
+      let current = self.eval_identifier_reference(ctx, name, env)
       let rhs = self.eval_expr(ctx, value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
       // Check if the target is a non-writable property on the global object
@@ -270,7 +270,7 @@ fn Interpreter::eval_compound_assign(
         }
         return result
       }
-      env.assign_with_strict(name, result, ctx.strict)
+      ignore(self.assign_compiled_name(ctx, env, name, result))
       result
     }
     Member(obj_expr, prop, mloc) => {
@@ -403,7 +403,7 @@ fn Interpreter::eval_logical_assign(
 ) -> Value raise Error {
   match target {
     Ident(name, _) => {
-      let current = get_assignment_name_value(ctx, env, name)
+      let current = self.eval_identifier_reference(ctx, name, env)
       if should_assign(current) {
         let rhs = self.eval_named_expr(ctx, value_expr, env, name)
         if self.is_immutable_global(name) {
@@ -414,7 +414,7 @@ fn Interpreter::eval_logical_assign(
           }
           return rhs
         }
-        env.assign_with_strict(name, rhs, ctx.strict)
+        ignore(self.assign_compiled_name(ctx, env, name, rhs))
         rhs
       } else {
         current

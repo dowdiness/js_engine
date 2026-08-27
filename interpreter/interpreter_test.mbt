@@ -13572,7 +13572,7 @@ test "eval: strict mode isolates var declarations" {
       #|try { console.log(x); } catch(e) { console.log("not defined"); }
     ),
   )
-  json_inspect(output, content=["42"])
+  json_inspect(output, content=["not defined"])
 }
 
 ///|
@@ -13693,7 +13693,7 @@ test "eval: strict eval code with use strict in eval" {
       #|try { console.log(x); } catch(e) { console.log("not defined"); }
     ),
   )
-  json_inspect(output, content=["42"])
+  json_inspect(output, content=["not defined"])
 }
 
 ///|

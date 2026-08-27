@@ -456,6 +456,7 @@ fn run_candidate_bytecode_function(
     | @runtime.ExecutorActivationCopyDataProperties(_)
     | @runtime.ExecutorActivationBinding(_)
     | @runtime.ExecutorActivationBindingReference(_)
+    | @runtime.ExecutorActivationBindingReferenceAccess(_)
     | @runtime.ExecutorActivationBindingUpdate(_)
     | @runtime.ExecutorActivationReference(_) =>
       raise @errors.InternalError(

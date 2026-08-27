@@ -3447,21 +3447,56 @@ fn BytecodeBuilder::compile_identifier_compound_load(
   self : BytecodeBuilder,
   name : String,
   loc : @token.Loc,
-) -> Unit raise Error {
+) -> Bool raise Error {
   match (self.local_slot(name), self.env_slot(name)) {
     (Some(slot), _) => {
       let _ = self.emit(LoadLocal(slot))
+      false
     }
     (_, Some(slot)) => {
       let _ = self.emit_with_source_locations(LoadEnvSlot(slot), [
         (BindingAccess, loc),
       ])
+      false
     }
     _ => {
-      let _ = self.emit_with_source_locations(LoadAssignmentName(name), [
+      let _ = self.emit_with_source_locations(ResolveNameReference(name), [
         (BindingAccess, loc),
       ])
+      let _ = self.emit(GetNameReference)
+      true
     }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_identifier_assignment_reference(
+  self : BytecodeBuilder,
+  name : String,
+  loc : @token.Loc,
+) -> Bool raise Error {
+  match (self.local_slot(name), self.env_slot(name)) {
+    (Some(_), _) | (_, Some(_)) => false
+    _ => {
+      let _ = self.emit_with_source_locations(ResolveNameReference(name), [
+        (BindingAccess, loc),
+      ])
+      true
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_identifier_assignment_store(
+  self : BytecodeBuilder,
+  name : String,
+  loc : @token.Loc,
+  retained_reference : Bool,
+) -> Unit raise Error {
+  if retained_reference {
+    let _ = self.emit(StoreNameReference)
+  } else {
+    self.compile_identifier_store(name, loc)
   }
 }
 
@@ -3473,7 +3508,7 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
   value : @ast.Expr,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  self.compile_identifier_compound_load(name, loc)
+  let retained_reference = self.compile_identifier_compound_load(name, loc)
   let keep_current = match op {
     LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
@@ -3490,7 +3525,8 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
   }
   let _ = self.emit(Pop)
   self.compile_expr(value)
-  self.compile_identifier_store(name, loc)
+  self.compile_identifier_assignment_store(name, loc, retained_reference)
+  let end_jump = if retained_reference { self.emit(Jump(-1)) } else { -1 }
   match op {
     LogicalAndAssign =>
       self.patch(keep_current, JumpIfFalseKeep(self.code.length()))
@@ -3499,6 +3535,10 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
     NullishAssign =>
       self.patch(keep_current, JumpIfNotNullishKeep(self.code.length()))
     _ => ()
+  }
+  if retained_reference {
+    let _ = self.emit(DropNameReference)
+    self.patch(end_jump, Jump(self.code.length()))
   }
 }
 
@@ -3624,13 +3664,13 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
           Add
         }
       }
-      self.compile_identifier_compound_load(name, loc)
+      let retained_reference = self.compile_identifier_compound_load(name, loc)
       self.compile_expr(value)
       let _ = self.emit_with_source_locations(
         BinaryOp(bin_op, CompoundAssignment, loc),
         [(Operator, loc)],
       )
-      self.compile_identifier_store(name, loc)
+      self.compile_identifier_assignment_store(name, loc, retained_reference)
     }
   }
 }
@@ -4675,11 +4715,14 @@ fn BytecodeBuilder::compile_expr_body(
       )
     }
     Assign(name, value, loc) => {
+      let retained_reference = self.compile_identifier_assignment_reference(
+        name, loc,
+      )
       self.compile_expr(value)
       if bytecode_is_anonymous_function_definition(value) {
         let _ = self.emit(SetFunctionName(name))
       }
-      self.compile_identifier_store(name, loc)
+      self.compile_identifier_assignment_store(name, loc, retained_reference)
     }
     UpdateExpr(op, Ident(name, ident_loc), prefix, loc) =>
       match (self.local_slot(name), self.env_slot(name)) {

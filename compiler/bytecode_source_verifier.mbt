@@ -138,6 +138,7 @@ priv struct BytecodeAbstractFrameShape {
   operand_stack_height : Int
   argument_list_depth : Int
   for_in_iterator_depth : Int
+  binding_reference_depth : Int
 }
 
 ///|
@@ -159,6 +160,8 @@ priv struct BytecodeResourceEffect {
   argument_list_depth_delta : Int
   required_for_in_iterator_depth : Int
   for_in_iterator_depth_delta : Int
+  required_binding_reference_depth : Int
+  binding_reference_depth_delta : Int
 }
 
 ///|
@@ -231,6 +234,8 @@ fn bytecode_stack_effect(
     argument_list_depth_delta: 0,
     required_for_in_iterator_depth: 0,
     for_in_iterator_depth_delta: 0,
+    required_binding_reference_depth: 0,
+    binding_reference_depth_delta: 0,
   }
 }
 
@@ -248,6 +253,8 @@ fn bytecode_argument_list_effect(
     argument_list_depth_delta,
     required_for_in_iterator_depth: 0,
     for_in_iterator_depth_delta: 0,
+    required_binding_reference_depth: 0,
+    binding_reference_depth_delta: 0,
   }
 }
 
@@ -265,6 +272,27 @@ fn bytecode_for_in_effect(
     argument_list_depth_delta: 0,
     required_for_in_iterator_depth,
     for_in_iterator_depth_delta,
+    required_binding_reference_depth: 0,
+    binding_reference_depth_delta: 0,
+  }
+}
+
+///|
+fn bytecode_binding_reference_effect(
+  required_stack_height : Int,
+  stack_height_delta : Int,
+  required_binding_reference_depth : Int,
+  binding_reference_depth_delta : Int,
+) -> BytecodeResourceEffect {
+  {
+    required_stack_height,
+    stack_height_delta,
+    required_argument_list_depth: 0,
+    argument_list_depth_delta: 0,
+    required_for_in_iterator_depth: 0,
+    for_in_iterator_depth_delta: 0,
+    required_binding_reference_depth,
+    binding_reference_depth_delta,
   }
 }
 
@@ -282,6 +310,8 @@ fn bytecode_instruction_transfer(
     | MarkOptionalChainShortCircuit
     | EndOptionalChain
     | DeclareFunction(_, _) => Fallthrough(bytecode_stack_effect(0, 0))
+    ResolveNameReference(_) =>
+      Fallthrough(bytecode_binding_reference_effect(0, 0, 0, 1))
     LoadConst(_)
     | LoadUndefined
     | LoadThis
@@ -289,7 +319,6 @@ fn bytecode_instruction_transfer(
     | LoadSuperProperty(_, _)
     | LoadDirectEvalCallee
     | LoadName(_)
-    | LoadAssignmentName(_)
     | LoadLocal(_)
     | LoadEnvSlot(_)
     | TypeofName(_)
@@ -313,6 +342,12 @@ fn bytecode_instruction_transfer(
     | SetFunctionName(_)
     | ToObjectLiteralPropertyKey
     | AssignDestructure(_) => Fallthrough(bytecode_stack_effect(1, 0))
+    GetNameReference =>
+      Fallthrough(bytecode_binding_reference_effect(0, 1, 1, 0))
+    StoreNameReference =>
+      Fallthrough(bytecode_binding_reference_effect(1, 0, 1, -1))
+    DropNameReference =>
+      Fallthrough(bytecode_binding_reference_effect(0, 0, 1, -1))
     DefineBinding(_, _, _)
     | DefineLocal(_, _)
     | DefineEnvSlot(_, _)
@@ -1127,8 +1162,14 @@ fn bytecode_abstract_frame_shape(
   operand_stack_height : Int,
   argument_list_depth : Int,
   for_in_iterator_depth : Int,
+  binding_reference_depth? : Int = 0,
 ) -> BytecodeAbstractFrameShape {
-  { operand_stack_height, argument_list_depth, for_in_iterator_depth }
+  {
+    operand_stack_height,
+    argument_list_depth,
+    for_in_iterator_depth,
+    binding_reference_depth,
+  }
 }
 
 ///|
@@ -1138,7 +1179,8 @@ fn bytecode_frame_shapes_equal(
 ) -> Bool {
   left.operand_stack_height == right.operand_stack_height &&
   left.argument_list_depth == right.argument_list_depth &&
-  left.for_in_iterator_depth == right.for_in_iterator_depth
+  left.for_in_iterator_depth == right.for_in_iterator_depth &&
+  left.binding_reference_depth == right.binding_reference_depth
 }
 
 ///|
@@ -1171,10 +1213,12 @@ fn apply_bytecode_resource_effect(
     effect.required_stack_height,
     effect.required_argument_list_depth,
     effect.required_for_in_iterator_depth,
+    binding_reference_depth=effect.required_binding_reference_depth,
   )
   guard state.operand_stack_height >= effect.required_stack_height &&
     state.argument_list_depth >= effect.required_argument_list_depth &&
-    state.for_in_iterator_depth >= effect.required_for_in_iterator_depth else {
+    state.for_in_iterator_depth >= effect.required_for_in_iterator_depth &&
+    state.binding_reference_depth >= effect.required_binding_reference_depth else {
     raise bytecode_frame_shape_defect(
       function_path,
       instruction_index,
@@ -1188,6 +1232,8 @@ fn apply_bytecode_resource_effect(
     state.operand_stack_height + effect.stack_height_delta,
     state.argument_list_depth + effect.argument_list_depth_delta,
     state.for_in_iterator_depth + effect.for_in_iterator_depth_delta,
+    binding_reference_depth=state.binding_reference_depth +
+      effect.binding_reference_depth_delta,
   )
 }
 
@@ -1246,7 +1292,7 @@ fn verify_bytecode_terminator_shape(
   function_path : Array[Int],
   instruction_index : Int,
 ) -> Unit raise Error {
-  guard state.operand_stack_height == 0 else {
+  guard state.operand_stack_height == 0 && state.binding_reference_depth == 0 else {
     raise bytecode_frame_shape_defect(
       function_path,
       instruction_index,
@@ -1256,6 +1302,7 @@ fn verify_bytecode_terminator_shape(
         0,
         state.argument_list_depth,
         state.for_in_iterator_depth,
+        binding_reference_depth=0,
       ),
       state,
     )
@@ -1678,8 +1725,11 @@ fn bytecode_indexed_operand(
     | LoadSuperComputed(_)
     | LoadDirectEvalCallee
     | LoadName(_)
-    | LoadAssignmentName(_)
     | StoreName(_)
+    | ResolveNameReference(_)
+    | GetNameReference
+    | StoreNameReference
+    | DropNameReference
     | DefineBinding(_, _, _)
     | SetCompletion
     | SetCompletionValue(_)

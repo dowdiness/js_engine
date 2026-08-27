@@ -368,8 +368,11 @@ priv enum BytecodeInstr {
   LoadSuperComputed(@token.Loc)
   LoadDirectEvalCallee
   LoadName(String)
-  LoadAssignmentName(String)
   StoreName(String)
+  ResolveNameReference(String)
+  GetNameReference
+  StoreNameReference
+  DropNameReference
   LoadLocal(Int)
   StoreLocal(Int)
   LoadEnvSlot(Int)
@@ -523,11 +526,16 @@ fn bytecode_instruction_contract(
     | DeclareFunction(_, _)
     | DropPropertyAssignReference
     | DropComputedAssignReference
+    | DropNameReference
     | Return => bytecode_contract(false, SynchronousLeaf, [])
     LoadThis | LoadEnvSlot(_) | StoreEnvSlot(_) =>
       bytecode_contract(true, SynchronousLeaf, [BindingAccess])
-    LoadName(_) | LoadAssignmentName(_) | StoreName(_) | TypeofName(_) =>
+    LoadName(_) | StoreName(_) | TypeofName(_) =>
       bytecode_contract(true, ManagedSuspension, [BindingAccess])
+    ResolveNameReference(_) =>
+      bytecode_contract(true, ManagedSuspension, [BindingAccess])
+    GetNameReference | StoreNameReference =>
+      bytecode_contract(true, ManagedSuspension, [])
     DeleteName(_) =>
       bytecode_contract(true, UnsupportedBeforeActivation(DeleteName), [
         BindingAccess,

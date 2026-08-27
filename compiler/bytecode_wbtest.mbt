@@ -1543,10 +1543,28 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
     [BindingAccess],
   )
   assert_instruction_contract_for_wb(
-    LoadAssignmentName("binding"),
+    ResolveNameReference("binding"),
     true,
     ManagedSuspension,
     [BindingAccess],
+  )
+  assert_instruction_contract_for_wb(
+    GetNameReference,
+    true,
+    ManagedSuspension,
+    [],
+  )
+  assert_instruction_contract_for_wb(
+    StoreNameReference,
+    true,
+    ManagedSuspension,
+    [],
+  )
+  assert_instruction_contract_for_wb(
+    DropNameReference,
+    false,
+    SynchronousLeaf,
+    [],
   )
   assert_instruction_contract_for_wb(
     StoreName("binding"),
@@ -4120,16 +4138,22 @@ test "bytecode lowers identifier compound assignment through binary op and local
 }
 
 ///|
-test "bytecode lowers global compound assignment reads through assignment names" {
+test "bytecode retains a global compound assignment reference" {
   let bytecode = parse_bytecode_for_wb("x += 1;")
-  let mut saw_assignment_load = false
+  let mut saw_resolve = false
+  let mut saw_get = false
+  let mut saw_store = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      LoadAssignmentName("x") => saw_assignment_load = true
+      ResolveNameReference("x") => saw_resolve = true
+      GetNameReference => saw_get = true
+      StoreNameReference => saw_store = true
       _ => ()
     }
   }
-  guard saw_assignment_load else { abort("expected assignment-name load") }
+  guard saw_resolve else { abort("expected assignment reference resolution") }
+  guard saw_get else { abort("expected assignment reference load") }
+  guard saw_store else { abort("expected assignment reference store") }
 }
 
 ///|
