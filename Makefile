@@ -1,6 +1,11 @@
-.PHONY: build test cli-shell-test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test cli-shell-test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test jetstream3-admission jetstream3-admission-test jetstream3-source compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
+JETSTREAM3_COMMIT ?= $(shell sed -n '1p' scripts/jetstream3_version.txt)
+JETSTREAM3_REPOSITORY ?= https://github.com/WebKit/JetStream.git
+JETSTREAM3_DIR ?= .cache/jetstream3/$(JETSTREAM3_COMMIT)
+JETSTREAM3_RESULTS ?= jetstream3-admission.json
+JETSTREAM3_TIMEOUT_MS ?= 180000
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
 COMPAT_TABLE_DIR ?= .cache/compat-table/$(COMPAT_TABLE_COMMIT)
 COMPAT_TABLE_ARCHIVE_URL ?= https://api.github.com/repos/compat-table/compat-table/tarball/$(COMPAT_TABLE_COMMIT)
@@ -188,6 +193,76 @@ execution-observation-inventory-mbt: execution-observation-inventory-mbt-test
 
 execution-observation-inventory-mbt-test:
 	moon test --target native tooling/execution_observation_inventory
+
+# Acquire only the official runner files needed by the first JetStream 3
+# admission slice. The git object identity is checked before the cache becomes
+# visible, so a partial or mismatched checkout is never reused.
+jetstream3-source:
+	@set -eu; \
+	required_files="cli.js JetStreamDriver.js utils/shell-config.js utils/params.js Octane/raytrace.js LICENSE"; \
+	if [ -d "$(JETSTREAM3_DIR)/.git" ]; then \
+		actual=$$(git -C "$(JETSTREAM3_DIR)" rev-parse HEAD); \
+		if [ "$$actual" != "$(JETSTREAM3_COMMIT)" ]; then \
+			echo "JetStream cache revision mismatch: expected $(JETSTREAM3_COMMIT), got $$actual" >&2; \
+			exit 1; \
+		fi; \
+		for required in $$required_files; do \
+			if [ ! -f "$(JETSTREAM3_DIR)/$$required" ]; then \
+				echo "JetStream cache is missing $$required" >&2; \
+				exit 1; \
+			fi; \
+		done; \
+		echo "JetStream 3 source already present ($(JETSTREAM3_COMMIT))."; \
+		exit 0; \
+	fi; \
+	if [ -e "$(JETSTREAM3_DIR)" ]; then \
+		echo "JetStream cache path exists but is not a git checkout: $(JETSTREAM3_DIR)" >&2; \
+		exit 1; \
+	fi; \
+	tmp_root=$$(mktemp -d "$${TMPDIR:-/tmp}/jetstream3.XXXXXX"); \
+	cleanup() { rm -rf "$$tmp_root"; }; \
+	trap cleanup EXIT; \
+	trap 'exit 1' HUP INT TERM; \
+	git -C "$$tmp_root" init --quiet checkout; \
+	git -C "$$tmp_root/checkout" remote add origin "$(JETSTREAM3_REPOSITORY)"; \
+	git -C "$$tmp_root/checkout" sparse-checkout init --no-cone; \
+	git -C "$$tmp_root/checkout" sparse-checkout set --no-cone $$required_files; \
+	git -C "$$tmp_root/checkout" fetch --quiet --depth=1 --filter=blob:none origin "$(JETSTREAM3_COMMIT)"; \
+	git -C "$$tmp_root/checkout" checkout --quiet --detach FETCH_HEAD; \
+	actual=$$(git -C "$$tmp_root/checkout" rev-parse HEAD); \
+	if [ "$$actual" != "$(JETSTREAM3_COMMIT)" ]; then \
+		echo "JetStream revision mismatch: expected $(JETSTREAM3_COMMIT), got $$actual" >&2; \
+		exit 1; \
+	fi; \
+	for required in $$required_files; do \
+		if [ ! -f "$$tmp_root/checkout/$$required" ]; then \
+			echo "JetStream checkout is missing $$required" >&2; \
+			exit 1; \
+		fi; \
+	done; \
+	mkdir -p "$$(dirname "$(JETSTREAM3_DIR)")"; \
+	mv "$$tmp_root/checkout" "$(JETSTREAM3_DIR)"; \
+	echo "JetStream 3 source acquired ($(JETSTREAM3_COMMIT))."
+
+# Deterministic contract tests use local fake repositories and process results;
+# they never access the network or execute the real benchmark.
+jetstream3-admission-test:
+	node --test scripts/test_jetstream3_admission.js
+	bash scripts/test_jetstream3_source.sh
+
+# Compatibility diagnostic only. A not-admitted workload is recorded in the
+# JSON artifact without failing this target; acquisition or runner
+# infrastructure failures still fail it.
+jetstream3-admission: jetstream3-admission-test jetstream3-source native-core-bundle
+	moon build --target native --release cmd/main
+	node scripts/jetstream3_admission.js \
+		--jetstream "$(JETSTREAM3_DIR)" \
+		--jetstream-commit "$(JETSTREAM3_COMMIT)" \
+		--engine ./_build/native/release/build/cmd/main/main.exe \
+		--engine-commit "$$(git rev-parse HEAD)" \
+		--engine-tree-state "$$(test -z "$$(git status --porcelain)" && echo clean || echo dirty)" \
+		--timeout-ms "$(JETSTREAM3_TIMEOUT_MS)" \
+		--output "$(JETSTREAM3_RESULTS)"
 
 # Download the pinned compat-table data set. The path includes the commit, so a
 # revision bump never reuses stale data from an older checkout.
