@@ -105,6 +105,12 @@ if [[ "$actual" != "6" ]]; then
   exit 1
 fi
 
+actual="$(_build/native/debug/build/cmd/main/main.exe -e 'var Box = (function() { function Box(value) { this.value = value; } function clone(original) { return new Box(original.value); } Box.clone = clone; return Box; })(); print(Box.clone(new Box(42)).value);')"
+if [[ "$actual" != "42" ]]; then
+  printf 'expected a captured function declaration to shadow the outer var binding, got:\n%s\n' "$actual" >&2
+  exit 1
+fi
+
 actual="$(_build/native/debug/build/cmd/main/main.exe -e 'async function value() { return 42; } value().then(result => print(result));')"
 if [[ "$actual" != "42" ]]; then
   printf 'expected bytecode-default CLI to preserve async function semantics, got:\n%s\n' "$actual" >&2
