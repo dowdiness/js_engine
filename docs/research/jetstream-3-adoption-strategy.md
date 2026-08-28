@@ -104,9 +104,10 @@ cli.js -- --test=raytrace --iteration-count=2 \
 
 The recorded times were approximately 12 seconds per iteration. They are only
 diagnostic observations from one run, not a baseline. Earlier failing official
-commands also exited with status zero, so the adapter requires the expected
-structured result and rejects known failure markers or malformed output rather
-than trusting process status.
+commands also exited with status zero, so process status alone is not sufficient
+evidence. The adapter requires both a clean process outcome and the expected
+structured result with a valid selected-workload score. Human-readable output
+is retained for diagnosis but is not parsed as part of the admission contract.
 
 ## Options considered
 

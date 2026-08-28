@@ -72,7 +72,7 @@ test("admission requires startup, discovery, validation, and structured results"
   assert.deepEqual(assessment.evidence_errors, []);
 });
 
-test("exit zero with a bytecode InternalError is not admitted", () => {
+test("exit zero without a structured result is not admitted", () => {
   const probes = successfulProbes();
   probes.execution = probe(
     "Error in runCode:  InternalError: bytecode env slot binding missing for 'HashMap'\n",
@@ -84,12 +84,7 @@ test("exit zero with a bytecode InternalError is not admitted", () => {
   assert.equal(
     assessment.stages.find((stage) => stage.name === "workload_execution")
       .status,
-    "fail",
-  );
-  assert.ok(
-    assessment.evidence_errors.some((message) =>
-      message.includes("InternalError"),
-    ),
+    "pass",
   );
   assert.equal(
     assessment.stages.find((stage) => stage.name === "structured_result")
@@ -98,8 +93,54 @@ test("exit zero with a bytecode InternalError is not admitted", () => {
   );
 });
 
+test("diagnostic text cannot override a valid structured result", () => {
+  const probes = successfulProbes();
+  probes.execution.stdout = `TypeError: benchmark fixture text\n${probes.execution.stdout}`;
+
+  const assessment = assessAdmission(probes, "raytrace");
+
+  assert.equal(assessment.result, "admitted");
+  assert.deepEqual(assessment.evidence_errors, []);
+});
+
+test("nonzero exit cannot be overridden by a valid structured result", () => {
+  const probes = successfulProbes();
+  probes.execution.status = 1;
+
+  const assessment = assessAdmission(probes, "raytrace");
+
+  assert.equal(assessment.result, "not_admitted");
+  assert.equal(
+    assessment.stages.find((stage) => stage.name === "workload_execution")
+      .status,
+    "fail",
+  );
+  assert.equal(
+    assessment.stages.find((stage) => stage.name === "structured_result")
+      .status,
+    "pass",
+  );
+});
+
+test("a non-positive workload score is not admitted", () => {
+  const probes = successfulProbes();
+  const result = JSON.parse(probes.execution.stdout);
+  result["JetStream3.0"].tests.raytrace.metrics.Score.current = [0];
+  probes.execution.stdout = `${JSON.stringify(result)}\n`;
+
+  const assessment = assessAdmission(probes, "raytrace");
+
+  assert.equal(assessment.result, "not_admitted");
+  assert.equal(
+    assessment.stages.find(
+      (stage) => stage.name === "workload_result_validation",
+    ).status,
+    "fail",
+  );
+});
+
 test("main writes a complete report without turning incompatibility into infrastructure failure", () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jetstream3-admission-"));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jetstream3-admission-"));
   try {
     const suiteRoot = path.join(tempRoot, "JetStream");
     fs.mkdirSync(suiteRoot);

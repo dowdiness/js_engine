@@ -9,11 +9,6 @@ const { spawnSync } = require("node:child_process");
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_WORKLOAD = "raytrace";
-const FAILURE_MARKERS = [
-  /JetStream3 failed:/,
-  /Error in runCode:/,
-  /\b(?:InternalError|SyntaxError|TypeError|ReferenceError|RangeError):/,
-];
 
 function usage() {
   return `Usage: node scripts/jetstream3_admission.js [options]
@@ -110,16 +105,6 @@ function processFailure(probe) {
   return null;
 }
 
-function markerFailure(probe) {
-  const output = `${probe.stdout}\n${probe.stderr}`;
-  const marker = FAILURE_MARKERS.find((pattern) => pattern.test(output));
-  if (!marker) return null;
-  const matchingLine = output
-    .split(/\r?\n/)
-    .find((line) => FAILURE_MARKERS.some((pattern) => pattern.test(line)));
-  return `workload output contains an error marker: ${matchingLine.trim()}`;
-}
-
 function parseResult(stdout) {
   for (const line of stdout.split(/\r?\n/).reverse()) {
     const candidate = line.trim();
@@ -183,8 +168,6 @@ function assessAdmission(probes, workload) {
   const executionErrors = [];
   const executionProcessFailure = processFailure(probes.execution);
   if (executionProcessFailure) executionErrors.push(executionProcessFailure);
-  const outputFailure = markerFailure(probes.execution);
-  if (outputFailure) executionErrors.push(outputFailure);
 
   const parsed = parseResult(probes.execution.stdout);
   const structuredErrors = parsed.error ? [parsed.error] : [];
