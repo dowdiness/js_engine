@@ -206,6 +206,10 @@ jetstream3-source:
 			echo "JetStream cache revision mismatch: expected $(JETSTREAM3_COMMIT), got $$actual" >&2; \
 			exit 1; \
 		fi; \
+		if [ -n "$$(git -C "$(JETSTREAM3_DIR)" status --porcelain --untracked-files=all)" ]; then \
+			echo "JetStream cache has local modifications: $(JETSTREAM3_DIR)" >&2; \
+			exit 1; \
+		fi; \
 		for required in $$required_files; do \
 			if [ ! -f "$(JETSTREAM3_DIR)/$$required" ]; then \
 				echo "JetStream cache is missing $$required" >&2; \

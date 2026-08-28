@@ -248,6 +248,18 @@ function readRevision(root) {
   return result.stdout.trim();
 }
 
+function readTreeState(root) {
+  const result = spawnSync(
+    "git",
+    ["-C", root, "status", "--porcelain", "--untracked-files=all"],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0) {
+    throw new Error(`cannot inspect JetStream checkout: ${result.stderr.trim()}`);
+  }
+  return result.stdout.trim() === "" ? "clean" : "dirty";
+}
+
 function readMoonBitVersion() {
   const result = spawnSync("moon", ["version"], { encoding: "utf8" });
   if (result.status !== 0) {
@@ -279,6 +291,12 @@ function main(argv, dependencies = {}) {
     throw new Error(
       `JetStream revision mismatch: expected ${options.jetstreamCommit}, got ${actualRevision}`,
     );
+  }
+  const treeState = (dependencies.readTreeState || readTreeState)(
+    options.jetstream,
+  );
+  if (treeState !== "clean") {
+    throw new Error("JetStream checkout has local modifications");
   }
 
   const cli = path.join(options.jetstream, "cli.js");

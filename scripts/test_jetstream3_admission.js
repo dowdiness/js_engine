@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const test = require("node:test");
 
 const {
@@ -129,6 +130,7 @@ test("main writes a complete report without turning incompatibility into infrast
         now: () => 0,
         readMoonBitVersion: () => "moon fixture",
         readRevision: () => PINNED_COMMIT,
+        readTreeState: () => "clean",
         spawn: () => responses.shift(),
         stdout: { write() {} },
       },
@@ -147,6 +149,59 @@ test("main writes a complete report without turning incompatibility into infrast
     assert.equal(report.scope.workload, "raytrace");
     assert.equal(report.assessment.result, "not_admitted");
     assert.equal(report.probes.length, 3);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("main rejects a locally modified JetStream checkout", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jetstream3-dirty-"));
+  try {
+    const suiteRoot = path.join(tempRoot, "JetStream");
+    fs.mkdirSync(suiteRoot);
+    fs.writeFileSync(path.join(suiteRoot, "cli.js"), "// fixture\n");
+    execFileSync("git", ["-C", suiteRoot, "init", "--quiet"]);
+    execFileSync("git", ["-C", suiteRoot, "add", "cli.js"]);
+    execFileSync("git", [
+      "-C",
+      suiteRoot,
+      "-c",
+      "user.name=fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "fixture",
+    ]);
+    const revision = execFileSync(
+      "git",
+      ["-C", suiteRoot, "rev-parse", "HEAD"],
+      { encoding: "utf8" },
+    ).trim();
+    fs.appendFileSync(path.join(suiteRoot, "cli.js"), "// modified\n");
+    const engine = path.join(tempRoot, "js_engine");
+    fs.writeFileSync(engine, "fixture\n");
+
+    assert.throws(
+      () =>
+        main(
+          [
+            "--jetstream",
+            suiteRoot,
+            "--jetstream-commit",
+            revision,
+            "--engine",
+            engine,
+          ],
+          {
+            readMoonBitVersion: () => "moon fixture",
+            spawn: () => probe(""),
+            stdout: { write() {} },
+          },
+        ),
+      /local modifications/,
+    );
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

@@ -1,6 +1,15 @@
 name: JetStream 3 admission
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/jetstream3-admission.yml"
+      - "Makefile"
+      - "scripts/jetstream3_admission.js"
+      - "scripts/jetstream3_version.txt"
+      - "scripts/test_jetstream3_admission.js"
+      - "scripts/test_jetstream3_source.sh"
   schedule:
     - cron: "0 4 * * 0"
   workflow_dispatch:
@@ -13,14 +22,32 @@ env:
   MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
 
 jobs:
+  contract:
+    name: Admission contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Run deterministic contract tests
+        run: make jetstream3-admission-test
+
   admission:
     name: Official runner compatibility diagnostic
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Cache MoonBit toolchain
         id: toolchain-cache
@@ -49,7 +76,7 @@ jobs:
           path: |
             ~/.moon/registry
             .mooncakes
-          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod.json') }}
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
           restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
 
       - name: Update registry

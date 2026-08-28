@@ -51,6 +51,15 @@ make --no-print-directory -C "$repo_root" jetstream3-source \
   JETSTREAM3_COMMIT="$complete_commit" \
   JETSTREAM3_DIR="$complete_cache"
 
+printf '\n// locally modified\n' >>"$complete_cache/Octane/raytrace.js"
+if make --no-print-directory -C "$repo_root" jetstream3-source \
+  JETSTREAM3_REPOSITORY="file://$tmp_root/does-not-exist" \
+  JETSTREAM3_COMMIT="$complete_commit" \
+  JETSTREAM3_DIR="$complete_cache"; then
+  echo "modified JetStream source unexpectedly succeeded" >&2
+  exit 1
+fi
+
 partial_source="$tmp_root/partial-source"
 mkdir -p "$partial_source"
 partial_commit="$(make_source_repository "$partial_source" no)"
