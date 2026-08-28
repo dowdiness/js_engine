@@ -164,10 +164,10 @@ make jetstream3-admission       # acquire the pinned source and run raytrace
 
 The second command builds the native release CLI and writes
 `jetstream3-admission.json`. Its fixed two-iteration `raytrace` run checks
-runner startup, discovery, workload completion, workload-result validation, and JSON
-serialization. The report also records the MoonBit version, native/release
-profile, OS/architecture, engine commit, and working-tree state. It is not a
-full-suite JetStream score, a stable performance
+discovery, workload execution, exact selected-workload result validation, and
+JSON serialization. The report also records the MoonBit version,
+native/release profile, OS/architecture, engine commit, and working-tree state.
+It is not a full-suite JetStream score, a stable performance
 baseline, or evidence for an optimization. The scheduled workflow archives the
 report without making this diagnostic a pull-request gate.
 

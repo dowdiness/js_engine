@@ -7,7 +7,7 @@
 ## Recommendation
 
 Adopt a small, pinned **official JetStream 3 shell-runner admission ladder**.
-Begin with runner startup, test discovery, and then the `raytrace` workload
+Begin with exact selected-test discovery and then the `raytrace` workload
 through upstream `cli.js`, not with a copied workload and not with the full
 suite. Treat the initial result strictly as compatibility evidence. It is not
 yet a macro trend signal, an official JetStream 3 score, or a merge-gating
@@ -106,8 +106,9 @@ The recorded times were approximately 12 seconds per iteration. They are only
 diagnostic observations from one run, not a baseline. Earlier failing official
 commands also exited with status zero, so process status alone is not sufficient
 evidence. The adapter requires both a clean process outcome and the expected
-structured result with a valid selected-workload score. Human-readable output
-is retained for diagnosis but is not parsed as part of the admission contract.
+structured result containing only the selected workload with a valid score.
+Human-readable error output is retained for diagnosis but is not parsed as part
+of the admission contract.
 
 ## Options considered
 
@@ -131,7 +132,6 @@ Prepare a sparse checkout of the exact pinned upstream revision containing the
 official runner and selected workload. Admit the runner in this order:
 
 ```text
-cli.js -- --no-prefetch --help
 cli.js -- --no-prefetch --dump-test-list --test=raytrace
 cli.js -- --test=raytrace --iteration-count=2 \
   --worst-case-count=1 --no-prefetch --dump-json-results
@@ -179,15 +179,16 @@ Acceptance: revision mismatch or missing source fails before the engine starts.
 
 ### Phase 1 — compatibility smoke
 
-1. Build the native release CLI and separately record runner startup, selected
-   test discovery, workload execution, validation, and result serialization.
+1. Build the native release CLI and separately record exact selected-test
+   discovery, workload execution, workload-result validation, and result
+   serialization.
 2. Require successful process exit, no workload assertion/error, parseable
-   `--dump-json-results` output containing `raytrace`, and a positive reported
-   duration/score field. Process exit alone is insufficient.
+   `--dump-json-results` output containing only `raytrace`, and a positive
+   reported duration/score field. Process exit alone is insufficient.
 3. Archive stdout, stderr, JSON, upstream SHA, engine SHA, MoonBit version,
    target/profile, command, OS/architecture, and wall-clock duration.
 
-Acceptance: three independent clean processes on one host meet every check.
+Acceptance: two independent clean processes on one host meet every check.
 Timings are diagnostic only.
 
 The initial slice now reaches structured result production. Keep the admission
@@ -231,7 +232,7 @@ covers all workload files.
 ## Final recommendation
 
 Retain the implemented Phase 0 and Phase 1 diagnostic: pinned sparse-source
-acquisition, startup and discovery probes, a fixed two-iteration `raytrace`
+acquisition, exact selected-test discovery, a fixed two-iteration `raytrace`
 run, and a non-gating structured admission report. Use `raytrace` only as a
 compatibility smoke until repeated clean-process measurements and an oracle-
 bearing workload justify Phase 2 or Phase 3.

@@ -30,7 +30,6 @@ function probe(stdout, { status = 0, stderr = "" } = {}) {
 
 function successfulProbes() {
   return {
-    startup: probe("JetStream Driver Help\n"),
     discovery: probe("raytrace\n"),
     execution: probe(
       `${JSON.stringify({
@@ -55,14 +54,13 @@ function successfulProbes() {
   };
 }
 
-test("admission requires startup, discovery, validation, and structured results", () => {
+test("admission requires discovery, execution, validation, and structured results", () => {
   const assessment = assessAdmission(successfulProbes(), "raytrace");
 
   assert.equal(assessment.result, "admitted");
   assert.deepEqual(
     assessment.stages.map((stage) => [stage.name, stage.status]),
     [
-      ["runner_startup", "pass"],
       ["test_discovery", "pass"],
       ["workload_execution", "pass"],
       ["workload_result_validation", "pass"],
@@ -120,12 +118,35 @@ test("nonzero exit cannot be overridden by a valid structured result", () => {
       .status,
     "pass",
   );
+  assert.equal(
+    assessment.stages.find(
+      (stage) => stage.name === "workload_result_validation",
+    ).status,
+    "pass",
+  );
 });
 
 test("a non-positive workload score is not admitted", () => {
   const probes = successfulProbes();
   const result = JSON.parse(probes.execution.stdout);
   result["JetStream3.0"].tests.raytrace.metrics.Score.current = [0];
+  probes.execution.stdout = `${JSON.stringify(result)}\n`;
+
+  const assessment = assessAdmission(probes, "raytrace");
+
+  assert.equal(assessment.result, "not_admitted");
+  assert.equal(
+    assessment.stages.find(
+      (stage) => stage.name === "workload_result_validation",
+    ).status,
+    "fail",
+  );
+});
+
+test("a result containing another workload is not admitted", () => {
+  const probes = successfulProbes();
+  const result = JSON.parse(probes.execution.stdout);
+  result["JetStream3.0"].tests.another = result["JetStream3.0"].tests.raytrace;
   probes.execution.stdout = `${JSON.stringify(result)}\n`;
 
   const assessment = assessAdmission(probes, "raytrace");
@@ -150,7 +171,7 @@ test("main writes a complete report without turning incompatibility into infrast
     const output = path.join(tempRoot, "admission.json");
     const probes = successfulProbes();
     probes.execution = probe("JetStream3 failed: InternalError: fixture\n");
-    const responses = [probes.startup, probes.discovery, probes.execution];
+    const responses = [probes.discovery, probes.execution];
 
     const result = main(
       [
@@ -172,7 +193,10 @@ test("main writes a complete report without turning incompatibility into infrast
         readMoonBitVersion: () => "moon fixture",
         readRevision: () => PINNED_COMMIT,
         readTreeState: () => "clean",
-        spawn: () => responses.shift(),
+        spawn: (_engine, args) => {
+          if (args.includes("--help")) throw new Error("unexpected help probe");
+          return responses.shift();
+        },
         stdout: { write() {} },
       },
     );
@@ -189,7 +213,7 @@ test("main writes a complete report without turning incompatibility into infrast
     assert.equal(typeof report.environment.architecture, "string");
     assert.equal(report.scope.workload, "raytrace");
     assert.equal(report.assessment.result, "not_admitted");
-    assert.equal(report.probes.length, 3);
+    assert.equal(report.probes.length, 2);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

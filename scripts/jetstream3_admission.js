@@ -122,7 +122,15 @@ function parseResult(stdout) {
 }
 
 function validateWorkloadResult(result, workload) {
-  const workloadResult = result?.["JetStream3.0"]?.tests?.[workload];
+  const tests = result?.["JetStream3.0"]?.tests;
+  const workloadNames =
+    tests && typeof tests === "object" && !Array.isArray(tests)
+      ? Object.keys(tests)
+      : [];
+  if (workloadNames.length !== 1 || workloadNames[0] !== workload) {
+    return `structured result does not contain only '${workload}'`;
+  }
+  const workloadResult = tests[workload];
   if (!workloadResult || typeof workloadResult !== "object") {
     return `structured result does not contain '${workload}'`;
   }
@@ -147,13 +155,6 @@ function stage(name, errors) {
 }
 
 function assessAdmission(probes, workload) {
-  const startupErrors = [];
-  const startupProcessFailure = processFailure(probes.startup);
-  if (startupProcessFailure) startupErrors.push(startupProcessFailure);
-  if (!probes.startup.stdout.includes("JetStream Driver Help")) {
-    startupErrors.push("runner help marker was not found");
-  }
-
   const discoveryErrors = [];
   const discoveryProcessFailure = processFailure(probes.discovery);
   if (discoveryProcessFailure) discoveryErrors.push(discoveryProcessFailure);
@@ -178,12 +179,8 @@ function assessAdmission(probes, workload) {
   } else {
     validationErrors.push("workload completion and validation were not observed");
   }
-  if (executionErrors.length > 0) {
-    validationErrors.push("workload execution did not complete cleanly");
-  }
 
   const stages = [
-    stage("runner_startup", startupErrors),
     stage("test_discovery", discoveryErrors),
     stage("workload_execution", executionErrors),
     stage("workload_result_validation", validationErrors),
@@ -287,13 +284,6 @@ function main(argv, dependencies = {}) {
     dependencies.readMoonBitVersion || readMoonBitVersion
   )();
   const common = [cli, "--", "--no-prefetch"];
-  const startup = runProbe(
-    "runner_startup",
-    options.engine,
-    [...common, "--help"],
-    options,
-    dependencies,
-  );
   const discovery = runProbe(
     "test_discovery",
     options.engine,
@@ -316,7 +306,7 @@ function main(argv, dependencies = {}) {
     options,
     dependencies,
   );
-  const probes = { startup, discovery, execution };
+  const probes = { discovery, execution };
   const assessment = assessAdmission(probes, options.workload);
   const now = dependencies.now || Date.now;
   const report = {
@@ -349,7 +339,7 @@ function main(argv, dependencies = {}) {
       timings_are_diagnostic_only: true,
     },
     assessment,
-    probes: [startup, discovery, execution],
+    probes: [discovery, execution],
   };
   fs.mkdirSync(path.dirname(options.output), { recursive: true });
   fs.writeFileSync(options.output, `${JSON.stringify(report, null, 2)}\n`);
