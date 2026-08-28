@@ -18,6 +18,7 @@ make_source_repository() {
   printf 'fixture license\n' >"$source_root/LICENSE"
   if [[ "$include_workload" == "yes" ]]; then
     printf '// raytrace fixture\n' >"$source_root/Octane/raytrace.js"
+    printf '// navier-stokes fixture\n' >"$source_root/Octane/navier-stokes.js"
   fi
   git -C "$source_root" init --quiet
   git -C "$source_root" add .
@@ -44,6 +45,7 @@ test -f "$complete_cache/JetStreamDriver.js"
 test -f "$complete_cache/utils/shell-config.js"
 test -f "$complete_cache/utils/params.js"
 test -f "$complete_cache/Octane/raytrace.js"
+test -f "$complete_cache/Octane/navier-stokes.js"
 test -f "$complete_cache/LICENSE"
 
 make --no-print-directory -C "$repo_root" jetstream3-source \

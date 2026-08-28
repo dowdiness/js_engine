@@ -12,9 +12,25 @@ const test = require("node:test");
 const {
   assessAdmission,
   main,
+  parseArgs,
 } = require("./jetstream3_admission.js");
 
 const PINNED_COMMIT = "7769b693502fa80f28a97bbfacd3296e0513acc5";
+
+test("parseArgs accepts an explicit admission workload", () => {
+  const options = parseArgs([
+    "--jetstream",
+    ".",
+    "--jetstream-commit",
+    PINNED_COMMIT,
+    "--engine",
+    "./js_engine",
+    "--workload",
+    "navier-stokes",
+  ]);
+
+  assert.equal(options.workload, "navier-stokes");
+});
 
 function probe(stdout, { status = 0, stderr = "" } = {}) {
   return {

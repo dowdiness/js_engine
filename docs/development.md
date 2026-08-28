@@ -159,17 +159,19 @@ admission diagnostic:
 
 ```bash
 make jetstream3-admission-test  # local contract tests; no network access
-make jetstream3-admission       # acquire the pinned source and run raytrace
+make jetstream3-admission       # acquire the pinned source and run admitted workloads
 ```
 
-The second command builds the native release CLI and writes
-`jetstream3-admission.json`. Its fixed two-iteration `raytrace` run checks
-discovery, workload execution, exact selected-workload result validation, and
-JSON serialization. The report also records the MoonBit version,
-native/release profile, OS/architecture, engine commit, and working-tree state.
-It is not a full-suite JetStream score, a stable performance
-baseline, or evidence for an optimization. The scheduled workflow archives the
-report without making this diagnostic a pull-request gate.
+The second command builds the native release CLI and runs fixed two-iteration
+`raytrace` and `navier-stokes` admissions. Each workload checks discovery,
+execution, exact selected-workload result validation, and JSON serialization,
+then writes `jetstream3-admission.json` or
+`jetstream3-admission-navier-stokes.json`. The reports also record the MoonBit
+version, native/release profile, OS/architecture, engine commit, and
+working-tree state.
+They are not a full-suite JetStream score, a stable performance baseline, or
+evidence for an optimization. The scheduled workflow archives both reports
+without making this diagnostic a pull-request gate.
 
 To reproduce the Stage 1 stable-embedding usage baselines, run:
 
