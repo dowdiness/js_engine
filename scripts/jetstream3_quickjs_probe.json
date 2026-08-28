@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "platform": "linux64",
+  "jsvu_version": "3.0.5",
+  "jetstream_commit": "7769b693502fa80f28a97bbfacd3296e0513acc5",
+  "workload": "navier-stokes",
+  "engine": {
+    "id": "quickjs-ng",
+    "jsvu_engine": "quickjs",
+    "version": "0.16.1",
+    "executable": "qjs",
+    "shell_adapter": "jetstream3_quickjs_shell.js",
+    "payload_sha256": "e2e4071def7c757896b2d8381f7ad60399626860cc3b4b1c1feaffd63ce3a68d"
+  }
+}

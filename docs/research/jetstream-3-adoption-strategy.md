@@ -69,6 +69,26 @@ separate language or host requirements. JetStream shell conventions must remain
 in the CLI/test adapter and must not expand the capability-selected embedding
 API.
 
+## QuickJS-ng reference-candidate result
+
+A generation 1 candidate probe used `jsvu` 3.0.5, QuickJS-ng 0.16.1, and the
+same pinned JetStream revision on `linux64`. Payload fingerprint verification
+and `navier-stokes` discovery succeeded. Workload execution was incompatible
+because the standard `qjs` shell does not expose the synchronous isolated
+global operation required by JetStream's generic `runString` path.
+
+Using `std.evalScript` in the driver global was tested and rejected: the driver
+and workload then share global lexical declarations, producing a `Benchmark`
+redeclaration error. That workaround would also discard the fresh-realm
+semantics identified above as part of the official benchmark contract.
+
+The source-controlled input is therefore a probe specification, not a
+Reference Cohort Lock. Under the default-production-policy rule, this
+QuickJS-ng generation is compatibility-only and must not appear in public
+cross-engine performance comparisons. Reconsider it only if a future standard
+`qjs` shell exposes the required isolation or the comparison policy explicitly
+admits a separately maintained shell build.
+
 ## Empirical probe on current `main`
 
 The pinned runner was exercised with a native release build of `js_engine` on
