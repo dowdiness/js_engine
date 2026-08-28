@@ -3,6 +3,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFileSync, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -187,7 +188,7 @@ test("preparation stops before execution when the installed payload changed", ()
   }
 });
 
-test("preparation records QuickJS-ng compatibility without performance claims", () => {
+test("preparation records QuickJS-ng outcomes without performance claims", () => {
   const tempRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "jetstream3-reference-compatible-"),
   );
@@ -257,6 +258,137 @@ test("preparation records QuickJS-ng compatibility without performance claims", 
       adapterPath,
       path.join(tempRoot, "cli.js"),
     ]);
+    const runWith = (response) => {
+      const outcome = main(
+        [
+          "--spec",
+          specPath,
+          "--jetstream",
+          tempRoot,
+          "--engine-root",
+          engineRoot,
+          "--output",
+          output,
+        ],
+        {
+          now: () => 0,
+          readRevision: () => JETSTREAM_COMMIT,
+          readTreeState: () => "clean",
+          spawn: () => response,
+          stdout: { write() {} },
+        },
+      );
+      return {
+        outcome,
+        report: JSON.parse(fs.readFileSync(output, "utf8")),
+      };
+    };
+
+    const launchFailure = runWith({
+      error: new Error("spawn ETIMEDOUT"),
+      signal: null,
+      status: null,
+      stderr: "",
+      stdout: "",
+    });
+    assert.equal(launchFailure.outcome, "probe_failed");
+    assert.equal(launchFailure.report.engine.compatibility, "probe_failed");
+    assert.match(launchFailure.report.probes[0].error, /ETIMEDOUT/);
+
+    const signalFailure = runWith({
+      error: null,
+      signal: "SIGKILL",
+      status: null,
+      stderr: "",
+      stdout: "",
+    });
+    assert.equal(signalFailure.outcome, "probe_failed");
+    assert.equal(signalFailure.report.engine.compatibility, "probe_failed");
+
+    const engineIncompatibility = runWith({
+      error: null,
+      signal: null,
+      status: 1,
+      stderr: "isolated globals are unavailable",
+      stdout: "",
+    });
+    assert.equal(engineIncompatibility.outcome, "incompatible");
+    assert.equal(
+      engineIncompatibility.report.engine.compatibility,
+      "incompatible",
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("the probe CLI exits nonzero after preserving launch-failure evidence", () => {
+  const tempRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "jetstream3-reference-cli-failure-"),
+  );
+  try {
+    const jetstream = path.join(tempRoot, "JetStream");
+    fs.mkdirSync(jetstream);
+    execFileSync("git", ["-C", jetstream, "init", "--quiet"]);
+    fs.writeFileSync(path.join(jetstream, "cli.js"), "// fixture\n");
+    execFileSync("git", ["-C", jetstream, "add", "cli.js"]);
+    execFileSync("git", [
+      "-C",
+      jetstream,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.com",
+      "commit",
+      "--quiet",
+      "-m",
+      "fixture",
+    ]);
+    const revision = execFileSync(
+      "git",
+      ["-C", jetstream, "rev-parse", "HEAD"],
+      { encoding: "utf8" },
+    ).trim();
+
+    const engineRoot = path.join(tempRoot, "quickjs-0.16.1");
+    fs.mkdirSync(engineRoot);
+    fs.writeFileSync(path.join(engineRoot, "qjs"), "not executable\n", {
+      mode: 0o644,
+    });
+    const specPath = path.join(tempRoot, "probe.json");
+    fs.copyFileSync(
+      path.join(__dirname, "jetstream3_quickjs_shell.js"),
+      path.join(tempRoot, "jetstream3_quickjs_shell.js"),
+    );
+    fs.writeFileSync(
+      specPath,
+      `${JSON.stringify({
+        ...probeSpec(payloadFingerprint(engineRoot)),
+        jetstream_commit: revision,
+      })}\n`,
+    );
+    const output = path.join(tempRoot, "report.json");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(__dirname, "jetstream3_quickjs_probe.js"),
+        "--spec",
+        specPath,
+        "--jetstream",
+        jetstream,
+        "--engine-root",
+        engineRoot,
+        "--output",
+        output,
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 1);
+    const report = JSON.parse(fs.readFileSync(output, "utf8"));
+    assert.equal(report.engine.compatibility, "probe_failed");
+    assert.match(report.probes[0].error, /EACCES/);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

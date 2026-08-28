@@ -189,7 +189,9 @@ revision. Its JSON artifact is preparation evidence only: it does not define a
 Reference Cohort Lock, cross-engine score, regression threshold, or publication
 baseline. Generation 1 records an incompatible candidate because the standard
 `qjs` shell does not expose the isolated global required by JetStream's
-`runString` contract.
+`runString` contract. A launch error, timeout, or signal termination is instead
+recorded as `probe_failed`; the diagnostic artifact is preserved and the
+workflow fails.
 
 To reproduce the Stage 1 stable-embedding usage baselines, run:
 

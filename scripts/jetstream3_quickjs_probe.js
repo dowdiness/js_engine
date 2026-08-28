@@ -298,8 +298,14 @@ function main(argv, dependencies = {}) {
     dependencies,
   );
   const assessment = assessAdmission({ discovery, execution }, spec.workload);
-  const compatibility =
-    assessment.result === "admitted" ? "compatible" : "incompatible";
+  const probeFailed = [discovery, execution].some(
+    (probe) => probe.error !== null || probe.signal !== null,
+  );
+  const compatibility = probeFailed
+    ? "probe_failed"
+    : assessment.result === "admitted"
+      ? "compatible"
+      : "incompatible";
   const now = dependencies.now || Date.now;
   const report = {
     schema_version: 1,
@@ -343,7 +349,8 @@ function main(argv, dependencies = {}) {
 
 if (require.main === module) {
   try {
-    main(process.argv.slice(2));
+    const result = main(process.argv.slice(2));
+    if (result === "probe_failed") process.exitCode = 1;
   } catch (error) {
     process.stderr.write(`JetStream 3 QuickJS-ng probe error: ${error.message}\n`);
     process.exitCode = 1;
