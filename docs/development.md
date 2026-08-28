@@ -173,6 +173,26 @@ They are not a full-suite JetStream score, a stable performance baseline, or
 evidence for an optimization. The scheduled workflow archives both reports
 without making this diagnostic a pull-request gate.
 
+Cross-engine reference work starts with a separate QuickJS-ng candidate probe.
+Run its deterministic contract locally with:
+
+```bash
+make jetstream3-quickjs-probe-test
+```
+
+A manual dispatch of the `JetStream 3 admission` workflow runs a separate
+`QuickJS-ng compatibility probe` job. It acquires the exact QuickJS-ng version
+through the exact `jsvu` version recorded in
+`scripts/jetstream3_quickjs_probe.json`, verifies the installed payload
+fingerprint, and runs only `navier-stokes` against the pinned JetStream
+revision. Its JSON artifact is preparation evidence only: it does not define a
+Reference Cohort Lock, cross-engine score, regression threshold, or publication
+baseline. Generation 1 records an incompatible candidate because the standard
+`qjs` shell does not expose the isolated global required by JetStream's
+`runString` contract. A launch error, timeout, or signal termination is instead
+recorded as `probe_failed`; the diagnostic artifact is preserved and the
+workflow fails.
+
 To reproduce the Stage 1 stable-embedding usage baselines, run:
 
 ```bash
