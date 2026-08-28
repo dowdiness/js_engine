@@ -1,0 +1,95 @@
+name: JetStream 3 admission
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/jetstream3-admission.yml"
+      - "Makefile"
+      - "scripts/jetstream3_admission.js"
+      - "scripts/jetstream3_version.txt"
+      - "scripts/test_jetstream3_admission.js"
+      - "scripts/test_jetstream3_source.sh"
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MOONBIT_EXPECTED_VERSION: "moon 0.1.20260819 (fc2a4ee 2026-08-19)"
+  MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
+
+jobs:
+  contract:
+    name: Admission contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Run deterministic contract tests
+        run: make jetstream3-admission-test
+
+  admission:
+    name: Official runner compatibility diagnostic
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Set up MoonBit
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Update registry
+        run: moon update
+
+      - name: Run official JetStream 3 admission ladder
+        run: make jetstream3-admission
+
+      - name: Upload raw admission evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jetstream3-admission-${{ github.sha }}
+          path: jetstream3-admission.json
+          if-no-files-found: error
+          retention-days: 90

@@ -5,6 +5,7 @@ target
 .mooncakes/
 .moonagent/
 .cache/compat-table/
+.cache/jetstream3/
 test262/
 test262-results.json
 test262-analysis.json
@@ -22,6 +23,9 @@ promise.json
 # compat-table local outputs
 compat-table-results.json
 compat-table-summary.md
+
+# JetStream 3 local diagnostic output
+jetstream3-admission.json
 
 # Worktrees
 .worktrees/

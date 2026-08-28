@@ -154,6 +154,23 @@ moon run benchmarks --target js -- --all --csv
 Timing is meaningful only on the JS target; the WASM and WASM-GC timer files
 return `0.0` by design.
 
+The pinned official JetStream 3 shell runner is available as a compatibility
+admission diagnostic:
+
+```bash
+make jetstream3-admission-test  # local contract tests; no network access
+make jetstream3-admission       # acquire the pinned source and run raytrace
+```
+
+The second command builds the native release CLI and writes
+`jetstream3-admission.json`. Its fixed two-iteration `raytrace` run checks
+discovery, workload execution, exact selected-workload result validation, and
+JSON serialization. The report also records the MoonBit version,
+native/release profile, OS/architecture, engine commit, and working-tree state.
+It is not a full-suite JetStream score, a stable performance
+baseline, or evidence for an optimization. The scheduled workflow archives the
+report without making this diagnostic a pull-request gate.
+
 To reproduce the Stage 1 stable-embedding usage baselines, run:
 
 ```bash
