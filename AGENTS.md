@@ -375,5 +375,5 @@ For multi-project workspaces (monorepos with multiple `moon.mod` files):
 - Always check if git is initialized before running git commands.
 - After rebase operations, verify files are in the correct directories.
 - When asked to "commit remaining files", interpret generously even if phrasing is unclear.
-- When merging PRs, always verify CI status is actually passing (not skipped) before proceeding. Never represent CI as green if any checks were skipped or failed.
+- Before merging, verify that the PR is mergeable and every required check has completed without failure. Conditional or non-required skips are allowed, but report them as skipped rather than passed.
 - After rebasing or refactoring, verify file paths haven't shifted unexpectedly. Run `git diff --stat` to confirm only intended files changed.
