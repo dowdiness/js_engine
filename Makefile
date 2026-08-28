@@ -5,6 +5,7 @@ JETSTREAM3_COMMIT ?= $(shell sed -n '1p' scripts/jetstream3_version.txt)
 JETSTREAM3_REPOSITORY ?= https://github.com/WebKit/JetStream.git
 JETSTREAM3_DIR ?= .cache/jetstream3/$(JETSTREAM3_COMMIT)
 JETSTREAM3_RESULTS ?= jetstream3-admission.json
+JETSTREAM3_NAVIER_STOKES_RESULTS ?= jetstream3-admission-navier-stokes.json
 JETSTREAM3_TIMEOUT_MS ?= 180000
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
 COMPAT_TABLE_DIR ?= .cache/compat-table/$(COMPAT_TABLE_COMMIT)
@@ -194,12 +195,12 @@ execution-observation-inventory-mbt: execution-observation-inventory-mbt-test
 execution-observation-inventory-mbt-test:
 	moon test --target native tooling/execution_observation_inventory
 
-# Acquire only the official runner files needed by the first JetStream 3
-# admission slice. The git object identity is checked before the cache becomes
-# visible, so a partial or mismatched checkout is never reused.
+# Acquire only the official runner files needed by the admitted JetStream 3
+# workloads. The git object identity is checked before the cache becomes visible,
+# so a partial or mismatched checkout is never reused.
 jetstream3-source:
 	@set -eu; \
-	required_files="cli.js JetStreamDriver.js utils/shell-config.js utils/params.js Octane/raytrace.js LICENSE"; \
+	required_files="cli.js JetStreamDriver.js utils/shell-config.js utils/params.js Octane/raytrace.js Octane/navier-stokes.js LICENSE"; \
 	if [ -d "$(JETSTREAM3_DIR)/.git" ]; then \
 		actual=$$(git -C "$(JETSTREAM3_DIR)" rev-parse HEAD); \
 		if [ "$$actual" != "$(JETSTREAM3_COMMIT)" ]; then \
@@ -267,6 +268,15 @@ jetstream3-admission: jetstream3-admission-test jetstream3-source native-core-bu
 		--engine-tree-state "$$(test -z "$$(git status --porcelain)" && echo clean || echo dirty)" \
 		--timeout-ms "$(JETSTREAM3_TIMEOUT_MS)" \
 		--output "$(JETSTREAM3_RESULTS)"
+	node scripts/jetstream3_admission.js \
+		--jetstream "$(JETSTREAM3_DIR)" \
+		--jetstream-commit "$(JETSTREAM3_COMMIT)" \
+		--engine ./_build/native/release/build/cmd/main/main.exe \
+		--engine-commit "$$(git rev-parse HEAD)" \
+		--engine-tree-state "$$(test -z "$$(git status --porcelain)" && echo clean || echo dirty)" \
+		--workload navier-stokes \
+		--timeout-ms "$(JETSTREAM3_TIMEOUT_MS)" \
+		--output "$(JETSTREAM3_NAVIER_STOKES_RESULTS)"
 
 # Download the pinned compat-table data set. The path includes the commit, so a
 # revision bump never reuses stale data from an older checkout.

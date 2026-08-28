@@ -21,6 +21,7 @@ Required:
 Options:
   --engine-commit SHA        js_engine revision recorded in the report
   --engine-tree-state STATE  clean, dirty, or unknown (default: unknown)
+  --workload NAME            selected JetStream workload (default: raytrace)
   --output FILE              JSON report (default: jetstream3-admission.json)
   --timeout-ms N             timeout for each probe (default: 180000)
   --help                     show this help
@@ -43,6 +44,7 @@ function parseArgs(argv) {
     "--jetstream-commit",
     "--output",
     "--timeout-ms",
+    "--workload",
   ]);
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -74,6 +76,9 @@ function parseArgs(argv) {
         break;
       case "--timeout-ms":
         options.timeoutMs = Number(value);
+        break;
+      case "--workload":
+        options.workload = value;
         break;
       default:
         throw new Error(`unhandled option: ${arg}`);
