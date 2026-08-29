@@ -15,6 +15,13 @@ external workload as a small set of standard JavaScript engine shells under one
 recorded environment? It does not identify optimization targets or replace the
 repository's internal microbenchmarks.
 
+## Implementation status
+
+The candidate-probe stage is implemented. The immutable cohort, calibrated
+measurement round, and dashboard snapshot stages are planned work governed by
+ADR 0028. Probe timings are compatibility diagnostics and cannot be published
+as cross-engine performance measurements.
+
 ## Measurement lifecycle
 
 The system has four stages:
@@ -65,13 +72,17 @@ its oracle, and validates the structured result.
 
 Generation 1 has the following eligibility evidence:
 
-| Candidate | Outcome | Cohort eligibility |
-| --- | --- | --- |
-| js_engine | compatible | eligible |
-| V8 | compatible | eligible |
-| JavaScriptCore | compatible | eligible |
-| SpiderMonkey | compatible | eligible |
-| QuickJS-ng | incompatible | compatibility table only |
+| Candidate | Outcome | Cohort eligibility | Source-controlled input |
+| --- | --- | --- | --- |
+| js_engine | compatible | eligible | [admission runner](../../scripts/jetstream3_admission.js) |
+| V8 | compatible | eligible | [probe specification](../../scripts/jetstream3_v8_probe.json) |
+| JavaScriptCore | compatible | eligible | [probe specification](../../scripts/jetstream3_javascriptcore_probe.json) |
+| SpiderMonkey | compatible | eligible | [probe specification](../../scripts/jetstream3_spidermonkey_probe.json) |
+| QuickJS-ng | incompatible | compatibility table only | [probe specification](../../scripts/jetstream3_quickjs_probe.json) |
+
+The [admission workflow](../../.github/workflows/jetstream3-admission.yml) runs
+these inputs and preserves each structured report as a CI artifact. The pinned
+inputs remain in the repository after the time-limited CI artifacts expire.
 
 QuickJS-ng's standard shell does not expose the isolated global required by
 JetStream's generic shell path. An isolated global is a clean JavaScript global

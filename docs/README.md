@@ -22,6 +22,7 @@ truth; when a doc and the code disagree, trust the code.
 - [design/candidate-routing.md](design/candidate-routing.md) — build-time candidate routing and mixed activation invariants
 - [GLOSSARY.md](GLOSSARY.md) — terminology used in the code and docs
 - [RELEASING.md](RELEASING.md) — release checklist (test262-number minting, tag/CHANGELOG drift rules)
+- [adr/0028-publish-cross-engine-reference-measurements.md](adr/0028-publish-cross-engine-reference-measurements.md) — accepted contract for cross-engine candidate admission, measurement, and publication
 - [../AGENTS.md](../AGENTS.md) — MoonBit conventions and tooling guide (also used by AI agents)
 - [agent-todo.md](agent-todo.md) — queue of small, self-contained tasks for contributors
 
@@ -39,6 +40,7 @@ lag the code. Start with [design/README.md](design/README.md) for the design-fol
 - [architecture-stage0-implementation-spec-2026-06-12.md](design/architecture-stage0-implementation-spec-2026-06-12.md) — concrete Stage 0 guardrail/inventory implementation specs
 - [architecture-redesign-2026-05-19.md](design/architecture-redesign-2026-05-19.md) — migration record for realm state ownership, runtime surface control, and execution boundaries
 - [architecture-redesign-2026-04-17-probes.md](design/architecture-redesign-2026-04-17-probes.md) — exploratory sizing probes for earlier restructuring work
+- [cross-engine-reference-measurement-design.md](research/cross-engine-reference-measurement-design.md) — rationale and delivery sequence for calibrated JetStream reference measurements
 
 ## Historical / archived
 
@@ -53,4 +55,5 @@ Completed or superseded material, kept for record only. Do not treat these as cu
 - [archive/generator-plan.md](archive/generator-plan.md) — generator implementation plan (COMPLETE)
 - [archive/architecture-redesign-2026-04-15.md](archive/architecture-redesign-2026-04-15.md) — shipped restructuring analysis (COMPLETE)
 - [archive/2026-04-09-structural-refactoring.md](archive/2026-04-09-structural-refactoring.md) — earlier structural refactor notes
+- [archive/jetstream-3-adoption-strategy.md](archive/jetstream-3-adoption-strategy.md) — superseded record of the initial JetStream compatibility investigation
 - [superpowers/plans/](superpowers/plans/), [superpowers/specs/](superpowers/specs/) — per-feature plan and spec artifacts

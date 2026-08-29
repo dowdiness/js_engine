@@ -18,6 +18,14 @@ category describes js_engine's current position and shell
 compatibility. It is not an official whole-suite JetStream score, an
 optimization selector, or a merge gate.
 
+## Implementation status
+
+The decision is accepted. Candidate compatibility probes and their pinned
+inputs are implemented. The Cohort Lock, one-job cohort runner, balanced
+schedule, A/A calibration, published dataset, and dashboard category are not
+implemented. Until those parts exist and a round passes calibration, probe
+timings remain diagnostic and no Reference Baseline exists.
+
 ## Terms
 
 - A **reference candidate** is an engine considered for comparison.
@@ -110,14 +118,14 @@ performance comparison.
 
 ## Storage and publication
 
-The weekly and manually requested dashboard publication paths run Internal
-Benchmarks and Cross-Engine Reference independently. Failure in one genre does
-not suppress valid evidence from the other.
+The weekly and manually requested dashboard publication paths must run Internal
+Benchmarks and Cross-Engine Reference independently. Failure in one category
+must not suppress valid evidence from the other.
 
-Cross-engine evidence uses one dedicated, schema-versioned dataset on the
-existing dashboard branch. The dataset stores the Cohort Lock, round
+Cross-engine evidence must use one dedicated, schema-versioned dataset on the
+existing dashboard branch. The dataset must store the Cohort Lock, round
 provenance, compatibility outcomes, official raw results, and repetitions. It
-does not store a permanent reference-engine denominator, persistent rank, or
+must not store a permanent reference-engine denominator, persistent rank, or
 cross-cohort delta.
 
 The dashboard may derive a ratio or ordering only from observations in the

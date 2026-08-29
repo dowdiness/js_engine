@@ -1,8 +1,14 @@
 # JetStream 3 Adoption Strategy
 
-**Status:** initial non-gating admission slice implemented
+**Status:** superseded compatibility-admission record
+**Current policy:** [ADR 0028](../adr/0028-publish-cross-engine-reference-measurements.md)
 **Research date:** 2026-08-27
 **Pinned upstream:** [WebKit/JetStream `7769b693502fa80f28a97bbfacd3296e0513acc5`](https://github.com/WebKit/JetStream/tree/7769b693502fa80f28a97bbfacd3296e0513acc5), authored 2026-08-03
+
+This document records the investigation that established the initial JetStream
+compatibility probes. It is not the current cross-engine measurement policy.
+Use ADR 0028 for cohort admission, calibration, measurement, and publication
+requirements.
 
 ## Recommendation
 
