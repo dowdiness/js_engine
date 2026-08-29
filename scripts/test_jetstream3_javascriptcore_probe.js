@@ -66,6 +66,14 @@ test("a JavaScriptCore probe fixes one reproducible candidate", () => {
     () =>
       validateProbeSpec({
         ...spec,
+        engine: { ...spec.engine, version: "320015@main" },
+      }),
+    /engine.version/,
+  );
+  assert.throws(
+    () =>
+      validateProbeSpec({
+        ...spec,
         engine: { ...spec.engine, jsvu_engine: "v8" },
       }),
     /jsvu_engine must be javascriptcore/,

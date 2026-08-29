@@ -48,7 +48,7 @@ function validateCommonSpec(spec) {
   }
   if (
     spec.engine.version === "latest" ||
-    !/^[0-9]+(?:[.@-][0-9A-Za-z]+)*$/.test(spec.engine.version)
+    !/^[0-9]+(?:[.-][0-9A-Za-z]+)*$/.test(spec.engine.version)
   ) {
     throw new Error("engine.version must be exact");
   }
