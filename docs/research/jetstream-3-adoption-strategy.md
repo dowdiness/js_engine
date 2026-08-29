@@ -120,6 +120,22 @@ validation, and structured JSON validation. The observed two-iteration score
 was diagnostic only. It does not establish a stable baseline, a comparison
 against js_engine, or admission to a public comparison cohort.
 
+## SpiderMonkey reference-candidate result
+
+SpiderMonkey generation 1 fixes `jsvu` 3.0.5 and SpiderMonkey 155.0b5 on
+`linux64`, with the same pinned JetStream revision and `navier-stokes`
+workload. The official runner detects the stock shell's `newGlobal` operation,
+creates a fresh global/realm, and evaluates workload source through that
+global's `evaluate` operation. No repository-owned shell adapter is required.
+The probe selects the NSPR libraries shipped in the fingerprinted payload
+rather than relying on runner-installed versions.
+
+The fixed payload passed workload discovery, execution, selected-result
+validation, and structured JSON validation. Its two-iteration score remains
+diagnostic only. This result neither defines a public comparison cohort nor
+changes the requirement for A/A calibration before publishing performance
+measurements.
+
 ## Empirical probe on current `main`
 
 The pinned runner was exercised with a native release build of `js_engine` on

@@ -137,16 +137,17 @@ function parseProbeArgs(argv, defaultOutput) {
   return options;
 }
 
-function runProbe(name, executable, args, options, dependencies) {
+function runProbe(name, executable, args, options, dependencies, environment) {
   const spawn = dependencies.spawn || spawnSync;
   const now = dependencies.now || Date.now;
   const started = now();
   const result = spawn(executable, args, {
     cwd: options.jetstream,
     encoding: "utf8",
+    env: { ...process.env, ...environment },
     timeout: options.timeoutMs,
   });
-  return {
+  const probe = {
     name,
     command: [executable, ...args],
     duration_ms: Math.max(0, now() - started),
@@ -156,6 +157,10 @@ function runProbe(name, executable, args, options, dependencies) {
     stderr: result.stderr || "",
     stdout: result.stdout || "",
   };
+  if (Object.keys(environment).length > 0) {
+    probe.environment = environment;
+  }
+  return probe;
 }
 
 function readRevision(root) {
@@ -223,12 +228,14 @@ function runReferenceProbe(argv, config, dependencies = {}) {
     throw new Error("resolved shell executable is not a file in the payload");
   }
   const commands = config.buildCommands({ cli, options, spec });
+  const environment = invocation.environment || {};
   const discovery = runProbe(
     "test_discovery",
     invocation.executable,
     [...invocation.prefix, ...commands.discovery],
     options,
     dependencies,
+    environment,
   );
   const execution = runProbe(
     "workload_execution",
@@ -236,6 +243,7 @@ function runReferenceProbe(argv, config, dependencies = {}) {
     [...invocation.prefix, ...commands.execution],
     options,
     dependencies,
+    environment,
   );
   const probes = [discovery, execution];
   const assessment = assessAdmission({ discovery, execution }, spec.workload);

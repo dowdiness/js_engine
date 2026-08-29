@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "platform": "linux64",
+  "jsvu_version": "3.0.5",
+  "jetstream_commit": "7769b693502fa80f28a97bbfacd3296e0513acc5",
+  "workload": "navier-stokes",
+  "engine": {
+    "id": "spidermonkey",
+    "jsvu_engine": "spidermonkey",
+    "version": "155.0b5",
+    "executable": "spidermonkey-155.0b5",
+    "payload_sha256": "35cf97bb7d14acbe4ba006af83109bab249a950ef303d0b0907f6de053426d94"
+  }
+}
