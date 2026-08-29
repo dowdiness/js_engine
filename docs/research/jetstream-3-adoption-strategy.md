@@ -108,6 +108,18 @@ baseline. A separately specified measurement policy must increase the sampling
 depth and define aggregation before JavaScriptCore appears on the benchmark
 dashboard.
 
+## V8 reference-candidate result
+
+V8 generation 1 fixes `jsvu` 3.0.5 and V8 15.4.77 on `linux64`, with the
+same pinned JetStream revision and `navier-stokes` workload. The official
+payload's standard `d8` shell provides the operations required by JetStream,
+so the probe uses it directly without a repository-owned adapter.
+
+The fixed payload passed workload discovery, execution, selected-result
+validation, and structured JSON validation. The observed two-iteration score
+was diagnostic only. It does not establish a stable baseline, a comparison
+against js_engine, or admission to a public comparison cohort.
+
 ## Empirical probe on current `main`
 
 The pinned runner was exercised with a native release build of `js_engine` on
