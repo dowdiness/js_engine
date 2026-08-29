@@ -180,24 +180,26 @@ Run their deterministic contracts locally with:
 make jetstream3-quickjs-probe-test
 make jetstream3-javascriptcore-probe-test
 make jetstream3-v8-probe-test
+make jetstream3-spidermonkey-probe-test
 ```
 
 A manual dispatch of the `JetStream 3 admission` workflow runs independent
-QuickJS-ng, JavaScriptCore, and V8 compatibility jobs. Each acquires the exact
-engine generation through the recorded `jsvu` version, verifies the installed
-payload fingerprint, and runs only `navier-stokes` against the pinned
-JetStream revision. The JavaScriptCore and V8 probes execute the standard shell
-from their official Linux payloads; they do not add repository-owned shell
-adapters.
+QuickJS-ng, JavaScriptCore, V8, and SpiderMonkey compatibility jobs. Each
+acquires the exact engine generation through the recorded `jsvu` version,
+verifies the installed payload fingerprint, and runs only `navier-stokes`
+against the pinned JetStream revision. The JavaScriptCore, V8, and SpiderMonkey
+probes execute the standard shell from their official Linux payloads; they do
+not add repository-owned shell adapters. The SpiderMonkey probe also selects
+the fingerprinted NSPR libraries shipped in the same payload.
 
 These JSON artifacts are preparation evidence only. They do not define a
 Reference Cohort Lock, cross-engine score, regression threshold, or publication
 baseline. QuickJS-ng generation 1 is incompatible because the standard `qjs`
 shell does not expose the isolated global required by JetStream's `runString`
 contract. JavaScriptCore generation 1 is compatible with the admitted slice.
-V8 generation 1 is also compatible. A launch error, timeout, or signal
-termination is recorded as `probe_failed`; the diagnostic artifact is
-preserved and the corresponding workflow job fails.
+V8 and SpiderMonkey generation 1 are also compatible. A launch error, timeout,
+or signal termination is recorded as `probe_failed`; the diagnostic artifact
+is preserved and the corresponding workflow job fails.
 
 To reproduce the Stage 1 stable-embedding usage baselines, run:
 

@@ -13,6 +13,8 @@ on:
       - "scripts/jetstream3_quickjs_probe.json"
       - "scripts/jetstream3_quickjs_shell.js"
       - "scripts/jetstream3_reference_probe_core.js"
+      - "scripts/jetstream3_spidermonkey_probe.js"
+      - "scripts/jetstream3_spidermonkey_probe.json"
       - "scripts/jetstream3_version.txt"
       - "scripts/jetstream3_v8_probe.js"
       - "scripts/jetstream3_v8_probe.json"
@@ -20,6 +22,7 @@ on:
       - "scripts/test_jetstream3_javascriptcore_probe.js"
       - "scripts/test_jetstream3_quickjs_probe.js"
       - "scripts/test_jetstream3_source.sh"
+      - "scripts/test_jetstream3_spidermonkey_probe.js"
       - "scripts/test_jetstream3_v8_probe.js"
   schedule:
     - cron: "0 4 * * 0"
@@ -46,7 +49,7 @@ jobs:
           persist-credentials: false
 
       - name: Run deterministic contract tests
-        run: make jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test jetstream3-v8-probe-test
+        run: make jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test jetstream3-v8-probe-test jetstream3-spidermonkey-probe-test
 
   admission:
     name: Official runner compatibility diagnostic
@@ -237,5 +240,50 @@ jobs:
         with:
           name: jetstream3-v8-probe
           path: jetstream3-v8-probe.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  spidermonkey-probe:
+    name: SpiderMonkey compatibility probe
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+
+      - name: Validate probe contract
+        run: make jetstream3-spidermonkey-probe-test
+
+      - name: Acquire pinned JetStream source
+        run: make jetstream3-source
+
+      - name: Acquire and probe the specified SpiderMonkey payload
+        run: |
+          jsvu_version="$(node -p 'require("./scripts/jetstream3_spidermonkey_probe.json").jsvu_version')"
+          engine_version="$(node -p 'require("./scripts/jetstream3_spidermonkey_probe.json").engine.version')"
+          jetstream_commit="$(node -p 'require("./scripts/jetstream3_spidermonkey_probe.json").jetstream_commit')"
+          npm install --global --ignore-scripts "jsvu@$jsvu_version"
+          jsvu --os=linux64 "spidermonkey@$engine_version"
+          node scripts/jetstream3_spidermonkey_probe.js \
+            --spec scripts/jetstream3_spidermonkey_probe.json \
+            --jetstream ".cache/jetstream3/$jetstream_commit" \
+            --engine-root "$HOME/.jsvu/engines/spidermonkey-$engine_version" \
+            --output jetstream3-spidermonkey-probe.json
+
+      - name: Upload preparation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jetstream3-spidermonkey-probe
+          path: jetstream3-spidermonkey-probe.json
           if-no-files-found: warn
           retention-days: 90
