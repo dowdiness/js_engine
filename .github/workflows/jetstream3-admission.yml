@@ -7,11 +7,15 @@ on:
       - ".github/workflows/jetstream3-admission.yml"
       - "Makefile"
       - "scripts/jetstream3_admission.js"
+      - "scripts/jetstream3_javascriptcore_probe.js"
+      - "scripts/jetstream3_javascriptcore_probe.json"
       - "scripts/jetstream3_quickjs_probe.js"
       - "scripts/jetstream3_quickjs_probe.json"
       - "scripts/jetstream3_quickjs_shell.js"
+      - "scripts/jetstream3_reference_probe_core.js"
       - "scripts/jetstream3_version.txt"
       - "scripts/test_jetstream3_admission.js"
+      - "scripts/test_jetstream3_javascriptcore_probe.js"
       - "scripts/test_jetstream3_quickjs_probe.js"
       - "scripts/test_jetstream3_source.sh"
   schedule:
@@ -39,7 +43,7 @@ jobs:
           persist-credentials: false
 
       - name: Run deterministic contract tests
-        run: make jetstream3-admission-test jetstream3-quickjs-probe-test
+        run: make jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test
 
   admission:
     name: Official runner compatibility diagnostic
@@ -140,5 +144,50 @@ jobs:
         with:
           name: jetstream3-quickjs-probe
           path: jetstream3-quickjs-probe.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  javascriptcore-probe:
+    name: JavaScriptCore compatibility probe
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+
+      - name: Validate probe contract
+        run: make jetstream3-javascriptcore-probe-test
+
+      - name: Acquire pinned JetStream source
+        run: make jetstream3-source
+
+      - name: Acquire and probe the specified JavaScriptCore payload
+        run: |
+          jsvu_version="$(node -p 'require("./scripts/jetstream3_javascriptcore_probe.json").jsvu_version')"
+          engine_version="$(node -p 'require("./scripts/jetstream3_javascriptcore_probe.json").engine.version')"
+          jetstream_commit="$(node -p 'require("./scripts/jetstream3_javascriptcore_probe.json").jetstream_commit')"
+          npm install --global --ignore-scripts "jsvu@$jsvu_version"
+          jsvu --os=linux64 "javascriptcore@$engine_version"
+          node scripts/jetstream3_javascriptcore_probe.js \
+            --spec scripts/jetstream3_javascriptcore_probe.json \
+            --jetstream ".cache/jetstream3/$jetstream_commit" \
+            --engine-root "$HOME/.jsvu/engines/javascriptcore-$engine_version" \
+            --output jetstream3-javascriptcore-probe.json
+
+      - name: Upload preparation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jetstream3-javascriptcore-probe
+          path: jetstream3-javascriptcore-probe.json
           if-no-files-found: warn
           retention-days: 90

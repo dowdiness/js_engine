@@ -89,6 +89,25 @@ cross-engine performance comparisons. Reconsider it only if a future standard
 `qjs` shell exposes the required isolation or the comparison policy explicitly
 admits a separately maintained shell build.
 
+## JavaScriptCore reference-candidate result
+
+JavaScriptCore generation 1 fixes `jsvu` 3.0.5 and WebKit revision
+`320015@main` on `linux64`, with the same pinned JetStream revision and
+`navier-stokes` workload. The official payload provides the `load`,
+`readFile`, and `runString` shell operations used by JetStream, so the probe
+uses that standard shell directly rather than maintaining an adapter in this
+repository.
+
+The fixed payload passed workload discovery, execution, selected-result
+validation, and structured JSON validation. Five additional clean-process
+diagnostic runs were also compatible. Their scores ranged from approximately
+705.1 to 789.9 (mean 745.0), an 11.4% range relative to the mean under the
+two-iteration compatibility settings. That spread confirms that this short
+probe is suitable for compatibility admission but not yet a stable publication
+baseline. A separately specified measurement policy must increase the sampling
+depth and define aggregation before JavaScriptCore appears on the benchmark
+dashboard.
+
 ## Empirical probe on current `main`
 
 The pinned runner was exercised with a native release build of `js_engine` on
