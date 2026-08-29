@@ -17,10 +17,11 @@ repository's internal microbenchmarks.
 
 ## Implementation status
 
-The candidate-probe stage is implemented. The immutable cohort, calibrated
-measurement round, and dashboard snapshot stages are planned work governed by
-ADR 0028. Probe timings are compatibility diagnostics and cannot be published
-as cross-engine performance measurements.
+Candidate-specific compatibility diagnostics and pinned external-engine inputs
+are implemented. The shared candidate outcome schema, immutable cohort,
+calibrated measurement round, and dashboard snapshot stages are planned work
+governed by ADR 0028. Diagnostic timings cannot be published as cross-engine
+performance measurements.
 
 ## Measurement lifecycle
 
@@ -65,14 +66,16 @@ JetStream 3 score.
 ## Candidate compatibility
 
 Every candidate uses its standard command-line shell in its ordinary non-debug
-configuration. js_engine uses its default bytecode execution policy. A probe
-pins the engine version and payload fingerprint (a checksum of the acquired
-engine package), runs selected-test discovery, executes `navier-stokes`, checks
-its oracle, and validates the structured result.
+configuration. js_engine uses its default bytecode execution policy. Its
+diagnostic records the repository commit, target, profile, and MoonBit toolchain
+version. Each external-engine probe pins the acquisition-tool version, exact
+engine version, and payload fingerprint (a checksum of the acquired engine
+package). Every diagnostic runs selected-test discovery, executes
+`navier-stokes`, checks its oracle, and validates the structured result.
 
 Generation 1 has the following eligibility evidence:
 
-| Candidate | Outcome | Cohort eligibility | Source-controlled input |
+| Candidate | Outcome | Cohort eligibility | Probe source |
 | --- | --- | --- | --- |
 | js_engine | compatible | eligible | [admission runner](../../scripts/jetstream3_admission.js) |
 | V8 | compatible | eligible | [probe specification](../../scripts/jetstream3_v8_probe.json) |

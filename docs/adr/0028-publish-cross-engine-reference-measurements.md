@@ -20,11 +20,12 @@ optimization selector, or a merge gate.
 
 ## Implementation status
 
-The decision is accepted. Candidate compatibility probes and their pinned
-inputs are implemented. The Cohort Lock, one-job cohort runner, balanced
-schedule, A/A calibration, published dataset, and dashboard category are not
-implemented. Until those parts exist and a round passes calibration, probe
-timings remain diagnostic and no Reference Baseline exists.
+The decision is accepted. Candidate-specific compatibility diagnostics and
+pinned external-engine inputs are implemented. The unified candidate outcome
+contract below, Cohort Lock, one-job cohort runner, balanced schedule, A/A
+calibration, published dataset, and dashboard category are not implemented.
+Until those parts exist and a round passes calibration, diagnostic timings
+cannot become a Reference Baseline.
 
 ## Terms
 
