@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "generation": 1,
+  "platform": "linux64",
+  "jsvu_version": "3.0.5",
+  "jetstream_commit": "7769b693502fa80f28a97bbfacd3296e0513acc5",
+  "workload": "navier-stokes",
+  "engine": {
+    "id": "javascriptcore",
+    "jsvu_engine": "javascriptcore",
+    "version": "320015@main",
+    "executable": "javascriptcore-320015@main",
+    "payload_sha256": "9b4b643095cbefab75ccad1078e3b452f93a701cc1275839ff066db511c4ff62"
+  }
+}

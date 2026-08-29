@@ -173,25 +173,28 @@ They are not a full-suite JetStream score, a stable performance baseline, or
 evidence for an optimization. The scheduled workflow archives both reports
 without making this diagnostic a pull-request gate.
 
-Cross-engine reference work starts with a separate QuickJS-ng candidate probe.
-Run its deterministic contract locally with:
+Cross-engine reference work uses separate, generation-pinned candidate probes.
+Run their deterministic contracts locally with:
 
 ```bash
 make jetstream3-quickjs-probe-test
+make jetstream3-javascriptcore-probe-test
 ```
 
-A manual dispatch of the `JetStream 3 admission` workflow runs a separate
-`QuickJS-ng compatibility probe` job. It acquires the exact QuickJS-ng version
-through the exact `jsvu` version recorded in
-`scripts/jetstream3_quickjs_probe.json`, verifies the installed payload
-fingerprint, and runs only `navier-stokes` against the pinned JetStream
-revision. Its JSON artifact is preparation evidence only: it does not define a
+A manual dispatch of the `JetStream 3 admission` workflow runs independent
+QuickJS-ng and JavaScriptCore compatibility jobs. Each acquires the exact
+engine generation through the recorded `jsvu` version, verifies the installed
+payload fingerprint, and runs only `navier-stokes` against the pinned
+JetStream revision. The JavaScriptCore probe executes the standard shell from
+its official Linux payload; it does not add a repository-owned shell adapter.
+
+These JSON artifacts are preparation evidence only. They do not define a
 Reference Cohort Lock, cross-engine score, regression threshold, or publication
-baseline. Generation 1 records an incompatible candidate because the standard
-`qjs` shell does not expose the isolated global required by JetStream's
-`runString` contract. A launch error, timeout, or signal termination is instead
-recorded as `probe_failed`; the diagnostic artifact is preserved and the
-workflow fails.
+baseline. QuickJS-ng generation 1 is incompatible because the standard `qjs`
+shell does not expose the isolated global required by JetStream's `runString`
+contract. JavaScriptCore generation 1 is compatible with the admitted slice.
+A launch error, timeout, or signal termination is recorded as `probe_failed`;
+the diagnostic artifact is preserved and the corresponding workflow job fails.
 
 To reproduce the Stage 1 stable-embedding usage baselines, run:
 

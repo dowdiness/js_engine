@@ -1,4 +1,4 @@
-.PHONY: build test cli-shell-test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test jetstream3-admission jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-source compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test cli-shell-test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test jetstream3-admission jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test jetstream3-source compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 JETSTREAM3_COMMIT ?= $(shell sed -n '1p' scripts/jetstream3_version.txt)
@@ -259,6 +259,11 @@ jetstream3-admission-test:
 # report. Real third-party engine execution remains manual and isolated in CI.
 jetstream3-quickjs-probe-test:
 	node --test scripts/test_jetstream3_quickjs_probe.js
+
+# Deterministic validation for the pinned JavaScriptCore probe specification.
+# Real third-party engine execution remains manual and isolated in CI.
+jetstream3-javascriptcore-probe-test:
+	node --test scripts/test_jetstream3_javascriptcore_probe.js
 
 # Compatibility diagnostic only. A not-admitted workload is recorded in the
 # JSON artifact without failing this target; acquisition or runner
