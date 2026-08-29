@@ -27,8 +27,8 @@ function probeSpec(payloadSha256) {
     engine: {
       id: "javascriptcore",
       jsvu_engine: "javascriptcore",
-      version: "320015@main",
-      executable: "javascriptcore-320015@main",
+      version: "320015",
+      executable: "javascriptcore-320015",
       payload_sha256: payloadSha256,
     },
   };
@@ -83,7 +83,7 @@ test("the source-controlled JavaScriptCore generation is fixed", () => {
   );
 
   assert.equal(spec.generation, 1);
-  assert.equal(spec.engine.version, "320015@main");
+  assert.equal(spec.engine.version, "320015");
   assert.equal(spec.workload, "navier-stokes");
 });
 
@@ -96,7 +96,7 @@ test("JavaScriptCore uses its standard shell without a repository adapter", () =
     fs.mkdirSync(engineRoot);
     fs.mkdirSync(path.join(engineRoot, "lib"));
     fs.writeFileSync(
-      path.join(engineRoot, "javascriptcore-320015@main"),
+      path.join(engineRoot, "javascriptcore-320015"),
       "installed payload\n",
     );
     fs.writeFileSync(
@@ -149,7 +149,7 @@ test("JavaScriptCore uses its standard shell without a repository adapter", () =
       path.join(engineRoot, "lib", "ld-linux-x86-64.so.2"),
       "--library-path",
       path.join(engineRoot, "lib"),
-      path.join(engineRoot, "javascriptcore-320015@main"),
+      path.join(engineRoot, "javascriptcore-320015"),
       path.join(tempRoot, "cli.js"),
       "--",
       "--no-prefetch",
