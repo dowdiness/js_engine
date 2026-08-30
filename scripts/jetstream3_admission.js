@@ -6,6 +6,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const {
+  DEFAULT_MEASUREMENT_PROFILE,
+  resolveMeasurementProfile,
+} = require("./jetstream3_measurement_profile.js");
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_WORKLOAD = "raytrace";
@@ -21,6 +25,7 @@ Required:
 Options:
   --engine-commit SHA        js_engine revision recorded in the report
   --engine-tree-state STATE  clean, dirty, or unknown (default: unknown)
+  --measurement-profile NAME compatibility (default) or upstream-default
   --workload NAME            selected JetStream workload (default: raytrace)
   --output FILE              JSON report (default: jetstream3-admission.json)
   --timeout-ms N             timeout for each probe (default: 180000)
@@ -32,6 +37,7 @@ function parseArgs(argv) {
   const options = {
     engineCommit: process.env.GITHUB_SHA || "unknown",
     engineTreeState: "unknown",
+    measurementProfile: DEFAULT_MEASUREMENT_PROFILE,
     output: "jetstream3-admission.json",
     timeoutMs: DEFAULT_TIMEOUT_MS,
     workload: DEFAULT_WORKLOAD,
@@ -42,6 +48,7 @@ function parseArgs(argv) {
     "--engine-tree-state",
     "--jetstream",
     "--jetstream-commit",
+    "--measurement-profile",
     "--output",
     "--timeout-ms",
     "--workload",
@@ -71,6 +78,9 @@ function parseArgs(argv) {
       case "--jetstream-commit":
         options.jetstreamCommit = value;
         break;
+      case "--measurement-profile":
+        options.measurementProfile = value;
+        break;
       case "--output":
         options.output = value;
         break;
@@ -94,6 +104,7 @@ function parseArgs(argv) {
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive integer");
   }
+  resolveMeasurementProfile(options.measurementProfile);
   if (!new Set(["clean", "dirty", "unknown"]).has(options.engineTreeState)) {
     throw new Error("--engine-tree-state must be clean, dirty, or unknown");
   }
@@ -255,6 +266,9 @@ function readMoonBitVersion() {
 
 function main(argv, dependencies = {}) {
   const options = parseArgs(argv);
+  const measurementProfile = resolveMeasurementProfile(
+    options.measurementProfile,
+  );
   const stdout = dependencies.stdout || process.stdout;
   if (options.help) {
     stdout.write(usage());
@@ -303,8 +317,7 @@ function main(argv, dependencies = {}) {
       cli,
       "--",
       `--test=${options.workload}`,
-      "--iteration-count=2",
-      "--worst-case-count=1",
+      ...measurementProfile.countArguments,
       "--no-prefetch",
       "--dump-json-results",
     ],
@@ -337,8 +350,9 @@ function main(argv, dependencies = {}) {
     },
     scope: {
       workload: options.workload,
-      iteration_count: 2,
-      worst_case_count: 1,
+      measurement_profile: measurementProfile.name,
+      iteration_count_override: measurementProfile.iterationCountOverride,
+      worst_case_count_override: measurementProfile.worstCaseCountOverride,
       prefetch: false,
       timeout_ms: options.timeoutMs,
       timings_are_diagnostic_only: true,

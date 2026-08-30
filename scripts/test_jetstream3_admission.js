@@ -30,6 +30,7 @@ test("parseArgs accepts an explicit admission workload", () => {
   ]);
 
   assert.equal(options.workload, "navier-stokes");
+  assert.equal(options.measurementProfile, "compatibility");
 });
 
 function probe(stdout, { status = 0, stderr = "" } = {}) {
@@ -188,6 +189,7 @@ test("main writes a complete report without turning incompatibility into infrast
     const probes = successfulProbes();
     probes.execution = probe("JetStream3 failed: InternalError: fixture\n");
     const responses = [probes.discovery, probes.execution];
+    const commands = [];
 
     const result = main(
       [
@@ -201,6 +203,8 @@ test("main writes a complete report without turning incompatibility into infrast
         "engine-fixture",
         "--engine-tree-state",
         "dirty",
+        "--measurement-profile",
+        "upstream-default",
         "--output",
         output,
       ],
@@ -211,6 +215,7 @@ test("main writes a complete report without turning incompatibility into infrast
         readTreeState: () => "clean",
         spawn: (_engine, args) => {
           if (args.includes("--help")) throw new Error("unexpected help probe");
+          commands.push(args);
           return responses.shift();
         },
         stdout: { write() {} },
@@ -228,6 +233,11 @@ test("main writes a complete report without turning incompatibility into infrast
     assert.equal(report.environment.moonbit_version, "moon fixture");
     assert.equal(typeof report.environment.architecture, "string");
     assert.equal(report.scope.workload, "raytrace");
+    assert.equal(report.scope.measurement_profile, "upstream-default");
+    assert.equal(report.scope.iteration_count_override, null);
+    assert.equal(report.scope.worst_case_count_override, null);
+    assert.equal(commands[1].includes("--iteration-count=2"), false);
+    assert.equal(commands[1].includes("--worst-case-count=1"), false);
     assert.equal(report.assessment.result, "not_admitted");
     assert.equal(report.probes.length, 2);
   } finally {

@@ -7,6 +7,10 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const { assessAdmission } = require("./jetstream3_admission.js");
+const {
+  DEFAULT_MEASUREMENT_PROFILE,
+  resolveMeasurementProfile,
+} = require("./jetstream3_measurement_profile.js");
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 
@@ -101,10 +105,15 @@ function payloadFingerprint(root) {
 }
 
 function parseProbeArgs(argv, defaultOutput) {
-  const options = { output: defaultOutput, timeoutMs: DEFAULT_TIMEOUT_MS };
+  const options = {
+    measurementProfile: DEFAULT_MEASUREMENT_PROFILE,
+    output: defaultOutput,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  };
   const valueOptions = new Set([
     "--engine-root",
     "--jetstream",
+    "--measurement-profile",
     "--output",
     "--spec",
     "--timeout-ms",
@@ -120,6 +129,7 @@ function parseProbeArgs(argv, defaultOutput) {
     const value = argv[(index += 1)];
     if (arg === "--engine-root") options.engineRoot = value;
     if (arg === "--jetstream") options.jetstream = value;
+    if (arg === "--measurement-profile") options.measurementProfile = value;
     if (arg === "--output") options.output = value;
     if (arg === "--spec") options.spec = value;
     if (arg === "--timeout-ms") options.timeoutMs = Number(value);
@@ -131,6 +141,9 @@ function parseProbeArgs(argv, defaultOutput) {
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive integer");
   }
+  options.measurementProfile = resolveMeasurementProfile(
+    options.measurementProfile,
+  );
   for (const field of ["engineRoot", "jetstream", "output", "spec"]) {
     options[field] = path.resolve(options[field]);
   }
@@ -227,7 +240,12 @@ function runReferenceProbe(argv, config, dependencies = {}) {
   if (!fs.statSync(invocation.executable).isFile()) {
     throw new Error("resolved shell executable is not a file in the payload");
   }
-  const commands = config.buildCommands({ cli, options, spec });
+  const commands = config.buildCommands({
+    cli,
+    countArguments: options.measurementProfile.countArguments,
+    options,
+    spec,
+  });
   const environment = invocation.environment || {};
   const discovery = runProbe(
     "test_discovery",
@@ -280,8 +298,10 @@ function runReferenceProbe(argv, config, dependencies = {}) {
     },
     scope: {
       workload: spec.workload,
-      iteration_count: 2,
-      worst_case_count: 1,
+      measurement_profile: options.measurementProfile.name,
+      iteration_count_override:
+        options.measurementProfile.iterationCountOverride,
+      worst_case_count_override: options.measurementProfile.worstCaseCountOverride,
       prefetch: false,
       timeout_ms: options.timeoutMs,
       timings_are_diagnostic_only: true,

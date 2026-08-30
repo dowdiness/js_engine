@@ -159,6 +159,46 @@ test("SpiderMonkey uses its stock shell and payload libraries", () => {
     });
     assert.equal(report.scope.timings_are_diagnostic_only, true);
     assert.equal("cohort" in report, false);
+
+    const measurementOutput = path.join(tempRoot, "measurement-report.json");
+    responses.push(
+      { status: 0, signal: null, stderr: "", stdout: "navier-stokes\n" },
+      {
+        status: 0,
+        signal: null,
+        stderr: "",
+        stdout: successfulJetStreamResult(),
+      },
+    );
+    assert.equal(
+      main(
+        [
+          "--spec",
+          specPath,
+          "--jetstream",
+          tempRoot,
+          "--engine-root",
+          engineRoot,
+          "--measurement-profile",
+          "upstream-default",
+          "--output",
+          measurementOutput,
+        ],
+        {
+          now: () => 0,
+          readRevision: () => JETSTREAM_COMMIT,
+          readTreeState: () => "clean",
+          spawn: (executable, args, options) => {
+            invocations.push({ executable, args, options });
+            return responses.shift();
+          },
+          stdout: { write() {} },
+        },
+      ),
+      "compatible",
+    );
+    assert.equal(invocations[3].args.includes("--iteration-count=2"), false);
+    assert.equal(invocations[3].args.includes("--worst-case-count=1"), false);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

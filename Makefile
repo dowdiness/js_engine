@@ -292,8 +292,7 @@ jetstream3-reference-experiment: jetstream3-reference-experiment-test jetstream3
 		--engine-commit "$$(git rev-parse HEAD)" \
 		--engine-tree-state "$$(test -z "$$(git status --porcelain)" && echo clean || echo dirty)" \
 		--jsvu-root "$(JETSTREAM3_JSVU_ROOT)" \
-		--output-dir "$(JETSTREAM3_REFERENCE_EVIDENCE)" \
-		--timeout-ms "$(JETSTREAM3_TIMEOUT_MS)"
+		--output-dir "$(JETSTREAM3_REFERENCE_EVIDENCE)"
 
 # Compatibility diagnostic only. A not-admitted workload is recorded in the
 # JSON artifact without failing this target; acquisition or runner

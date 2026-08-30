@@ -224,4 +224,5 @@ noise for fast engines. The experiment therefore stops before a pull request.
 The next evidence-driven slice is to separate the existing compatibility
 profile from an upstream-normal measurement profile, repeat the same two-run
 experiment, and only then decide whether the runner and evidence contract merit
-promotion.
+promotion. The profile choice and its branch implementation are recorded in
+[JetStream 3 measurement-profile reassessment](jetstream3-measurement-profile-reassessment.md).

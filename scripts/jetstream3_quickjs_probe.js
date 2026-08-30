@@ -21,6 +21,8 @@ Required:
   --engine-root DIR    installed jsvu engine payload directory
 
 Options:
+  --measurement-profile NAME
+                       compatibility (default) or upstream-default
   --output FILE        probe report (default: jetstream3-quickjs-probe.json)
   --timeout-ms N       timeout for each compatibility probe (default: 180000)
   --help               show this help
@@ -49,7 +51,7 @@ function parseArgs(argv) {
   return parseProbeArgs(argv, "jetstream3-quickjs-probe.json");
 }
 
-function buildCommands({ cli, options, spec }) {
+function buildCommands({ cli, countArguments, options, spec }) {
   const shellAdapter = path.resolve(
     path.dirname(options.spec),
     spec.engine.shell_adapter,
@@ -68,8 +70,7 @@ function buildCommands({ cli, options, spec }) {
     execution: [
       ...prefix,
       `--test=${spec.workload}`,
-      "--iteration-count=2",
-      "--worst-case-count=1",
+      ...countArguments,
       "--no-prefetch",
       "--dump-json-results",
     ],

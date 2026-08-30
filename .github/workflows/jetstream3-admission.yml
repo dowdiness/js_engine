@@ -9,6 +9,7 @@ on:
       - "scripts/jetstream3_admission.js"
       - "scripts/jetstream3_javascriptcore_probe.js"
       - "scripts/jetstream3_javascriptcore_probe.json"
+      - "scripts/jetstream3_measurement_profile.js"
       - "scripts/jetstream3_quickjs_probe.js"
       - "scripts/jetstream3_quickjs_probe.json"
       - "scripts/jetstream3_quickjs_shell.js"
@@ -294,7 +295,7 @@ jobs:
     name: Cross-engine reference feasibility experiment
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -355,7 +356,7 @@ jobs:
             jsvu --os=linux64 "$engine@$version"
           done
 
-      - name: Run two-pass feasibility experiment
+      - name: Run two-pass upstream-default experiment
         run: make jetstream3-reference-experiment
 
       - name: Upload raw feasibility evidence

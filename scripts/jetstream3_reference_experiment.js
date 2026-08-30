@@ -20,11 +20,19 @@ const {
 const { main: runV8 } = require("./jetstream3_v8_probe.js");
 
 const EXPERIMENT = "jetstream3-cross-engine-feasibility";
+const MEASUREMENT_PROFILE = "upstream-default";
+const DEFAULT_TIMEOUT_MS = 600_000;
 const EXPECTED_MEMBERS = ["js_engine", "v8", "javascriptcore", "spidermonkey"];
 const SPEC_FILES = {
   javascriptcore: "jetstream3_javascriptcore_probe.json",
   spidermonkey: "jetstream3_spidermonkey_probe.json",
   v8: "jetstream3_v8_probe.json",
+};
+const DEFAULT_RUNNERS = {
+  javascriptcore: runJavaScriptCore,
+  jsEngine: runJsEngine,
+  spidermonkey: runSpiderMonkey,
+  v8: runV8,
 };
 
 function usage() {
@@ -40,7 +48,7 @@ Options:
   --engine-commit SHA   js_engine revision recorded in evidence
   --engine-tree-state STATE
                         clean, dirty, or unknown (default: unknown)
-  --timeout-ms N        timeout for each probe (default: 180000)
+  --timeout-ms N        timeout for each probe (default: 600000)
   --help                show this help
 `;
 }
@@ -49,7 +57,7 @@ function parseArgs(argv, environment) {
   const options = {
     engineCommit: environment.GITHUB_SHA || "unknown",
     engineTreeState: "unknown",
-    timeoutMs: 180_000,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
   };
   const valueOptions = new Set([
     "--engine",
@@ -134,13 +142,13 @@ function validateSpecifications(specifications) {
   return specifications;
 }
 
-function buildMembers(options, specifications) {
+function buildMembers(options, specifications, runners) {
   const byId = new Map(specifications.map((entry) => [entry.member, entry]));
   return [
     {
       id: "js_engine",
       run(output) {
-        return runJsEngine([
+        return runners.jsEngine([
           "--jetstream",
           options.jetstream,
           "--jetstream-commit",
@@ -155,15 +163,17 @@ function buildMembers(options, specifications) {
           byId.get("v8").spec.workload,
           "--timeout-ms",
           String(options.timeoutMs),
+          "--measurement-profile",
+          MEASUREMENT_PROFILE,
           "--output",
           output,
         ]);
       },
     },
     ...[
-      ["v8", runV8],
-      ["javascriptcore", runJavaScriptCore],
-      ["spidermonkey", runSpiderMonkey],
+      ["v8", runners.v8],
+      ["javascriptcore", runners.javascriptcore],
+      ["spidermonkey", runners.spidermonkey],
     ].map(([id, run]) => {
       const specification = byId.get(id);
       return {
@@ -178,6 +188,8 @@ function buildMembers(options, specifications) {
             path.join(options.jsvuRoot, specification.spec.engine.executable),
             "--timeout-ms",
             String(options.timeoutMs),
+            "--measurement-profile",
+            MEASUREMENT_PROFILE,
             "--output",
             output,
           ]);
@@ -206,7 +218,11 @@ function main(argv, dependencies = {}) {
   const specifications = validateSpecifications(
     (dependencies.readSpecifications || readSpecifications)(),
   );
-  const members = buildMembers(options, specifications);
+  const members = buildMembers(
+    options,
+    specifications,
+    dependencies.runners || DEFAULT_RUNNERS,
+  );
   const byId = new Map(members.map((member) => [member.id, member]));
   const schedule = [EXPECTED_MEMBERS, [...EXPECTED_MEMBERS].reverse()];
   const observations = [];
@@ -261,6 +277,9 @@ function main(argv, dependencies = {}) {
       jsvu_version: specifications[0].spec.jsvu_version,
       jetstream_commit: specifications[0].spec.jetstream_commit,
       workload: specifications[0].spec.workload,
+      measurement_profile: MEASUREMENT_PROFILE,
+      iteration_count_override: null,
+      worst_case_count_override: null,
       ordered_members: EXPECTED_MEMBERS,
       passes: schedule.length,
       schedule: "forward_reverse",

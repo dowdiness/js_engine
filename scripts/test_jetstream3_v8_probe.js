@@ -150,10 +150,61 @@ test("V8 uses its standard shell without a repository adapter", () => {
       "--dump-test-list",
       "--test=navier-stokes",
     ]);
+    assert.equal(commands[1].includes("--iteration-count=2"), true);
+    assert.equal(commands[1].includes("--worst-case-count=1"), true);
     const report = JSON.parse(fs.readFileSync(output, "utf8"));
     assert.equal(report.engine.compatibility, "compatible");
+    assert.equal(report.scope.measurement_profile, "compatibility");
+    assert.equal(report.scope.iteration_count_override, 2);
+    assert.equal(report.scope.worst_case_count_override, 1);
     assert.equal(report.scope.timings_are_diagnostic_only, true);
     assert.equal("cohort" in report, false);
+
+    const measurementOutput = path.join(tempRoot, "measurement-report.json");
+    responses.push(
+      { status: 0, signal: null, stderr: "", stdout: "navier-stokes\n" },
+      {
+        status: 0,
+        signal: null,
+        stderr: "",
+        stdout: successfulJetStreamResult(),
+      },
+    );
+    assert.equal(
+      main(
+        [
+          "--spec",
+          specPath,
+          "--jetstream",
+          tempRoot,
+          "--engine-root",
+          engineRoot,
+          "--measurement-profile",
+          "upstream-default",
+          "--output",
+          measurementOutput,
+        ],
+        {
+          now: () => 0,
+          readRevision: () => JETSTREAM_COMMIT,
+          readTreeState: () => "clean",
+          spawn: (executable, args) => {
+            commands.push([executable, ...args]);
+            return responses.shift();
+          },
+          stdout: { write() {} },
+        },
+      ),
+      "compatible",
+    );
+    assert.equal(commands[3].includes("--iteration-count=2"), false);
+    assert.equal(commands[3].includes("--worst-case-count=1"), false);
+    const measurementReport = JSON.parse(
+      fs.readFileSync(measurementOutput, "utf8"),
+    );
+    assert.equal(measurementReport.scope.measurement_profile, "upstream-default");
+    assert.equal(measurementReport.scope.iteration_count_override, null);
+    assert.equal(measurementReport.scope.worst_case_count_override, null);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }

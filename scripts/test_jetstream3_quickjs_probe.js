@@ -258,6 +258,44 @@ test("preparation records QuickJS-ng outcomes without performance claims", () =>
       adapterPath,
       path.join(tempRoot, "cli.js"),
     ]);
+    responses.push(
+      { status: 0, signal: null, stderr: "", stdout: "navier-stokes\n" },
+      {
+        status: 0,
+        signal: null,
+        stderr: "",
+        stdout: successfulJetStreamResult(),
+      },
+    );
+    assert.equal(
+      main(
+        [
+          "--spec",
+          specPath,
+          "--jetstream",
+          tempRoot,
+          "--engine-root",
+          engineRoot,
+          "--measurement-profile",
+          "upstream-default",
+          "--output",
+          output,
+        ],
+        {
+          now: () => 0,
+          readRevision: () => JETSTREAM_COMMIT,
+          readTreeState: () => "clean",
+          spawn: (_executable, args) => {
+            commands.push(args);
+            return responses.shift();
+          },
+          stdout: { write() {} },
+        },
+      ),
+      "compatible",
+    );
+    assert.equal(commands[3].includes("--iteration-count=2"), false);
+    assert.equal(commands[3].includes("--worst-case-count=1"), false);
     const runWith = (response) => {
       const outcome = main(
         [

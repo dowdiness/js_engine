@@ -8,7 +8,25 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { main } = require("./jetstream3_reference_experiment.js");
+const { main, parseArgs } = require("./jetstream3_reference_experiment.js");
+
+test("the upstream-default experiment allows one full js_engine invocation", () => {
+  const options = parseArgs(
+    [
+      "--jetstream",
+      "JetStream",
+      "--engine",
+      "js_engine",
+      "--jsvu-root",
+      "jsvu",
+      "--output-dir",
+      "evidence",
+    ],
+    {},
+  );
+
+  assert.equal(options.timeoutMs, 600_000);
+});
 
 test("the feasibility experiment runs one mirrored complete cohort", () => {
   const tempRoot = fs.mkdtempSync(
@@ -78,6 +96,9 @@ test("the feasibility experiment runs one mirrored complete cohort", () => {
       jsvu_version: "3.0.5",
       jetstream_commit: "7769b693502fa80f28a97bbfacd3296e0513acc5",
       workload: "navier-stokes",
+      measurement_profile: "upstream-default",
+      iteration_count_override: null,
+      worst_case_count_override: null,
       ordered_members: [
         "js_engine",
         "v8",
@@ -113,6 +134,67 @@ test("the feasibility experiment runs one mirrored complete cohort", () => {
     assert.equal(index.observations[0].started_at, "1970-01-01T00:00:00.000Z");
     assert.equal(index.observations[0].ended_at, "1970-01-01T00:00:00.001Z");
     assert.equal(index.observations[0].duration_ms, 1);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("the reference experiment selects upstream JetStream measurement policy", () => {
+  const tempRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "jetstream3-reference-profile-"),
+  );
+  try {
+    const calls = [];
+    const runner = (member, outcome) => (argv) => {
+      calls.push({ member, argv });
+      const output = argv[argv.indexOf("--output") + 1];
+      fs.mkdirSync(path.dirname(output), { recursive: true });
+      fs.writeFileSync(output, "{}\n");
+      return outcome;
+    };
+    const outputDir = path.join(tempRoot, "evidence");
+
+    const result = main(
+      [
+        "--jetstream",
+        path.join(tempRoot, "JetStream"),
+        "--engine",
+        path.join(tempRoot, "js_engine"),
+        "--jsvu-root",
+        path.join(tempRoot, "jsvu"),
+        "--output-dir",
+        outputDir,
+      ],
+      {
+        environment: {},
+        now: () => 0,
+        runners: {
+          javascriptcore: runner("javascriptcore", "compatible"),
+          jsEngine: runner("js_engine", "admitted"),
+          spidermonkey: runner("spidermonkey", "compatible"),
+          v8: runner("v8", "compatible"),
+        },
+        stdout: { write() {} },
+      },
+    );
+
+    assert.equal(result, "complete");
+    assert.equal(calls.length, 8);
+    for (const call of calls) {
+      assert.deepEqual(
+        call.argv.slice(
+          call.argv.indexOf("--measurement-profile"),
+          call.argv.indexOf("--measurement-profile") + 2,
+        ),
+        ["--measurement-profile", "upstream-default"],
+      );
+    }
+    const index = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "run-index.json"), "utf8"),
+    );
+    assert.equal(index.inputs.measurement_profile, "upstream-default");
+    assert.equal(index.inputs.iteration_count_override, null);
+    assert.equal(index.inputs.worst_case_count_override, null);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
