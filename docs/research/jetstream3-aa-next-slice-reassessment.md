@@ -186,3 +186,42 @@ stable enough to justify publication work, then introduce the smallest stable
 definition/evidence interface based on those observations; otherwise stop or
 move the measurement to dedicated hardware. This order tests the actual seam
 before making it a public module.
+
+## Observed feasibility result
+
+The experiment was executed twice from commit
+`bfd595532a34c0ac51c0c64e10b6a29d5057bbf2`:
+
+- [workflow run 33301938499](https://github.com/dowdiness/js_engine/actions/runs/33301938499)
+- [workflow run 33301946501](https://github.com/dowdiness/js_engine/actions/runs/33301946501)
+
+Both experiments were complete and valid: every candidate produced its two raw
+reports, all official correctness checks passed, and both indexes recorded the
+same source/workflow commit, JetStream revision, OS release, architecture, and
+Node version. Each compressed artifact was approximately 9.4 KB.
+
+The four scores per engine are descriptive feasibility data, not a calibrated
+sample. They nevertheless identify a profile problem:
+
+| Engine | Minimum score | Maximum score | Population CV | Relative range |
+| --- | ---: | ---: | ---: | ---: |
+| js_engine | 1.5402 | 1.5671 | 0.68% | 1.73% |
+| V8 | 640.1288 | 708.6151 | 4.20% | 10.36% |
+| JavaScriptCore | 639.5803 | 726.0148 | 5.47% | 12.79% |
+| SpiderMonkey | 624.8925 | 670.2674 | 2.83% | 6.91% |
+
+The raw external-shell workload executions lasted only 39–76 ms, while each
+js_engine execution lasted approximately 6.5 seconds. The current candidate
+adapters intentionally force two iterations and one worst-case sample
+([V8 adapter](../../scripts/jetstream3_v8_probe.js#L42-L53)); the pinned
+JetStream source defines normal defaults of 120 iterations and four worst-case
+samples
+([JetStreamDriver.js](https://github.com/WebKit/JetStream/blob/7769b693502fa80f28a97bbfacd3296e0513acc5/JetStreamDriver.js#L30-L31)).
+
+Consequently, these runs do not show that the hosted runner is too noisy. They
+show that a compatibility probe profile is too short to assess hosted-runner
+noise for fast engines. The experiment therefore stops before a pull request.
+The next evidence-driven slice is to separate the existing compatibility
+profile from an upstream-normal measurement profile, repeat the same two-run
+experiment, and only then decide whether the runner and evidence contract merit
+promotion.
