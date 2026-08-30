@@ -40,7 +40,6 @@
     {"count":88,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"BytecodeFrame::pop"},
     {"count":4,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"BytecodeFrame::pop_dynamic_args"},
     {"count":2,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"BytecodeFrame::read_env_slot"},
-    {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"BytecodeFunction::resolve_source_point"},
     {"count":5,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"VerifiedBytecodeFunction::child"},
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"make_bytecode_arrow_func"},
     {"count":1,"enclosing":"BytecodeFrame::step_bytecode","kind":"compiler","reachable_from":["BytecodeFrame::step"],"target":"make_bytecode_func"},

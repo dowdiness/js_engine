@@ -1,4 +1,6 @@
-// Runtime observation cost microbenchmark.
+// Runtime observation cost microbenchmark. `source-resolution` isolates the
+// eliminated verified-metadata lookup, `former-barrier` replays the old VM
+// path, and `current-barrier` tracks the work the VM actually performs.
 //
 // Run with:
 //   moon bench -p dowdiness/js_engine/compiler \
@@ -73,12 +75,13 @@ fn run_bytecode_runtime_observation_benchmark(b : @bench.T) -> Unit {
       }
       b.keep(checksum)
     })
-    b.bench(name="observation-lookup/\{scale}", fn() {
+    b.bench(name="former-barrier/\{scale}", fn() {
       let mut checksum = 0
       for index in 0..<scale {
-        let SourcePointId(_, _, source_index) = source_ids[index %
-          source_id_count]
+        let source_id = source_ids[index % source_id_count]
+        let SourcePointId(_, _, source_index) = source_id
         checksum += source_index
+        ignore(function.resolve_source_point(source_id))
         observe_unbounded_or_abort(interp)
       }
       b.keep(checksum)
@@ -86,10 +89,9 @@ fn run_bytecode_runtime_observation_benchmark(b : @bench.T) -> Unit {
     b.bench(name="current-barrier/\{scale}", fn() {
       let mut checksum = 0
       for index in 0..<scale {
-        let source_id = source_ids[index % source_id_count]
-        let SourcePointId(_, _, source_index) = source_id
+        let SourcePointId(_, _, source_index) = source_ids[index %
+          source_id_count]
         checksum += source_index
-        ignore(function.resolve_source_point(source_id))
         observe_unbounded_or_abort(interp)
       }
       b.keep(checksum)
