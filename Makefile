@@ -1,11 +1,15 @@
 .PHONY: build test cli-shell-test external-consumer-test diago-readiness stack-safety-test stack-safety-validate microtask-graduation-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test jetstream3-admission jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test jetstream3-v8-probe-test jetstream3-spidermonkey-probe-test jetstream3-source compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
+.PHONY: jetstream3-reference-experiment jetstream3-reference-experiment-test
+
 TEST262_COMMIT ?= main
 JETSTREAM3_COMMIT ?= $(shell sed -n '1p' scripts/jetstream3_version.txt)
 JETSTREAM3_REPOSITORY ?= https://github.com/WebKit/JetStream.git
 JETSTREAM3_DIR ?= .cache/jetstream3/$(JETSTREAM3_COMMIT)
 JETSTREAM3_RESULTS ?= jetstream3-admission.json
 JETSTREAM3_NAVIER_STOKES_RESULTS ?= jetstream3-admission-navier-stokes.json
+JETSTREAM3_REFERENCE_EVIDENCE ?= jetstream3-reference-experiment
+JETSTREAM3_JSVU_ROOT ?= $(HOME)/.jsvu/engines
 JETSTREAM3_TIMEOUT_MS ?= 180000
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
 COMPAT_TABLE_DIR ?= .cache/compat-table/$(COMPAT_TABLE_COMMIT)
@@ -273,6 +277,23 @@ jetstream3-v8-probe-test:
 # Deterministic validation for the pinned SpiderMonkey probe specification.
 jetstream3-spidermonkey-probe-test:
 	node --test scripts/test_jetstream3_spidermonkey_probe.js
+
+# Deterministic contract for the private cross-engine feasibility experiment.
+jetstream3-reference-experiment-test:
+	node --test scripts/test_jetstream3_reference_experiment.js
+
+# Measurement-only experiment. The workflow acquires the pinned jsvu payloads;
+# this target builds js_engine once and retains both mirrored passes as evidence.
+jetstream3-reference-experiment: jetstream3-reference-experiment-test jetstream3-source native-core-bundle
+	moon build --target native --release cmd/main
+	node scripts/jetstream3_reference_experiment.js \
+		--jetstream "$(JETSTREAM3_DIR)" \
+		--engine ./_build/native/release/build/cmd/main/main.exe \
+		--engine-commit "$$(git rev-parse HEAD)" \
+		--engine-tree-state "$$(test -z "$$(git status --porcelain)" && echo clean || echo dirty)" \
+		--jsvu-root "$(JETSTREAM3_JSVU_ROOT)" \
+		--output-dir "$(JETSTREAM3_REFERENCE_EVIDENCE)" \
+		--timeout-ms "$(JETSTREAM3_TIMEOUT_MS)"
 
 # Compatibility diagnostic only. A not-admitted workload is recorded in the
 # JSON artifact without failing this target; acquisition or runner

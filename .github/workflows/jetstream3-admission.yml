@@ -13,6 +13,7 @@ on:
       - "scripts/jetstream3_quickjs_probe.json"
       - "scripts/jetstream3_quickjs_shell.js"
       - "scripts/jetstream3_reference_probe_core.js"
+      - "scripts/jetstream3_reference_experiment.js"
       - "scripts/jetstream3_spidermonkey_probe.js"
       - "scripts/jetstream3_spidermonkey_probe.json"
       - "scripts/jetstream3_version.txt"
@@ -21,6 +22,7 @@ on:
       - "scripts/test_jetstream3_admission.js"
       - "scripts/test_jetstream3_javascriptcore_probe.js"
       - "scripts/test_jetstream3_quickjs_probe.js"
+      - "scripts/test_jetstream3_reference_experiment.js"
       - "scripts/test_jetstream3_source.sh"
       - "scripts/test_jetstream3_spidermonkey_probe.js"
       - "scripts/test_jetstream3_v8_probe.js"
@@ -49,7 +51,7 @@ jobs:
           persist-credentials: false
 
       - name: Run deterministic contract tests
-        run: make jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test jetstream3-v8-probe-test jetstream3-spidermonkey-probe-test
+        run: make jetstream3-admission-test jetstream3-quickjs-probe-test jetstream3-javascriptcore-probe-test jetstream3-v8-probe-test jetstream3-spidermonkey-probe-test jetstream3-reference-experiment-test
 
   admission:
     name: Official runner compatibility diagnostic
@@ -285,5 +287,82 @@ jobs:
         with:
           name: jetstream3-spidermonkey-probe
           path: jetstream3-spidermonkey-probe.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  reference-experiment:
+    name: Cross-engine reference feasibility experiment
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+
+      - name: Cache MoonBit toolchain
+        id: experiment-toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Set up MoonBit
+        if: steps.experiment-toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify MoonBit toolchain identity
+        run: bash scripts/verify_moonbit_toolchain.sh
+
+      - name: Get MoonBit version
+        id: experiment-moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.experiment-moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.experiment-moonbit-version.outputs.version }}-
+
+      - name: Update registry
+        run: moon update
+
+      - name: Validate experiment contract
+        run: make jetstream3-reference-experiment-test
+
+      - name: Acquire pinned JetStream source
+        run: make jetstream3-source
+
+      - name: Acquire admitted reference shells
+        run: |
+          jsvu_version="$(node -p 'require("./scripts/jetstream3_v8_probe.json").jsvu_version')"
+          npm install --global --ignore-scripts "jsvu@$jsvu_version"
+          for engine in v8 javascriptcore spidermonkey; do
+            version="$(node -p "require('./scripts/jetstream3_${engine}_probe.json').engine.version")"
+            jsvu --os=linux64 "$engine@$version"
+          done
+
+      - name: Run two-pass feasibility experiment
+        run: make jetstream3-reference-experiment
+
+      - name: Upload raw feasibility evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jetstream3-reference-experiment-${{ github.sha }}-${{ github.run_attempt }}
+          path: jetstream3-reference-experiment/
           if-no-files-found: warn
           retention-days: 90
