@@ -27,6 +27,7 @@ compat-table-summary.md
 # JetStream 3 local diagnostic output
 jetstream3-admission*.json
 jetstream3-quickjs-probe.json
+jetstream3-reference-experiment/
 
 # Worktrees
 .worktrees/

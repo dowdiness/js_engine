@@ -1,6 +1,6 @@
 # JetStream 3 measurement-profile reassessment
 
-**Status:** adopted on the experiment branch; not merged.
+**Status:** adopted for the fixed feasibility experiment.
 
 ## Question
 
@@ -87,9 +87,11 @@ by the native and external-shell runners; it returns the command arguments and
 the corresponding evidence fields. The experiment records the selected profile
 and null count overrides in both the run index and the individual reports.
 
-The experiment-only process timeout is fifteen minutes and its manual workflow
-job timeout is forty minutes. These are execution bounds, not performance gates
-or published benchmark policy.
+The experiment-only process timeout is fifteen minutes, the complete experiment
+has a thirty-minute internal budget, and its manual workflow job timeout is
+forty minutes. When the internal budget is exhausted, the fixed schedule remains
+visible in the run index with unstarted observations marked `not_run`. These are
+execution bounds, not performance gates or published benchmark policy.
 
 ## Observed branch validation
 

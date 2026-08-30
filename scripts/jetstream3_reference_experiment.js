@@ -22,6 +22,7 @@ const { main: runV8 } = require("./jetstream3_v8_probe.js");
 const EXPERIMENT = "jetstream3-cross-engine-feasibility";
 const MEASUREMENT_PROFILE = "upstream-default";
 const DEFAULT_TIMEOUT_MS = 900_000;
+const EXPERIMENT_TIMEOUT_MS = 1_800_000;
 const EXPECTED_MEMBERS = ["js_engine", "v8", "javascriptcore", "spidermonkey"];
 const SPEC_FILES = {
   javascriptcore: "jetstream3_javascriptcore_probe.json",
@@ -147,7 +148,7 @@ function buildMembers(options, specifications, runners) {
   return [
     {
       id: "js_engine",
-      run(output) {
+      run(output, timeoutMs) {
         return runners.jsEngine([
           "--jetstream",
           options.jetstream,
@@ -162,7 +163,7 @@ function buildMembers(options, specifications, runners) {
           "--workload",
           byId.get("v8").spec.workload,
           "--timeout-ms",
-          String(options.timeoutMs),
+          String(timeoutMs),
           "--measurement-profile",
           MEASUREMENT_PROFILE,
           "--output",
@@ -178,7 +179,7 @@ function buildMembers(options, specifications, runners) {
       const specification = byId.get(id);
       return {
         id,
-        run(output) {
+        run(output, timeoutMs) {
           return run([
             "--spec",
             path.join(__dirname, specification.filename),
@@ -187,7 +188,7 @@ function buildMembers(options, specifications, runners) {
             "--engine-root",
             path.join(options.jsvuRoot, specification.spec.engine.executable),
             "--timeout-ms",
-            String(options.timeoutMs),
+            String(timeoutMs),
             "--measurement-profile",
             MEASUREMENT_PROFILE,
             "--output",
@@ -226,6 +227,7 @@ function main(argv, dependencies = {}) {
   const byId = new Map(members.map((member) => [member.id, member]));
   const schedule = [EXPECTED_MEMBERS, [...EXPECTED_MEMBERS].reverse()];
   const observations = [];
+  let experimentDeadline;
   fs.mkdirSync(options.outputDir, { recursive: true });
 
   for (let pass = 0; pass < schedule.length; pass += 1) {
@@ -235,15 +237,29 @@ function main(argv, dependencies = {}) {
       const filename = `pass-${pass + 1}-${id}.json`;
       const output = path.join(options.outputDir, filename);
       const started = now();
+      if (experimentDeadline === undefined) {
+        experimentDeadline = started + EXPERIMENT_TIMEOUT_MS;
+      }
+      const remainingMs = experimentDeadline - started;
       let outcome;
       let failure;
-      try {
-        outcome = dependencies.runMember
-          ? dependencies.runMember(member, output)
-          : member.run(output);
-      } catch (error) {
-        outcome = "experiment_failed";
-        failure = { message: error.message };
+      let processTimeoutMs = null;
+      if (remainingMs <= 0) {
+        outcome = "not_run";
+        failure = { message: "experiment time budget exhausted" };
+      } else {
+        processTimeoutMs = Math.min(
+          options.timeoutMs,
+          Math.max(1, Math.floor(remainingMs / 2)),
+        );
+        try {
+          outcome = dependencies.runMember
+            ? dependencies.runMember(member, output, processTimeoutMs)
+            : member.run(output, processTimeoutMs);
+        } catch (error) {
+          outcome = "experiment_failed";
+          failure = { message: error.message };
+        }
       }
       const ended = now();
       const observation = {
@@ -251,6 +267,7 @@ function main(argv, dependencies = {}) {
         ordinal: ordinal + 1,
         member: id,
         outcome,
+        process_timeout_ms: processTimeoutMs,
         raw_report: fs.existsSync(output) ? filename : null,
         started_at: new Date(started).toISOString(),
         ended_at: new Date(ended).toISOString(),
@@ -280,6 +297,7 @@ function main(argv, dependencies = {}) {
       measurement_profile: MEASUREMENT_PROFILE,
       iteration_count_override: null,
       worst_case_count_override: null,
+      experiment_timeout_ms: EXPERIMENT_TIMEOUT_MS,
       ordered_members: EXPECTED_MEMBERS,
       passes: schedule.length,
       schedule: "forward_reverse",

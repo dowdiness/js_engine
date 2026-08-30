@@ -99,6 +99,7 @@ test("the feasibility experiment runs one mirrored complete cohort", () => {
       measurement_profile: "upstream-default",
       iteration_count_override: null,
       worst_case_count_override: null,
+      experiment_timeout_ms: 1_800_000,
       ordered_members: [
         "js_engine",
         "v8",
@@ -244,6 +245,70 @@ test("one failed invocation invalidates the experiment without hiding later evid
     });
     assert.equal(index.observations[1].outcome, "experiment_failed");
     assert.equal(index.observations[7].member, "js_engine");
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("the experiment records the fixed schedule when its time budget is exhausted", () => {
+  const tempRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "jetstream3-reference-deadline-"),
+  );
+  try {
+    const outputDir = path.join(tempRoot, "evidence");
+    const calls = [];
+    let clock = 0;
+    const result = main(
+      [
+        "--jetstream",
+        path.join(tempRoot, "JetStream"),
+        "--engine",
+        path.join(tempRoot, "js_engine"),
+        "--jsvu-root",
+        path.join(tempRoot, "jsvu"),
+        "--output-dir",
+        outputDir,
+      ],
+      {
+        environment: {},
+        now: () => clock,
+        runMember: (member, output, timeoutMs) => {
+          calls.push({ member: member.id, timeoutMs });
+          fs.mkdirSync(path.dirname(output), { recursive: true });
+          fs.writeFileSync(output, "{}\n");
+          if (calls.length === 1) {
+            clock = 1_200_000;
+            return "admitted";
+          }
+          clock = 1_800_001;
+          return "compatible";
+        },
+        stdout: { write() {} },
+      },
+    );
+
+    assert.equal(result, "invalid");
+    assert.deepEqual(calls, [
+      { member: "js_engine", timeoutMs: 900_000 },
+      { member: "v8", timeoutMs: 300_000 },
+    ]);
+    const index = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "run-index.json"), "utf8"),
+    );
+    assert.equal(index.valid, false);
+    assert.equal(index.observations.length, 8);
+    assert.equal(index.observations[0].outcome, "admitted");
+    assert.equal(index.observations[0].process_timeout_ms, 900_000);
+    assert.equal(index.observations[1].outcome, "compatible");
+    assert.equal(index.observations[1].process_timeout_ms, 300_000);
+    for (const observation of index.observations.slice(2)) {
+      assert.equal(observation.outcome, "not_run");
+      assert.equal(observation.raw_report, null);
+      assert.equal(observation.process_timeout_ms, null);
+      assert.deepEqual(observation.failure, {
+        message: "experiment time budget exhausted",
+      });
+    }
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
