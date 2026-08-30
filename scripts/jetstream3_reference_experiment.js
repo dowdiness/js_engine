@@ -21,7 +21,7 @@ const { main: runV8 } = require("./jetstream3_v8_probe.js");
 
 const EXPERIMENT = "jetstream3-cross-engine-feasibility";
 const MEASUREMENT_PROFILE = "upstream-default";
-const DEFAULT_TIMEOUT_MS = 600_000;
+const DEFAULT_TIMEOUT_MS = 900_000;
 const EXPECTED_MEMBERS = ["js_engine", "v8", "javascriptcore", "spidermonkey"];
 const SPEC_FILES = {
   javascriptcore: "jetstream3_javascriptcore_probe.json",
@@ -48,7 +48,7 @@ Options:
   --engine-commit SHA   js_engine revision recorded in evidence
   --engine-tree-state STATE
                         clean, dirty, or unknown (default: unknown)
-  --timeout-ms N        timeout for each probe (default: 600000)
+  --timeout-ms N        timeout for each probe (default: 900000)
   --help                show this help
 `;
 }

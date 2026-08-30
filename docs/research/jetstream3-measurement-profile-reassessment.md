@@ -87,6 +87,49 @@ by the native and external-shell runners; it returns the command arguments and
 the corresponding evidence fields. The experiment records the selected profile
 and null count overrides in both the run index and the individual reports.
 
-The experiment-only process timeout is ten minutes and its manual workflow job
-timeout is thirty minutes. These are execution bounds, not performance gates or
-published benchmark policy.
+The experiment-only process timeout is fifteen minutes and its manual workflow
+job timeout is forty minutes. These are execution bounds, not performance gates
+or published benchmark policy.
+
+## Observed branch validation
+
+The branch was dispatched twice at commit
+`ee74c47a74b743595d754af1dc48fcf30a167774`:
+
+- [workflow run 33306918682](https://github.com/dowdiness/js_engine/actions/runs/33306918682)
+- [workflow run 33307441059](https://github.com/dowdiness/js_engine/actions/runs/33307441059)
+
+Both experiments were complete and valid. All sixteen candidate observations
+recorded `upstream-default`, null count overrides, commands without either count
+flag, the same JetStream and repository commits, and complete raw results. The
+first experiment job completed in 11 minutes 21 seconds; the second completed
+in 19 minutes 31 seconds.
+
+The two js_engine invocations in the slower job took about 8 minutes 28 seconds
+and 8 minutes 21 seconds. That left too little operational headroom under the
+initial ten-minute process timeout, so the bound was raised to fifteen minutes.
+This changes failure containment only; it does not change the workload, score,
+or accepted evidence.
+
+The two scores within each workflow were reasonably close, but absolute scores
+were not stable across the two GitHub-hosted jobs:
+
+| Engine | Run 1 mean | Run 2 mean | Run 1 / Run 2 | Combined CV | Combined relative range |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| js_engine | 2.1102 | 1.1874 | 1.777 | 27.99% | 56.98% |
+| JavaScriptCore | 1105.8841 | 674.3918 | 1.640 | 24.31% | 52.04% |
+| SpiderMonkey | 910.2236 | 558.8312 | 1.629 | 23.99% | 50.41% |
+| V8 | 1081.8770 | 697.8260 | 1.550 | 22.25% | 52.52% |
+
+The slowdown affected every engine, which is consistent with a materially
+different hosted-runner execution environment. It did not scale every engine
+equally. Even same-job external-engine-to-js_engine score ratios had relative
+ranges of about 12% for JavaScriptCore, 12% for SpiderMonkey, and 22% for V8
+over the four paired observations.
+
+This result answers the feasibility question. The fixed experiment is useful
+for compatibility and diagnostic evidence, and the standard profile is now
+measured correctly. Ordinary GitHub-hosted jobs are not a defensible source for
+an absolute-score dashboard, ranking, or regression threshold. Publication
+would require a controlled runner or a separately validated paired methodology;
+neither should be added to this branch without new evidence.

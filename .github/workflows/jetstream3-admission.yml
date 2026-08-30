@@ -295,7 +295,7 @@ jobs:
     name: Cross-engine reference feasibility experiment
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout

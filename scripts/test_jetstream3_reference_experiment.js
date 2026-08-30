@@ -25,7 +25,7 @@ test("the upstream-default experiment allows one full js_engine invocation", () 
     {},
   );
 
-  assert.equal(options.timeoutMs, 600_000);
+  assert.equal(options.timeoutMs, 900_000);
 });
 
 test("the feasibility experiment runs one mirrored complete cohort", () => {
