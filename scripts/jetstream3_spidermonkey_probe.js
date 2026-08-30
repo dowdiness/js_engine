@@ -16,6 +16,8 @@ Required:
   --engine-root DIR    installed jsvu engine payload directory
 
 Options:
+  --measurement-profile NAME
+                       compatibility (default) or upstream-default
   --output FILE        probe report (default: jetstream3-spidermonkey-probe.json)
   --timeout-ms N       timeout for each compatibility probe (default: 180000)
   --help               show this help
@@ -32,7 +34,7 @@ function validateProbeSpec(spec) {
   return spec;
 }
 
-function buildCommands({ cli, spec }) {
+function buildCommands({ cli, countArguments, spec }) {
   return {
     discovery: [
       cli,
@@ -43,8 +45,7 @@ function buildCommands({ cli, spec }) {
     execution: [
       cli,
       `--test=${spec.workload}`,
-      "--iteration-count=2",
-      "--worst-case-count=1",
+      ...countArguments,
       "--no-prefetch",
       "--dump-json-results",
     ],
