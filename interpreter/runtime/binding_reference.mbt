@@ -528,52 +528,41 @@ fn resolved_binding_reference(
 }
 
 ///|
-fn executor_binding_reference_global_or_unresolvable(
+fn try_executor_binding_reference_plain(
   interp : Interpreter,
   request : ExecutorBindingReferenceRequest,
-) -> ResolvedBindingReference {
-  let kind = match interp.global_this {
-    Object(data) if data.bag.properties.contains(request.name) =>
-      ResolvedBindingGlobal
-    _ => ResolvedBindingUnresolvable
-  }
-  resolved_binding_reference(kind, request.name, request.ctx, request.loc)
-}
-
-///|
-fn executor_binding_reference_plain(
-  interp : Interpreter,
-  request : ExecutorBindingReferenceRequest,
-) -> ResolvedBindingReference {
+) -> ResolvedBindingReference? {
   let mut current : Environment? = Some(request.env)
   while true {
     match current {
       Some(env) =>
-        match env.bindings.get(request.name) {
-          Some(_) => {
-            let slot = env.resolve_slot(request.name).unwrap()
-            let kind = if env.parent is None &&
-              interp.is_immutable_global(request.name) {
-              ResolvedBindingGlobal
-            } else {
-              ResolvedBindingLexical(slot)
+        match env.with_object {
+          Some(_) => return None
+          None =>
+            match env.resolve_slot(request.name) {
+              Some(slot) => {
+                let kind = if env.parent is None &&
+                  interp.is_immutable_global(request.name) {
+                  ResolvedBindingGlobal
+                } else {
+                  ResolvedBindingLexical(slot)
+                }
+                return Some(
+                  resolved_binding_reference(
+                    kind,
+                    request.name,
+                    request.ctx,
+                    request.loc,
+                  ),
+                )
+              }
+              None => current = env.parent
             }
-            return resolved_binding_reference(
-              kind,
-              request.name,
-              request.ctx,
-              request.loc,
-            )
-          }
-          None => current = env.parent
         }
-      None =>
-        return executor_binding_reference_global_or_unresolvable(
-          interp, request,
-        )
+      None => return None
     }
   }
-  executor_binding_reference_global_or_unresolvable(interp, request)
+  None
 }
 
 ///|
@@ -587,12 +576,10 @@ fn begin_executor_binding_reference(
 ) -> ExecutorBindingReferenceStart raise Error {
   @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
   let request = ExecutorBindingReferenceRequest(ctx~, env~, name~, loc~)
-  if !binding_assignment_requires_managed_resolution(env, name) {
-    return ExecutorBindingReferenceCompleted(
-      executor_binding_reference_plain(interp, request),
-    )
+  match try_executor_binding_reference_plain(interp, request) {
+    Some(reference) => ExecutorBindingReferenceCompleted(reference)
+    None => ExecutorBindingReferenceSuspended(request)
   }
-  ExecutorBindingReferenceSuspended(request)
 }
 
 ///|
