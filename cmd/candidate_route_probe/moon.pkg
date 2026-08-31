@@ -1,0 +1,16 @@
+import {
+  "dowdiness/js_engine/compiler",
+  "dowdiness/js_engine/parser",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/sys",
+}
+
+supported_targets = "+native"
+
+pkgtype(kind: "executable")
+
+options(
+  "native-stub": [ "stderr.c" ],
+)
