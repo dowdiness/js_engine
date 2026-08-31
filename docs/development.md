@@ -154,6 +154,17 @@ moon run benchmarks --target js -- --all --csv
 Timing is meaningful only on the JS target; the WASM and WASM-GC timer files
 return `0.0` by design.
 
+To inspect the verified candidate route without executing a script, run the
+native profiling CLI:
+
+```bash
+moon run cmd/candidate_route_probe --target native -- path/to/script.js
+```
+
+Successful output is JSON on stdout. Usage, file, parse, and preparation errors
+go to stderr with a non-zero exit status. The report is unstable measurement
+data, not JavaScript semantics or a public compatibility contract.
+
 The pinned official JetStream 3 shell runner is available as a compatibility
 admission diagnostic:
 
