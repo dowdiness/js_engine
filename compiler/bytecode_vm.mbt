@@ -656,9 +656,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property get",
       )
-    @runtime.ExecutorActivationComputedCallPreparation(_) =>
+    @runtime.ExecutorActivationPropertyKey(_)
+    | @runtime.ExecutorActivationComputedPropertyGet(_) =>
       raise @errors.InternalError(
-        message="executor activation coordinator returned a pending computed call preparation",
+        message="executor activation coordinator returned a pending computed property operation",
       )
     @runtime.ExecutorActivationPropertySet(_) =>
       raise @errors.InternalError(
@@ -1485,9 +1486,7 @@ fn BytecodeFrame::step_bytecode(
           @runtime.ExecutorPropertyKeySuspended(request) => {
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(
-              @runtime.executor_activation_computed_call_preparation_request(
-                request,
-              ),
+              @runtime.executor_activation_property_key_request(request),
             )
           }
         }
@@ -1723,7 +1722,7 @@ fn BytecodeFrame::step_bytecode(
           @runtime.ExecutorComputedCallPreparationSuspended(request) => {
             frame.pending_activation_result = Some(PushReceiverAndValue(obj))
             return BytecodeFrameSuspended(
-              @runtime.executor_activation_computed_call_preparation_request(
+              @runtime.executor_activation_computed_property_get_request(
                 request,
               ),
             )

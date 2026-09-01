@@ -473,6 +473,36 @@ test "issue 936 ordinary array numeric computed call completes synchronously" {
 }
 
 ///|
+test "property key conversion has a dedicated activation request" {
+  let key = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match begin_executor_property_key(key, @token.Loc::default()) {
+    ExecutorPropertyKeyCompleted(_) =>
+      fail("object property key must suspend for guest conversion")
+    ExecutorPropertyKeySuspended(request) =>
+      match executor_activation_property_key_request(request) {
+        ExecutorActivationPropertyKey(_) => ()
+        _ => fail("property key conversion used an unrelated activation")
+      }
+  }
+}
+
+///|
+test "computed call preparation suspends on a computed property get" {
+  let target = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let key = make_object(Map([]), Null, None, "Object", Map([]), true)
+  match
+    begin_executor_computed_call_preparation(target, key, @token.Loc::default()) {
+    ExecutorComputedCallPreparationCompleted(_) =>
+      fail("object property key must suspend computed property lookup")
+    ExecutorComputedCallPreparationSuspended(request) =>
+      match executor_activation_computed_property_get_request(request) {
+        ExecutorActivationComputedPropertyGet(_) => ()
+        _ => fail("computed property get used an unrelated activation")
+      }
+  }
+}
+
+///|
 impl ExecutorActivationFrame for ExecutorActivationCoercingAdditionRootFrame with fn deliver_activation_completion(
   self,
   completion,

@@ -167,9 +167,9 @@ pub fn executor_activation_completion_abrupt(Error) -> ExecutorActivationComplet
 
 pub fn executor_activation_completion_normal(Value) -> ExecutorActivationCompletion
 
-pub fn executor_activation_computed_call_preparation_request(ExecutorComputedCallPreparationRequest) -> ExecutorActivationStep
-
 pub fn executor_activation_computed_property_get_if_admitted(Value, Value, @token.Loc) -> ExecutorActivationStep?
+
+pub fn executor_activation_computed_property_get_request(ExecutorComputedPropertyGetRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_construct(Value, Array[Value], @token.Loc) -> ExecutorActivationStep
 
@@ -190,6 +190,8 @@ pub fn executor_activation_property_delete_request(ExecutorPropertyDeleteRequest
 pub fn executor_activation_property_get(Value, String, @token.Loc) -> ExecutorActivationStep
 
 pub fn executor_activation_property_increment(Value, String, Bool, @token.Loc, @token.Loc, Bool) -> ExecutorActivationStep
+
+pub fn executor_activation_property_key_request(ExecutorPropertyKeyRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_property_set(Value, String, Value, @token.Loc, Bool) -> ExecutorActivationStep
 
@@ -768,7 +770,8 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
   ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
-  ExecutorActivationComputedCallPreparation(ExecutorComputedCallPreparationRequest)
+  ExecutorActivationPropertyKey(ExecutorPropertyKeyRequest)
+  ExecutorActivationComputedPropertyGet(ExecutorComputedPropertyGetRequest)
   ExecutorActivationPropertySet(ExecutorPropertySetRequest)
   ExecutorActivationPropertyUpdate(ExecutorPropertyUpdateRequest)
   ExecutorActivationCoercingAddition(ExecutorCoercingAdditionRequest)
@@ -870,13 +873,13 @@ pub enum ExecutorCoercingSubtractionStart {
   ExecutorCoercingSubtractionSuspended(ExecutorCoercingSubtractionRequest)
 }
 
-pub struct ExecutorComputedCallPreparationRequest {
-  // private fields
-}
-
 pub enum ExecutorComputedCallPreparationStart {
   ExecutorComputedCallPreparationCompleted(Value)
-  ExecutorComputedCallPreparationSuspended(ExecutorComputedCallPreparationRequest)
+  ExecutorComputedCallPreparationSuspended(ExecutorComputedPropertyGetRequest)
+}
+
+pub struct ExecutorComputedPropertyGetRequest {
+  // private fields
 }
 
 pub enum ExecutorComputedPropertyGetStart {
@@ -939,9 +942,13 @@ pub struct ExecutorPropertyGetRequest {
   // private fields
 }
 
+pub struct ExecutorPropertyKeyRequest {
+  // private fields
+}
+
 pub enum ExecutorPropertyKeyStart {
   ExecutorPropertyKeyCompleted(Value)
-  ExecutorPropertyKeySuspended(ExecutorComputedCallPreparationRequest)
+  ExecutorPropertyKeySuspended(ExecutorPropertyKeyRequest)
 }
 
 pub struct ExecutorPropertySetRequest {

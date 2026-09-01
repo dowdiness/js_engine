@@ -1666,9 +1666,8 @@ test "managed disposition corresponds to a typed VM suspension" {
     { strict: false, current_generator: None },
   )
   match conditional_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(
-      @runtime.ExecutorActivationComputedCallPreparation(_)
-    ) => ()
+    BytecodeFrameSuspended(@runtime.ExecutorActivationComputedPropertyGet(_)) =>
+      ()
     _ => fail("computed access must return a typed preparation request")
   }
 }
