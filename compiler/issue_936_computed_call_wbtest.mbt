@@ -414,14 +414,14 @@ test "issue 936 admits fixed spread optional and tagged computed calls" {
 }
 
 ///|
-test "issue 936 retains computed call sibling scope guards" {
+test "issue 936 admits computed reads without admitting computed updates" {
   let read = prepare_candidate_program(
     @parser.parse(
       "var receiver = { method: 1 }; var key = 'method'; receiver[key];",
     ).stmts,
   )
-  guard read.root.selection is UseTreeWalker(_) else {
-    fail("computed Get was admitted with computed-call preparation")
+  guard read.root.selection is UseBytecode(_) else {
+    fail("managed computed Get did not select bytecode")
   }
   let update = prepare_candidate_program(
     @parser.parse(

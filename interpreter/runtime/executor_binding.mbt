@@ -764,7 +764,7 @@ priv enum ExecutorProxyPropertySetPhase {
 priv struct ExecutorProxyPropertySetFrame {
   target : Value
   handler : Value
-  property_name : String
+  key : ExecutorPropertyGetKey
   value : Value
   receiver : Value
   strict : Bool
@@ -776,7 +776,7 @@ priv struct ExecutorProxyPropertySetFrame {
 fn ExecutorProxyPropertySetFrame::ExecutorProxyPropertySetFrame(
   target~ : Value,
   handler~ : Value,
-  property_name~ : String,
+  key~ : ExecutorPropertyGetKey,
   value~ : Value,
   receiver~ : Value,
   strict~ : Bool,
@@ -785,7 +785,7 @@ fn ExecutorProxyPropertySetFrame::ExecutorProxyPropertySetFrame(
   {
     target,
     handler,
-    property_name,
+    key,
     value,
     receiver,
     strict,
@@ -814,9 +814,9 @@ fn ExecutorProxyPropertySetFrame::step_frame(
       match trap {
         Undefined | Null => {
           self.phase = ExecutorProxyPropertySetAwaitForward
-          executor_activation_managed_property_set_with_receiver(
+          executor_activation_managed_property_set_key_with_receiver(
             self.target,
-            self.property_name,
+            self.key,
             self.value,
             self.receiver,
             self.loc,
@@ -834,7 +834,7 @@ fn ExecutorProxyPropertySetFrame::step_frame(
             self.handler,
             [
               self.target,
-              String_(self.property_name),
+              executor_property_get_key_value(self.key),
               self.value,
               self.receiver,
             ],
@@ -846,7 +846,7 @@ fn ExecutorProxyPropertySetFrame::step_frame(
       if !is_truthy(result) {
         if self.strict {
           raise @errors.TypeError(
-            message="'set' on proxy: trap returned falsish for property '{self.property_name}'",
+            message="'set' on proxy: trap returned falsish",
           )
         }
         self.phase = ExecutorProxyPropertySetComplete(self.value)
@@ -855,7 +855,7 @@ fn ExecutorProxyPropertySetFrame::step_frame(
         check_proxy_set_trap_invariants_with_interp(
           Some(interp),
           self.target,
-          String_(self.property_name),
+          executor_property_get_key_value(self.key),
           self.value,
         )
         self.phase = ExecutorProxyPropertySetComplete(self.value)

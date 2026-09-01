@@ -4193,7 +4193,7 @@ fn BytecodeBuilder::compile_object_lit(
           if prop.computed {
             self.compile_expr(prop.key)
             let _ = self.emit_with_source_locations(
-              ToObjectLiteralPropertyKey,
+              ToPropertyKey(bytecode_expr_loc(prop.key)),
               [(PropertyKey, bytecode_expr_loc(prop.key))],
             )
             self.compile_object_method(prop, computed_key_on_stack=true)
@@ -4237,9 +4237,10 @@ fn BytecodeBuilder::compile_object_lit(
       if prop.is_method {
         if prop.computed {
           self.compile_expr(prop.key)
-          let _ = self.emit_with_source_locations(ToObjectLiteralPropertyKey, [
-            (PropertyKey, bytecode_expr_loc(prop.key)),
-          ])
+          let _ = self.emit_with_source_locations(
+            ToPropertyKey(bytecode_expr_loc(prop.key)),
+            [(PropertyKey, bytecode_expr_loc(prop.key))],
+          )
           self.compile_object_method(prop, computed_key_on_stack=true)
           let _ = self.emit(ObjectSetComputed)
           continue
@@ -4269,9 +4270,10 @@ fn BytecodeBuilder::compile_object_lit(
       }
       if prop.computed {
         self.compile_expr(prop.key)
-        let _ = self.emit_with_source_locations(ToObjectLiteralPropertyKey, [
-          (PropertyKey, bytecode_expr_loc(prop.key)),
-        ])
+        let _ = self.emit_with_source_locations(
+          ToPropertyKey(bytecode_expr_loc(prop.key)),
+          [(PropertyKey, bytecode_expr_loc(prop.key))],
+        )
         bytecode_reject_object_data_property_super(prop.value)
         self.compile_expr(prop.value)
         let _ = self.emit(ObjectSetComputed)
@@ -4728,7 +4730,7 @@ fn BytecodeBuilder::compile_expr_body(
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(slot), _) => {
           let _ = self.emit_with_source_locations(
-            UpdateLocal(slot, op, prefix),
+            UpdateLocal(slot, op, prefix, loc),
             [(BindingAccess, ident_loc), (Operator, loc)],
           )
         }

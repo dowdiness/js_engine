@@ -10,6 +10,7 @@ priv struct BytecodeForInState {
 ///|
 priv enum BytecodeActivationResultDestination {
   PushValue
+  UpdateLocalAfterNumericConversion(Int, @ast.UpdateOp, Bool)
   PushBindingReference
   PushReceiverAndValue(Value)
   NoStackChange
@@ -282,6 +283,8 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
     @runtime.ExecutorActivationCompletionNormal(value) =>
       match destination {
         PushValue => self.stack.push(value)
+        UpdateLocalAfterNumericConversion(slot, op, prefix) =>
+          self.complete_local_update(slot, op, prefix, value)
         PushBindingReference =>
           raise @errors.InternalError(
             message="bytecode binding reference resolution returned a value",
@@ -373,6 +376,27 @@ fn BytecodeFrame::assign_env_slot(
   strict : Bool,
 ) -> Unit raise Error {
   self.env_slots[slot].assign(value, strict~)
+}
+
+///|
+fn BytecodeFrame::complete_local_update(
+  self : BytecodeFrame,
+  slot : Int,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  converted : Value,
+) -> Unit raise Error {
+  guard converted is Number(old_number) else {
+    raise @errors.InternalError(
+      message="numeric conversion completed without a Number",
+    )
+  }
+  let next_value = match op {
+    Increment => Value::Number(old_number + 1.0)
+    Decrement => Value::Number(old_number - 1.0)
+  }
+  self.locals[slot] = next_value
+  self.stack.push(if prefix { next_value } else { Value::Number(old_number) })
 }
 
 ///|
@@ -632,9 +656,10 @@ fn run_bytecode_function(
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending property get",
       )
-    @runtime.ExecutorActivationComputedCallPreparation(_) =>
+    @runtime.ExecutorActivationPropertyKey(_)
+    | @runtime.ExecutorActivationComputedPropertyGet(_) =>
       raise @errors.InternalError(
-        message="executor activation coordinator returned a pending computed call preparation",
+        message="executor activation coordinator returned a pending computed property operation",
       )
     @runtime.ExecutorActivationPropertySet(_) =>
       raise @errors.InternalError(
@@ -659,6 +684,10 @@ fn run_bytecode_function(
     @runtime.ExecutorActivationCoercingMultiplicative(_) =>
       raise @errors.InternalError(
         message="executor activation coordinator returned a pending coercing multiplicative operation",
+      )
+    @runtime.ExecutorActivationNumericConversion(_) =>
+      raise @errors.InternalError(
+        message="executor activation coordinator returned a pending numeric conversion",
       )
     @runtime.ExecutorActivationPropertyDelete(_) =>
       raise @errors.InternalError(
@@ -1162,15 +1191,20 @@ fn BytecodeFrame::step_bytecode(
             )
           }
         }
-      UpdateLocal(slot, op, prefix) => {
-        let old_number = @runtime.to_number(locals[slot], interp=Some(interp))
-        let next_value = match op {
-          Increment => Value::Number(old_number + 1.0)
-          Decrement => Value::Number(old_number - 1.0)
+      UpdateLocal(slot, op, prefix, loc) =>
+        match
+          @runtime.begin_executor_numeric_conversion(interp, locals[slot], loc) {
+          @runtime.ExecutorNumericConversionCompleted(value) =>
+            frame.complete_local_update(slot, op, prefix, value)
+          @runtime.ExecutorNumericConversionSuspended(request) => {
+            frame.pending_activation_result = Some(
+              UpdateLocalAfterNumericConversion(slot, op, prefix),
+            )
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_numeric_conversion_request(request),
+            )
+          }
         }
-        locals[slot] = next_value
-        stack.push(if prefix { next_value } else { Value::Number(old_number) })
-      }
       UpdateEnvSlot(slot, op, prefix) => {
         let old_number = @runtime.to_number(
           frame.read_env_slot(slot),
@@ -1444,9 +1478,18 @@ fn BytecodeFrame::step_bytecode(
           false,
         )
       }
-      ToObjectLiteralPropertyKey => {
+      ToPropertyKey(loc) => {
         let key = frame.pop()
-        stack.push(interp.to_object_literal_property_key(key))
+        match @runtime.begin_executor_property_key(key, loc) {
+          @runtime.ExecutorPropertyKeyCompleted(property_key) =>
+            stack.push(property_key)
+          @runtime.ExecutorPropertyKeySuspended(request) => {
+            frame.pending_activation_result = Some(PushValue)
+            return BytecodeFrameSuspended(
+              @runtime.executor_activation_property_key_request(request),
+            )
+          }
+        }
       }
       ObjectSetComputed => {
         let value = frame.pop()
@@ -1544,15 +1587,13 @@ fn BytecodeFrame::step_bytecode(
       GetComputed(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        match
-          @runtime.executor_activation_computed_property_get_if_admitted(
-            obj, key, loc,
-          ) {
-          Some(step) => {
+        match @runtime.begin_executor_computed_property_get(obj, key, loc) {
+          @runtime.ExecutorComputedPropertyGetCompleted(value) =>
+            stack.push(value)
+          @runtime.ExecutorComputedPropertyGetSuspended(step) => {
             frame.pending_activation_result = Some(PushValue)
             return BytecodeFrameSuspended(step)
           }
-          None => stack.push(interp.get_computed_property(obj, key, loc))
         }
       }
       ReadPropertyForAssign(prop, loc) => {
@@ -1621,29 +1662,20 @@ fn BytecodeFrame::step_bytecode(
         let value = frame.pop()
         let key = frame.pop()
         let obj = frame.pop()
-        match key {
-          String_(property_name) => {
+        match
+          @runtime.begin_executor_computed_property_set(
+            obj,
+            key,
+            value,
+            loc,
+            ctx.strict,
+          ) {
+          @runtime.ExecutorComputedPropertySetCompleted(result) =>
+            stack.push(result)
+          @runtime.ExecutorComputedPropertySetSuspended(step) => {
             frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_property_set(
-                obj,
-                property_name,
-                value,
-                loc,
-                ctx.strict,
-              ),
-            )
+            return BytecodeFrameSuspended(step)
           }
-          _ =>
-            stack.push(
-              interp.set_computed_property(
-                obj,
-                key,
-                value,
-                loc,
-                strict=ctx.strict,
-              ),
-            )
         }
       }
       SetForInProperty(prop, loc) => {
@@ -1690,7 +1722,7 @@ fn BytecodeFrame::step_bytecode(
           @runtime.ExecutorComputedCallPreparationSuspended(request) => {
             frame.pending_activation_result = Some(PushReceiverAndValue(obj))
             return BytecodeFrameSuspended(
-              @runtime.executor_activation_computed_call_preparation_request(
+              @runtime.executor_activation_computed_property_get_request(
                 request,
               ),
             )

@@ -2,7 +2,7 @@
 // Navier-Stokes. Setup and route assertions stay outside timed regions.
 
 ///|
-const UPDATE_LOCAL_TREE_SOURCE : String =
+const UPDATE_LOCAL_SOURCE : String =
   #|function updateLocalKernel(rounds, width) {
   #|  var total = 0;
   #|  for (var round = 0; round < rounds; round = round + 1) {
@@ -57,16 +57,16 @@ const COMPUTED_READ_EXPECTED_RESULT : String = "122880"
 test "update-local activation benchmark route matrix" {
   json_inspect(
     @compiler.profile_candidate_route_plan_json(
-      @parser.parse(UPDATE_LOCAL_TREE_SOURCE).stmts,
+      @parser.parse(UPDATE_LOCAL_SOURCE).stmts,
     ),
     content={
       "schema_version": 1,
       "summary": {
         "functions": 2,
-        "bytecode": 1,
-        "tree": 1,
+        "bytecode": 2,
+        "tree": 0,
         "lowering_unsupported": 0,
-        "activation_unsupported": 1,
+        "activation_unsupported": 0,
       },
       "functions": [
         {
@@ -79,9 +79,9 @@ test "update-local activation benchmark route matrix" {
         {
           "path": [0],
           "name": "updateLocalKernel",
-          "executor": "tree",
-          "reason_phase": "activation",
-          "reason": "update local",
+          "executor": "bytecode",
+          "reason_phase": null,
+          "reason": null,
         },
       ],
     },
@@ -121,8 +121,8 @@ test "update-local activation benchmark route matrix" {
 
 ///|
 test "isolate/activation/update_local_numeric_loop" (b : @bench.T) {
-  let tree_definition = @compiler.compile_script_to_bytecode(
-    @parser.parse(UPDATE_LOCAL_TREE_SOURCE).stmts,
+  let update_definition = @compiler.compile_script_to_bytecode(
+    @parser.parse(UPDATE_LOCAL_SOURCE).stmts,
   )
   let bytecode_definition = @compiler.compile_script_to_bytecode(
     @parser.parse(UPDATE_LOCAL_BYTECODE_CONTROL_SOURCE).stmts,
@@ -130,21 +130,21 @@ test "isolate/activation/update_local_numeric_loop" (b : @bench.T) {
   let call_program = @compiler.compile_script_to_bytecode(
     @parser.parse(UPDATE_LOCAL_CALL_SOURCE).stmts,
   )
-  let tree_interp = @interpreter.new_interpreter()
+  let update_interp = @interpreter.new_interpreter()
   let bytecode_interp = @interpreter.new_interpreter()
-  let _ = tree_definition.run(tree_interp)
+  let _ = update_definition.run(update_interp)
   let _ = bytecode_definition.run(bytecode_interp)
-  let tree_result = call_program.run(tree_interp)
+  let update_result = call_program.run(update_interp)
   let bytecode_result = call_program.run(bytecode_interp)
-  guard tree_result.to_string() == UPDATE_LOCAL_EXPECTED_RESULT else {
-    abort("update-local tree benchmark correctness check failed")
+  guard update_result.to_string() == UPDATE_LOCAL_EXPECTED_RESULT else {
+    abort("update-local benchmark correctness check failed")
   }
   guard bytecode_result.to_string() == UPDATE_LOCAL_EXPECTED_RESULT else {
     abort("update-local bytecode benchmark correctness check failed")
   }
-  b.bench(name="tree fallback: index++", fn() {
-    b.keep(call_program.run(tree_interp)) catch {
-      _ => abort("update-local tree benchmark execution failed")
+  b.bench(name="managed local update: index++", fn() {
+    b.keep(call_program.run(update_interp)) catch {
+      _ => abort("update-local benchmark execution failed")
     }
   })
   b.bench(name="bytecode control: index = index + 1", fn() {
@@ -164,10 +164,10 @@ test "conditional-computed-property benchmark route" {
       "schema_version": 1,
       "summary": {
         "functions": 2,
-        "bytecode": 1,
-        "tree": 1,
+        "bytecode": 2,
+        "tree": 0,
         "lowering_unsupported": 0,
-        "activation_unsupported": 1,
+        "activation_unsupported": 0,
       },
       "functions": [
         {
@@ -180,9 +180,9 @@ test "conditional-computed-property benchmark route" {
         {
           "path": [0],
           "name": "computedReadKernel",
-          "executor": "tree",
-          "reason_phase": "activation",
-          "reason": "conditional computed property",
+          "executor": "bytecode",
+          "reason_phase": null,
+          "reason": null,
         },
       ],
     },
@@ -208,6 +208,56 @@ test "isolate/activation/conditional_computed_property_numeric_array" (
   b.bench(name="dynamic numeric-array read: values[index]", fn() {
     b.keep(call_program.run(interp)) catch {
       _ => abort("computed-read benchmark execution failed")
+    }
+  })
+}
+
+///|
+const NAVIER_LIN_SOLVE_DEFINITION_SOURCE : String =
+  #|var navierValues = [];
+  #|var navierSource = [];
+  #|for (var init = 0; init < 48; init = init + 1) {
+  #|  navierValues[init] = init % 7;
+  #|  navierSource[init] = (init * 3) % 11;
+  #|}
+  #|function navierLinSolveKernel(values, source, size) {
+  #|  for (var sweep = 0; sweep < 4; sweep = sweep + 1) {
+  #|    for (var index = 1; index < size - 1; index++) {
+  #|      values[index] =
+  #|        (source[index] + values[index - 1] + values[index + 1]) * 0.25;
+  #|    }
+  #|  }
+  #|  return values[24];
+  #|}
+
+///|
+const NAVIER_LIN_SOLVE_CALL_SOURCE : String =
+  #|var checksum = 0;
+  #|for (var repetition = 0; repetition < 24; repetition = repetition + 1) {
+  #|  checksum = checksum + navierLinSolveKernel(navierValues, navierSource, 48);
+  #|}
+  #|checksum;
+
+///|
+test "isolate/activation/navier_lin_solve_route" (b : @bench.T) {
+  let definition = @compiler.compile_script_to_bytecode(
+    @parser.parse(NAVIER_LIN_SOLVE_DEFINITION_SOURCE).stmts,
+  )
+  let call_program = @compiler.compile_script_to_bytecode(
+    @parser.parse(NAVIER_LIN_SOLVE_CALL_SOURCE).stmts,
+  )
+  let interp = @interpreter.new_interpreter()
+  let _ = definition.run(interp)
+  let result = call_program.run(interp)
+  guard result is @runtime.Value::Number(checksum) else {
+    abort("Navier lin_solve route benchmark correctness check failed")
+  }
+  guard checksum == 66.53883839328586 else {
+    abort("Navier lin_solve route benchmark returned the wrong checksum")
+  }
+  b.bench(name="computed read, computed set, and local update", fn() {
+    b.keep(call_program.run(interp)) catch {
+      _ => abort("Navier lin_solve route benchmark execution failed")
     }
   })
 }
