@@ -260,8 +260,8 @@ is rendered in the read-only benchmark execution job before the publish job
 posts it. Repository-write permissions are scoped to the publish job; the
 benchmark execution job runs with read-only repository contents permission.
 
-For less-noisy local timing on a focused set of rows, repeat full CSV snapshots
-and compare medians instead of a single process run:
+For less-noisy local timing, execute only the selected rows repeatedly and
+compare medians instead of relying on a single process run:
 
 ```bash
 make bench-focus ARGS="--runs 5"
@@ -270,7 +270,8 @@ make bench-focus ARGS="--runs 3 --rows isolate/bytecode/property_get,pipeline/by
 
 (`make bench-focus` runs the native `cmd/bench_focus`.)
 
-The helper saves each raw CSV under `_build/bench-focus/<timestamp>/` and
+With its default command, the helper passes `--rows` through to the benchmark
+runner, saves each focused CSV under `_build/bench-focus/<timestamp>/`, and
 reports median/mean/range across runs plus the median in-run CV. Use this for
 post-merge baselines or exploratory follow-up work; use same-runner base/head
 PR reports for optimization claims.

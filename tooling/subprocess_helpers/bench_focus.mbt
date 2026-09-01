@@ -2,7 +2,7 @@
 const CSV_HEADER_TEXT = "name,category,stage,warmup,iterations,group_size,mean_ms,min_ms,max_ms,stddev_ms,cv_pct,noisy"
 
 ///|
-pub const DEFAULT_BENCH_COMMAND = "moon run benchmarks --target js -- --all --csv"
+pub const DEFAULT_BENCH_COMMAND = "moon run benchmarks --target js -- --csv"
 
 ///|
 const DEFAULT_PROCESS_TIMEOUT_MS = 3600000
@@ -71,6 +71,15 @@ pub fn default_bench_rows() -> Array[String] {
     "isolate/bytecode/runtime_helpers", "isolate/bytecode/property_get", "isolate/bytecode/property_set",
     "isolate/bytecode/method_call", "pipeline/bytecode/evaluate",
   ]
+}
+
+///|
+fn selected_benchmark_command(command : String, rows : Array[String]) -> String {
+  if command == DEFAULT_BENCH_COMMAND {
+    command + " --rows " + rows.join(",")
+  } else {
+    command
+  }
 }
 
 ///|
@@ -448,10 +457,11 @@ pub async fn run_bench_focus(config : BenchConfig) -> ToolRun {
   }
   let out_dir = bench_output_dir(config.output_root, config.timestamp)
   @afs.mkdir(out_dir, recursive=true)
+  let command = selected_benchmark_command(config.command, config.rows)
 
   let stdout = StringBuilder()
   let stderr = StringBuilder()
-  stdout.write_string("Command: " + config.command + "\n")
+  stdout.write_string("Command: " + command + "\n")
   stdout.write_string("Runs: " + config.runs.to_string() + "\n")
   stdout.write_string("Rows: " + config.rows.join(", ") + "\n")
   stdout.write_string("Raw CSV output: " + out_dir + "\n")
@@ -466,10 +476,7 @@ pub async fn run_bench_focus(config : BenchConfig) -> ToolRun {
       config.runs.to_string() +
       "] running benchmark command...\n",
     )
-    let capture = collect_command(
-      config.command,
-      timeout_ms=config.command_timeout_ms,
-    )
+    let capture = collect_command(command, timeout_ms=config.command_timeout_ms)
     if capture.code != 0 {
       stdout.write_string(capture.stdout)
       stderr.write_string(capture.stderr)

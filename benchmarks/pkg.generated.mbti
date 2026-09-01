@@ -124,7 +124,7 @@ pub fn bench_string_ops() -> BenchResult raise
 
 pub fn now_ms() -> Double
 
-pub fn parse_bench_args() -> BenchArgs
+pub fn parse_bench_args() -> BenchArgs raise
 
 pub fn print_csv_header() -> Unit
 
@@ -156,6 +156,7 @@ pub struct BenchArgs {
   csv : Bool
   startup_phases : Bool
   list_only : Bool
+  rows : Array[String]?
 }
 
 pub struct BenchConfig {
