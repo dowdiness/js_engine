@@ -1620,7 +1620,7 @@ test "RED: bytecode instruction contracts retain semantic source roles" {
 }
 
 ///|
-test "RED: activation contract distinguishes leaf managed and unsupported" {
+test "activation contract distinguishes leaf and managed instructions" {
   let loc = @token.Loc::default()
   let leaf = bytecode_instruction_contract(LoadConst(Value::Undefined))
   let managed = bytecode_instruction_contract(Call(0, loc))
@@ -1634,9 +1634,8 @@ test "RED: activation contract distinguishes leaf managed and unsupported" {
     _ => fail("ordinary call must use managed suspension")
   }
   match conditional.activation_disposition {
-    UnsupportedBeforeActivation(ConditionalComputedProperty) => ()
-    _ =>
-      fail("conditional computed access must be unsupported before activation")
+    ManagedSuspension => ()
+    _ => fail("computed access must use managed suspension")
   }
 }
 
@@ -1658,12 +1657,8 @@ test "managed disposition corresponds to a typed VM suspension" {
   }
   let conditional = parse_bytecode_for_wb("var key = \"x\"; ({ x: 1 })[key];")
   match select_bytecode_function_activation(conditional.verified_main, []) {
-    Err(unsupported) =>
-      match unsupported.reason {
-        ConditionalComputedProperty => ()
-        _ => fail("computed access must retain its conditional reason")
-      }
-    Ok(_) => fail("computed access must not be admitted as managed")
+    Ok(ManagedSuspension) => ()
+    _ => fail("computed access must be admitted as managed")
   }
   let conditional_frame = BytecodeFrame(
     conditional.verified_main,
@@ -1671,9 +1666,10 @@ test "managed disposition corresponds to a typed VM suspension" {
     { strict: false, current_generator: None },
   )
   match conditional_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(_) =>
-      fail("data-key computed access must retain its synchronous fallback")
-    BytecodeFrameNormal(_) | BytecodeFrameReturn(_) => ()
+    BytecodeFrameSuspended(
+      @runtime.ExecutorActivationComputedCallPreparation(_)
+    ) => ()
+    _ => fail("computed access must return a typed preparation request")
   }
 }
 
@@ -3310,7 +3306,7 @@ test "bytecode lowers object literal computed accessors to computed accessor ins
   let mut saw_setter = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      ToObjectLiteralPropertyKey => saw_key = true
+      ToPropertyKey(_) => saw_key = true
       MakeComputedMethodFunction(_) => saw_method = true
       ObjectSetComputedGetter => saw_getter = true
       ObjectSetComputedSetter => saw_setter = true
@@ -3366,7 +3362,7 @@ test "bytecode lowers computed object literal methods with computed home object"
   let mut saw_computed = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      ToObjectLiteralPropertyKey => saw_key = true
+      ToPropertyKey(_) => saw_key = true
       MakeComputedMethodFunction(_) => saw_method = true
       ObjectSetComputed => saw_computed = true
       _ => ()
@@ -3511,7 +3507,7 @@ test "bytecode lowers computed object literal data properties" {
   let mut saw_after = false
   for instr in bytecode.main_for_wb().code {
     match instr {
-      ToObjectLiteralPropertyKey => saw_key = true
+      ToPropertyKey(_) => saw_key = true
       ObjectSetComputed => saw_computed = true
       ObjectSetStatic("after") => saw_after = true
       _ => ()

@@ -326,7 +326,7 @@ fn bytecode_instruction_transfer(
     | MakeTemplateObject(_)
     | MakeRegExp(_, _)
     | UpdateName(_, _, _, _)
-    | UpdateLocal(_, _, _)
+    | UpdateLocal(_, _, _, _)
     | UpdateEnvSlot(_, _, _)
     | StartArray
     | StartObject
@@ -340,7 +340,7 @@ fn bytecode_instruction_transfer(
     | UnaryValueOp(_, _)
     | DeleteProperty(_)
     | SetFunctionName(_)
-    | ToObjectLiteralPropertyKey
+    | ToPropertyKey(_)
     | AssignDestructure(_) => Fallthrough(bytecode_stack_effect(1, 0))
     GetNameReference =>
       Fallthrough(bytecode_binding_reference_effect(0, 1, 1, 0))
@@ -1710,7 +1710,7 @@ fn bytecode_indexed_operand(
     LoadLocal(index)
     | StoreLocal(index)
     | DefineLocal(index, _)
-    | UpdateLocal(index, _, _) => Some((LocalSlot, index))
+    | UpdateLocal(index, _, _, _) => Some((LocalSlot, index))
     LoadEnvSlot(index)
     | StoreEnvSlot(index)
     | DefineEnvSlot(index, _)
@@ -1776,7 +1776,7 @@ fn bytecode_indexed_operand(
     | ObjectSetStaticSetter(_)
     | ObjectSetComputedGetter
     | ObjectSetComputedSetter
-    | ToObjectLiteralPropertyKey
+    | ToPropertyKey(_)
     | ObjectSetComputed
     | ObjectSpread(_)
     | ObjectSetProto

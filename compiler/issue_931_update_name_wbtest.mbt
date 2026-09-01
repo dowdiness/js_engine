@@ -334,12 +334,16 @@ test "issue 931 candidate preserves TDZ const unresolved and immutable rules" {
 }
 
 ///|
-test "issue 931 leaves excluded UpdateLocal typed" {
-  assert_candidate_tree_route_evidence_for_wb(
-    "for (var unused of [0]) {}; function local() { var value = 1; return value++; } local();",
-    "1",
-    child=true,
-  )
+test "issue 931 admits managed UpdateLocal" {
+  let source = "for (var unused of [0]) {}; function local() { var value = 1; return value++; } local();"
+  let prepared = prepare_candidate_program(@parser.parse(source).stmts)
+  guard prepared.root.children[0].selection is UseBytecode(_) else {
+    fail("managed local update did not select bytecode")
+  }
+  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "1")
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
 }
 
 ///|

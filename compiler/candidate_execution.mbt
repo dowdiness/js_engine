@@ -451,6 +451,7 @@ fn run_candidate_bytecode_function(
     | @runtime.ExecutorActivationCoercingRelational(_)
     | @runtime.ExecutorActivationCoercingSubtraction(_)
     | @runtime.ExecutorActivationCoercingMultiplicative(_)
+    | @runtime.ExecutorActivationNumericConversion(_)
     | @runtime.ExecutorActivationPropertyDelete(_)
     | @runtime.ExecutorActivationIterableSpread(_)
     | @runtime.ExecutorActivationCopyDataProperties(_)

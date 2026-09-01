@@ -926,7 +926,7 @@ fn bytecode_instruction_with_indexed_operand_for_wb(
     LoadLocal(_) => LoadLocal(operand)
     StoreLocal(_) => StoreLocal(operand)
     DefineLocal(_, has_initializer) => DefineLocal(operand, has_initializer)
-    UpdateLocal(_, op, prefix) => UpdateLocal(operand, op, prefix)
+    UpdateLocal(_, op, prefix, loc) => UpdateLocal(operand, op, prefix, loc)
     LoadEnvSlot(_) => LoadEnvSlot(operand)
     StoreEnvSlot(_) => StoreEnvSlot(operand)
     DefineEnvSlot(_, has_initializer) => DefineEnvSlot(operand, has_initializer)
@@ -987,7 +987,7 @@ test "indexed operand classifier covers every indexed opcode" {
     (LoadLocal(7), LocalSlot),
     (StoreLocal(7), LocalSlot),
     (DefineLocal(7, true), LocalSlot),
-    (UpdateLocal(7, Increment, true), LocalSlot),
+    (UpdateLocal(7, Increment, true, @token.Loc::default()), LocalSlot),
     (LoadEnvSlot(7), EnvironmentSlot),
     (StoreEnvSlot(7), EnvironmentSlot),
     (DefineEnvSlot(7, true), EnvironmentSlot),

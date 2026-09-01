@@ -395,7 +395,7 @@ priv enum BytecodeInstr {
   MakeRegExp(String, String)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
-  UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
+  UpdateLocal(Int, @ast.UpdateOp, Bool, @token.Loc) // slot, op, prefix, loc
   UpdateEnvSlot(Int, @ast.UpdateOp, Bool) // slot, op, prefix
   UpdateProperty(String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) // prop, op, prefix, member loc, op loc
   UpdateComputed(@ast.UpdateOp, Bool, @token.Loc, @token.Loc) // op, prefix, member loc, op loc
@@ -427,7 +427,7 @@ priv enum BytecodeInstr {
   ObjectSetStaticSetter(String)
   ObjectSetComputedGetter
   ObjectSetComputedSetter
-  ToObjectLiteralPropertyKey
+  ToPropertyKey(@token.Loc)
   ObjectSetComputed
   ObjectSpread(@token.Loc)
   ObjectSetProto
@@ -571,11 +571,8 @@ fn bytecode_instruction_contract(
       bytecode_contract(true, SynchronousLeaf, [ExpressionEntry])
     UpdateName(_, _, _, _) =>
       bytecode_contract(true, ManagedSuspension, [BindingAccess, Operator])
-    UpdateLocal(_, _, _) =>
-      bytecode_contract(true, UnsupportedBeforeActivation(UpdateLocal), [
-        BindingAccess,
-        Operator,
-      ])
+    UpdateLocal(_, _, _, _) =>
+      bytecode_contract(true, ManagedSuspension, [BindingAccess, Operator])
     UpdateEnvSlot(_, _, _) =>
       bytecode_contract(true, UnsupportedBeforeActivation(UpdateEnvSlot), [
         BindingAccess,
@@ -597,10 +594,8 @@ fn bytecode_instruction_contract(
       bytecode_contract(true, ManagedSuspension, [Spread, Iterator])
     ArgPushSpread(_) =>
       bytecode_contract(true, ManagedSuspension, [Spread, Iterator])
-    ToObjectLiteralPropertyKey =>
-      bytecode_contract(true, UnsupportedBeforeActivation(ObjectPropertyKey), [
-        PropertyKey,
-      ])
+    ToPropertyKey(_) =>
+      bytecode_contract(true, ManagedSuspension, [PropertyKey])
     ObjectSpread(_) => bytecode_contract(true, ManagedSuspension, [Spread])
     MakeFunction(_)
     | MakeNamedFunction(_, _)
@@ -621,11 +616,7 @@ fn bytecode_instruction_contract(
         [MemberAccess],
       )
     GetComputed(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ConditionalComputedProperty),
-        [MemberAccess, PropertyKey],
-      )
+      bytecode_contract(true, ManagedSuspension, [MemberAccess, PropertyKey])
     ReadComputedForAssign(_) =>
       bytecode_contract(
         true,
@@ -633,11 +624,7 @@ fn bytecode_instruction_contract(
         [MemberAccess, PropertyKey],
       )
     SetComputed(_) =>
-      bytecode_contract(
-        true,
-        UnsupportedBeforeActivation(ConditionalComputedAssignment),
-        [MemberAccess, PropertyKey],
-      )
+      bytecode_contract(true, ManagedSuspension, [MemberAccess, PropertyKey])
     SetForInComputed(_) =>
       bytecode_contract(
         true,

@@ -53,13 +53,21 @@ pub fn begin_executor_coercing_subtraction(Value, Value, @token.Loc) -> Executor
 
 pub fn begin_executor_computed_call_preparation(Value, Value, @token.Loc) -> ExecutorComputedCallPreparationStart raise
 
+pub fn begin_executor_computed_property_get(Value, Value, @token.Loc) -> ExecutorComputedPropertyGetStart raise
+
+pub fn begin_executor_computed_property_set(Value, Value, Value, @token.Loc, Bool) -> ExecutorComputedPropertySetStart raise
+
 pub fn begin_executor_copy_data_properties(Interpreter, Value, Value, Array[Value], @token.Loc) -> ExecutorCopyDataPropertiesStart
 
 pub fn begin_executor_iterable_spread(Value, @token.Loc) -> ExecutorIterableSpreadStart
 
+pub fn begin_executor_numeric_conversion(Interpreter, Value, @token.Loc) -> ExecutorNumericConversionStart raise
+
 pub fn begin_executor_property_delete_computed(Interpreter, Value, Value, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
 
 pub fn begin_executor_property_delete_static(Interpreter, Value, String, Bool, @token.Loc) -> ExecutorPropertyDeleteStart raise
+
+pub fn begin_executor_property_key(Value, @token.Loc) -> ExecutorPropertyKeyStart raise
 
 pub fn builtin_method_desc() -> PropDescriptor
 
@@ -172,6 +180,8 @@ pub fn executor_activation_copy_data_properties_request(ExecutorCopyDataProperti
 pub fn executor_activation_iterable_spread_request(ExecutorIterableSpreadRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
+
+pub fn executor_activation_numeric_conversion_request(ExecutorNumericConversionRequest) -> ExecutorActivationStep
 
 pub fn executor_activation_property_decrement(Value, String, Bool, @token.Loc, @token.Loc, Bool) -> ExecutorActivationStep
 
@@ -765,6 +775,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationCoercingRelational(ExecutorCoercingRelationalRequest)
   ExecutorActivationCoercingSubtraction(ExecutorCoercingSubtractionRequest)
   ExecutorActivationCoercingMultiplicative(ExecutorCoercingMultiplicativeRequest)
+  ExecutorActivationNumericConversion(ExecutorNumericConversionRequest)
   ExecutorActivationPropertyDelete(ExecutorPropertyDeleteRequest)
   ExecutorActivationIterableSpread(ExecutorIterableSpreadRequest)
   ExecutorActivationCopyDataProperties(ExecutorCopyDataPropertiesRequest)
@@ -868,6 +879,16 @@ pub enum ExecutorComputedCallPreparationStart {
   ExecutorComputedCallPreparationSuspended(ExecutorComputedCallPreparationRequest)
 }
 
+pub enum ExecutorComputedPropertyGetStart {
+  ExecutorComputedPropertyGetCompleted(Value)
+  ExecutorComputedPropertyGetSuspended(ExecutorActivationStep)
+}
+
+pub enum ExecutorComputedPropertySetStart {
+  ExecutorComputedPropertySetCompleted(Value)
+  ExecutorComputedPropertySetSuspended(ExecutorActivationStep)
+}
+
 pub struct ExecutorConstructRequest {
   // private fields
 }
@@ -896,6 +917,15 @@ pub(all) enum ExecutorMultiplicativeOperator {
   ExecutorMultiplicativeRemainder
 }
 
+pub struct ExecutorNumericConversionRequest {
+  // private fields
+}
+
+pub enum ExecutorNumericConversionStart {
+  ExecutorNumericConversionCompleted(Value)
+  ExecutorNumericConversionSuspended(ExecutorNumericConversionRequest)
+}
+
 pub struct ExecutorPropertyDeleteRequest {
   // private fields
 }
@@ -907,6 +937,11 @@ pub enum ExecutorPropertyDeleteStart {
 
 pub struct ExecutorPropertyGetRequest {
   // private fields
+}
+
+pub enum ExecutorPropertyKeyStart {
+  ExecutorPropertyKeyCompleted(Value)
+  ExecutorPropertyKeySuspended(ExecutorComputedCallPreparationRequest)
 }
 
 pub struct ExecutorPropertySetRequest {
