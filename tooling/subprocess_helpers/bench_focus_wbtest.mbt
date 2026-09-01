@@ -37,6 +37,22 @@ test "bench focus summarizes medians and missing rows" {
 }
 
 ///|
+test "bench focus limits the default command to selected rows" {
+  inspect(
+    selected_benchmark_command(DEFAULT_BENCH_COMMAND, [
+      "isolate/bytecode/dispatch_stack", "isolate/bytecode/call_frame",
+    ]),
+    content=(
+      #|moon run benchmarks --target js -- --csv --rows isolate/bytecode/dispatch_stack,isolate/bytecode/call_frame
+    ),
+  )
+  inspect(
+    selected_benchmark_command("custom benchmark", ["ignored"]),
+    content="custom benchmark",
+  )
+}
+
+///|
 async test "bench focus writes raw CSVs and renders the table" {
   let root = "_build/bench-focus-mbt-test"
   @afs.rmdir(root, recursive=true) catch {

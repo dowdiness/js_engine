@@ -1,31 +1,6 @@
 ///|
-pub struct BenchArgs {
-  run_all : Bool
-  csv : Bool
-  startup_phases : Bool
-  list_only : Bool
-}
-
-///|
 /// Parse CLI arguments for the native backend.
 /// Args start at index 1 (the executable path is argv[0]).
-pub fn parse_bench_args() -> BenchArgs {
-  let args = @env.args()
-  let mut run_all = false
-  let mut csv = false
-  let mut startup_phases = false
-  let mut list_only = false
-  for i = 1; i < args.length(); i = i + 1 {
-    match args[i] {
-      "--all" => run_all = true
-      "--csv" => csv = true
-      "--startup-phases" => startup_phases = true
-      "--list" => list_only = true
-      flag => {
-        println("error: unknown benchmark flag: \{flag}")
-        abort("unknown benchmark flag")
-      }
-    }
-  }
-  { run_all, csv, startup_phases, list_only }
+pub fn parse_bench_args() -> BenchArgs raise {
+  parse_bench_arg_values(@env.args()[1:])
 }

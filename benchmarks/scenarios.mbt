@@ -570,14 +570,183 @@ pub fn bench_parse_heavy() -> BenchResult raise {
 // ---------------------------------------------------------------------------
 
 ///|
-pub fn run_regression() -> Array[BenchResult] raise {
+priv struct BenchmarkCase {
+  name : String
+  category : Category
+  stage : BenchStage
+  run : () -> BenchResult raise
+}
+
+///|
+fn BenchmarkCase::BenchmarkCase(
+  name : String,
+  category : Category,
+  stage : BenchStage,
+  run : () -> BenchResult raise,
+) -> BenchmarkCase {
+  { name, category, stage, run }
+}
+
+///|
+fn all_benchmark_cases() -> Array[BenchmarkCase] {
   [
-    bench_startup_tiny(),
-    bench_lexer_small(),
-    bench_lexer_large(),
-    bench_fibonacci(),
-    bench_property_chain(),
+    BenchmarkCase("startup/tiny_program", Regression, Startup, () => {
+      bench_startup_tiny()
+    }),
+    BenchmarkCase("lexer/small", Regression, Frontend, () => bench_lexer_small()),
+    BenchmarkCase("lexer/large", Regression, Frontend, () => bench_lexer_large()),
+    BenchmarkCase("exec/fibonacci_30", Regression, Execution, () => {
+      bench_fibonacci()
+    }),
+    BenchmarkCase("exec/property_chain", Regression, Execution, () => {
+      bench_property_chain()
+    }),
+    BenchmarkCase("startup/phase/parse_tiny", Component, Frontend, () => {
+      bench_startup_parse_tiny()
+    }),
+    BenchmarkCase("startup/phase/new_interpreter", Component, Startup, () => {
+      bench_startup_new_interpreter()
+    }),
+    BenchmarkCase(
+      "startup/phase/execute_preparsed_tiny",
+      Component,
+      Execution,
+      () => bench_startup_execute_preparsed_tiny(),
+    ),
+    BenchmarkCase("startup/phase/event_loop_drain_empty", Component, Startup, () => {
+      bench_startup_event_loop_drain_empty()
+    }),
+    BenchmarkCase(
+      "startup/phase/result_stringify_output",
+      Component,
+      Execution,
+      () => bench_startup_result_stringify_output(),
+    ),
+    BenchmarkCase("exec/array_map_filter", Component, Execution, () => {
+      bench_array_map_filter()
+    }),
+    BenchmarkCase("exec/closure_factory", Component, Execution, () => {
+      bench_closure_factory()
+    }),
+    BenchmarkCase(
+      "baseline/closure_legacy/closure_factory",
+      Component,
+      Execution,
+      () => bench_closure_legacy_closure_factory(),
+    ),
+    BenchmarkCase("baseline/bytecode/closure_factory", Component, Execution, () => {
+      bench_bytecode_closure_factory()
+    }),
+    BenchmarkCase("isolate/bytecode/dispatch_stack", Component, Execution, () => {
+      bench_bytecode_dispatch_stack()
+    }),
+    BenchmarkCase("isolate/bytecode/local_access", Component, Execution, () => {
+      bench_bytecode_local_access()
+    }),
+    BenchmarkCase("isolate/bytecode/env_access", Component, Execution, () => {
+      bench_bytecode_env_access()
+    }),
+    BenchmarkCase("isolate/bytecode/captured_access", Component, Execution, () => {
+      bench_bytecode_captured_access()
+    }),
+    BenchmarkCase("isolate/bytecode/call_frame", Component, Execution, () => {
+      bench_bytecode_call_frame()
+    }),
+    BenchmarkCase("isolate/bytecode/runtime_helpers", Component, Execution, () => {
+      bench_bytecode_runtime_helpers()
+    }),
+    BenchmarkCase("isolate/bytecode/property_get", Component, Execution, () => {
+      bench_bytecode_property_get()
+    }),
+    BenchmarkCase("isolate/bytecode/property_set", Component, Execution, () => {
+      bench_bytecode_property_set()
+    }),
+    BenchmarkCase("isolate/bytecode/method_call", Component, Execution, () => {
+      bench_bytecode_method_call()
+    }),
+    BenchmarkCase("isolate/bytecode/object_literal", Component, Execution, () => {
+      bench_bytecode_object_literal()
+    }),
+    BenchmarkCase("isolate/bytecode/array_literal", Component, Execution, () => {
+      bench_bytecode_array_literal()
+    }),
+    BenchmarkCase("exec/for_of", Component, Execution, () => bench_for_of()),
+    BenchmarkCase("exec/arithmetic_loop", Component, Execution, () => {
+      bench_arithmetic_loop()
+    }),
+    BenchmarkCase("exec/object_construction", Component, Execution, () => {
+      bench_object_construction()
+    }),
+    BenchmarkCase("exec/string_ops", Component, Execution, () => {
+      bench_string_ops()
+    }),
+    BenchmarkCase("regexp/retained_matcher", Component, Execution, () => {
+      bench_regexp_retained_matcher()
+    }),
+    BenchmarkCase("pipeline/exec/lex", Workflow, Frontend, () => {
+      bench_pipeline_exec_lex()
+    }),
+    BenchmarkCase("pipeline/exec/parse", Workflow, Frontend, () => {
+      bench_pipeline_exec_parse()
+    }),
+    BenchmarkCase("pipeline/exec/evaluate", Workflow, Execution, () => {
+      bench_pipeline_exec_evaluate()
+    }),
+    BenchmarkCase("pipeline/closure_legacy/evaluate", Workflow, Execution, () => {
+      bench_pipeline_closure_legacy_evaluate()
+    }),
+    BenchmarkCase("pipeline/bytecode/compile", Workflow, Frontend, () => {
+      bench_pipeline_bytecode_compile()
+    }),
+    BenchmarkCase("pipeline/bytecode/evaluate", Workflow, Execution, () => {
+      bench_pipeline_bytecode_evaluate()
+    }),
+    BenchmarkCase("pipeline/parse_heavy", Workflow, Frontend, () => {
+      bench_parse_heavy()
+    }),
   ]
+}
+
+///|
+fn run_benchmark_cases(
+  cases : Array[BenchmarkCase],
+) -> Array[BenchResult] raise {
+  let results : Array[BenchResult] = []
+  for benchmark in cases {
+    results.push((benchmark.run)())
+  }
+  results
+}
+
+///|
+fn select_benchmark_cases(
+  requested : Array[String],
+) -> Array[BenchmarkCase] raise {
+  let cases = all_benchmark_cases()
+  let known : Map[String, Bool] = Map([])
+  for benchmark in cases {
+    known[benchmark.name] = true
+  }
+  let selected : Map[String, Bool] = Map([])
+  for name in requested {
+    guard known.contains(name) else { fail("unknown benchmark row: " + name) }
+    selected[name] = true
+  }
+  cases.filter(benchmark => selected.contains(benchmark.name))
+}
+
+///|
+fn run_category(category : Category) -> Array[BenchResult] raise {
+  run_benchmark_cases(
+    all_benchmark_cases().filter(benchmark => {
+      benchmark.category.label() == category.label()
+    }),
+  )
+}
+
+///|
+pub fn run_regression() -> Array[BenchResult] raise {
+  run_category(Regression)
 }
 
 ///|
@@ -602,104 +771,24 @@ pub fn run_startup_phases() -> Array[BenchResult] raise {
 
 ///|
 pub fn run_component() -> Array[BenchResult] raise {
-  [
-    bench_startup_parse_tiny(),
-    bench_startup_new_interpreter(),
-    bench_startup_execute_preparsed_tiny(),
-    bench_startup_event_loop_drain_empty(),
-    bench_startup_result_stringify_output(),
-    bench_array_map_filter(),
-    bench_closure_factory(),
-    bench_closure_legacy_closure_factory(),
-    bench_bytecode_closure_factory(),
-    bench_bytecode_dispatch_stack(),
-    bench_bytecode_local_access(),
-    bench_bytecode_env_access(),
-    bench_bytecode_captured_access(),
-    bench_bytecode_call_frame(),
-    bench_bytecode_runtime_helpers(),
-    bench_bytecode_property_get(),
-    bench_bytecode_property_set(),
-    bench_bytecode_method_call(),
-    bench_bytecode_object_literal(),
-    bench_bytecode_array_literal(),
-    bench_for_of(),
-    bench_arithmetic_loop(),
-    bench_object_construction(),
-    bench_string_ops(),
-    bench_regexp_retained_matcher(),
-  ]
+  run_category(Component)
 }
 
 ///|
 pub fn run_workflow() -> Array[BenchResult] raise {
-  [
-    bench_pipeline_exec_lex(),
-    bench_pipeline_exec_parse(),
-    bench_pipeline_exec_evaluate(),
-    bench_pipeline_closure_legacy_evaluate(),
-    bench_pipeline_bytecode_compile(),
-    bench_pipeline_bytecode_evaluate(),
-    bench_parse_heavy(),
-  ]
+  run_category(Workflow)
 }
 
 ///|
 pub fn run_all() -> Array[BenchResult] raise {
-  let out : Array[BenchResult] = []
-  for r in run_regression() {
-    out.push(r)
-  }
-  for r in run_component() {
-    out.push(r)
-  }
-  for r in run_workflow() {
-    out.push(r)
-  }
-  out
+  run_benchmark_cases(all_benchmark_cases())
 }
 
 ///|
 /// Stable list of all benchmark names, in canonical run order.
 /// Used by main.mbt to print --list output.
 pub fn all_bench_names() -> Array[(String, String, String)] {
-  [
-    ("startup/tiny_program", "regression", "startup"),
-    ("lexer/small", "regression", "frontend"),
-    ("lexer/large", "regression", "frontend"),
-    ("exec/fibonacci_30", "regression", "execution"),
-    ("exec/property_chain", "regression", "execution"),
-    ("startup/phase/parse_tiny", "component", "frontend"),
-    ("startup/phase/new_interpreter", "component", "startup"),
-    ("startup/phase/execute_preparsed_tiny", "component", "execution"),
-    ("startup/phase/event_loop_drain_empty", "component", "startup"),
-    ("startup/phase/result_stringify_output", "component", "execution"),
-    ("exec/array_map_filter", "component", "execution"),
-    ("exec/closure_factory", "component", "execution"),
-    ("baseline/closure_legacy/closure_factory", "component", "execution"),
-    ("baseline/bytecode/closure_factory", "component", "execution"),
-    ("isolate/bytecode/dispatch_stack", "component", "execution"),
-    ("isolate/bytecode/local_access", "component", "execution"),
-    ("isolate/bytecode/env_access", "component", "execution"),
-    ("isolate/bytecode/captured_access", "component", "execution"),
-    ("isolate/bytecode/call_frame", "component", "execution"),
-    ("isolate/bytecode/runtime_helpers", "component", "execution"),
-    ("isolate/bytecode/property_get", "component", "execution"),
-    ("isolate/bytecode/property_set", "component", "execution"),
-    ("isolate/bytecode/method_call", "component", "execution"),
-    ("isolate/bytecode/object_literal", "component", "execution"),
-    ("isolate/bytecode/array_literal", "component", "execution"),
-    ("exec/for_of", "component", "execution"),
-    ("exec/arithmetic_loop", "component", "execution"),
-    ("exec/object_construction", "component", "execution"),
-    ("exec/string_ops", "component", "execution"),
-    ("regexp/retained_matcher", "component", "execution"),
-    ("pipeline/exec/lex", "workflow", "frontend"),
-    ("pipeline/exec/parse", "workflow", "frontend"),
-    ("pipeline/exec/evaluate", "workflow", "execution"),
-    ("pipeline/closure_legacy/evaluate", "workflow", "execution"),
-    ("pipeline/bytecode/compile", "workflow", "frontend"),
-    ("pipeline/bytecode/evaluate", "workflow", "execution"),
-    ("pipeline/parse_heavy", "workflow", "frontend"),
-  ]
+  all_benchmark_cases().map(benchmark => {
+    (benchmark.name, benchmark.category.label(), benchmark.stage.label())
+  })
 }
