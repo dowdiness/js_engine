@@ -351,10 +351,19 @@ pub fn bench_bytecode_captured_access() -> BenchResult raise {
 }
 
 ///|
-pub fn bench_bytecode_call_frame() -> BenchResult raise {
+pub fn bench_bytecode_plain_call_control() -> BenchResult raise {
   bench_bytecode_micro(
-    "isolate/bytecode/call_frame",
-    BYTECODE_CALL_FRAME_SRC,
+    "isolate/bytecode/plain_call_control",
+    BYTECODE_PLAIN_CALL_CONTROL_SRC,
+    BYTECODE_MICRO_CALL_EXPECTED,
+  )
+}
+
+///|
+pub fn bench_bytecode_plain_call() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/plain_call",
+    BYTECODE_PLAIN_CALL_SRC,
     BYTECODE_MICRO_CALL_EXPECTED,
   )
 }
@@ -649,8 +658,11 @@ fn all_benchmark_cases() -> Array[BenchmarkCase] {
     BenchmarkCase("isolate/bytecode/captured_access", Component, Execution, () => {
       bench_bytecode_captured_access()
     }),
-    BenchmarkCase("isolate/bytecode/call_frame", Component, Execution, () => {
-      bench_bytecode_call_frame()
+    BenchmarkCase("isolate/bytecode/plain_call_control", Component, Execution, () => {
+      bench_bytecode_plain_call_control()
+    }),
+    BenchmarkCase("isolate/bytecode/plain_call", Component, Execution, () => {
+      bench_bytecode_plain_call()
     }),
     BenchmarkCase("isolate/bytecode/runtime_helpers", Component, Execution, () => {
       bench_bytecode_runtime_helpers()

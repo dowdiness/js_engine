@@ -2,7 +2,7 @@
 const CSV_HEADER_TEXT = "name,category,stage,warmup,iterations,group_size,mean_ms,min_ms,max_ms,stddev_ms,cv_pct,noisy"
 
 ///|
-pub const DEFAULT_BENCH_COMMAND = "moon run benchmarks --target js -- --csv"
+pub const DEFAULT_BENCH_COMMAND = "moon run benchmarks --target js --release -- --csv"
 
 ///|
 const DEFAULT_PROCESS_TIMEOUT_MS = 3600000
@@ -74,11 +74,14 @@ pub fn default_bench_rows() -> Array[String] {
 }
 
 ///|
-fn selected_benchmark_command(command : String, rows : Array[String]) -> String {
+fn selected_benchmark_commands(
+  command : String,
+  rows : Array[String],
+) -> Array[String] {
   if command == DEFAULT_BENCH_COMMAND {
-    command + " --rows " + rows.join(",")
+    rows.map(row => command + " --rows " + row)
   } else {
-    command
+    [command]
   }
 }
 
@@ -197,6 +200,24 @@ fn csv_text_from_stdout(stdout : String) -> String raise {
     }
   }
   fail("benchmark output did not contain the expected CSV header")
+}
+
+///|
+fn merge_benchmark_csvs(csv_texts : Array[String]) -> String raise {
+  let merged = StringBuilder()
+  merged.write_string(CSV_HEADER_TEXT + "\n")
+  for csv_text in csv_texts {
+    let lines = splitlines(csv_text)
+    guard lines.length() > 0 && lines[0] == CSV_HEADER_TEXT else {
+      fail("benchmark CSV did not contain the expected header")
+    }
+    for line in lines[1:] {
+      if line != "" {
+        merged.write_string(line + "\n")
+      }
+    }
+  }
+  merged.to_string()
 }
 
 ///|
@@ -457,11 +478,18 @@ pub async fn run_bench_focus(config : BenchConfig) -> ToolRun {
   }
   let out_dir = bench_output_dir(config.output_root, config.timestamp)
   @afs.mkdir(out_dir, recursive=true)
-  let command = selected_benchmark_command(config.command, config.rows)
+  let commands = selected_benchmark_commands(config.command, config.rows)
 
   let stdout = StringBuilder()
+  if commands.length() == 1 {
+    stdout.write_string("Command: " + commands[0] + "\n")
+  } else {
+    stdout.write_string("Commands:\n")
+    for command in commands {
+      stdout.write_string("  " + command + "\n")
+    }
+  }
   let stderr = StringBuilder()
-  stdout.write_string("Command: " + command + "\n")
   stdout.write_string("Runs: " + config.runs.to_string() + "\n")
   stdout.write_string("Rows: " + config.rows.join(", ") + "\n")
   stdout.write_string("Raw CSV output: " + out_dir + "\n")
@@ -469,28 +497,43 @@ pub async fn run_bench_focus(config : BenchConfig) -> ToolRun {
 
   let rows_by_run : Array[Map[String, Map[String, String]]] = []
   for run in 1..<=config.runs {
-    stdout.write_string(
-      "[" +
-      run.to_string() +
-      "/" +
-      config.runs.to_string() +
-      "] running benchmark command...\n",
-    )
-    let capture = collect_command(command, timeout_ms=config.command_timeout_ms)
-    if capture.code != 0 {
-      stdout.write_string(capture.stdout)
-      stderr.write_string(capture.stderr)
-      stderr.write_string(
-        "benchmark command failed with exit code " +
-        capture.code.to_string() +
-        "\n",
+    let csv_texts : Array[String] = []
+    for command_index, command in commands {
+      stdout.write_string(
+        "[" +
+        run.to_string() +
+        "/" +
+        config.runs.to_string() +
+        "] running benchmark command " +
+        (command_index + 1).to_string() +
+        "/" +
+        commands.length().to_string() +
+        "...\n",
       )
-      return { stdout: stdout.to_string(), stderr: stderr.to_string(), code: 1 }
+      let capture = collect_command(
+        command,
+        timeout_ms=config.command_timeout_ms,
+      )
+      if capture.code != 0 {
+        stdout.write_string(capture.stdout)
+        stderr.write_string(capture.stderr)
+        stderr.write_string(
+          "benchmark command failed with exit code " +
+          capture.code.to_string() +
+          "\n",
+        )
+        return {
+          stdout: stdout.to_string(),
+          stderr: stderr.to_string(),
+          code: 1,
+        }
+      }
+      if capture.stderr != "" {
+        stderr.write_string(capture.stderr)
+      }
+      csv_texts.push(csv_text_from_stdout(capture.stdout))
     }
-    if capture.stderr != "" {
-      stderr.write_string(capture.stderr)
-    }
-    let csv_text = csv_text_from_stdout(capture.stdout)
+    let csv_text = merge_benchmark_csvs(csv_texts)
     @afs.write_file(
       csv_path(out_dir, run),
       csv_text,

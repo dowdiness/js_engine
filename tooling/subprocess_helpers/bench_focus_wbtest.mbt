@@ -37,18 +37,34 @@ test "bench focus summarizes medians and missing rows" {
 }
 
 ///|
-test "bench focus limits the default command to selected rows" {
-  inspect(
-    selected_benchmark_command(DEFAULT_BENCH_COMMAND, [
-      "isolate/bytecode/dispatch_stack", "isolate/bytecode/call_frame",
+test "bench focus isolates default rows into separate commands" {
+  json_inspect(
+    selected_benchmark_commands(DEFAULT_BENCH_COMMAND, [
+      "isolate/bytecode/dispatch_stack", "isolate/bytecode/plain_call",
     ]),
-    content=(
-      #|moon run benchmarks --target js -- --csv --rows isolate/bytecode/dispatch_stack,isolate/bytecode/call_frame
-    ),
+    content=[
+      "moon run benchmarks --target js --release -- --csv --rows isolate/bytecode/dispatch_stack",
+      "moon run benchmarks --target js --release -- --csv --rows isolate/bytecode/plain_call",
+    ],
+  )
+  json_inspect(selected_benchmark_commands("custom benchmark", ["ignored"]), content=[
+    "custom benchmark",
+  ])
+}
+
+///|
+test "bench focus combines isolated row CSVs into one run artifact" {
+  let property_get = make_bench_csv(34.0, 2.0)
+  let plain_call = property_get.replace_all(
+    old="isolate/bytecode/property_get",
+    new="isolate/bytecode/plain_call",
   )
   inspect(
-    selected_benchmark_command("custom benchmark", ["ignored"]),
-    content="custom benchmark",
+    merge_benchmark_csvs([property_get, plain_call]),
+    content=CSV_HEADER_TEXT +
+      "\n" +
+      "isolate/bytecode/property_get,component,execution,3,15,3,34.0,1,2,0,2.0,false\n" +
+      "isolate/bytecode/plain_call,component,execution,3,15,3,34.0,1,2,0,2.0,false\n",
   )
 }
 

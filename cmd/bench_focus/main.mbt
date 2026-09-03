@@ -83,8 +83,8 @@ async fn main {
       ),
     ],
     about=(
-      #|Run the JS benchmark CSV command repeatedly and summarize selected rows
-      #|with median/mean/range across runs. MoonBit shadow; Python remains authoritative.
+      #|Run selected JS benchmark rows repeatedly and summarize median/mean/range
+      #|across runs. The default command isolates every row in a fresh process.
     ),
   )
   let matches = cmd.parse(argv=program_args(@env.args()), env={}) catch {

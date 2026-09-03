@@ -395,23 +395,42 @@ pub const BYTECODE_CAPTURED_ACCESS_SRC : String =
   #|})();
 
 ///|
-/// Bytecode function call/frame setup workload.
+/// Bytecode plain-function call control workload.
 ///
 /// Category: Component
-/// Exercises: repeated bytecode-function calls with one numeric argument and a
-///            simple return value. Property lookup and builtin dispatch are
-///            excluded so the row focuses on Call, call_value(), parameter
-///            binding, BytecodeFrame setup, and Return.
+/// Exercises: the same loop, local assignment, and function creation as
+///            `plain_call`, without invoking the function. Subtract this row
+///            from `plain_call` to estimate the incremental call cost.
 ///
 /// Expected result: "10000"
-pub const BYTECODE_CALL_FRAME_SRC : String =
+pub const BYTECODE_PLAIN_CALL_CONTROL_SRC : String =
   #|(function() {
-  #|  function step(n) { return n + 1; }
-  #|  var total = 0;
-  #|  for (var i = 0; i < 10000; i = i + 1) {
-  #|    total = step(total);
+  #|  function identity(value) { return value; }
+  #|  var value = 10000;
+  #|  for (var i = 0; i < 50000; i = i + 1) {
+  #|    value = value;
   #|  }
-  #|  return total;
+  #|  return value;
+  #|})();
+
+///|
+/// Bytecode plain-function call workload.
+///
+/// Category: Component
+/// Exercises: repeated calls to a one-parameter identity function. Property
+///            lookup, arithmetic in the callee, method receivers, and builtin
+///            dispatch are excluded so the difference from
+///            `plain_call_control` focuses on ordinary call activation.
+///
+/// Expected result: "10000"
+pub const BYTECODE_PLAIN_CALL_SRC : String =
+  #|(function() {
+  #|  function identity(value) { return value; }
+  #|  var value = 10000;
+  #|  for (var i = 0; i < 50000; i = i + 1) {
+  #|    value = identity(value);
+  #|  }
+  #|  return value;
   #|})();
 
 ///|
@@ -476,9 +495,8 @@ const BYTECODE_PROPERTY_SET_SRC : String =
 ///
 /// Category: Component
 /// Exercises: receiver-preserving method property lookup plus `call_value` for
-///            a bytecode function. Compare with `call_frame` to estimate the
-///            incremental property/receiver cost around an otherwise similar
-///            simple call loop.
+///            a bytecode function. The callee also performs addition, so this
+///            is not a matched control for the plain-function call pair.
 ///
 /// Expected result: "10000"
 const BYTECODE_METHOD_CALL_SRC : String =
