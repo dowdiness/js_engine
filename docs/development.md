@@ -270,11 +270,14 @@ make bench-focus ARGS="--runs 3 --rows isolate/bytecode/property_get,pipeline/by
 
 (`make bench-focus` runs the native `cmd/bench_focus`.)
 
-With its default command, the helper passes `--rows` through to the benchmark
-runner, saves each focused CSV under `_build/bench-focus/<timestamp>/`, and
-reports median/mean/range across runs plus the median in-run CV. Use this for
-post-merge baselines or exploratory follow-up work; use same-runner base/head
-PR reports for optimization claims.
+With its default command, the helper runs the release benchmark separately for
+each selected row. This prevents an earlier row in the same JavaScript process
+from changing a later row's timing. It combines those isolated results into one
+CSV per run under `_build/bench-focus/<timestamp>/` and reports
+median/mean/range across runs plus the median in-run CV. A custom `--command`
+is run once per run and must select and emit its own rows. Use this helper for
+post-merge baselines or exploratory follow-up work; use paired, same-runner
+base/head measurements for optimization claims.
 
 The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in

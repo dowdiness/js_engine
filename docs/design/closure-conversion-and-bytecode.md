@@ -150,8 +150,10 @@ broad bytecode rows from near parity to a clear win on the local JS target:
 | `pipeline/*/evaluate` | 22.50 ms | 9.54 ms | about 2.36x faster / 57.6% lower |
 | `closure_factory` | 23.69 ms | 12.50 ms | about 1.90x faster / 47.2% lower |
 
-The focused rows now show call/frame setup is no longer the largest measured
-bytecode cost when `arguments` is unused:
+The following table records the historical focused measurements from that
+change. The retired `call_frame` row used a mutating callee and was measured in
+the same process as other rows; use the current isolated `plain_call_control`
+and `plain_call` pair for new call-cost decisions.
 
 | Microbenchmark | Mean | What it confirms |
 |---|---:|---|
@@ -190,8 +192,8 @@ Stage 8 nearly eliminated the plain property get/set gap: `property_get` and
 `local_access`, down from the ~5× shown by the old `runtime_helpers` row. The
 remaining per-operation gap is concentrated in `method_call` (receiver lookup +
 call_value), which is ~4.6× more expensive per call than a local slot read —
-comparable to the `runtime_helpers` row cost and consistent with
-`call_frame` + a property read.
+comparable to the `runtime_helpers` row cost and consistent with the historical
+`call_frame` row plus a property read.
 
 Issue #361 should target the `method_call` and `runtime_helpers` dispatch path,
 not raw property reads (which are now near parity with local access).

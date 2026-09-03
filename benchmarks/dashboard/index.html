@@ -982,6 +982,8 @@
           'isolate/bytecode/env_access',
           'isolate/bytecode/captured_access',
           'isolate/bytecode/call_frame',
+          'isolate/bytecode/plain_call_control',
+          'isolate/bytecode/plain_call',
           'isolate/bytecode/runtime_helpers',
           'exec/arithmetic_loop',
           'exec/object_construction',
@@ -1075,9 +1077,19 @@
               'Measures a captured counter that must remain in the Environment while loop control stays slot-backed.',
           },
           'isolate/bytecode/call_frame': {
-            title: 'Bytecode call-frame setup',
+            title: 'Historical bytecode call-frame workload',
             description:
-              'Repeatedly calls a tiny bytecode function with one numeric argument, focusing on Call, parameter binding, frames, and Return.',
+              'Retired benchmark that called a mutating numeric function. Its historical results are not comparable with the current matched plain-call pair.',
+          },
+          'isolate/bytecode/plain_call_control': {
+            title: 'Bytecode plain-call control',
+            description:
+              'Runs the plain-call loop and local assignment without invoking the function, providing the matched control cost.',
+          },
+          'isolate/bytecode/plain_call': {
+            title: 'Bytecode plain-function call',
+            description:
+              'Repeatedly invokes a one-parameter identity function; compare with the matched control to estimate ordinary call activation cost.',
           },
           'isolate/bytecode/runtime_helpers': {
             title: 'Bytecode runtime helper path',
