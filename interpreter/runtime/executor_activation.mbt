@@ -1974,8 +1974,7 @@ pub fn ExecutorCallableData::start_frame(
 ///|
 priv struct ExecutorActivationCleanup {
   observation : ActivationObservationToken
-  cleared_realm : ClearedActiveCalleeRealmScope
-  active_realm : ActiveCalleeRealmValueScope
+  realm_scope : (ClearedActiveCalleeRealmScope, ActiveCalleeRealmValueScope)?
   property_scope : ClearedActiveCalleeRealmScope?
   saved_in_default : Bool
   saved_param_default_conflicts : @set.Set[String]?
@@ -2329,16 +2328,20 @@ priv struct ExecutorActivationStackEntry {
 ///|
 fn Interpreter::restore_executor_activation_resources(
   self : Interpreter,
-  cleared_realm : ClearedActiveCalleeRealmScope,
-  active_realm : ActiveCalleeRealmValueScope,
+  realm_scope : (ClearedActiveCalleeRealmScope, ActiveCalleeRealmValueScope)?,
   saved_in_default : Bool,
   saved_param_default_conflicts : @set.Set[String]?,
   failure : Error?,
 ) -> Unit {
   self.in_nonarrow_param_default_eval = saved_in_default
   self.param_default_eval_var_conflicts = saved_param_default_conflicts
-  finish_active_callee_realm_value(self.realm_state, active_realm, failure~)
-  finish_cleared_active_callee_realm(self.realm_state, cleared_realm)
+  match realm_scope {
+    Some((cleared, active)) => {
+      finish_active_callee_realm_value(self.realm_state, active, failure~)
+      finish_cleared_active_callee_realm(self.realm_state, cleared)
+    }
+    None => ()
+  }
 }
 
 ///|
@@ -2348,8 +2351,7 @@ fn Interpreter::finish_executor_activation(
   failure : Error?,
 ) -> Unit raise Error {
   self.restore_executor_activation_resources(
-    cleanup.cleared_realm,
-    cleanup.active_realm,
+    cleanup.realm_scope,
     cleanup.saved_in_default,
     cleanup.saved_param_default_conflicts,
     failure,
@@ -2409,6 +2411,23 @@ fn observe_executor_activation_entry(
 }
 
 ///|
+// The retained capability describes numeric expressions only. Matching arity,
+// numeric arguments, and no direct calls together prove that this activation
+// cannot request a child activation.
+fn ExecutorCallableData::accepts_leaf_numeric_call(
+  self : ExecutorCallableData,
+  start : ExecutorActivationStart,
+) -> Bool {
+  match (self.activation_capability_summary, start) {
+    (Some(summary), ExecutorStartCall(request)) =>
+      summary.direct_calls.is_empty() &&
+      request.args.length() == summary.parameter_count &&
+      request.args.all(argument => argument is Number(_))
+    _ => false
+  }
+}
+
+///|
 fn Interpreter::start_executor_activation(
   self : Interpreter,
   executable : ExecutorCallableData,
@@ -2428,8 +2447,17 @@ fn Interpreter::start_executor_activation(
     })
     observe_executor_activation_entry(self)
   }
-  let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
-  let active_realm = begin_active_callee_realm_value(self.realm_state, callee)
+  // Non-leaf frames must install the realm barrier observed by nested
+  // activations, even when their callee belongs to the current realm.
+  let realm_scope = if property_scope is None &&
+    executable.accepts_leaf_numeric_call(start) &&
+    realm_fast_path_allowed(callee, self.realm_state) {
+    None
+  } else {
+    let cleared = begin_cleared_active_callee_realm(self.realm_state)
+    let active = begin_active_callee_realm_value(self.realm_state, callee)
+    Some((cleared, active))
+  }
   let saved_in_default = self.in_nonarrow_param_default_eval
   let saved_param_default_conflicts = self.param_default_eval_var_conflicts
   self.in_nonarrow_param_default_eval = false
@@ -2492,8 +2520,7 @@ fn Interpreter::start_executor_activation(
     Err(error) => {
       reject_executor_activation_observation(observation)
       self.restore_executor_activation_resources(
-        cleared_realm,
-        active_realm,
+        realm_scope,
         saved_in_default,
         saved_param_default_conflicts,
         Some(error),
@@ -2521,8 +2548,7 @@ fn Interpreter::start_executor_activation(
         completion: Some(completion),
         cleanup: Some({
           observation: accepted,
-          cleared_realm,
-          active_realm,
+          realm_scope,
           property_scope,
           saved_in_default,
           saved_param_default_conflicts,

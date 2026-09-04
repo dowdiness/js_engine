@@ -5,6 +5,45 @@ priv struct ExecutorActivationTestCode {
 }
 
 ///|
+test "executor callable accepts only verified numeric leaf calls" {
+  let interp = Interpreter::new()
+  let callee = make_classified_executor_function(
+    Some("same-realm-leaf"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationTestCode(starts={ val: 0 }, steps={ val: 0 }),
+    @parser.parse("return value;").stmts,
+    constructable=false,
+  )
+  guard callee is Object({ callable: Some(ExecutorCallable(executable)), .. }) else {
+    fail("expected an executor callable")
+  }
+  let start = ExecutorStartCall(
+    ExecutorCallRequest(
+      callee~,
+      this_value=Undefined,
+      args=[Number(7.0)],
+      loc=@token.Loc::default(),
+    ),
+  )
+  if !executable.accepts_leaf_numeric_call(start) {
+    fail("verified numeric leaf call should be accepted")
+  }
+  let non_numeric_start = ExecutorStartCall(
+    ExecutorCallRequest(
+      callee~,
+      this_value=Undefined,
+      args=[Undefined],
+      loc=@token.Loc::default(),
+    ),
+  )
+  if executable.accepts_leaf_numeric_call(non_numeric_start) {
+    fail("a non-numeric argument must retain the generic activation path")
+  }
+}
+
+///|
 fn ExecutorActivationTestCode::ExecutorActivationTestCode(
   starts~ : Ref[Int],
   steps~ : Ref[Int],
