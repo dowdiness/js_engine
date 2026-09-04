@@ -1297,16 +1297,10 @@ pub struct ExecutorBindingUpdateRequest {
   priv ctx : ExecContext
   priv env : Environment
   priv name : String
-  priv operator : ExecutorBindingUpdateOperator
+  priv operator : @ast.UpdateOp
   priv prefix : Bool
   priv loc : @token.Loc
   priv mut phase : ExecutorBindingUpdatePhase
-}
-
-///|
-priv enum ExecutorBindingUpdateOperator {
-  ExecutorBindingIncrement
-  ExecutorBindingDecrement
 }
 
 ///|
@@ -1333,7 +1327,7 @@ fn ExecutorBindingUpdateRequest::ExecutorBindingUpdateRequest(
   ctx~ : ExecContext,
   env~ : Environment,
   name~ : String,
-  operator~ : ExecutorBindingUpdateOperator,
+  operator~ : @ast.UpdateOp,
   prefix~ : Bool,
   loc~ : @token.Loc,
   phase~ : ExecutorBindingUpdatePhase,
@@ -1345,16 +1339,6 @@ fn ExecutorBindingUpdateRequest::ExecutorBindingUpdateRequest(
 pub enum ExecutorBindingUpdateStart {
   ExecutorBindingUpdateCompleted(Value)
   ExecutorBindingUpdateSuspended(ExecutorBindingUpdateRequest)
-}
-
-///|
-fn executor_binding_update_operator(
-  op : @ast.UpdateOp,
-) -> ExecutorBindingUpdateOperator {
-  match op {
-    Increment => ExecutorBindingIncrement
-    Decrement => ExecutorBindingDecrement
-  }
 }
 
 ///|
@@ -1377,7 +1361,7 @@ pub fn begin_executor_binding_update(
     ctx~,
     env~,
     name~,
-    operator=executor_binding_update_operator(op),
+    operator=op,
     prefix~,
     loc~,
     phase=ExecutorBindingUpdateNeedReference(reference_request),
@@ -1407,15 +1391,13 @@ pub fn begin_executor_binding_update(
             }
             _ => {
               let old_number = to_number(current, interp=Some(interp))
-              let next_value : Value = match request.operator {
-                ExecutorBindingIncrement => Number(old_number + 1.0)
-                ExecutorBindingDecrement => Number(old_number - 1.0)
-              }
-              let result = if request.prefix {
-                next_value
-              } else {
-                Number(old_number)
-              }
+              let plan = plan_numeric_update(
+                old_number,
+                request.operator,
+                request.prefix,
+              )
+              let next_value = plan.assigned_value()
+              let result = plan.expression_value()
               match
                 begin_executor_binding_reference_put(
                   interp, reference, next_value,
@@ -1495,11 +1477,13 @@ fn ExecutorBindingUpdateFrame::begin_put(
   reference : ResolvedBindingReference,
   old_number : Double,
 ) -> ExecutorActivationStep raise Error {
-  let next_value : Value = match self.request.operator {
-    ExecutorBindingIncrement => Number(old_number + 1.0)
-    ExecutorBindingDecrement => Number(old_number - 1.0)
-  }
-  let result = if self.request.prefix { next_value } else { Number(old_number) }
+  let plan = plan_numeric_update(
+    old_number,
+    self.request.operator,
+    self.request.prefix,
+  )
+  let next_value = plan.assigned_value()
+  let result = plan.expression_value()
   match begin_executor_binding_reference_put(interp, reference, next_value) {
     ExecutorBindingReferencePutCompleted(value) => {
       ignore(value)
@@ -1680,7 +1664,7 @@ impl ExecutorActivationFrame for ExecutorBindingUpdateFrame with fn deliver_acti
 pub struct ExecutorPropertyUpdateRequest {
   priv target : Value
   priv property_name : String
-  priv operator : ExecutorPropertyUpdateOperator
+  priv operator : @ast.UpdateOp
   priv prefix : Bool
   priv member_loc : @token.Loc
   priv loc : @token.Loc
@@ -1688,16 +1672,10 @@ pub struct ExecutorPropertyUpdateRequest {
 }
 
 ///|
-priv enum ExecutorPropertyUpdateOperator {
-  ExecutorPropertyIncrement
-  ExecutorPropertyDecrement
-}
-
-///|
 fn ExecutorPropertyUpdateRequest::ExecutorPropertyUpdateRequest(
   target~ : Value,
   property_name~ : String,
-  operator~ : ExecutorPropertyUpdateOperator,
+  operator~ : @ast.UpdateOp,
   prefix~ : Bool,
   member_loc~ : @token.Loc,
   loc~ : @token.Loc,
@@ -1710,7 +1688,7 @@ fn ExecutorPropertyUpdateRequest::ExecutorPropertyUpdateRequest(
 fn executor_activation_property_update(
   target : Value,
   property_name : String,
-  operator : ExecutorPropertyUpdateOperator,
+  operator : @ast.UpdateOp,
   prefix : Bool,
   member_loc : @token.Loc,
   loc : @token.Loc,
@@ -1741,7 +1719,7 @@ pub fn executor_activation_property_increment(
   executor_activation_property_update(
     target,
     property_name,
-    ExecutorPropertyIncrement,
+    @ast.Increment,
     prefix,
     member_loc,
     loc,
@@ -1761,7 +1739,7 @@ pub fn executor_activation_property_decrement(
   executor_activation_property_update(
     target,
     property_name,
-    ExecutorPropertyDecrement,
+    @ast.Decrement,
     prefix,
     member_loc,
     loc,
@@ -2175,11 +2153,9 @@ fn plan_executor_property_update_set(
   request : ExecutorPropertyUpdateRequest,
   old_number : Double,
 ) -> (ExecutorPropertyUpdatePhase, ExecutorActivationStep) {
-  let next_value : Value = match request.operator {
-    ExecutorPropertyIncrement => Number(old_number + 1.0)
-    ExecutorPropertyDecrement => Number(old_number - 1.0)
-  }
-  let result = if request.prefix { next_value } else { Number(old_number) }
+  let plan = plan_numeric_update(old_number, request.operator, request.prefix)
+  let next_value = plan.assigned_value()
+  let result = plan.expression_value()
   (
     ExecutorPropertyUpdateAwaitSet(result),
     executor_activation_property_set(

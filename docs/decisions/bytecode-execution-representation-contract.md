@@ -161,10 +161,9 @@ operations own ECMAScript decisions. The VM already delegates substantial work:
   `@runtime.to_property_key`;
 - JavaScript exception raising to `@runtime.raise_js_exception`.
 
-The boundary is incomplete. `UpdateLocal` still performs conversion and
-arithmetic inline, template accumulation still makes a string decision locally,
-and property assignment still manipulates references in the VM. Stages 7–12
-must move those semantic decisions outward rather than adding new ones to
+The boundary is incomplete. Template accumulation still makes a string decision
+locally, and property assignment still manipulates references in the VM. Stages
+7–12 must move those semantic decisions outward rather than adding new ones to
 bytecode.
 
 ### 2.4 Executable representation must not leak AST or runtime storage

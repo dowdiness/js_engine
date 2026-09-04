@@ -8,7 +8,7 @@ priv struct BytecodeForInState {
 }
 
 ///|
-priv enum BytecodeActivationResultDestination {
+priv enum BytecodeContinuation {
   PushValue
   UpdateLocalAfterNumericConversion(Int, @ast.UpdateOp, Bool)
   PushBindingReference
@@ -35,7 +35,7 @@ priv struct BytecodeFrame {
   mut ip : Int
   mut completion : Value
   mut optional_chain_short_circuited : Bool
-  mut pending_activation_result : BytecodeActivationResultDestination?
+  mut pending_continuation : BytecodeContinuation?
   candidate_route_activation : CandidateRouteActivation?
   mut candidate_route_completed : Bool
 }
@@ -44,7 +44,7 @@ priv struct BytecodeFrame {
 priv enum BytecodeFrameStep {
   BytecodeFrameNormal(Value)
   BytecodeFrameReturn(Value)
-  BytecodeFrameSuspended(@runtime.ExecutorActivationStep)
+  BytecodeFrameSuspensionReady(BytecodeSuspension)
 }
 
 ///|
@@ -89,7 +89,7 @@ fn BytecodeFrame::BytecodeFrame(
     ip: 0,
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
-    pending_activation_result: None,
+    pending_continuation: None,
     candidate_route_activation: None,
     candidate_route_completed: false,
   }
@@ -136,7 +136,7 @@ fn BytecodeFrame::candidate(
     ip: 0,
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
-    pending_activation_result: None,
+    pending_continuation: None,
     candidate_route_activation: Some(route_activation),
     candidate_route_completed: false,
   }
@@ -234,6 +234,20 @@ impl @runtime.ExecutorCode for BytecodeExecutorCode with fn start(
 }
 
 ///|
+fn BytecodeFrame::publish_suspension(
+  self : BytecodeFrame,
+  suspension : BytecodeSuspension,
+) -> @runtime.ExecutorActivationStep raise Error {
+  guard self.pending_continuation is None else {
+    raise @errors.InternalError(
+      message="bytecode frame already has a pending continuation",
+    )
+  }
+  self.pending_continuation = Some(suspension.continuation)
+  suspension.request
+}
+
+///|
 impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
   self,
   interp,
@@ -254,7 +268,37 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
       self.complete_candidate_route(true)
       @runtime.executor_activation_return(value)
     }
-    BytecodeFrameSuspended(step) => step
+    BytecodeFrameSuspensionReady(suspension) =>
+      self.publish_suspension(suspension)
+  }
+}
+
+///|
+fn BytecodeFrame::apply_activation_resume_decision(
+  self : BytecodeFrame,
+  decision : BytecodeActivationResumeDecision,
+) -> Unit raise Error {
+  match decision {
+    BytecodeResumePushValue(value) => self.stack.push(value)
+    BytecodeResumeUpdateLocal(slot, next_value, result) => {
+      self.locals[slot] = next_value
+      self.stack.push(result)
+    }
+    BytecodeResumePushBindingReference(reference) =>
+      self.binding_references.push(reference)
+    BytecodeResumePushReceiverAndValue(receiver, value) => {
+      self.stack.push(receiver)
+      self.stack.push(value)
+    }
+    BytecodeResumeNoStackChange => ()
+    BytecodeResumeAppendArraySpread(spread_values) =>
+      @runtime.apply_array_literal_spread(self.peek(), spread_values)
+    BytecodeResumeAppendArgumentSpread(spread_values) => {
+      let args = self.current_arg_list()
+      for spread_value in spread_values {
+        args.push(spread_value)
+      }
+    }
   }
 }
 
@@ -263,58 +307,17 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
   self,
   completion,
 ) {
-  let destination = match self.pending_activation_result {
-    Some(destination) => destination
+  errdefer self.complete_candidate_route(false)
+  let continuation = match self.pending_continuation {
+    Some(continuation) => continuation
     None =>
       raise @errors.InternalError(
         message="bytecode activation result has no pending consumer",
       )
   }
-  self.pending_activation_result = None
-  match completion {
-    @runtime.ExecutorActivationCompletionReference(reference) =>
-      match destination {
-        PushBindingReference => self.binding_references.push(reference)
-        _ =>
-          raise @errors.InternalError(
-            message="bytecode frame received an unexpected binding reference completion",
-          )
-      }
-    @runtime.ExecutorActivationCompletionNormal(value) =>
-      match destination {
-        PushValue => self.stack.push(value)
-        UpdateLocalAfterNumericConversion(slot, op, prefix) =>
-          self.complete_local_update(slot, op, prefix, value)
-        PushBindingReference =>
-          raise @errors.InternalError(
-            message="bytecode binding reference resolution returned a value",
-          )
-        PushReceiverAndValue(receiver) => {
-          self.stack.push(receiver)
-          self.stack.push(value)
-        }
-        NoStackChange => ()
-        AppendArraySpread => {
-          let spread_values = @runtime.executor_iterable_spread_batch_values(
-            value,
-          )
-          @runtime.apply_array_literal_spread(self.peek(), spread_values)
-        }
-        AppendArgumentSpread => {
-          let spread_values = @runtime.executor_iterable_spread_batch_values(
-            value,
-          )
-          let args = self.current_arg_list()
-          for spread_value in spread_values {
-            args.push(spread_value)
-          }
-        }
-      }
-    @runtime.ExecutorActivationCompletionAbrupt(error) => {
-      self.complete_candidate_route(false)
-      raise error
-    }
-  }
+  self.pending_continuation = None
+  let decision = reduce_bytecode_resume(continuation, completion)
+  self.apply_activation_resume_decision(decision)
 }
 
 ///|
@@ -376,27 +379,6 @@ fn BytecodeFrame::assign_env_slot(
   strict : Bool,
 ) -> Unit raise Error {
   self.env_slots[slot].assign(value, strict~)
-}
-
-///|
-fn BytecodeFrame::complete_local_update(
-  self : BytecodeFrame,
-  slot : Int,
-  op : @ast.UpdateOp,
-  prefix : Bool,
-  converted : Value,
-) -> Unit raise Error {
-  guard converted is Number(old_number) else {
-    raise @errors.InternalError(
-      message="numeric conversion completed without a Number",
-    )
-  }
-  let next_value = match op {
-    Increment => Value::Number(old_number + 1.0)
-    Decrement => Value::Number(old_number - 1.0)
-  }
-  self.locals[slot] = next_value
-  self.stack.push(if prefix { next_value } else { Value::Number(old_number) })
 }
 
 ///|
@@ -758,12 +740,11 @@ fn BytecodeFrame::step_bytecode(
             @token.Loc::default(),
           ) {
           @runtime.ExecutorBindingCompleted(value) => stack.push(value)
-          @runtime.ExecutorBindingSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_binding_request(request),
+          @runtime.ExecutorBindingSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_binding_request(request),
             )
-          }
         }
       LoadName(name) =>
         match
@@ -775,12 +756,11 @@ fn BytecodeFrame::step_bytecode(
             @token.Loc::default(),
           ) {
           @runtime.ExecutorBindingCompleted(value) => stack.push(value)
-          @runtime.ExecutorBindingSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_binding_request(request),
+          @runtime.ExecutorBindingSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_binding_request(request),
             )
-          }
         }
       StoreName(name) => {
         let value = frame.pop()
@@ -794,34 +774,32 @@ fn BytecodeFrame::step_bytecode(
             @token.Loc::default(),
           ) {
           @runtime.ExecutorBindingCompleted(result) => stack.push(result)
-          @runtime.ExecutorBindingSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_binding_request(request),
+          @runtime.ExecutorBindingSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_binding_request(request),
             )
-          }
         }
       }
-      ResolveNameReference(name) => {
-        frame.pending_activation_result = Some(PushBindingReference)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_binding_reference_resolution(
+      ResolveNameReference(name) =>
+        return suspend_bytecode(
+          continuation=PushBindingReference,
+          request=@runtime.executor_activation_binding_reference_resolution(
             ctx,
             env,
             name,
             @token.Loc::default(),
           ),
         )
-      }
       GetNameReference => {
         let reference = frame.binding_references
           .last()
           .unwrap_or_else(() => {
             fail("bytecode binding reference stack underflow")
           })
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_binding_reference_get(reference),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_binding_reference_get(reference),
         )
       }
       StoreNameReference => {
@@ -831,9 +809,11 @@ fn BytecodeFrame::step_bytecode(
           .unwrap_or_else(() => {
             fail("bytecode binding reference stack underflow")
           })
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_binding_reference_put(reference, value),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_binding_reference_put(
+            reference, value,
+          ),
         )
       }
       DropNameReference => {
@@ -898,12 +878,13 @@ fn BytecodeFrame::step_bytecode(
         let left = frame.pop()
         match @runtime.begin_executor_coercing_addition(left, right, loc) {
           @runtime.ExecutorCoercingAdditionCompleted(value) => stack.push(value)
-          @runtime.ExecutorCoercingAdditionSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_addition_request(request),
+          @runtime.ExecutorCoercingAdditionSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_addition_request(
+                request,
+              ),
             )
-          }
         }
       }
       BinaryOp(Sub, BinaryExpression, loc) => {
@@ -912,12 +893,13 @@ fn BytecodeFrame::step_bytecode(
         match @runtime.begin_executor_coercing_subtraction(left, right, loc) {
           @runtime.ExecutorCoercingSubtractionCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingSubtractionSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_subtraction_request(request),
+          @runtime.ExecutorCoercingSubtractionSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_subtraction_request(
+                request,
+              ),
             )
-          }
         }
       }
       BinaryOp(Mul, BinaryExpression, loc) => {
@@ -932,14 +914,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingMultiplicativeCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingMultiplicativeSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_multiplicative_request(
+          @runtime.ExecutorCoercingMultiplicativeSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_multiplicative_request(
                 request,
               ),
             )
-          }
         }
       }
       BinaryOp(Div, BinaryExpression, loc) => {
@@ -954,14 +935,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingMultiplicativeCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingMultiplicativeSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_multiplicative_request(
+          @runtime.ExecutorCoercingMultiplicativeSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_multiplicative_request(
                 request,
               ),
             )
-          }
         }
       }
       BinaryOp(Mod, BinaryExpression, loc) => {
@@ -976,14 +956,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingMultiplicativeCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingMultiplicativeSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_multiplicative_request(
+          @runtime.ExecutorCoercingMultiplicativeSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_multiplicative_request(
                 request,
               ),
             )
-          }
         }
       }
       BinaryOp(Lt, BinaryExpression, loc) => {
@@ -998,12 +977,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingRelationalCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingRelationalSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_relational_request(request),
+          @runtime.ExecutorCoercingRelationalSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_relational_request(
+                request,
+              ),
             )
-          }
         }
       }
       BinaryOp(Gt, BinaryExpression, loc) => {
@@ -1018,12 +998,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingRelationalCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingRelationalSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_relational_request(request),
+          @runtime.ExecutorCoercingRelationalSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_relational_request(
+                request,
+              ),
             )
-          }
         }
       }
       BinaryOp(GtEq, BinaryExpression, loc) => {
@@ -1038,12 +1019,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingRelationalCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingRelationalSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_relational_request(request),
+          @runtime.ExecutorCoercingRelationalSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_relational_request(
+                request,
+              ),
             )
-          }
         }
       }
       BinaryOp(LtEq, BinaryExpression, loc) => {
@@ -1058,12 +1040,13 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorCoercingRelationalCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorCoercingRelationalSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_coercing_relational_request(request),
+          @runtime.ExecutorCoercingRelationalSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_coercing_relational_request(
+                request,
+              ),
             )
-          }
         }
       }
       BinaryOp(op, _, loc) => {
@@ -1095,12 +1078,11 @@ fn BytecodeFrame::step_bytecode(
             @token.Loc::default(),
           ) {
           @runtime.ExecutorBindingCompleted(value) => stack.push(value)
-          @runtime.ExecutorBindingSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_binding_request(request),
+          @runtime.ExecutorBindingSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_binding_request(request),
             )
-          }
         }
       DeleteName(name) =>
         stack.push(@runtime.eval_delete_identifier(interp, ctx, env, name))
@@ -1115,12 +1097,13 @@ fn BytecodeFrame::step_bytecode(
             @token.Loc::default(),
           ) {
           @runtime.ExecutorPropertyDeleteCompleted(value) => stack.push(value)
-          @runtime.ExecutorPropertyDeleteSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_property_delete_request(request),
+          @runtime.ExecutorPropertyDeleteSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_property_delete_request(
+                request,
+              ),
             )
-          }
         }
       }
       DeleteComputed => {
@@ -1135,12 +1118,13 @@ fn BytecodeFrame::step_bytecode(
             @token.Loc::default(),
           ) {
           @runtime.ExecutorPropertyDeleteCompleted(value) => stack.push(value)
-          @runtime.ExecutorPropertyDeleteSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_property_delete_request(request),
+          @runtime.ExecutorPropertyDeleteSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_property_delete_request(
+                request,
+              ),
             )
-          }
         }
       }
       AppendTemplate(tail) => {
@@ -1186,44 +1170,43 @@ fn BytecodeFrame::step_bytecode(
             interp, ctx, env, name, op, prefix, loc,
           ) {
           @runtime.ExecutorBindingUpdateCompleted(value) => stack.push(value)
-          @runtime.ExecutorBindingUpdateSuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_binding_update_request(request),
+          @runtime.ExecutorBindingUpdateSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_binding_update_request(
+                request,
+              ),
             )
-          }
         }
       UpdateLocal(slot, op, prefix, loc) =>
         match
           @runtime.begin_executor_numeric_conversion(interp, locals[slot], loc) {
-          @runtime.ExecutorNumericConversionCompleted(value) =>
-            frame.complete_local_update(slot, op, prefix, value)
-          @runtime.ExecutorNumericConversionSuspended(request) => {
-            frame.pending_activation_result = Some(
-              UpdateLocalAfterNumericConversion(slot, op, prefix),
-            )
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_numeric_conversion_request(request),
-            )
+          @runtime.ExecutorNumericConversionCompleted(value) => {
+            let decision = reduce_bytecode_local_update(slot, op, prefix, value)
+            frame.apply_activation_resume_decision(decision)
           }
+          @runtime.ExecutorNumericConversionSuspended(request) =>
+            return suspend_bytecode(
+              continuation=UpdateLocalAfterNumericConversion(slot, op, prefix),
+              request=@runtime.executor_activation_numeric_conversion_request(
+                request,
+              ),
+            )
         }
       UpdateEnvSlot(slot, op, prefix) => {
         let old_number = @runtime.to_number(
           frame.read_env_slot(slot),
           interp=Some(interp),
         )
-        let next_value = match op {
-          Increment => Value::Number(old_number + 1.0)
-          Decrement => Value::Number(old_number - 1.0)
-        }
-        frame.assign_env_slot(slot, next_value, frame.ctx.strict)
-        stack.push(if prefix { next_value } else { Value::Number(old_number) })
+        let plan = @runtime.plan_numeric_update(old_number, op, prefix)
+        frame.assign_env_slot(slot, plan.assigned_value(), frame.ctx.strict)
+        stack.push(plan.expression_value())
       }
       UpdateProperty(prop, op, prefix, member_loc, loc) => {
         let obj = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          match op {
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=match op {
             Increment =>
               @runtime.executor_activation_property_increment(
                 obj,
@@ -1249,10 +1232,10 @@ fn BytecodeFrame::step_bytecode(
         let key = frame.pop()
         let obj = frame.pop()
         match key {
-          String_(property_name) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              match op {
+          String_(property_name) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=match op {
                 Increment =>
                   @runtime.executor_activation_property_increment(
                     obj,
@@ -1273,7 +1256,6 @@ fn BytecodeFrame::step_bytecode(
                   )
               },
             )
-          }
           _ =>
             stack.push(
               interp.eval_update_computed_property(
@@ -1367,12 +1349,13 @@ fn BytecodeFrame::step_bytecode(
         match @runtime.begin_executor_iterable_spread(value, loc) {
           @runtime.ExecutorIterableSpreadCompleted(spread_values) =>
             @runtime.apply_array_literal_spread(frame.peek(), spread_values)
-          @runtime.ExecutorIterableSpreadSuspended(request) => {
-            frame.pending_activation_result = Some(AppendArraySpread)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_iterable_spread_request(request),
+          @runtime.ExecutorIterableSpreadSuspended(request) =>
+            return suspend_bytecode(
+              continuation=AppendArraySpread,
+              request=@runtime.executor_activation_iterable_spread_request(
+                request,
+              ),
             )
-          }
         }
       }
       ArrayPushHole => @runtime.apply_array_literal_hole(frame.peek())
@@ -1391,12 +1374,13 @@ fn BytecodeFrame::step_bytecode(
               args.push(spread_value)
             }
           }
-          @runtime.ExecutorIterableSpreadSuspended(request) => {
-            frame.pending_activation_result = Some(AppendArgumentSpread)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_iterable_spread_request(request),
+          @runtime.ExecutorIterableSpreadSuspended(request) =>
+            return suspend_bytecode(
+              continuation=AppendArgumentSpread,
+              request=@runtime.executor_activation_iterable_spread_request(
+                request,
+              ),
             )
-          }
         }
       }
       MakeObject(keys) => {
@@ -1485,12 +1469,11 @@ fn BytecodeFrame::step_bytecode(
         match @runtime.begin_executor_property_key(key, loc) {
           @runtime.ExecutorPropertyKeyCompleted(property_key) =>
             stack.push(property_key)
-          @runtime.ExecutorPropertyKeySuspended(request) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_property_key_request(request),
+          @runtime.ExecutorPropertyKeySuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushValue,
+              request=@runtime.executor_activation_property_key_request(request),
             )
-          }
         }
       }
       ObjectSetComputed => {
@@ -1509,12 +1492,13 @@ fn BytecodeFrame::step_bytecode(
             loc,
           ) {
           @runtime.ExecutorCopyDataPropertiesCompleted => ()
-          @runtime.ExecutorCopyDataPropertiesSuspended(request) => {
-            frame.pending_activation_result = Some(NoStackChange)
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_copy_data_properties_request(request),
+          @runtime.ExecutorCopyDataPropertiesSuspended(request) =>
+            return suspend_bytecode(
+              continuation=NoStackChange,
+              request=@runtime.executor_activation_copy_data_properties_request(
+                request,
+              ),
             )
-          }
         }
       }
       ObjectSetProto => {
@@ -1581,9 +1565,9 @@ fn BytecodeFrame::step_bytecode(
       DeclareFunction(name, _) => ignore(name)
       GetProperty(prop, loc) => {
         let obj = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_property_get(obj, prop, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_property_get(obj, prop, loc),
         )
       }
       GetComputed(loc) => {
@@ -1592,17 +1576,15 @@ fn BytecodeFrame::step_bytecode(
         match @runtime.begin_executor_computed_property_get(obj, key, loc) {
           @runtime.ExecutorComputedPropertyGetCompleted(value) =>
             stack.push(value)
-          @runtime.ExecutorComputedPropertyGetSuspended(step) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(step)
-          }
+          @runtime.ExecutorComputedPropertyGetSuspended(step) =>
+            return suspend_bytecode(continuation=PushValue, request=step)
         }
       }
       ReadPropertyForAssign(prop, loc) => {
         let receiver = frame.peek()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_property_get(receiver, prop, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_property_get(receiver, prop, loc),
         )
       }
       ReadComputedForAssign(loc) => {
@@ -1615,8 +1597,7 @@ fn BytecodeFrame::step_bytecode(
           Some(step) => {
             stack.push(obj)
             stack.push(key)
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(step)
+            return suspend_bytecode(continuation=PushValue, request=step)
           }
           None => {
             if obj is Null {
@@ -1649,9 +1630,9 @@ fn BytecodeFrame::step_bytecode(
       SetProperty(prop, loc) => {
         let value = frame.pop()
         let obj = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_property_set(
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_property_set(
             obj,
             prop,
             value,
@@ -1674,10 +1655,8 @@ fn BytecodeFrame::step_bytecode(
           ) {
           @runtime.ExecutorComputedPropertySetCompleted(result) =>
             stack.push(result)
-          @runtime.ExecutorComputedPropertySetSuspended(step) => {
-            frame.pending_activation_result = Some(PushValue)
-            return BytecodeFrameSuspended(step)
-          }
+          @runtime.ExecutorComputedPropertySetSuspended(step) =>
+            return suspend_bytecode(continuation=PushValue, request=step)
         }
       }
       SetForInProperty(prop, loc) => {
@@ -1701,16 +1680,16 @@ fn BytecodeFrame::step_bytecode(
       }
       PreparePropertyCall(prop, loc) => {
         let receiver = frame.pop()
-        frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_property_get(receiver, prop, loc),
+        return suspend_bytecode(
+          continuation=PushReceiverAndValue(receiver),
+          request=@runtime.executor_activation_property_get(receiver, prop, loc),
         )
       }
       PreparePlainPropertyCall(prop, loc) => {
         let receiver = frame.pop()
-        frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_property_get(receiver, prop, loc),
+        return suspend_bytecode(
+          continuation=PushReceiverAndValue(receiver),
+          request=@runtime.executor_activation_property_get(receiver, prop, loc),
         )
       }
       PrepareComputedCall(loc) => {
@@ -1721,14 +1700,13 @@ fn BytecodeFrame::step_bytecode(
             stack.push(obj)
             stack.push(callee)
           }
-          @runtime.ExecutorComputedCallPreparationSuspended(request) => {
-            frame.pending_activation_result = Some(PushReceiverAndValue(obj))
-            return BytecodeFrameSuspended(
-              @runtime.executor_activation_computed_property_get_request(
+          @runtime.ExecutorComputedCallPreparationSuspended(request) =>
+            return suspend_bytecode(
+              continuation=PushReceiverAndValue(obj),
+              request=@runtime.executor_activation_computed_property_get_request(
                 request,
               ),
             )
-          }
         }
       }
       PrepareSuperPropertyCall(prop, loc) => {
@@ -1762,51 +1740,61 @@ fn BytecodeFrame::step_bytecode(
       Call(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_call(
+            callee,
+            Value::Undefined,
+            args,
+            loc,
+          ),
         )
       }
       CallWithReceiver(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_call(callee, receiver, args, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_call(callee, receiver, args, loc),
         )
       }
       CallSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_call(callee, Value::Undefined, args, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_call(
+            callee,
+            Value::Undefined,
+            args,
+            loc,
+          ),
         )
       }
       CallSpreadWithReceiver(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_call(callee, receiver, args, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_call(callee, receiver, args, loc),
         )
       }
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let ctor = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_construct(ctor, args, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_construct(ctor, args, loc),
         )
       }
       ConstructSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let ctor = frame.pop()
-        frame.pending_activation_result = Some(PushValue)
-        return BytecodeFrameSuspended(
-          @runtime.executor_activation_construct(ctor, args, loc),
+        return suspend_bytecode(
+          continuation=PushValue,
+          request=@runtime.executor_activation_construct(ctor, args, loc),
         )
       }
       Return => return BytecodeFrameReturn(frame.pop())

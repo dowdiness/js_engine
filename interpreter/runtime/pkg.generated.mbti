@@ -433,6 +433,8 @@ pub fn own_string_property_names(Interpreter, Value) -> Value raise
 
 pub fn own_symbol_properties(Interpreter, Value) -> Value raise
 
+pub fn plan_numeric_update(Double, @ast.UpdateOp, Bool) -> NumericUpdatePlan
+
 pub fn prepare_compiled_script_early_error(Array[@ast.Stmt], Bool, provenance_token? : @ref.Ref[Unit]?) -> CompiledScriptEarlyErrorSettlement
 
 pub fn prepare_executor_activation_capability(Array[String], Array[@ast.Stmt]) -> ExecutorActivationCapabilitySummary?
@@ -1254,6 +1256,12 @@ pub fn MicrotaskRunFailure::cause(Self) -> Error
 pub fn MicrotaskRunFailure::source_identity(Self) -> String?
 
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
+
+pub struct NumericUpdatePlan {
+  // private fields
+}
+pub fn NumericUpdatePlan::assigned_value(Self) -> Value
+pub fn NumericUpdatePlan::expression_value(Self) -> Value
 
 pub(all) struct ObjectData {
   bag : PropertyBag
