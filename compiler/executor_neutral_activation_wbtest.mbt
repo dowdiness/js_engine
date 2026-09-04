@@ -7,7 +7,7 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
-test "plain bytecode leaf reuses its proven-sufficient closure environment" {
+test "runtime reuses the closure when no activation environment is observable" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
     interp, "function leaf(value) { return value + 1; }",
@@ -29,34 +29,34 @@ test "plain bytecode leaf reuses its proven-sufficient closure environment" {
 }
 
 ///|
-test "only bytecode leaves without observable activation bindings reuse closures" {
-  let cases : Array[(String, Bool)] = [
-    ("function leaf(value) { return value + 1; }", false),
-    ("function leaf(value, value) { return value; }", false),
-    ("function leaf(value) { return arguments[0]; }", true),
-    ("function leaf(value) { eval('value'); return value; }", true),
-    (
-      "function leaf(value) { function nested() { return value; } return nested(); }",
-      true,
-    ),
-    ("function leaf(value, ...rest) { return rest[0]; }", true),
-    ("function leaf(value) { return this.value; }", true),
-    ("function leaf() { return new.target; }", true),
-    ("function leaf(value) { let copy = value; return copy; }", true),
-    ("function leaf(value) { [value] = [1]; return value; }", true),
-    (
-      "var leaf = function named(value) { return named === leaf ? value : 0; };",
-      false,
-    ),
+fn bytecode_leaf_needs_own_environment(source : String) -> Bool raise Error {
+  match parse_bytecode_for_wb(source).main_for_wb().children {
+    [leaf] => leaf.needs_own_env
+    _ => fail("fixture must lower exactly one child: " + source)
+  }
+}
+
+///|
+test "bytecode leaf activation environments follow observability" {
+  let closure_reuse_cases = [
+    "function leaf(value) { return value + 1; }", "function leaf(value, value) { return value; }",
+    "var leaf = function named(value) { return named === leaf ? value : 0; };",
   ]
-  for test_case in cases {
-    let (source, expected) = test_case
-    let root = parse_bytecode_for_wb(source).main_for_wb()
-    guard root.children.length() == 1 else {
-      fail("fixture must lower exactly one child: " + source)
+  for source in closure_reuse_cases {
+    guard !bytecode_leaf_needs_own_environment(source) else {
+      fail("expected closure reuse: " + source)
     }
-    guard root.children[0].needs_own_env == expected else {
-      fail("unexpected activation-environment decision: " + source)
+  }
+  let own_environment_cases = [
+    "function leaf(value) { return arguments[0]; }", "function leaf(value) { eval('value'); return value; }",
+    "function leaf(value) { function nested() { return value; } return nested(); }",
+    "function leaf(value, ...rest) { return rest[0]; }", "function leaf(value) { return this.value; }",
+    "function leaf() { return new.target; }", "function leaf(value) { let copy = value; return copy; }",
+    "function leaf(value) { [value] = [1]; return value; }",
+  ]
+  for source in own_environment_cases {
+    guard bytecode_leaf_needs_own_environment(source) else {
+      fail("expected an own activation environment: " + source)
     }
   }
 }
