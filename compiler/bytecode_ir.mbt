@@ -1023,11 +1023,11 @@ priv struct BytecodeFunction {
   // object, no call_self_name, no inner functions, no rest param, no `this`
   // or super accesses, no `new.target`, no lexical decls, and no destructure
   // assign patterns (which disable local-slot param binding). When false,
-  // call_compiled_func skips Environment::new + this/new.target inserts.
+  // prepared executor activation reuses the closure environment directly.
   needs_own_env : Bool
   local_names : Array[String]
   // O(1) slot lookup — same data as local_names but indexed; computed once at
-  // lower time so BytecodeFrame and call_compiled_func avoid O(N) linear scans.
+  // lower time so BytecodeFrame avoids O(N) linear scans.
   local_indices : Map[String, Int]
   env_slot_names : Array[String]
   // Var-declared names that are NOT local slots, in source order with duplicates

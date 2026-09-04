@@ -7,6 +7,61 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+test "runtime reuses the closure when no activation environment is observable" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "function leaf(value) { return value + 1; }",
+  )
+  let function = interp.global.get("leaf")
+  let executable = match function {
+    @runtime.Object(
+      { callable: Some(@runtime.ExecutorCallable(executable)), .. }
+    ) => executable
+    _ => fail("leaf must be a prepared bytecode function")
+  }
+  let prepared = interp.prepare_executor_callable_call(
+    executable,
+    function,
+    @runtime.Undefined,
+    [@runtime.Number(1.0)],
+  )
+  assert_true(physical_equal(prepared.environment(), interp.global))
+}
+
+///|
+fn bytecode_leaf_needs_own_environment(source : String) -> Bool raise Error {
+  match parse_bytecode_for_wb(source).main_for_wb().children {
+    [leaf] => leaf.needs_own_env
+    _ => fail("fixture must lower exactly one child: " + source)
+  }
+}
+
+///|
+test "bytecode leaf activation environments follow observability" {
+  let closure_reuse_cases = [
+    "function leaf(value) { return value + 1; }", "function leaf(value, value) { return value; }",
+    "var leaf = function named(value) { return named === leaf ? value : 0; };",
+  ]
+  for source in closure_reuse_cases {
+    guard !bytecode_leaf_needs_own_environment(source) else {
+      fail("expected closure reuse: " + source)
+    }
+  }
+  let own_environment_cases = [
+    "function leaf(value) { return arguments[0]; }", "function leaf(value) { eval('value'); return value; }",
+    "function leaf(value) { function nested() { return value; } return nested(); }",
+    "function leaf(value, ...rest) { return rest[0]; }", "function leaf(value) { return this.value; }",
+    "function leaf() { return new.target; }", "function leaf(value) { let copy = value; return copy; }",
+    "function leaf(value) { [value] = [1]; return value; }",
+  ]
+  for source in own_environment_cases {
+    guard bytecode_leaf_needs_own_environment(source) else {
+      fail("expected an own activation environment: " + source)
+    }
+  }
+}
+
+///|
 test "Function.prototype.call forwarding recursion stays off the host stack" {
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),

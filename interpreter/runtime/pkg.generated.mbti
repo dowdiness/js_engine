@@ -397,7 +397,7 @@ pub fn make_plain_object() -> Value
 
 pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, source_text? : String?, rest_param? : String?) -> Value
 
-pub fn[T : ExecutorCode] make_prepared_executor_function(String?, Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, source_text? : String?, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
+pub fn[T : ExecutorCode] make_prepared_executor_function(String?, Array[String], Environment, Bool, T, ExecutorActivationCapabilitySummary?, source_text? : String?, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool, needs_own_environment? : Bool) -> Value
 
 pub fn make_tagged_template_object(Array[(String, String?)]) -> Value
 

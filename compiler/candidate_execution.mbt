@@ -278,6 +278,7 @@ fn candidate_make_bytecode_callable(
         constructable=false,
         call_self_name=func_def.call_self_name,
         define_arguments_object=func_def.needs_arguments_object,
+        needs_own_environment=func_def.needs_own_env,
       )
     _ =>
       @runtime.make_prepared_executor_function(
@@ -291,6 +292,7 @@ fn candidate_make_bytecode_callable(
         rest_param=func_def.rest_param,
         call_self_name=func_def.call_self_name,
         define_arguments_object=func_def.needs_arguments_object,
+        needs_own_environment=func_def.needs_own_env,
       )
   }
 }
