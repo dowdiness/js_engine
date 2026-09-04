@@ -7,6 +7,61 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+test "plain bytecode leaf reuses its proven-sufficient closure environment" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "function leaf(value) { return value + 1; }",
+  )
+  let function = interp.global.get("leaf")
+  let executable = match function {
+    @runtime.Object(
+      { callable: Some(@runtime.ExecutorCallable(executable)), .. }
+    ) => executable
+    _ => fail("leaf must be a prepared bytecode function")
+  }
+  let prepared = interp.prepare_executor_callable_call(
+    executable,
+    function,
+    @runtime.Undefined,
+    [@runtime.Number(1.0)],
+  )
+  assert_true(physical_equal(prepared.environment(), interp.global))
+}
+
+///|
+test "only bytecode leaves without observable activation bindings reuse closures" {
+  let cases : Array[(String, Bool)] = [
+    ("function leaf(value) { return value + 1; }", false),
+    ("function leaf(value, value) { return value; }", false),
+    ("function leaf(value) { return arguments[0]; }", true),
+    ("function leaf(value) { eval('value'); return value; }", true),
+    (
+      "function leaf(value) { function nested() { return value; } return nested(); }",
+      true,
+    ),
+    ("function leaf(value, ...rest) { return rest[0]; }", true),
+    ("function leaf(value) { return this.value; }", true),
+    ("function leaf() { return new.target; }", true),
+    ("function leaf(value) { let copy = value; return copy; }", true),
+    ("function leaf(value) { [value] = [1]; return value; }", true),
+    (
+      "var leaf = function named(value) { return named === leaf ? value : 0; };",
+      false,
+    ),
+  ]
+  for test_case in cases {
+    let (source, expected) = test_case
+    let root = parse_bytecode_for_wb(source).main_for_wb()
+    guard root.children.length() == 1 else {
+      fail("fixture must lower exactly one child: " + source)
+    }
+    guard root.children[0].needs_own_env == expected else {
+      fail("unexpected activation-environment decision: " + source)
+    }
+  }
+}
+
+///|
 test "Function.prototype.call forwarding recursion stays off the host stack" {
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),

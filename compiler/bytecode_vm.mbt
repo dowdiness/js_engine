@@ -562,6 +562,7 @@ fn make_bytecode_func(
     source_text=func_def.source_text,
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
+    needs_own_environment=func_def.needs_own_env,
   )
 }
 
@@ -602,6 +603,7 @@ fn make_bytecode_method_func(
     constructable=false,
     call_self_name=func_def.call_self_name,
     define_arguments_object=func_def.needs_arguments_object,
+    needs_own_environment=func_def.needs_own_env,
   )
 }
 

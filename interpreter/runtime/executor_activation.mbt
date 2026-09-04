@@ -1928,6 +1928,9 @@ pub struct ExecutorCallableData {
   priv constructable : Bool
   priv self_name : String?
   priv define_arguments_object : Bool
+  // A compiler may prove that this callable has no observable activation
+  // bindings. Such a callable can execute against its closure directly.
+  priv needs_own_environment : Bool
   priv kind : ExecutorCallableKind
   priv activation_capability_summary : ExecutorActivationCapabilitySummary?
   // Exact parser text for prepared bytecode functions. This is source
@@ -3680,19 +3683,27 @@ pub fn Interpreter::prepare_executor_callable_call(
 ) -> PreparedExecutorActivation raise Error {
   match executable.kind {
     OrdinaryExecutorCallable =>
-      self.prepare_executor_activation(
-        callee,
-        this_value,
-        args,
-        executable.params,
-        executable.rest_param,
-        executable.closure,
-        executable.strict,
-        None,
-        !executable.constructable,
-        executable.self_name,
-        executable.define_arguments_object,
-      )
+      if executable.needs_own_environment {
+        self.prepare_executor_activation(
+          callee,
+          this_value,
+          args,
+          executable.params,
+          executable.rest_param,
+          executable.closure,
+          executable.strict,
+          None,
+          !executable.constructable,
+          executable.self_name,
+          executable.define_arguments_object,
+        )
+      } else {
+        PreparedExecutorActivation(
+          ctx={ strict: executable.strict, current_generator: None },
+          env=executable.closure,
+          args~,
+        )
+      }
     ArrowExecutorCallable => prepare_executor_arrow_activation(executable, args)
   }
 }
@@ -4235,6 +4246,7 @@ fn make_executor_callable_with_capability(
   kind : ExecutorCallableKind,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
   source_text : String?,
+  needs_own_environment? : Bool = true,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -4250,6 +4262,7 @@ fn make_executor_callable_with_capability(
     constructable,
     self_name,
     define_arguments_object,
+    needs_own_environment,
     kind,
     activation_capability_summary,
     source_text,
@@ -4377,6 +4390,7 @@ pub fn[T : ExecutorCode] make_prepared_executor_function(
   constructable? : Bool = true,
   call_self_name? : Bool = false,
   define_arguments_object? : Bool = true,
+  needs_own_environment? : Bool = true,
 ) -> Value {
   let function_name = name.unwrap_or("")
   let self_name = if call_self_name { name } else { None }
@@ -4393,6 +4407,7 @@ pub fn[T : ExecutorCode] make_prepared_executor_function(
     OrdinaryExecutorCallable,
     activation_capability_summary,
     source_text,
+    needs_own_environment~,
   )
 }
 

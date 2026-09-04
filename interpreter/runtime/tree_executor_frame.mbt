@@ -220,6 +220,7 @@ fn tree_executor_graph_copy_executor_data(
     constructable: data.constructable,
     self_name: data.self_name,
     define_arguments_object: data.define_arguments_object,
+    needs_own_environment: data.needs_own_environment,
     kind: data.kind,
     activation_capability_summary,
     source_text: data.source_text,
@@ -631,6 +632,7 @@ fn tree_executor_graph_node_executable(
           None
         },
         define_arguments_object: false,
+        needs_own_environment: true,
         kind: OrdinaryExecutorCallable,
         activation_capability_summary: None,
         source_text: None,
