@@ -164,7 +164,7 @@ architecture-state-audit-mbt-test:
 	moon test --target native tooling/architecture_state_audit
 
 # Runs the Stage 0 architecture guardrails.
-architecture-audit: architecture-state-audit architecture-boundary-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit
+architecture-audit: architecture-state-audit architecture-boundary-audit architecture-bytecode-semantic-audit architecture-bytecode-ast-audit architecture-bytecode-plan-audit architecture-bytecode-continuation-audit
 
 # Guards the resolved compiler/runtime call graph for the bytecode activation lifecycle.
 architecture-bytecode-semantic-audit:
@@ -177,6 +177,10 @@ architecture-bytecode-ast-audit:
 # Keeps the verified destructuring plan opaque outside the runtime package.
 architecture-bytecode-plan-audit:
 	python3 scripts/audit_destructuring_plan_interface.py
+
+# Keeps bytecode continuation publication and consumption single-owner.
+architecture-bytecode-continuation-audit:
+	python3 scripts/audit_bytecode_continuation_ownership.py --root . --self-test
 
 # Runs the MoonBit architecture import-boundary and representation-access audit.
 architecture-boundary-audit: architecture-boundary-audit-mbt
