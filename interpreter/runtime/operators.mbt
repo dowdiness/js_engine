@@ -40,16 +40,15 @@ pub fn Interpreter::eval_update_property(
 ) -> Value raise Error {
   let current = self.get_property(obj, prop, member_loc)
   let num = self.to_number(current)
-  let new_val : Value = match op {
-    Increment => Number(num + 1.0)
-    Decrement => Number(num - 1.0)
-  }
-  let _ = self.set_property(obj, prop, new_val, loc, strict=ctx.strict)
-  if prefix {
-    new_val
-  } else {
-    Number(num)
-  }
+  let plan = plan_numeric_update(num, op, prefix)
+  let _ = self.set_property(
+    obj,
+    prop,
+    plan.assigned_value(),
+    loc,
+    strict=ctx.strict,
+  )
+  plan.expression_value()
 }
 
 ///|
@@ -66,22 +65,15 @@ pub fn Interpreter::eval_update_computed_property(
   let prop_key = to_property_key(key, interp=Some(self))
   let current = self.get_computed_property(obj, prop_key, member_loc)
   let num = self.to_number(current)
-  let new_val : Value = match op {
-    Increment => Number(num + 1.0)
-    Decrement => Number(num - 1.0)
-  }
+  let plan = plan_numeric_update(num, op, prefix)
   let _ = self.set_computed_property(
     obj,
     prop_key,
-    new_val,
+    plan.assigned_value(),
     loc,
     strict=ctx.strict,
   )
-  if prefix {
-    new_val
-  } else {
-    Number(num)
-  }
+  plan.expression_value()
 }
 
 ///|
@@ -124,23 +116,16 @@ fn Interpreter::eval_update(
         this_val, super_proto, prop, mloc,
       )
       let num = self.to_number(current)
-      let new_val : Value = match op {
-        Increment => Number(num + 1.0)
-        Decrement => Number(num - 1.0)
-      }
+      let plan = plan_numeric_update(num, op, prefix)
       let _ = self.set_property(
         super_proto,
         prop,
-        new_val,
+        plan.assigned_value(),
         loc,
         strict=ctx.strict,
         receiver=this_val,
       )
-      if prefix {
-        new_val
-      } else {
-        Number(num)
-      }
+      plan.expression_value()
     }
     SuperComputedMember(key_expr, mloc) => {
       let this_val = eval_this_value(env)
@@ -151,39 +136,25 @@ fn Interpreter::eval_update(
         this_val, super_proto, prop_key, mloc,
       )
       let num = self.to_number(current)
-      let new_val : Value = match op {
-        Increment => Number(num + 1.0)
-        Decrement => Number(num - 1.0)
-      }
+      let plan = plan_numeric_update(num, op, prefix)
       let _ = self.set_computed_property(
         super_proto,
         prop_key,
-        new_val,
+        plan.assigned_value(),
         loc,
         strict=ctx.strict,
         receiver=this_val,
       )
-      if prefix {
-        new_val
-      } else {
-        Number(num)
-      }
+      plan.expression_value()
     }
     PrivateMember(obj_expr, name, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let current = get_private_member(obj, name, env)
       let num = self.to_number(current)
-      let new_val : Value = match op {
-        Increment => Number(num + 1.0)
-        Decrement => Number(num - 1.0)
-      }
+      let plan = plan_numeric_update(num, op, prefix)
       let brand = resolve_private_brand(env, name)
-      set_private_field(obj, brand, name, new_val)
-      if prefix {
-        new_val
-      } else {
-        Number(num)
-      }
+      set_private_field(obj, brand, name, plan.assigned_value())
+      plan.expression_value()
     }
     Call(_, _, _) => {
       if ctx.strict {

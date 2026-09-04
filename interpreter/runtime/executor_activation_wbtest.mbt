@@ -4476,7 +4476,7 @@ test "property update core plans results and reduces completions deterministical
   let increment = ExecutorPropertyUpdateRequest(
     target=String_("target"),
     property_name="x",
-    operator=ExecutorPropertyIncrement,
+    operator=@ast.Increment,
     prefix=false,
     member_loc=loc,
     loc~,
@@ -4501,7 +4501,7 @@ test "property update core plans results and reduces completions deterministical
   let decrement = ExecutorPropertyUpdateRequest(
     target=String_("target"),
     property_name="x",
-    operator=ExecutorPropertyDecrement,
+    operator=@ast.Decrement,
     prefix=true,
     member_loc=loc,
     loc~,
@@ -5354,7 +5354,7 @@ test "ToPrimitive default and number preserve valueOf then toString fallback" {
   let request = ExecutorPropertyUpdateRequest(
     target~,
     property_name="x",
-    operator=ExecutorPropertyIncrement,
+    operator=@ast.Increment,
     prefix=false,
     member_loc=@token.Loc::default(),
     loc=@token.Loc::default(),
