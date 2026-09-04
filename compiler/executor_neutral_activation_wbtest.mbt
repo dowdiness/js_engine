@@ -2720,7 +2720,14 @@ test "bytecode frame accepts one pending activation result" {
     strict: false,
     current_generator: None,
   })
-  frame.pending_activation_result = Some(PushValue)
+  ignore(
+    frame.publish_suspension(
+      BytecodeSuspension(
+        continuation=PushValue,
+        request=@runtime.executor_activation_normal(@runtime.Undefined),
+      ),
+    ),
+  )
   @runtime.ExecutorActivationFrame::deliver_activation_completion(
     frame,
     @runtime.executor_activation_completion_normal(Number(7.0)),
@@ -2759,7 +2766,14 @@ test "bytecode frame keeps the object-spread target on a no-stack completion" {
     current_generator: None,
   })
   frame.stack.push(Number(9.0))
-  frame.pending_activation_result = Some(NoStackChange)
+  ignore(
+    frame.publish_suspension(
+      BytecodeSuspension(
+        continuation=NoStackChange,
+        request=@runtime.executor_activation_normal(@runtime.Undefined),
+      ),
+    ),
+  )
   @runtime.ExecutorActivationFrame::deliver_activation_completion(
     frame,
     @runtime.executor_activation_completion_normal(Undefined),
@@ -2781,7 +2795,14 @@ test "bytecode frame delivers an owned receiver with a plain property result" {
   })
   let receiver = Value::String_("receiver")
   let callee = Value::String_("callee")
-  frame.pending_activation_result = Some(PushReceiverAndValue(receiver))
+  ignore(
+    frame.publish_suspension(
+      BytecodeSuspension(
+        continuation=PushReceiverAndValue(receiver),
+        request=@runtime.executor_activation_normal(@runtime.Undefined),
+      ),
+    ),
+  )
   @runtime.ExecutorActivationFrame::deliver_activation_completion(
     frame,
     @runtime.executor_activation_completion_normal(callee),
@@ -2805,7 +2826,14 @@ test "bytecode frame clears its destination before re-raising an abrupt completi
     strict: false,
     current_generator: None,
   })
-  frame.pending_activation_result = Some(PushValue)
+  ignore(
+    frame.publish_suspension(
+      BytecodeSuspension(
+        continuation=PushValue,
+        request=@runtime.executor_activation_normal(@runtime.Undefined),
+      ),
+    ),
+  )
   let sentinel : Error = @errors.RangeError(
     message="bytecode completion sentinel",
   )
@@ -2822,7 +2850,6 @@ test "bytecode frame clears its destination before re-raising an abrupt completi
     Some(error) => assert_true(physical_equal(error, sentinel))
     None => fail("bytecode frame must re-raise the original abrupt completion")
   }
-  assert_true(frame.pending_activation_result is None)
   let duplicate : Error? = try {
     @runtime.ExecutorActivationFrame::deliver_activation_completion(
       frame,

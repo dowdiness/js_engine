@@ -24,6 +24,7 @@ import sys
 
 VM_PATHS = (
     Path("compiler/bytecode_ir.mbt"),
+    Path("compiler/bytecode_frame_transition.mbt"),
     Path("compiler/bytecode_vm.mbt"),
 )
 FORBIDDEN_MARKERS = ("@ast.Stmt", "@ast.Pattern", "@ast.Expr")

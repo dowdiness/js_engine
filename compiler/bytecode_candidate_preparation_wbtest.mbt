@@ -2487,6 +2487,21 @@ test "bytecode call after abrupt completion records a fresh activation" {
 }
 
 ///|
+fn assert_candidate_route_closed_abruptly(
+  activation : CandidateRouteActivation,
+  evidence : Ref[CandidateRouteEvidence],
+  context : String,
+) -> Unit raise {
+  match activation.lifecycle.val {
+    CandidateRouteFinished({ completion: CandidateRouteAbrupt, .. }) => ()
+    _ => fail("\{context} did not close its candidate route abruptly")
+  }
+  guard evidence.val.summary.active_activations == 0 else {
+    fail("\{context} retained an in-flight candidate activation")
+  }
+}
+
+///|
 test "candidate frame startup error completes its route abruptly" {
   let source = "function child() { return 1; }"
   let program = prepare_candidate_program(@parser.parse(source).stmts)
@@ -2526,16 +2541,9 @@ test "candidate frame startup error completes its route abruptly" {
       guard startup_failed else {
         fail("candidate frame startup did not propagate its failure")
       }
-      match activation.lifecycle.val {
-        CandidateRouteFinished(completed) =>
-          if !(completed.completion is CandidateRouteAbrupt) {
-            fail("candidate frame startup did not finish abruptly")
-          }
-        _ => fail("candidate frame startup left its route in flight")
-      }
-      guard evidence.val.summary.active_activations == 0 else {
-        fail("candidate frame startup retained an in-flight activation")
-      }
+      assert_candidate_route_closed_abruptly(
+        activation, evidence, "candidate frame startup",
+      )
       @runtime.Undefined
     }),
   )
@@ -2587,16 +2595,63 @@ test "candidate function startup error completes its route abruptly" {
       guard startup_failed else {
         fail("candidate function startup did not propagate its failure")
       }
-      match activation.lifecycle.val {
-        CandidateRouteFinished(completed) =>
-          if !(completed.completion is CandidateRouteAbrupt) {
-            fail("candidate function startup did not finish abruptly")
-          }
-        _ => fail("candidate function startup left its route in flight")
+      assert_candidate_route_closed_abruptly(
+        activation, evidence, "candidate function startup",
+      )
+      @runtime.Undefined
+    }),
+  )
+}
+
+///|
+test "candidate resume protocol error completes its route abruptly" {
+  let source = "x += 1;"
+  let program = prepare_candidate_program(@parser.parse(source).stmts)
+  guard program.root.bytecode is Some(bytecode) else {
+    fail("resume-error fixture did not retain root bytecode")
+  }
+  guard program.script_preparation is Some(preparation) else {
+    fail("resume-error fixture did not retain script preparation")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=false),
+  }
+  let activation = candidate_route_prepare(
+    evidence,
+    program.root.source_identity,
+    UseBytecode(ManagedSuspension),
+  )
+  candidate_route_start(activation, CandidateBytecodeExecutor)
+  let execution = CandidateBytecodeExecution(
+    bytecode,
+    candidate_child_materializer(program.root, bytecode, evidence),
+  )
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    interp.run_prepared_compiled_script(preparation, fn(ctx, env) raise {
+      let frame = BytecodeFrame::candidate(execution, env, ctx, activation)
+      let frame = start_candidate_bytecode_frame(interp, frame)
+      let step = @runtime.ExecutorActivationFrame::step(frame, interp)
+      guard step is @runtime.ExecutorActivationBindingReference(_) else {
+        fail("resume-error fixture did not suspend on binding resolution")
       }
-      guard evidence.val.summary.active_activations == 0 else {
-        fail("candidate function startup retained an in-flight activation")
+      let delivery_failed = try {
+        @runtime.ExecutorActivationFrame::deliver_activation_completion(
+          frame,
+          @runtime.executor_activation_completion_normal(@runtime.Undefined),
+        )
+        false
+      } catch {
+        @errors.InternalError(message~) =>
+          message == "bytecode binding reference resolution returned a value"
+        _ => false
       }
+      guard delivery_failed else {
+        fail("candidate frame did not reject the mismatched completion")
+      }
+      assert_candidate_route_closed_abruptly(
+        activation, evidence, "candidate resume protocol error",
+      )
       @runtime.Undefined
     }),
   )

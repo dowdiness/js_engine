@@ -1652,7 +1652,12 @@ test "managed disposition corresponds to a typed VM suspension" {
     current_generator: None,
   })
   match frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationPropertyGet(_)) => ()
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationPropertyGet(_),
+      }
+    ) => ()
     _ => fail("static property access must return a typed property request")
   }
   let conditional = parse_bytecode_for_wb("var key = \"x\"; ({ x: 1 })[key];")
@@ -1666,8 +1671,12 @@ test "managed disposition corresponds to a typed VM suspension" {
     { strict: false, current_generator: None },
   )
   match conditional_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationComputedPropertyGet(_)) =>
-      ()
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationComputedPropertyGet(_),
+      }
+    ) => ()
     _ => fail("computed access must return a typed preparation request")
   }
 }
@@ -1685,7 +1694,7 @@ test "bytecode primitive addition bypasses child activation" {
     BytecodeFrameReturn(Number(value)) => inspect(value, content="3")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("primitive addition must complete with a number")
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(_) =>
       fail("primitive addition must not create a child activation")
   }
   let object = parse_bytecode_for_wb("({}) + 1;")
@@ -1694,8 +1703,13 @@ test "bytecode primitive addition bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingAddition(_)) => ()
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationCoercingAddition(_),
+      }
+    ) => ()
+    BytecodeFrameSuspensionReady(_) =>
       fail("object addition must request coercing addition")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("object addition must suspend for guest conversion")
@@ -1715,7 +1729,7 @@ test "bytecode primitive subtraction bypasses child activation" {
     BytecodeFrameReturn(Number(value)) => inspect(value, content="3")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("primitive subtraction must complete with a number")
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(_) =>
       fail("primitive subtraction must not create a child activation")
   }
   let object = parse_bytecode_for_wb("({}) - 1;")
@@ -1724,9 +1738,13 @@ test "bytecode primitive subtraction bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingSubtraction(_)) =>
-      ()
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationCoercingSubtraction(_),
+      }
+    ) => ()
+    BytecodeFrameSuspensionReady(_) =>
       fail("object subtraction must request coercing subtraction")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("object subtraction must suspend for guest conversion")
@@ -1746,7 +1764,7 @@ test "bytecode primitive less-than-or-equal bypasses child activation" {
     BytecodeFrameReturn(Bool(value)) => inspect(value, content="true")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("primitive less-than-or-equal must produce a Boolean")
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(_) =>
       fail("primitive less-than-or-equal must not create a child activation")
   }
   let object = parse_bytecode_for_wb("({}) <= 1;")
@@ -1755,9 +1773,13 @@ test "bytecode primitive less-than-or-equal bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingRelational(_)) =>
-      ()
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationCoercingRelational(_),
+      }
+    ) => ()
+    BytecodeFrameSuspensionReady(_) =>
       fail("object less-than-or-equal must request its runtime operation")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("object less-than-or-equal must suspend for guest conversion")
@@ -1777,7 +1799,7 @@ test "bytecode primitive less-than bypasses child activation" {
     BytecodeFrameReturn(Bool(value)) => inspect(value, content="true")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("primitive less-than must produce a Boolean")
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(_) =>
       fail("primitive less-than must not create a child activation")
   }
   let object = parse_bytecode_for_wb("({}) < 1;")
@@ -1786,9 +1808,13 @@ test "bytecode primitive less-than bypasses child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingRelational(_)) =>
-      ()
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationCoercingRelational(_),
+      }
+    ) => ()
+    BytecodeFrameSuspensionReady(_) =>
       fail("object less-than must request its runtime operation")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("object less-than must suspend for guest conversion")
@@ -1805,7 +1831,7 @@ test "bytecode primitive greater relational operators bypass child activation" {
   })
   match primitive_frame.step_bytecode(interp) {
     BytecodeFrameNormal(Bool(_)) | BytecodeFrameReturn(Bool(_)) => ()
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(_) =>
       fail("primitive greater relational operators must not suspend")
     BytecodeFrameNormal(_) | BytecodeFrameReturn(_) =>
       fail("primitive greater relational operators must produce Booleans")
@@ -1816,9 +1842,13 @@ test "bytecode primitive greater relational operators bypass child activation" {
     current_generator: None,
   })
   match object_frame.step_bytecode(interp) {
-    BytecodeFrameSuspended(@runtime.ExecutorActivationCoercingRelational(_)) =>
-      ()
-    BytecodeFrameSuspended(_) =>
+    BytecodeFrameSuspensionReady(
+      {
+        continuation: PushValue,
+        request: @runtime.ExecutorActivationCoercingRelational(_),
+      }
+    ) => ()
+    BytecodeFrameSuspensionReady(_) =>
       fail(
         "object greater relational operators must request their runtime operation",
       )
