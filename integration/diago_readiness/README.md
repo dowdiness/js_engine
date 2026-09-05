@@ -66,3 +66,10 @@ command or replace the result with a larger host-stack setting.
 The first candidate investigation is recorded separately in
 [CANDIDATE_RESULTS.md](CANDIDATE_RESULTS.md); the historical Tree-walker matrix
 does not establish candidate readiness.
+
+The follow-up [route investigation](ROUTE_PROFILE.md) distinguishes static
+selection from actual execution. It records whole-program Tree-walker fallback
+for the main MathJax/Rough.js bundles and identifies named function expressions
+as the next boundary to investigate. The separate `profile/` package is a
+diagnostic adapter; `diago-readiness` continues to select only the requested
+behavioral-oracle package.

@@ -1,0 +1,10 @@
+import {
+  "dowdiness/js_engine",
+  "dowdiness/js_engine/compiler",
+  "dowdiness/js_engine/parser",
+  "moonbitlang/core/json",
+} for "test"
+
+options(
+  overrides: [ "dowdiness/js_engine/internal/engine_candidate_mode_enabled" ],
+)
