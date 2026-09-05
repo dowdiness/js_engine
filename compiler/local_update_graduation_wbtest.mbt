@@ -7,6 +7,25 @@ fn local_update_candidate_run(
 }
 
 ///|
+test "local updates agree after immediate and suspended numeric conversion" {
+  for input in ["4", "'4'", "({ valueOf: function() { return 4; } })"] {
+    let source = "function update(value) {" +
+      "var post = value++; var pre = ++value;" +
+      "var down = value--; var last = --value;" +
+      "return post + ':' + pre + ':' + down + ':' + last + ':' + value;" +
+      "} update(" +
+      input +
+      ");"
+    let (value, evidence) = local_update_candidate_run(source)
+    assert_eq(value.to_string(), "4:6:6:4:4")
+    assert_true(evidence.val.summary.bytecode_starts > 0)
+    assert_eq(evidence.val.summary.tree_starts, 0)
+    assert_eq(evidence.val.summary.fallback_violations, 0)
+    assert_eq(evidence.val.summary.replay_violations, 0)
+  }
+}
+
+///|
 test "candidate local update preserves numeric conversion and result order" {
   let source =
     #|function update() {

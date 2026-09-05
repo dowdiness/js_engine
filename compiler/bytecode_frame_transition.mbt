@@ -32,18 +32,27 @@ fn suspend_bytecode(
 }
 
 ///|
+fn plan_bytecode_local_update(
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  converted : Value,
+) -> @runtime.NumericUpdatePlan raise Error {
+  guard converted is Number(old_number) else {
+    raise @errors.InternalError(
+      message="numeric conversion completed without a Number",
+    )
+  }
+  @runtime.plan_numeric_update(old_number, op, prefix)
+}
+
+///|
 fn reduce_bytecode_local_update(
   slot : Int,
   op : @ast.UpdateOp,
   prefix : Bool,
   converted : Value,
 ) -> BytecodeActivationResumeDecision raise Error {
-  guard converted is Number(old_number) else {
-    raise @errors.InternalError(
-      message="numeric conversion completed without a Number",
-    )
-  }
-  let plan = @runtime.plan_numeric_update(old_number, op, prefix)
+  let plan = plan_bytecode_local_update(op, prefix, converted)
   BytecodeResumeUpdateLocal(
     slot,
     plan.assigned_value(),

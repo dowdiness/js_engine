@@ -1,0 +1,588 @@
+{
+  "createdAt": "2026-09-05T01:43:52.430Z",
+  "toolchain": "moon 0.1.20260819 (fc2a4ee 2026-08-19) ~/.moon/bin/moon\nmoonc v0.10.9+6e6c44045 (2026-08-19) ~/.moon/bin/moonc\nmoonrun 0.1.20260819 (fc2a4ee 2026-08-19) ~/.moon/bin/moonrun\n\nFeature flags enabled: rr_moon_mod,rr_moon_pkg\n",
+  "node": "v24.14.1",
+  "cpu": "AMD Ryzen 7 6800H with Radeon Graphics",
+  "platform": "linux 6.18.33.2-microsoft-standard-WSL2",
+  "before": "105a8b4654ed9c8fa9a8cfa6ad5126cc6adc351e",
+  "after": "9317888c8b1a36b696de0c6a1491c4e35dcc4ead",
+  "fixtureSha256": "e7f1cbbb50b9b13c60110d4edbe6df40e43cd8b690084f938f470c5c310b3ef8",
+  "runs": [
+    {
+      "target": "wasm-gc",
+      "pair": 0,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 16.58
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1610
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1330
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1740
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   16.58 µs ± 497.53 ns    15.92 µs …  17.47 µs  in 10 ×   6146 runs\nloop-postfix        1.61 ms ± 193.09 µs     1.37 ms …   1.89 ms  in 10 ×     68 runs\nloop-prefix         1.33 ms ±  60.59 µs     1.25 ms …   1.41 ms  in 10 ×     75 runs\nloop-add-control    1.74 ms ±  89.98 µs     1.61 ms …   1.88 ms  in 10 ×     62 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 0,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 20.26
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1380
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1410
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1780
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   20.26 µs ±   1.15 µs    18.86 µs …  22.28 µs  in 10 ×   5075 runs\nloop-postfix        1.38 ms ±  40.57 µs     1.30 ms …   1.44 ms  in 10 ×     74 runs\nloop-prefix         1.41 ms ±  57.81 µs     1.34 ms …   1.52 ms  in 10 ×     72 runs\nloop-add-control    1.78 ms ±  89.09 µs     1.63 ms …   1.91 ms  in 10 ×     54 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 1,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 21.43
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1410
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1400
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1690
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   21.43 µs ±   1.18 µs    20.19 µs …  24.04 µs  in 10 ×   4045 runs\nloop-postfix        1.41 ms ±  61.88 µs     1.33 ms …   1.53 ms  in 10 ×     69 runs\nloop-prefix         1.40 ms ±  59.96 µs     1.32 ms …   1.49 ms  in 10 ×     70 runs\nloop-add-control    1.69 ms ±  51.00 µs     1.62 ms …   1.77 ms  in 10 ×     60 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 1,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 17.38
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1300
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1330
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1720
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   17.38 µs ± 742.40 ns    16.35 µs …  18.46 µs  in 10 ×   5334 runs\nloop-postfix        1.30 ms ±  39.20 µs     1.22 ms …   1.35 ms  in 10 ×     74 runs\nloop-prefix         1.33 ms ±  64.61 µs     1.26 ms …   1.45 ms  in 10 ×     79 runs\nloop-add-control    1.72 ms ±  82.14 µs     1.59 ms …   1.80 ms  in 10 ×     59 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 2,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 18.35
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1420
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1370
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1720
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   18.35 µs ±   1.09 µs    16.96 µs …  20.19 µs  in 10 ×   5751 runs\nloop-postfix        1.42 ms ±  96.37 µs     1.33 ms …   1.59 ms  in 10 ×     73 runs\nloop-prefix         1.37 ms ±  35.00 µs     1.33 ms …   1.42 ms  in 10 ×     72 runs\nloop-add-control    1.72 ms ±  71.74 µs     1.60 ms …   1.83 ms  in 10 ×     56 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 2,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 20.28
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1390
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1360
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1670
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   20.28 µs ± 908.50 ns    19.07 µs …  21.51 µs  in 10 ×   4876 runs\nloop-postfix        1.39 ms ± 112.55 µs     1.27 ms …   1.55 ms  in 10 ×     75 runs\nloop-prefix         1.36 ms ±  38.25 µs     1.30 ms …   1.40 ms  in 10 ×     75 runs\nloop-add-control    1.67 ms ±  80.91 µs     1.59 ms …   1.82 ms  in 10 ×     59 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 3,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 20.48
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1330
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1340
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1620
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   20.48 µs ±   1.32 µs    18.99 µs …  22.94 µs  in 10 ×   4651 runs\nloop-postfix        1.33 ms ±  49.58 µs     1.27 ms …   1.41 ms  in 10 ×     74 runs\nloop-prefix         1.34 ms ±  49.10 µs     1.28 ms …   1.40 ms  in 10 ×     77 runs\nloop-add-control    1.62 ms ±  50.86 µs     1.55 ms …   1.70 ms  in 10 ×     62 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "wasm-gc",
+      "pair": 3,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 17.19
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1300
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1380
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1900
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   17.19 µs ± 517.75 ns    16.57 µs …  17.92 µs  in 10 ×   5641 runs\nloop-postfix        1.30 ms ±  49.05 µs     1.23 ms …   1.41 ms  in 10 ×     73 runs\nloop-prefix         1.38 ms ± 109.04 µs     1.28 ms …   1.57 ms  in 10 ×     77 runs\nloop-add-control    1.90 ms ± 137.67 µs     1.73 ms …   2.11 ms  in 10 ×     52 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 0,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 24.9
+        },
+        {
+          "name": "loop-postfix",
+          "us": 2240
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2320
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2760
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   24.90 µs ±   1.99 µs    22.76 µs …  27.22 µs  in 10 ×   3823 runs\nloop-postfix        2.24 ms ± 113.62 µs     2.11 ms …   2.51 ms  in 10 ×     44 runs\nloop-prefix         2.32 ms ± 222.39 µs     1.99 ms …   2.64 ms  in 10 ×     47 runs\nloop-add-control    2.76 ms ±  79.61 µs     2.67 ms …   2.90 ms  in 10 ×     39 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 0,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 22
+        },
+        {
+          "name": "loop-postfix",
+          "us": 2090
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2150
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2640
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   22.00 µs ±   1.08 µs    20.40 µs …  24.09 µs  in 10 ×   4548 runs\nloop-postfix        2.09 ms ±  62.15 µs     2.02 ms …   2.23 ms  in 10 ×     50 runs\nloop-prefix         2.15 ms ±  86.19 µs     2.04 ms …   2.30 ms  in 10 ×     46 runs\nloop-add-control    2.64 ms ±  66.56 µs     2.53 ms …   2.74 ms  in 10 ×     38 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 1,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 20.96
+        },
+        {
+          "name": "loop-postfix",
+          "us": 2020
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2080
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2560
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   20.96 µs ± 475.61 ns    20.53 µs …  21.87 µs  in 10 ×   4929 runs\nloop-postfix        2.02 ms ±  51.36 µs     1.95 ms …   2.11 ms  in 10 ×     51 runs\nloop-prefix         2.08 ms ±  53.23 µs     1.97 ms …   2.14 ms  in 10 ×     46 runs\nloop-add-control    2.56 ms ±  72.84 µs     2.47 ms …   2.72 ms  in 10 ×     39 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 1,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 18.07
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1970
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2080
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2590
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   18.07 µs ± 407.77 ns    17.59 µs …  18.75 µs  in 10 ×   5399 runs\nloop-postfix        1.97 ms ±  58.83 µs     1.89 ms …   2.03 ms  in 10 ×     50 runs\nloop-prefix         2.08 ms ± 104.43 µs     1.92 ms …   2.23 ms  in 10 ×     49 runs\nloop-add-control    2.59 ms ±  69.15 µs     2.51 ms …   2.72 ms  in 10 ×     39 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 2,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 18.33
+        },
+        {
+          "name": "loop-postfix",
+          "us": 2090
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2120
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2660
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   18.33 µs ± 545.11 ns    17.40 µs …  18.96 µs  in 10 ×   5244 runs\nloop-postfix        2.09 ms ± 124.24 µs     1.95 ms …   2.33 ms  in 10 ×     50 runs\nloop-prefix         2.12 ms ± 109.10 µs     1.90 ms …   2.28 ms  in 10 ×     47 runs\nloop-add-control    2.66 ms ± 100.17 µs     2.54 ms …   2.81 ms  in 10 ×     39 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 2,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 21.54
+        },
+        {
+          "name": "loop-postfix",
+          "us": 2070
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2120
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2580
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   21.54 µs ± 882.33 ns    20.26 µs …  22.63 µs  in 10 ×   4079 runs\nloop-postfix        2.07 ms ±  92.60 µs     1.95 ms …   2.23 ms  in 10 ×     47 runs\nloop-prefix         2.12 ms ±  50.88 µs     2.05 ms …   2.21 ms  in 10 ×     46 runs\nloop-add-control    2.58 ms ± 104.08 µs     2.46 ms …   2.72 ms  in 10 ×     39 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 3,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 20.89
+        },
+        {
+          "name": "loop-postfix",
+          "us": 2029.9999999999998
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2100
+        },
+        {
+          "name": "loop-add-control",
+          "us": 2540
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   20.89 µs ± 496.87 ns    20.15 µs …  21.62 µs  in 10 ×   4633 runs\nloop-postfix        2.03 ms ± 104.09 µs     1.93 ms …   2.24 ms  in 10 ×     47 runs\nloop-prefix         2.10 ms ±  84.74 µs     1.95 ms …   2.25 ms  in 10 ×     46 runs\nloop-add-control    2.54 ms ±  94.38 µs     2.44 ms …   2.72 ms  in 10 ×     40 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "js",
+      "pair": 3,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 18.16
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1960
+        },
+        {
+          "name": "loop-prefix",
+          "us": 2330
+        },
+        {
+          "name": "loop-add-control",
+          "us": 3080
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   18.16 µs ± 503.52 ns    17.36 µs …  18.82 µs  in 10 ×   5492 runs\nloop-postfix        1.96 ms ±  47.99 µs     1.92 ms …   2.05 ms  in 10 ×     51 runs\nloop-prefix         2.33 ms ± 216.04 µs     2.11 ms …   2.76 ms  in 10 ×     32 runs\nloop-add-control    3.08 ms ± 303.39 µs     2.68 ms …   3.54 ms  in 10 ×     31 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 0,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 18.34
+        },
+        {
+          "name": "loop-postfix",
+          "us": 997.38
+        },
+        {
+          "name": "loop-prefix",
+          "us": 1010
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1160
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   18.34 µs ± 673.80 ns    17.20 µs …  19.34 µs  in 10 ×   5538 runs\nloop-postfix      997.38 µs ±  34.85 µs   945.97 µs …   1.04 ms  in 10 ×     95 runs\nloop-prefix         1.01 ms ±  25.91 µs   958.34 µs …   1.05 ms  in 10 ×    107 runs\nloop-add-control    1.16 ms ±  61.63 µs     1.10 ms …   1.30 ms  in 10 ×     86 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 0,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 21.51
+        },
+        {
+          "name": "loop-postfix",
+          "us": 1010
+        },
+        {
+          "name": "loop-prefix",
+          "us": 978
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1020
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   21.51 µs ± 543.24 ns    20.86 µs …  22.42 µs  in 10 ×   4526 runs\nloop-postfix        1.01 ms ±  33.03 µs   967.20 µs …   1.06 ms  in 10 ×     97 runs\nloop-prefix       978.00 µs ±  31.97 µs   928.19 µs …   1.02 ms  in 10 ×    102 runs\nloop-add-control    1.02 ms ±  30.17 µs   982.06 µs …   1.07 ms  in 10 ×     95 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 1,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 21.51
+        },
+        {
+          "name": "loop-postfix",
+          "us": 973.73
+        },
+        {
+          "name": "loop-prefix",
+          "us": 931.56
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1010
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   21.51 µs ± 540.23 ns    20.84 µs …  22.51 µs  in 10 ×   4779 runs\nloop-postfix      973.73 µs ±  18.96 µs   953.33 µs …   1.01 ms  in 10 ×    102 runs\nloop-prefix       931.56 µs ±  18.46 µs   911.70 µs … 970.85 µs  in 10 ×    109 runs\nloop-add-control    1.01 ms ±  22.53 µs   977.73 µs …   1.05 ms  in 10 ×    100 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 1,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 16.87
+        },
+        {
+          "name": "loop-postfix",
+          "us": 948.11
+        },
+        {
+          "name": "loop-prefix",
+          "us": 921.78
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1040
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   16.87 µs ± 515.28 ns    16.19 µs …  17.68 µs  in 10 ×   6301 runs\nloop-postfix      948.11 µs ±  22.31 µs   922.35 µs … 976.62 µs  in 10 ×    107 runs\nloop-prefix       921.78 µs ±  14.96 µs   904.52 µs … 958.13 µs  in 10 ×    110 runs\nloop-add-control    1.04 ms ±  24.44 µs     1.01 ms …   1.08 ms  in 10 ×     95 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 2,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 16.52
+        },
+        {
+          "name": "loop-postfix",
+          "us": 955.72
+        },
+        {
+          "name": "loop-prefix",
+          "us": 914.3
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1040
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   16.52 µs ± 452.06 ns    16.01 µs …  17.27 µs  in 10 ×   5971 runs\nloop-postfix      955.72 µs ±  27.07 µs   918.09 µs … 998.71 µs  in 10 ×    103 runs\nloop-prefix       914.30 µs ±  13.11 µs   892.28 µs … 938.84 µs  in 10 ×    108 runs\nloop-add-control    1.04 ms ±  31.38 µs   992.99 µs …   1.08 ms  in 10 ×     98 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 2,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 21.07
+        },
+        {
+          "name": "loop-postfix",
+          "us": 986.24
+        },
+        {
+          "name": "loop-prefix",
+          "us": 959.92
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1010
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   21.07 µs ± 301.56 ns    20.66 µs …  21.65 µs  in 10 ×   4490 runs\nloop-postfix      986.24 µs ±  19.45 µs   967.25 µs …   1.03 ms  in 10 ×    103 runs\nloop-prefix       959.92 µs ±  24.40 µs   923.23 µs … 999.72 µs  in 10 ×    106 runs\nloop-add-control    1.01 ms ±  31.26 µs   976.89 µs …   1.07 ms  in 10 ×     98 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 3,
+      "side": "after",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 20.86
+        },
+        {
+          "name": "loop-postfix",
+          "us": 978.11
+        },
+        {
+          "name": "loop-prefix",
+          "us": 911.73
+        },
+        {
+          "name": "loop-add-control",
+          "us": 997.85
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   20.86 µs ± 363.82 ns    20.40 µs …  21.39 µs  in 10 ×   4764 runs\nloop-postfix      978.11 µs ±  35.70 µs   947.26 µs …   1.03 ms  in 10 ×    102 runs\nloop-prefix       911.73 µs ±  12.23 µs   891.47 µs … 927.64 µs  in 10 ×    106 runs\nloop-add-control  997.85 µs ±  16.13 µs   978.41 µs …   1.03 ms  in 10 ×    101 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    },
+    {
+      "target": "native",
+      "pair": 3,
+      "side": "before",
+      "rows": [
+        {
+          "name": "straight-postfix",
+          "us": 16.47
+        },
+        {
+          "name": "loop-postfix",
+          "us": 905.39
+        },
+        {
+          "name": "loop-prefix",
+          "us": 866.72
+        },
+        {
+          "name": "loop-add-control",
+          "us": 1010
+        }
+      ],
+      "raw": "[dowdiness/js_engine] bench compiler/numeric_update_cost_benchmark_wbtest.mbt:33 (\"numeric-update/cost\") ok\nname             time (mean ± σ)         range (min … max) \nstraight-postfix   16.47 µs ± 739.39 ns    15.46 µs …  17.79 µs  in 10 ×   6110 runs\nloop-postfix      905.39 µs ±  20.35 µs   881.55 µs … 938.44 µs  in 10 ×    111 runs\nloop-prefix       866.72 µs ±  30.69 µs   839.35 µs … 937.85 µs  in 10 ×    115 runs\nloop-add-control    1.01 ms ±  42.73 µs   970.31 µs …   1.09 ms  in 10 ×     98 runs\nTotal tests: 1, passed: 1, failed: 0.\n"
+    }
+  ]
+}
