@@ -2844,13 +2844,35 @@ test "candidate tree separates same-name same-signature siblings" {
   if value.to_string() != "10" {
     fail("same-name sibling route returned an unexpected value")
   }
-  let starts = candidate_started_executors_for_wb(evidence)
-  if starts.length() != 1 || starts[0] != CandidateTreeWalkerExecutor {
-    fail(
-      "named function source did not remain on the plain tree route: " +
-      candidate_started_executor_labels_for_wb(evidence),
-    )
-  }
+  assert_eq(
+    candidate_started_executor_labels_for_wb(evidence),
+    "tree,tree,tree,tree,tree",
+  )
+  let starts = evidence.val.events.filter_map(event => {
+    match event {
+      CandidateRouteStartedEvent(started) => Some(started)
+      _ => None
+    }
+  })
+  let parent = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
+  assert_true(
+    bytecode_source_identity_coordinates_equal_for_wb(
+      starts[2].source_identity,
+      parent.children[1].source_identity,
+    ),
+  )
+  assert_true(
+    bytecode_source_identity_coordinates_equal_for_wb(
+      starts[4].source_identity,
+      parent.children[0].source_identity,
+    ),
+  )
+  assert_true(
+    !bytecode_source_identity_equal(
+      starts[2].source_identity,
+      starts[4].source_identity,
+    ),
+  )
 }
 
 ///|
