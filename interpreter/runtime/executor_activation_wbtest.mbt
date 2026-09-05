@@ -5,6 +5,177 @@ priv struct ExecutorActivationTestCode {
 }
 
 ///|
+test "executor callable accepts only verified numeric leaf calls" {
+  let interp = Interpreter::new()
+  let callee = make_classified_executor_function(
+    Some("same-realm-leaf"),
+    ["value"],
+    interp.global,
+    false,
+    ExecutorActivationTestCode(starts={ val: 0 }, steps={ val: 0 }),
+    @parser.parse("return value;").stmts,
+    constructable=false,
+  )
+  guard callee is Object({ callable: Some(ExecutorCallable(executable)), .. }) else {
+    fail("expected an executor callable")
+  }
+  let start = ExecutorStartCall(
+    ExecutorCallRequest(
+      callee~,
+      this_value=Undefined,
+      args=[Number(7.0)],
+      loc=@token.Loc::default(),
+    ),
+  )
+  if !executable.accepts_leaf_numeric_call(start) {
+    fail("verified numeric leaf call should be accepted")
+  }
+  let non_numeric_start = ExecutorStartCall(
+    ExecutorCallRequest(
+      callee~,
+      this_value=Undefined,
+      args=[Undefined],
+      loc=@token.Loc::default(),
+    ),
+  )
+  if executable.accepts_leaf_numeric_call(non_numeric_start) {
+    fail("a non-numeric argument must retain the generic activation path")
+  }
+}
+
+///|
+priv struct ExecutorActivationRealmProbe {
+  active_during_body : Bool
+  expected_prototype : Value
+  failure : Error?
+}
+
+///|
+fn ExecutorActivationRealmProbe::ExecutorActivationRealmProbe(
+  interp : Interpreter,
+  active_during_body~ : Bool,
+  failure~ : Error?,
+) -> ExecutorActivationRealmProbe {
+  {
+    active_during_body,
+    expected_prototype: get_obj_proto(realm_state=Some(interp.realm_state)),
+    failure,
+  }
+}
+
+///|
+fn ExecutorActivationRealmProbe::assert_callee_realm(
+  self : ExecutorActivationRealmProbe,
+  interp : Interpreter,
+) -> Unit raise {
+  assert_eq(
+    interp.realm_state.active_overrides.val is Some(_),
+    self.active_during_body,
+  )
+  assert_true(
+    physical_equal(
+      get_obj_proto(realm_state=Some(interp.realm_state)),
+      self.expected_prototype,
+    ),
+  )
+}
+
+///|
+impl ExecutorCode for ExecutorActivationRealmProbe with fn start(
+  self,
+  interp,
+  _,
+) {
+  self.assert_callee_realm(interp)
+  self as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRealmProbe with fn step(
+  self,
+  interp,
+) {
+  self.assert_callee_realm(interp)
+  match self.failure {
+    Some(error) => raise error
+    None => executor_activation_return(Number(7.0))
+  }
+}
+
+///|
+impl ExecutorActivationFrame for ExecutorActivationRealmProbe with fn deliver_activation_completion(
+  _,
+  _,
+) {
+  fail("numeric leaf must not request a child activation")
+}
+
+///|
+test "numeric leaf activation preserves outer realm on return and failure" {
+  let sentinel : Error = @errors.RangeError(message="leaf failure")
+  for outer_active in [false, true] {
+    for failure in [None, Some(sentinel)] {
+      let interp = Interpreter::new()
+      let callee = make_classified_executor_function(
+        Some("leaf"),
+        ["value"],
+        interp.global,
+        false,
+        ExecutorActivationRealmProbe(
+          interp,
+          active_during_body=outer_active,
+          failure~,
+        ),
+        @parser.parse("return value;").stmts,
+        constructable=false,
+      )
+      if outer_active {
+        dispatch_shell_test_install_realm_sentinel(interp, 71)
+      }
+      let events : Array[String] = []
+      let control = ExecutionControl(
+        remaining_steps=100,
+        maximum_active_depth=10,
+        interruption=ExecutionInterruptionRequest(),
+      )
+      install_executor_activation_probe(
+        interp,
+        events,
+        None,
+        control=Some(control),
+      )
+      let root = ExecutorActivationCallFrame(
+          callee~,
+          this_value=Undefined,
+          args=[Number(7.0)],
+          loc=@token.Loc::default(),
+        )
+        as &ExecutorActivationFrame
+      let result : Result[ExecutorActivationStep, Error] = Ok(
+        interp.run_executor_activation_coordinator(root),
+      ) catch {
+        error => Err(error)
+      }
+      match (result, failure) {
+        (Ok(ExecutorActivationReturn(Number(value))), None) =>
+          assert_eq(value, 7.0)
+        (Err(error), Some(expected)) =>
+          assert_true(physical_equal(error, expected))
+        _ => fail("unexpected leaf completion")
+      }
+      assert_eq(control.active_depth(), 0)
+      if outer_active {
+        dispatch_shell_test_expect_realm_sentinel(interp, 71)
+        json_inspect(events, content=["attempt:outer", "release:outer"])
+      } else {
+        assert_true(interp.realm_state.active_overrides.val is None)
+        json_inspect(events, content=["attempt:cleared", "release:cleared"])
+      }
+    }
+  }
+}
+
+///|
 fn ExecutorActivationTestCode::ExecutorActivationTestCode(
   starts~ : Ref[Int],
   steps~ : Ref[Int],
