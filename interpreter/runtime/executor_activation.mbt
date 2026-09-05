@@ -1952,7 +1952,6 @@ pub fn ExecutorCallableData::start_frame(
 ///|
 priv struct ExecutorActivationCleanup {
   observation : ActivationObservationToken
-  cleared_realm : ClearedActiveCalleeRealmScope
   active_realm : ActiveCalleeRealmValueScope
   property_scope : ClearedActiveCalleeRealmScope?
   saved_in_default : Bool
@@ -2305,7 +2304,6 @@ priv struct ExecutorActivationStackEntry {
 ///|
 fn Interpreter::restore_executor_activation_resources(
   self : Interpreter,
-  cleared_realm : ClearedActiveCalleeRealmScope,
   active_realm : ActiveCalleeRealmValueScope,
   saved_in_default : Bool,
   saved_param_default_conflicts : @set.Set[String]?,
@@ -2314,7 +2312,6 @@ fn Interpreter::restore_executor_activation_resources(
   self.in_nonarrow_param_default_eval = saved_in_default
   self.param_default_eval_var_conflicts = saved_param_default_conflicts
   finish_active_callee_realm_value(self.realm_state, active_realm, failure~)
-  finish_cleared_active_callee_realm(self.realm_state, cleared_realm)
 }
 
 ///|
@@ -2324,7 +2321,6 @@ fn Interpreter::finish_executor_activation(
   failure : Error?,
 ) -> Unit raise Error {
   self.restore_executor_activation_resources(
-    cleanup.cleared_realm,
     cleanup.active_realm,
     cleanup.saved_in_default,
     cleanup.saved_param_default_conflicts,
@@ -2404,7 +2400,7 @@ fn Interpreter::start_executor_activation(
     })
     observe_executor_activation_entry(self)
   }
-  let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
+  // Save the caller directly: no guest work requires an intermediate empty realm.
   let active_realm = begin_active_callee_realm_value(self.realm_state, callee)
   let saved_in_default = self.in_nonarrow_param_default_eval
   let saved_param_default_conflicts = self.param_default_eval_var_conflicts
@@ -2468,7 +2464,6 @@ fn Interpreter::start_executor_activation(
     Err(error) => {
       reject_executor_activation_observation(observation)
       self.restore_executor_activation_resources(
-        cleared_realm,
         active_realm,
         saved_in_default,
         saved_param_default_conflicts,
@@ -2497,7 +2492,6 @@ fn Interpreter::start_executor_activation(
         completion: Some(completion),
         cleanup: Some({
           observation: accepted,
-          cleared_realm,
           active_realm,
           property_scope,
           saved_in_default,

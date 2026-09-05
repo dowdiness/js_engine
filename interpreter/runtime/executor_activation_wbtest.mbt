@@ -1,4 +1,145 @@
 ///|
+priv struct ActivationRealmProbe {
+  prototype : Value
+  failure_phase : String
+  failure : Error
+}
+
+///|
+fn ActivationRealmProbe::ActivationRealmProbe(
+  prototype : Value,
+  failure_phase : String,
+  failure : Error,
+) -> ActivationRealmProbe {
+  { prototype, failure_phase, failure }
+}
+
+///|
+fn ActivationRealmProbe::check(
+  self : ActivationRealmProbe,
+  interp : Interpreter,
+  phase : String,
+) -> Unit raise {
+  assert_true(
+    physical_equal(
+      get_obj_proto(realm_state=Some(interp.realm_state)),
+      self.prototype,
+    ),
+  )
+  assert_eq(interp.realm_state.active_source_identity.val, Some("callee.js"))
+  if self.failure_phase == phase {
+    raise self.failure
+  }
+}
+
+///|
+impl ExecutorCode for ActivationRealmProbe with fn start(self, interp, _) {
+  self.check(interp, "start")
+  self as &ExecutorActivationFrame
+}
+
+///|
+impl ExecutorActivationFrame for ActivationRealmProbe with fn step(self, interp) {
+  self.check(interp, "step")
+  executor_activation_return(Number(7.0))
+}
+
+///|
+impl ExecutorActivationFrame for ActivationRealmProbe with fn deliver_activation_completion(
+  _,
+  _,
+) {
+  fail("realm probe does not request child activations")
+}
+
+///|
+test "activation restores caller realm and source after return or failure" {
+  for phase in ["return", "start", "step"] {
+    let interp = Interpreter::new()
+    let thrown : Error = @errors.RangeError(message="realm probe")
+    let prototype = make_object(Map([]), Null, None, "Object", Map([]), true)
+    interp.realm_state.active_source_identity.val = Some("callee.js")
+    let callee = stamp_function_realm_with_protos(
+      make_executor_function(
+        Some("realm probe"),
+        [],
+        interp.global,
+        false,
+        ActivationRealmProbe(prototype, phase, thrown),
+        constructable=false,
+      ),
+      FunctionRealmProtos(object_proto=Some(prototype)),
+      false,
+    )
+    dispatch_shell_test_install_realm_sentinel(interp, 71)
+    interp.realm_state.active_source_identity.val = Some("caller.js")
+    let events : Array[String] = []
+    // Both observation boundaries must see the caller, not merely any realm.
+    let observer = make_object(
+      Map([]),
+      Null,
+      Some(
+        NonConstructableCallable("realm observer", args => {
+          dispatch_shell_test_expect_realm_sentinel(interp, 71)
+          assert_eq(
+            interp.realm_state.active_source_identity.val,
+            Some("caller.js"),
+          )
+          match args {
+            [String_(operation)] => events.push(operation)
+            _ => fail("expected an activation observation operation")
+          }
+          Undefined
+        }),
+      ),
+      "Object",
+      Map([]),
+      true,
+    )
+    interp.global.bindings[EXECUTION_CONTROL_BINDING] = {
+      value: observer,
+      kind: VarBinding,
+      initialized: true,
+      annex_b_hoisted: false,
+      is_parameter: false,
+    }
+    let root = ExecutorActivationCallFrame(
+        callee~,
+        this_value=Undefined,
+        args=[],
+        loc=@token.Loc::default(),
+      )
+      as &ExecutorActivationFrame
+    let result = observe_source_failure(interp.realm_state, () => {
+      // Check before source observation performs its own outer restoration.
+      defer {
+        dispatch_shell_test_expect_realm_sentinel(interp, 71)
+        assert_eq(
+          interp.realm_state.active_source_identity.val,
+          Some("caller.js"),
+        )
+      }
+      interp.run_executor_activation_coordinator(root)
+    })
+    match result {
+      Ok(ExecutorActivationReturn(Number(value))) => {
+        assert_eq(phase, "return")
+        assert_eq(value, 7.0)
+      }
+      Err(failure) => {
+        assert_true(phase != "return")
+        assert_true(physical_equal(failure.cause(), thrown))
+        assert_eq(failure.source_identity(), Some("callee.js"))
+      }
+      _ => fail("unexpected activation completion")
+    }
+    assert_eq(events.length(), 2)
+    assert_eq(events[0], EXECUTION_CONTROL_ACTIVATION)
+    assert_eq(events[1], EXECUTION_CONTROL_RELEASE)
+  }
+}
+
+///|
 priv struct ExecutorActivationTestCode {
   starts : Ref[Int]
   steps : Ref[Int]
