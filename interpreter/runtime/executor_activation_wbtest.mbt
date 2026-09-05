@@ -52,11 +52,32 @@ priv struct ExecutorActivationRealmProbe {
 
 ///|
 fn ExecutorActivationRealmProbe::ExecutorActivationRealmProbe(
+  interp : Interpreter,
   active_during_body~ : Bool,
-  expected_prototype~ : Value,
   failure~ : Error?,
 ) -> ExecutorActivationRealmProbe {
-  { active_during_body, expected_prototype, failure }
+  {
+    active_during_body,
+    expected_prototype: get_obj_proto(realm_state=Some(interp.realm_state)),
+    failure,
+  }
+}
+
+///|
+fn ExecutorActivationRealmProbe::assert_callee_realm(
+  self : ExecutorActivationRealmProbe,
+  interp : Interpreter,
+) -> Unit raise {
+  assert_eq(
+    interp.realm_state.active_overrides.val is Some(_),
+    self.active_during_body,
+  )
+  assert_true(
+    physical_equal(
+      get_obj_proto(realm_state=Some(interp.realm_state)),
+      self.expected_prototype,
+    ),
+  )
 }
 
 ///|
@@ -65,16 +86,7 @@ impl ExecutorCode for ExecutorActivationRealmProbe with fn start(
   interp,
   _,
 ) {
-  assert_eq(
-    interp.realm_state.active_overrides.val is Some(_),
-    self.active_during_body,
-  )
-  assert_true(
-    physical_equal(
-      get_obj_proto(realm_state=Some(interp.realm_state)),
-      self.expected_prototype,
-    ),
-  )
+  self.assert_callee_realm(interp)
   self as &ExecutorActivationFrame
 }
 
@@ -83,16 +95,7 @@ impl ExecutorActivationFrame for ExecutorActivationRealmProbe with fn step(
   self,
   interp,
 ) {
-  assert_eq(
-    interp.realm_state.active_overrides.val is Some(_),
-    self.active_during_body,
-  )
-  assert_true(
-    physical_equal(
-      get_obj_proto(realm_state=Some(interp.realm_state)),
-      self.expected_prototype,
-    ),
-  )
+  self.assert_callee_realm(interp)
   match self.failure {
     Some(error) => raise error
     None => executor_activation_return(Number(7.0))
@@ -109,19 +112,19 @@ impl ExecutorActivationFrame for ExecutorActivationRealmProbe with fn deliver_ac
 
 ///|
 test "numeric leaf activation preserves outer realm on return and failure" {
+  let sentinel : Error = @errors.RangeError(message="leaf failure")
   for outer_active in [false, true] {
-    for throws in [false, true] {
+    for failure in [None, Some(sentinel)] {
       let interp = Interpreter::new()
-      let sentinel : Error = @errors.RangeError(message="leaf failure")
       let callee = make_classified_executor_function(
         Some("leaf"),
         ["value"],
         interp.global,
         false,
         ExecutorActivationRealmProbe(
+          interp,
           active_during_body=outer_active,
-          expected_prototype=get_obj_proto(realm_state=Some(interp.realm_state)),
-          failure=if throws { Some(sentinel) } else { None },
+          failure~,
         ),
         @parser.parse("return value;").stmts,
         constructable=false,
@@ -153,15 +156,11 @@ test "numeric leaf activation preserves outer realm on return and failure" {
       ) catch {
         error => Err(error)
       }
-      match result {
-        Ok(ExecutorActivationReturn(Number(value))) => {
-          assert_false(throws)
+      match (result, failure) {
+        (Ok(ExecutorActivationReturn(Number(value))), None) =>
           assert_eq(value, 7.0)
-        }
-        Err(error) => {
-          assert_true(throws)
-          assert_true(physical_equal(error, sentinel))
-        }
+        (Err(error), Some(expected)) =>
+          assert_true(physical_equal(error, expected))
         _ => fail("unexpected leaf completion")
       }
       assert_eq(control.active_depth(), 0)
