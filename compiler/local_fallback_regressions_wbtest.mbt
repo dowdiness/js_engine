@@ -66,3 +66,17 @@ test "candidate strict assignments respect readonly global bindings" {
     assert_eq(value.to_string(), "TypeError", msg=name)
   }
 }
+
+///|
+test "global lexical binding shadows a readonly global object property" {
+  let source =
+    #|'use strict';
+    #|var named = function self() {};
+    #|let value = 2;
+    #|Object.defineProperty(globalThis, 'value', { value: 1, writable: false, configurable: true });
+    #|function write() { value = 3; }
+    #|write();
+    #|value + ':' + globalThis.value;
+  let (value, _) = candidate_run_with_evidence_for_wb(source)
+  assert_eq(value.to_string(), "3:1")
+}

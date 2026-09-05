@@ -541,7 +541,9 @@ fn try_executor_binding_reference_plain(
           None =>
             match env.resolve_slot(request.name) {
               Some(slot) => {
-                let kind = if env.parent is None &&
+                let kind = if env.bindings.get(request.name)
+                  is Some({ kind: VarBinding, .. }) &&
+                  env.parent is None &&
                   interp.is_immutable_global(request.name) {
                   ResolvedBindingGlobal
                 } else {
@@ -870,7 +872,7 @@ fn ExecutorBindingReferenceFrame::step_environment(
     }
     None =>
       match env.bindings.get(self.request.name) {
-        Some(_) if env.parent is None &&
+        Some({ kind: VarBinding, .. }) if env.parent is None &&
           interp.is_immutable_global(self.request.name) =>
           self.complete_global(true)
         Some(_) => self.complete_lexical(env)
