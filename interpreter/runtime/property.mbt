@@ -260,17 +260,7 @@ fn Interpreter::get_property_impl(
         }
       }
     String_(s) => self.get_string_property(obj, s, prop, loc)
-    Number(_) => {
-      let result = (self.stdlib_hooks.get_number_method)(
-        obj,
-        prop,
-        self.realm_state,
-      )
-      match result {
-        Undefined => lookup_builtin_proto(self, obj, "Number", prop, loc)
-        _ => result
-      }
-    }
+    Number(_) => lookup_builtin_proto(self, obj, "Number", prop, loc)
     Bool(_) => lookup_builtin_proto(self, obj, "Boolean", prop, loc)
     Symbol(sym) =>
       // Symbol properties: description, toString
@@ -1535,11 +1525,7 @@ fn Interpreter::get_computed_property_impl(
     Number(_) =>
       match key {
         String_(method_name) =>
-          (self.stdlib_hooks.get_number_method)(
-            obj,
-            method_name,
-            self.realm_state,
-          )
+          lookup_builtin_proto(self, obj, "Number", method_name, loc)
         _ => Undefined
       }
     Map(_) | Set(_) => {
