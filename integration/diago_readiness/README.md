@@ -43,12 +43,26 @@ Run one explicit target/profile cell from the repository root:
 ```bash
 make diago-readiness TARGET=js PROFILE=debug
 make diago-readiness TARGET=wasm PROFILE=release
+make diago-readiness TARGET=js PROFILE=debug EXECUTOR=candidate
 ```
 
 Valid targets are `native`, `js`, `wasm`, and `wasm-gc`; valid profiles are
 `debug` and `release`. Each invocation has a 15-minute bound and no retry. This
 command is intentionally outside the permanent required pull-request gate.
 
+`EXECUTOR=treewalker` is the default and retains the explicit Tree-walker
+oracle. `EXECUTOR=candidate` selects verified bytecode for eligible activations
+and allows pre-execution Tree-walker fallback for unsupported activations,
+through the same stable `Engine` facade. It is not a bytecode-only execution
+claim. The `candidate/` package shares the four asset/test files through relative
+symlinks, so both configurations use identical sources, expectations, and
+checkpoint ordering. Run each executor separately; the command selects only its
+package. Invalid executor names are rejected before compilation.
+
 The recorded current-release matrix and its native-debug rejection are in
 [RESULTS.md](RESULTS.md). A failed cell is evidence, not a reason to weaken the
 command or replace the result with a larger host-stack setting.
+
+The first candidate investigation is recorded separately in
+[CANDIDATE_RESULTS.md](CANDIDATE_RESULTS.md); the historical Tree-walker matrix
+does not establish candidate readiness.

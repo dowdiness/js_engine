@@ -39,6 +39,7 @@ external-consumer-test:
 
 # Run the pinned former-Diago readiness fixture for one explicit target/profile.
 # This reproducible check is intentionally not part of the permanent PR gate.
+diago-readiness: EXECUTOR ?= treewalker
 diago-readiness:
 	@if [ "$(origin TARGET)" != "command line" ]; then \
 		echo "TARGET must be supplied on the diago-readiness command line" >&2; \
@@ -57,7 +58,13 @@ diago-readiness:
 		release) release=--release;; \
 		*) echo "PROFILE must be debug or release (got $(PROFILE))" >&2; exit 2;; \
 	esac; \
-	timeout 900s sh -c 'cd integration/diago_readiness && moon check --target "$$1" --deny-warn . && moon test --target "$$1" $$2 .' sh "$(TARGET)" "$$release"
+	case "$(EXECUTOR)" in \
+		treewalker) package=.;; \
+		candidate) package=candidate;; \
+		*) echo "EXECUTOR must be treewalker or candidate (got $(EXECUTOR))" >&2; exit 2;; \
+	esac; \
+	echo "Diago readiness: executor=$(EXECUTOR) target=$(TARGET) profile=$(PROFILE)"; \
+	timeout 900s sh -c 'cd integration/diago_readiness && moon check --target "$$1" --deny-warn "$$3" && moon test --target "$$1" $$2 "$$3"' sh "$(TARGET)" "$$release" "$$package"
 
 # Run only the permanent stack-safety gate for one target and profile.
 # TARGET and PROFILE must be supplied explicitly; CI invokes both profiles for

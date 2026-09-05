@@ -1,0 +1,62 @@
+Diago readiness validation, 2026-09-05 (Asia/Tokyo)
+Engine HEAD: c7d68b74e4dfbdac2ab17141821874e4b1292184
+moon 0.1.20260819 (fc2a4ee 2026-08-19)
+Working tree: dirty; readiness configuration/docs only in this change.
+One invocation per cell, timeout 900s, no retry or host-stack override.
+
+$ make diago-readiness TARGET=js PROFILE=debug EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=js profile=debug
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=js PROFILE=release EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=js profile=release
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=wasm PROFILE=debug EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=wasm profile=debug
+Finished. moon: ran 15 tasks, now up to date
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=wasm PROFILE=release EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=wasm profile=release
+Blocking waiting for file lock /home/antisatori/ghq/github.com/dowdiness/js_engine/integration/_build/.moon-lock ...
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=wasm-gc PROFILE=debug EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=wasm-gc profile=debug
+Finished. moon: ran 15 tasks, now up to date
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=wasm-gc PROFILE=release EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=wasm-gc profile=release
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=native PROFILE=debug EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=native profile=debug
+Finished. moon: ran 15 tasks, now up to date
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=native PROFILE=release EXECUTOR=candidate
+Exit status: 0
+Diago readiness: executor=candidate target=native profile=release
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+
+$ make diago-readiness TARGET=js PROFILE=debug EXECUTOR=treewalker
+Exit status: 0
+Diago readiness: executor=treewalker target=js profile=debug
+Blocking waiting for file lock /home/antisatori/ghq/github.com/dowdiness/js_engine/integration/_build/.moon-lock ...
+Finished. moon: no work to do
+Blocking waiting for file lock /home/antisatori/ghq/github.com/dowdiness/js_engine/integration/_build/.moon-lock ...
+Total tests: 6, passed: 6, failed: 0.
