@@ -92,31 +92,28 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
         message="Expected let/const/var at line \{tok.loc.line}, col \{tok.loc.col}",
       )
   }
-  // Check for destructuring pattern
-  if self.at(LBracket) || self.at(LBrace) {
+  // Parse the first declarator, whether it is a binding name or pattern.
+  let first_decl : @ast.Stmt = if self.at(LBracket) || self.at(LBrace) {
     let pat = self.parse_pattern()
     let _ = self.expect(Assign)
     let init = self.parse_assignment()
-    self.eat_semicolon()
-    return DestructureDecl(kind, pat, init, tok.loc)
-  }
-  // Parse first declarator
-  let name = self.expect_ident()
-  let init : @ast.Expr? = if self.eat(Assign) {
-    Some(self.parse_assignment())
+    DestructureDecl(kind, pat, init, tok.loc)
   } else {
-    None
+    let name = self.expect_ident()
+    let init : @ast.Expr? = if self.eat(Assign) {
+      Some(self.parse_assignment())
+    } else {
+      None
+    }
+    VarDecl(kind, name, init, tok.loc)
   }
-  // Check for comma-separated declarations (e.g., var a, b, c;)
+  // A declaration list uses the same grammar for every following declarator.
   if !self.at(Comma) {
     self.eat_semicolon()
-    return VarDecl(kind, name, init, tok.loc)
+    return first_decl
   }
-  // Multiple declarations - collect them all
-  let decls : Array[@ast.Stmt] = []
-  decls.push(VarDecl(kind, name, init, tok.loc))
+  let decls : Array[@ast.Stmt] = [first_decl]
   while self.eat(Comma) {
-    // Check for destructuring in subsequent declarators
     if self.at(LBracket) || self.at(LBrace) {
       let pat = self.parse_pattern()
       let _ = self.expect(Assign)
@@ -133,7 +130,7 @@ fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
     }
   }
   self.eat_semicolon()
-  // Return as StmtList (no new scope, preserves hoisting semantics)
+  // StmtList introduces no scope and preserves declaration ordering.
   StmtList(decls, tok.loc)
 }
 

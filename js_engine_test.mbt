@@ -250,6 +250,29 @@ test "computed constructor supports mixed bracket and dot chains" {
 }
 
 ///|
+test "destructuring declaration list preserves following var initializer order" {
+  let src = "var [a] = [1], b = a + 1; b"
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "2", "var declaration list ordering")
+}
+
+///|
+test "destructuring declaration list supports consecutive object patterns" {
+  let src = "let {a} = {a: 1}, {b} = {b: 2}; a + b"
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "3", "both object patterns bind values")
+}
+
+///|
+test "destructuring declaration list keeps bindings visible afterward" {
+  let src = "const {a} = {a: 1}, [b] = [2]; a + b"
+  let (_, result) = @js_engine.run(src)
+  expect_string(
+    result, "3", "both bindings remain visible after the declaration",
+  )
+}
+
+///|
 test "computed constructor allows omitted argument-list parentheses" {
   let src =
     #|var key = "Box";
