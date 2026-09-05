@@ -1,0 +1,76 @@
+{
+  "runs": [
+    {
+      "phase": "warmup",
+      "pair": null,
+      "side": "before",
+      "elapsedMs": 35009.701223
+    },
+    {
+      "phase": "warmup",
+      "pair": null,
+      "side": "after",
+      "elapsedMs": 34213.264863
+    },
+    {
+      "phase": "measurement",
+      "pair": 0,
+      "side": "before",
+      "elapsedMs": 31891.150833
+    },
+    {
+      "phase": "measurement",
+      "pair": 0,
+      "side": "after",
+      "elapsedMs": 31154.228329
+    },
+    {
+      "phase": "measurement",
+      "pair": 1,
+      "side": "after",
+      "elapsedMs": 30893.170454
+    },
+    {
+      "phase": "measurement",
+      "pair": 1,
+      "side": "before",
+      "elapsedMs": 32493.823132
+    },
+    {
+      "phase": "measurement",
+      "pair": 2,
+      "side": "before",
+      "elapsedMs": 37608.771692
+    },
+    {
+      "phase": "measurement",
+      "pair": 2,
+      "side": "after",
+      "elapsedMs": 33079.27069
+    },
+    {
+      "phase": "measurement",
+      "pair": 3,
+      "side": "after",
+      "elapsedMs": 32378.222927
+    },
+    {
+      "phase": "measurement",
+      "pair": 3,
+      "side": "before",
+      "elapsedMs": 34231.990903
+    },
+    {
+      "phase": "measurement",
+      "pair": 4,
+      "side": "before",
+      "elapsedMs": 31949.728904
+    },
+    {
+      "phase": "measurement",
+      "pair": 4,
+      "side": "after",
+      "elapsedMs": 30954.476135
+    }
+  ]
+}
