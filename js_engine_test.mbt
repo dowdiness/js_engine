@@ -69,6 +69,48 @@ test "run facade" {
 }
 
 ///|
+test "Number primitive method lookup returns the built-in" {
+  let src = "(2).toFixed === Number.prototype.toFixed && " +
+    "(2)[\"toFixed\"] === Number.prototype.toFixed"
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "Number.prototype.toFixed identity")
+}
+
+///|
+test "Number primitive toFixed call returns text" {
+  let src = "(2).toFixed(2)"
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "2.00", "toFixed call")
+}
+
+///|
+test "Number primitive method lookup honors prototype replacement" {
+  let src =
+    #|Number.prototype.toFixed = function() { return this.valueOf() + ":custom"; };
+    #|(2).toFixed() === "2:custom" && (2)["toFixed"]() === "2:custom";
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "replaced Number.prototype.toFixed")
+}
+
+///|
+test "Number primitive method lookup honors prototype deletion" {
+  let src =
+    #|delete Number.prototype.toFixed;
+    #|typeof (2).toFixed === "undefined" && typeof (2)["toFixed"] === "undefined";
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "deleted Number.prototype.toFixed")
+}
+
+///|
+test "Number primitive lookup getter receives primitive receiver" {
+  let src =
+    #|Object.defineProperty(Number.prototype, "toFixed", { get: function() { "use strict"; return typeof this + ":" + (this === 2); } });
+    #|(2).toFixed === "number:true" && (2)["toFixed"] === "number:true";
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "Number.prototype.toFixed getter receiver")
+}
+
+///|
 test "ES6 iterators inherit identity from the shared iterator prototype" {
   for
     case in [
