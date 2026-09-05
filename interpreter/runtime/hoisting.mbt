@@ -437,14 +437,18 @@ pub fn validate_compiled_script_early_errors(
           | AsyncArrowFunc(_, body, _, _)
           | AsyncGeneratorExpr(_, _, body, _, _) =>
             schedule_function_body(work, None, body, strict)
-          FuncExprExt(_, params, _, body, _, _)
-          | GeneratorExprExt(_, params, _, body, _, _)
-          | AsyncFuncExprExt(_, params, _, body, _, _)
-          | AsyncGeneratorExprExt(_, params, _, body, _, _) =>
+          FuncExprExt(_, params, rest_param, body, _, _)
+          | GeneratorExprExt(_, params, rest_param, body, _, _)
+          | AsyncFuncExprExt(_, params, rest_param, body, _, _)
+          | AsyncGeneratorExprExt(_, params, rest_param, body, _, _) => {
+            check_duplicate_params_ext(params, rest_param)
             schedule_function_body(work, Some(params), body, strict)
-          ArrowFuncExt(params, _, body, _, _)
-          | AsyncArrowFuncExt(params, _, body, _, _) =>
+          }
+          ArrowFuncExt(params, rest_param, body, _, _)
+          | AsyncArrowFuncExt(params, rest_param, body, _, _) => {
+            check_duplicate_params_ext(params, rest_param)
             schedule_function_body(work, Some(params), body, strict)
+          }
           ClassExpr(_, superclass, members, _, _) => {
             schedule_class_members_reverse(work, members)
             match superclass {
@@ -688,11 +692,13 @@ pub fn validate_compiled_script_early_errors(
           | AsyncFuncDecl(_, _, body, _, _)
           | AsyncGeneratorDecl(_, _, body, _, _) =>
             schedule_function_body(work, None, body, strict)
-          FuncDeclExt(_, params, _, body, _, _)
-          | GeneratorDeclExt(_, params, _, body, _, _)
-          | AsyncFuncDeclExt(_, params, _, body, _, _)
-          | AsyncGeneratorDeclExt(_, params, _, body, _, _) =>
+          FuncDeclExt(_, params, rest_param, body, _, _)
+          | GeneratorDeclExt(_, params, rest_param, body, _, _)
+          | AsyncFuncDeclExt(_, params, rest_param, body, _, _)
+          | AsyncGeneratorDeclExt(_, params, rest_param, body, _, _) => {
+            check_duplicate_params_ext(params, rest_param)
             schedule_function_body(work, Some(params), body, strict)
+          }
           ClassDecl(_, superclass, members, _, _) => {
             schedule_class_members_reverse(work, members)
             match superclass {
