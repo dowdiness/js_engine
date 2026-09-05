@@ -104,8 +104,10 @@ test "Number primitive method lookup honors prototype deletion" {
 ///|
 test "Number primitive lookup getter receives primitive receiver" {
   let src =
-    #|Object.defineProperty(Number.prototype, "toFixed", { get: function() { "use strict"; return typeof this + ":" + (this === 2); } });
-    #|(2).toFixed === "number:true" && (2)["toFixed"] === "number:true";
+    #|Object.defineProperty(Number.prototype, "toFixed", {
+    #|  get: function() { "use strict"; return this; }
+    #|});
+    #|(2).toFixed === 2 && (2)["toFixed"] === 2;
   let (_, result) = @js_engine.run(src)
   expect_string(result, "true", "Number.prototype.toFixed getter receiver")
 }
