@@ -36,40 +36,51 @@ The generator verifies the upstream bytes before exposing only the source
 bindings needed by this black-box test module. The embedded JavaScript strings
 are unchanged. Normal tests never access the network.
 
-## Readiness command
+## Run readiness
+
+Both configurations run the same six assertions and pinned inputs through the
+stable `Engine` facade:
+
+| Package | Execution policy |
+| --- | --- |
+| `.` | Explicit Tree-walker; the default for this readiness command |
+| `candidate/` | Verified bytecode where eligible, with pre-execution Tree-walker fallback |
+
+The policy is a build-time virtual-package override. `candidate/` contains only
+that configuration and relative links to the four shared asset/test files.
+There is one copy of each input and assertion to maintain.
 
 Run one explicit target/profile cell from the repository root:
 
 ```bash
 make diago-readiness TARGET=js PROFILE=debug
-make diago-readiness TARGET=wasm PROFILE=release
-make diago-readiness TARGET=js PROFILE=debug EXECUTOR=candidate
+make diago-readiness TARGET=native PROFILE=release EXECUTOR=candidate
 ```
 
-Valid targets are `native`, `js`, `wasm`, and `wasm-gc`; valid profiles are
-`debug` and `release`. Each invocation has a 15-minute bound and no retry. This
-command is intentionally outside the permanent required pull-request gate.
+`TARGET` and `PROFILE` must be supplied on the command line. Targets are `js`,
+`wasm`, `wasm-gc`, and `native`; profiles are `debug` and `release`.
+`EXECUTOR` accepts `treewalker` (default) or `candidate`.
 
-`EXECUTOR=treewalker` is the default and retains the explicit Tree-walker
-oracle. `EXECUTOR=candidate` selects verified bytecode for eligible activations
-and allows pre-execution Tree-walker fallback for unsupported activations,
-through the same stable `Engine` facade. It is not a bytecode-only execution
-claim. The `candidate/` package shares the four asset/test files through relative
-symlinks, so both configurations use identical sources, expectations, and
-checkpoint ordering. Run each executor separately; the command selects only its
-package. Invalid executor names are rejected before compilation.
+Make validates those choices and runs `moon test --deny-warn` once for the
+selected package. Type checking and test compilation are part of that command;
+compiler warnings and test failures fail the cell. The command has a 900-second
+bound, without retries or host-stack overrides. It remains outside the
+permanent required PR gate.
 
-The recorded current-release matrix and its native-debug rejection are in
-[RESULTS.md](RESULTS.md). A failed cell is evidence, not a reason to weaken the
-command or replace the result with a larger host-stack setting.
+## Execution routing and recorded results
 
-The first candidate investigation is recorded separately in
-[CANDIDATE_RESULTS.md](CANDIDATE_RESULTS.md); the historical Tree-walker matrix
-does not establish candidate readiness.
+The maintained [compiler route regressions](../../compiler/named_function_candidate_wbtest.mbt)
+check that named-expression fallback preserves eligible sibling and descendant
+execution. The [Engine regression](../../engine_named_function_test.mbt) checks
+bindings and callbacks across later evaluations. Readiness tests check the
+resulting workload behavior; they do not measure speed or count activations.
 
-The follow-up [route investigation](ROUTE_PROFILE.md) distinguishes static
-selection from actual execution. It records whole-program Tree-walker fallback
-for the main MathJax/Rough.js bundles and identifies named function expressions
-as the next boundary to investigate. The separate `profile/` package is a
-diagnostic adapter; `diago-readiness` continues to select only the requested
-behavioral-oracle package.
+The named-expression fix and all eight passing candidate cells are recorded in
+[the implementation results](archive/LOCAL_NAMED_FALLBACK_RESULTS.md).
+Earlier evidence is retained in the [initial candidate matrix](archive/CANDIDATE_RESULTS.md),
+[route investigation](archive/ROUTE_PROFILE.md), and
+[2026-08-07 Tree-walker matrix](RESULTS.md).
+
+The detailed generated-JS profiler was a one-off investigation. Its raw results
+are archived, and its source remains linked from the investigation's historical
+commit. It is not a maintained command or a dependency of readiness testing.

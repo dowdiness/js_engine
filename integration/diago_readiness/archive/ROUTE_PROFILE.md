@@ -104,7 +104,7 @@ coverage.
 
 ## Why the whole bundle falls back
 
-[`candidate_requires_plain_tree_execution`](../../compiler/candidate_execution.mbt)
+[`candidate_requires_plain_tree_execution`](https://github.com/dowdiness/js_engine/blob/7393886bfe3fa1a607f0b6d317cd289cde09fb7d/compiler/candidate_execution.mbt)
 recursively tests selected fallback reasons. `NamedFunctionExpression` is one
 of the reasons that forces ordinary tree execution for the whole program.
 Among the selected reasons in these two bundle plans, named function expressions
@@ -117,7 +117,7 @@ second and third retain their self-name in Promise/retry callbacks.
 
 One Rough.js example is the named `getPrototypeOf` expression inside
 `_get_prototype_of`, at JavaScript line 42, column 73 (the checked-in
-[asset](sketch_assets.mbt) includes the MoonBit wrapper lines). Its presence in
+[asset](../sketch_assets.mbt) includes the MoonBit wrapper lines). Its presence in
 the selected plan participates in the whole-program decision independently of
 whether that particular function expression is evaluated in a test.
 
@@ -153,9 +153,16 @@ Only after that boundary is addressed should this workload's remaining
 `for-in`, `try/catch`, or conversion fallback counts select the next operation
 family. Performance optimization would require a separate reproducing benchmark.
 
-## Reproduce and maintain the diagnostic
+## Historical diagnostic reproduction
 
-From the repository root, choose a new output path:
+The one-off generated-JS diagnostic and its `profile/` package are no longer
+maintained in the current tree. Their complete implementation remains at
+[commit 8cb482e8](https://github.com/dowdiness/js_engine/tree/8cb482e87ca9407a7eb014e2e78a35bce3910677).
+The commands below describe that historical checkout and recorded toolchain.
+The retained JSON and logs are measurements from that checkout, not results
+for an arbitrary future engine version.
+
+From that checkout, choose a new output path:
 
 ```bash
 node scripts/test_diago_route_profile.cjs

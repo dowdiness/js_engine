@@ -1,1 +1,0 @@
-../latex_assets.mbt

@@ -156,24 +156,6 @@
       "reason": "candidate readiness runs the shared stable-facade fixture with a build-time override"
     },
     {
-      "from": "integration/diago_readiness/profile",
-      "to": ".",
-      "scope": "test",
-      "reason": "route profiling retains the shared stable-facade behavioral oracle"
-    },
-    {
-      "from": "integration/diago_readiness/profile",
-      "to": "parser",
-      "scope": "test",
-      "reason": "test-only route profiling parses pinned inputs for the static selection diagnostic"
-    },
-    {
-      "from": "integration/diago_readiness/profile",
-      "to": "compiler",
-      "scope": "test",
-      "reason": "test-only route profiling consumes the existing unstable static selection projection"
-    },
-    {
       "from": "ast",
       "to": "token",
       "scope": "prod",

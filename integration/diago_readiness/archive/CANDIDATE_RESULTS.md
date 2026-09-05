@@ -41,7 +41,7 @@ retry or host-stack overrides. Some commands waited for the shared Moon build
 lock within that bound. Full command output is in
 [candidate-validation.txt](candidate-validation.txt).
 
-The historical native-debug rejection in [RESULTS.md](RESULTS.md) remains a
+The historical native-debug rejection in [RESULTS.md](../RESULTS.md) remains a
 valid record of its earlier engine/toolchain and Tree-walker configuration.
 This run changes all three variables, so it cannot attribute the difference
 solely to bytecode or establish that current Tree-walker native debug is fixed.
