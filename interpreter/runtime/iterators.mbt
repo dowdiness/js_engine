@@ -260,7 +260,6 @@ fn make_array_iterator_proto_value(
   iterator_proto : Value,
   realm_state : RealmState,
 ) -> Value {
-  let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
   let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = String_("Array Iterator")
@@ -274,20 +273,6 @@ fn make_array_iterator_proto_value(
     setter: None,
     is_accessor: false,
   }
-  proto_sym_descs[iterator_sym.id] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  proto_sym_props[iterator_sym.id] = make_method_func(
-    name="[Symbol.iterator]",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) { this_val },
-  )
   proto_props["next"] = make_interp_method_func(
     name="next",
     length=0,
@@ -498,7 +483,6 @@ fn make_string_iterator_proto_value(
   iterator_proto : Value,
   realm_state : RealmState,
 ) -> Value {
-  let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
   let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = String_("String Iterator")
@@ -512,12 +496,6 @@ fn make_string_iterator_proto_value(
     setter: None,
     is_accessor: false,
   }
-  proto_sym_props[iterator_sym.id] = make_method_func(
-    name="[Symbol.iterator]",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) { this_val },
-  )
   proto_props["next"] = make_method_func(
     name="next",
     length=0,

@@ -209,7 +209,6 @@ fn build_keyed_collection_iterator_proto(
   next_handler : (Value) -> Value raise Error,
 ) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
-  let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
   let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = Value::String_(iterator_name)
@@ -223,12 +222,6 @@ fn build_keyed_collection_iterator_proto(
     setter: None,
     is_accessor: false,
   }
-  proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
-    name="[Symbol.iterator]",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) { this_val },
-  )
   proto_props["next"] = @runtime.make_method_func(
     name="next",
     length=0,

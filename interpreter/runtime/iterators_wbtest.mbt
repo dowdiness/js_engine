@@ -143,10 +143,10 @@ test "iterator prototypes use their realm well-known symbol ids" {
     shifted_symbols.iterator,
   )
   let array_proto = shifted_realm.get_array_iterator_proto()
-  assert_symbol_prop(
+  assert_object_prototype(
     "array iterator prototype",
     array_proto,
-    shifted_symbols.iterator,
+    shifted_realm.get_iterator_proto(),
   )
   assert_symbol_prop(
     "array iterator prototype",
@@ -154,10 +154,10 @@ test "iterator prototypes use their realm well-known symbol ids" {
     shifted_symbols.to_string_tag,
   )
   let string_proto = shifted_realm.get_string_iterator_proto()
-  assert_symbol_prop(
+  assert_object_prototype(
     "string iterator prototype",
     string_proto,
-    shifted_symbols.iterator,
+    shifted_realm.get_iterator_proto(),
   )
   assert_symbol_prop(
     "string iterator prototype",

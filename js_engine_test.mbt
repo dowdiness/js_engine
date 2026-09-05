@@ -69,6 +69,31 @@ test "run facade" {
 }
 
 ///|
+test "ES6 iterators inherit identity from the shared iterator prototype" {
+  let src =
+    #|function check(name, iterator) {
+    #|  var derived = Object.getPrototypeOf(iterator);
+    #|  var shared = Object.getPrototypeOf(derived);
+    #|  console.log(
+    #|    name,
+    #|    shared.hasOwnProperty(Symbol.iterator),
+    #|    derived.hasOwnProperty(Symbol.iterator),
+    #|    iterator.hasOwnProperty(Symbol.iterator),
+    #|    iterator[Symbol.iterator]() === iterator
+    #|  );
+    #|}
+    #|check("Array", [][Symbol.iterator]());
+    #|check("String", ""[Symbol.iterator]());
+    #|check("Map", new Map()[Symbol.iterator]());
+    #|check("Set", new Set()[Symbol.iterator]());
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "Array true false false true", "String true false false true", "Map true false false true",
+    "Set true false false true",
+  ])
+}
+
+///|
 test "Engine default keeps the stable tree-walker consumer contract" {
   let engine = @js_engine.Engine()
   engine.eval("function answer(value) { return value + 1; }")
