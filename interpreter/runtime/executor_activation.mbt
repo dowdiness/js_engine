@@ -3823,8 +3823,8 @@ fn executor_call_completion(
     ArrowExecutorCallable =>
       match step {
         ExecutorActivationContinue => Undefined
-        ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
-          value
+        ExecutorActivationNormal(_) => Undefined
+        ExecutorActivationReturn(value) => value
         ExecutorActivationCall(_)
         | ExecutorActivationConstruct(_)
         | ExecutorActivationPropertyGet(_)

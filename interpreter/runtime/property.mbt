@@ -188,6 +188,20 @@ pub fn Interpreter::get_property(
 ) -> Value raise Error {
   match obj {
     Object(data) => {
+      // Constant string keys and computed keys must share integer-indexed
+      // [[Get]], including the terminal undefined result for invalid indices.
+      if is_typedarray_class(data.class_name) {
+        match classify_typedarray_string_key(prop) {
+          Some(-1) => return Undefined
+          Some(index) =>
+            return (self.stdlib_hooks.typedarray_get_index)(
+              data,
+              index,
+              self.realm_state,
+            )
+          None => ()
+        }
+      }
       // Descriptor maps are empty for ordinary object-literal data slots.
       // Check emptiness first so that hot own-data reads avoid hashing the
       // property name into the descriptor map before the value-map lookup.

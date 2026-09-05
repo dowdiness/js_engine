@@ -150,6 +150,12 @@
       "reason": "Diago readiness fixture exercises pinned workloads through the stable root facade"
     },
     {
+      "from": "integration/diago_readiness/candidate",
+      "to": ".",
+      "scope": "test",
+      "reason": "candidate readiness runs the shared stable-facade fixture with a build-time override"
+    },
+    {
       "from": "ast",
       "to": "token",
       "scope": "prod",

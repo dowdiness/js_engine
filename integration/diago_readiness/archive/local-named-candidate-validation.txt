@@ -1,0 +1,50 @@
+
+$ make diago-readiness TARGET=js PROFILE=debug EXECUTOR=candidate
+Diago readiness: executor=candidate target=js profile=debug
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=js PROFILE=release EXECUTOR=candidate
+Diago readiness: executor=candidate target=js profile=release
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=wasm PROFILE=debug EXECUTOR=candidate
+Diago readiness: executor=candidate target=wasm profile=debug
+Finished. moon: ran 3 tasks, now up to date
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=wasm PROFILE=release EXECUTOR=candidate
+Diago readiness: executor=candidate target=wasm profile=release
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=wasm-gc PROFILE=debug EXECUTOR=candidate
+Diago readiness: executor=candidate target=wasm-gc profile=debug
+Finished. moon: ran 2 tasks, now up to date
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=wasm-gc PROFILE=release EXECUTOR=candidate
+Diago readiness: executor=candidate target=wasm-gc profile=release
+Blocking waiting for file lock /home/antisatori/ghq/github.com/dowdiness/js_engine/integration/_build/.moon-lock ...
+Finished. moon: no work to do
+Blocking waiting for file lock /home/antisatori/ghq/github.com/dowdiness/js_engine/integration/_build/.moon-lock ...
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=native PROFILE=debug EXECUTOR=candidate
+Diago readiness: executor=candidate target=native profile=debug
+Finished. moon: ran 2 tasks, now up to date
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0
+
+$ make diago-readiness TARGET=native PROFILE=release EXECUTOR=candidate
+Diago readiness: executor=candidate target=native profile=release
+Finished. moon: no work to do
+Total tests: 6, passed: 6, failed: 0.
+EXIT: 0

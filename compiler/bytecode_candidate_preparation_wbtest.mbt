@@ -2841,14 +2841,14 @@ test "candidate tree separates same-name same-signature siblings" {
     #|}
     #|parent(false) - parent(true);
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  if value.to_string() != "10" {
-    fail("same-name sibling route returned an unexpected value")
-  }
-  let starts = candidate_started_executors_for_wb(evidence)
-  if starts.length() != 1 || starts[0] != CandidateTreeWalkerExecutor {
-    fail(
-      "named function source did not remain on the plain tree route: " +
-      candidate_started_executor_labels_for_wb(evidence),
+  assert_eq(value.to_string(), "10")
+  let parent = prepare_candidate_program(@parser.parse(source).stmts).root.children[0]
+  // Both syntax sites must execute despite sharing a name and parameter list.
+  for sibling in parent.children {
+    assert_candidate_function_started_for_wb(
+      evidence,
+      sibling,
+      CandidateTreeWalkerExecutor,
     )
   }
 }

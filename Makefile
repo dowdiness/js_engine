@@ -39,25 +39,16 @@ external-consumer-test:
 
 # Run the pinned former-Diago readiness fixture for one explicit target/profile.
 # This reproducible check is intentionally not part of the permanent PR gate.
+diago-readiness: EXECUTOR ?= treewalker
 diago-readiness:
-	@if [ "$(origin TARGET)" != "command line" ]; then \
-		echo "TARGET must be supplied on the diago-readiness command line" >&2; \
-		exit 2; \
-	fi; \
-	if [ "$(origin PROFILE)" != "command line" ]; then \
-		echo "PROFILE must be supplied on the diago-readiness command line" >&2; \
-		exit 2; \
-	fi; \
-	case "$(TARGET)" in \
-		native|js|wasm|wasm-gc) ;; \
-		*) echo "TARGET must be native, js, wasm, or wasm-gc (got $(TARGET))" >&2; exit 2;; \
-	esac; \
-	case "$(PROFILE)" in \
-		debug) release=;; \
-		release) release=--release;; \
-		*) echo "PROFILE must be debug or release (got $(PROFILE))" >&2; exit 2;; \
-	esac; \
-	timeout 900s sh -c 'cd integration/diago_readiness && moon check --target "$$1" --deny-warn . && moon test --target "$$1" $$2 .' sh "$(TARGET)" "$$release"
+	@test "$(origin TARGET)" = "command line" || { echo "Supply TARGET on the command line" >&2; exit 2; }
+	@test "$(origin PROFILE)" = "command line" || { echo "Supply PROFILE on the command line" >&2; exit 2; }
+	@case "$(TARGET)" in native|js|wasm|wasm-gc) ;; *) echo "Invalid TARGET: $(TARGET)" >&2; exit 2;; esac
+	@case "$(PROFILE)" in debug|release) ;; *) echo "Invalid PROFILE: $(PROFILE)" >&2; exit 2;; esac
+	@case "$(EXECUTOR)" in treewalker|candidate) ;; *) echo "Invalid EXECUTOR: $(EXECUTOR)" >&2; exit 2;; esac
+	cd integration/diago_readiness && timeout 900s moon test --deny-warn \
+		--target "$(TARGET)" $(if $(filter release,$(PROFILE)),--release) \
+		$(if $(filter candidate,$(EXECUTOR)),candidate,.)
 
 # Run only the permanent stack-safety gate for one target and profile.
 # TARGET and PROFILE must be supplied explicitly; CI invokes both profiles for
