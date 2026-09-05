@@ -925,11 +925,18 @@ fn Parser::parse_new_expr(self : Parser) -> @ast.Expr raise Error {
   }
   // Parse constructor — allow member access (new Foo.Bar())
   let mut callee = self.parse_primary()
-  while self.at(Dot) {
-    let _ = self.advance()
-    let name = self.expect_ident_name()
-    let mloc = self.peek().loc
-    callee = Member(callee, name, mloc)
+  while self.at(Dot) || self.at(LBracket) {
+    if self.at(Dot) {
+      let _ = self.advance()
+      let name = self.expect_ident_name()
+      let mloc = self.peek().loc
+      callee = Member(callee, name, mloc)
+    } else {
+      let mloc = self.advance().loc
+      let key = self.parse_expr()
+      let _ = self.expect(RBracket)
+      callee = ComputedMember(callee, key, mloc)
+    }
   }
   // Optional argument list
   let args : Array[@ast.Expr] = []

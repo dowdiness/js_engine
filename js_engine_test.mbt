@@ -184,6 +184,48 @@ test "run_compiled facade closure factory" {
 }
 
 ///|
+test "computed constructor creates an instance with the supplied arguments" {
+  let src =
+    #|var constructors = {
+    #|  Box: function(left, right) { this.total = left + right; }
+    #|};
+    #|var key = "Box";
+    #|var box = new constructors[key](20, 22);
+    #|box.total === 42 && box instanceof constructors.Box;
+  let (_output, result) = @js_engine.run(src)
+  expect_string(result, "true", "computed constructor result")
+}
+
+///|
+test "computed constructor supports mixed bracket and dot chains" {
+  let src =
+    #|var ns = { inner: { Box: function(x) { this.x = x; } } };
+    #|new ns["inner"].Box(7).x;
+  let (_output, result) = @js_engine.run(src)
+  expect_string(result, "7", "mixed computed and dotted constructor result")
+}
+
+///|
+test "computed constructor allows omitted argument-list parentheses" {
+  let src =
+    #|var key = "Box";
+    #|var constructors = { Box: function() { this.x = 9; } };
+    #|var box = new constructors[key];
+    #|box.x;
+  let (_output, result) = @js_engine.run(src)
+  expect_string(result, "9", "omitted computed constructor arguments")
+}
+
+///|
+test "computed constructor applies a call suffix to the returned callable" {
+  let src =
+    #|var constructors = { Factory: function() { return function() { return 13; }; } };
+    #|new constructors["Factory"]()();
+  let (_output, result) = @js_engine.run(src)
+  expect_string(result, "13", "computed constructor call suffix")
+}
+
+///|
 test "run_compiled facade constructor calls" {
   let src =
     #|function C(x) { this.x = x; }
