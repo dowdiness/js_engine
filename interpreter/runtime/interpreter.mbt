@@ -720,12 +720,13 @@ pub fn validate_function_signature_ext(
   rest_param : String?,
   body : Array[@ast.Stmt],
 ) -> Unit raise Error {
+  // Non-simple parameter lists reject duplicate bindings, even in sloppy code.
+  check_duplicate_params_ext(params, rest_param)
   if is_function_strict(enclosing_strict, body) {
     match name {
       Some(n) => @static_semantics.validate_strict_binding_name(n)
       None => ()
     }
-    check_duplicate_params_ext(params, rest_param)
     validate_strict_param_binding_names_ext(params, rest_param)
   }
 }

@@ -69,6 +69,59 @@ test "run facade" {
 }
 
 ///|
+test "non-simple duplicate default parameters are early errors" {
+  let (_, result) = @js_engine.run(
+    "try { eval(\"function f(a = 0, a) {}\"); false } " +
+    "catch (e) { e instanceof SyntaxError }",
+  )
+  expect_string(result, "true", "duplicate default parameter")
+}
+
+///|
+test "non-simple duplicate destructuring parameters are early errors" {
+  let (_, result) = @js_engine.run(
+    "try { eval(\"function f({ a }, a) {}\"); false } " +
+    "catch (e) { e instanceof SyntaxError }",
+  )
+  expect_string(result, "true", "duplicate destructuring parameter")
+}
+
+///|
+test "non-simple duplicate rest parameters are early errors" {
+  let (_, result) = @js_engine.run(
+    "try { eval(\"function f(a, ...a) {}\"); false } " +
+    "catch (e) { e instanceof SyntaxError }",
+  )
+  expect_string(result, "true", "duplicate rest parameter")
+}
+
+///|
+test "sloppy simple duplicate parameters remain allowed" {
+  let (_, result) = @js_engine.run("function f(a, a) { return a; } f(1, 2)")
+  expect_string(result, "2", "sloppy duplicate parameters")
+}
+
+///|
+test "dead non-simple duplicate function expressions are early errors" {
+  let (_, result) = @js_engine.run(
+    "try { eval(\"if (false) { var x = function(a = 0, a) {}; }\"); false } " +
+    "catch (e) { e instanceof SyntaxError }",
+  )
+  expect_string(result, "true", "dead function expression duplicate parameter")
+}
+
+///|
+test "nested non-simple duplicate declarations are early errors" {
+  let (_, result) = @js_engine.run(
+    "try { eval(\"function outer() { function inner(a = 0, a) {} }\"); false } " +
+    "catch (e) { e instanceof SyntaxError }",
+  )
+  expect_string(
+    result, "true", "nested function declaration duplicate parameter",
+  )
+}
+
+///|
 test "Number primitive method lookup returns the built-in" {
   let src = "(2).toFixed === Number.prototype.toFixed && " +
     "(2)[\"toFixed\"] === Number.prototype.toFixed"
