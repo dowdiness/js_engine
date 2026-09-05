@@ -1,5 +1,10 @@
 # Diago bytecode route investigation
 
+This is the pre-fix investigation. The named-expression fallback change and
+its measured execution routes are recorded in
+[Local named-expression fallback results](LOCAL_NAMED_FALLBACK_RESULTS.md).
+The original evidence below is retained for comparison.
+
 MathJax and Rough.js pass the readiness oracle, but their main bundles enter
 the ordinary Tree-walker path as whole programs. The next useful bytecode task
 is to localize fallback around named function expressions while preserving

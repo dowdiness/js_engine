@@ -1,5 +1,10 @@
 # Candidate readiness result
 
+This is the initial matrix before local named-expression fallback. See
+[the subsequent implementation and validation](LOCAL_NAMED_FALLBACK_RESULTS.md)
+for the current measured bundle execution routes. The original matrix below
+is retained as historical evidence.
+
 The pinned six-test fixture passes in candidate mode on all eight target/profile
 cells. This establishes readiness for these inputs under the mixed candidate
 policy; it does not establish bytecode-only execution or general stack safety.
