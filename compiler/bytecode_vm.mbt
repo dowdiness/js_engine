@@ -1182,8 +1182,11 @@ fn BytecodeFrame::step_bytecode(
         match
           @runtime.begin_executor_numeric_conversion(interp, locals[slot], loc) {
           @runtime.ExecutorNumericConversionCompleted(value) => {
-            let decision = reduce_bytecode_local_update(slot, op, prefix, value)
-            frame.apply_activation_resume_decision(decision)
+            // A synchronous update needs no general activation-resume decision.
+            // Both paths use the same validated runtime-owned numeric plan.
+            let plan = plan_bytecode_local_update(op, prefix, value)
+            locals[slot] = plan.assigned_value()
+            stack.push(plan.expression_value())
           }
           @runtime.ExecutorNumericConversionSuspended(request) =>
             return suspend_bytecode(

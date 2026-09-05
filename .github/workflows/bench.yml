@@ -30,6 +30,7 @@ on:
       - "parser/**"
       - "compiler/**"
       - "ast/**"
+      - "scripts/*numeric_update*.cjs"
   pull_request:
     branches: [main]
     paths:
@@ -41,6 +42,7 @@ on:
       - "ast/**"
       - ".github/workflows/bench.yml"
       - "scripts/render-benchmark-summary.py"
+      - "scripts/*numeric_update*.cjs"
   schedule:
     - cron: "0 2 * * 0" # every Sunday at 02:00 UTC
   workflow_dispatch:
@@ -61,6 +63,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Test numeric-update measurement contracts
+        run: node --test scripts/test_numeric_update_results.cjs
 
       - name: Cache MoonBit toolchain
         id: toolchain-cache

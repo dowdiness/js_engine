@@ -1,0 +1,78 @@
+// Diagnostic comparison only: legacy semantics below model the pre-#1015 code.
+// Copy to compiler/numeric_update_delivery_benchmark_wbtest.mbt to run.
+///|
+fn numeric_update_delivery_legacy(
+  frame : BytecodeFrame,
+  converted : Value,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+) -> Unit raise Error {
+  guard converted is Number(old) else {
+    raise @errors.InternalError(message="numeric conversion completed without a Number")
+  }
+  let next = Value::Number(match op { Increment => old + 1.0; Decrement => old - 1.0 })
+  frame.locals[0] = next
+  frame.stack.push(if prefix { next } else { Value::Number(old) })
+}
+
+///|
+fn numeric_update_delivery_plan(
+  frame : BytecodeFrame,
+  converted : Value,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+) -> Unit raise Error {
+  guard converted is Number(old) else {
+    raise @errors.InternalError(message="numeric conversion completed without a Number")
+  }
+  let plan = @runtime.plan_numeric_update(old, op, prefix)
+  frame.locals[0] = plan.assigned_value()
+  frame.stack.push(plan.expression_value())
+}
+
+///|
+fn numeric_update_delivery_decision(
+  frame : BytecodeFrame,
+  converted : Value,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+) -> Unit raise Error {
+  frame.apply_activation_resume_decision(reduce_bytecode_local_update(0, op, prefix, converted))
+}
+
+///|
+test "numeric-update/delivery-isolation" (b : @bench.T) {
+  let function = numeric_update_cost_function("return x;")
+  let interp = @interpreter.new_interpreter()
+  let paths = [
+    ("legacy", numeric_update_delivery_legacy),
+    ("runtime-plan", numeric_update_delivery_plan),
+    ("resume-decision", numeric_update_delivery_decision),
+  ]
+  for reverse in [false, true] {
+    for index in 0..<paths.length() {
+      let (name, apply) = paths[if reverse { paths.length() - 1 - index } else { index }]
+      b.bench(name="\{name}/reverse=\{reverse}", () => {
+        let frame = BytecodeFrame(function, interp.global, { strict: false, current_generator: None }) catch {
+          _ => abort("delivery benchmark frame setup failed")
+        }
+        let mut sum = 0.0
+        for i in 0..<4096 {
+          let old = i.to_double() - 2048.0
+          let op = if i % 2 == 0 { @ast.Increment } else { @ast.Decrement }
+          let prefix = i % 4 < 2
+          apply(frame, Value::Number(old), op, prefix) catch {
+            _ => abort("delivery benchmark failed")
+          }
+          guard frame.stack.pop() is Some(Number(value)) else {
+            abort("delivery benchmark lost expression result")
+          }
+          sum += value
+        }
+        guard sum == -2048.0 else { abort("delivery benchmark result mismatch") }
+        b.keep(sum)
+        b.keep(frame.locals[0])
+      })
+    }
+  }
+}

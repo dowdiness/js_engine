@@ -7,6 +7,34 @@ fn local_update_candidate_run(
 }
 
 ///|
+test "local updates preserve expression and stored values across numeric conversion" {
+  let cases = [
+    ("value++", 4, 5),
+    ("++value", 5, 5),
+    ("value--", 4, 3),
+    ("--value", 3, 3),
+  ]
+  for entry in cases {
+    let (expression, result, stored) = entry
+    for input in ["4", "'4'", "({ valueOf: function() { return 4; } })"] {
+      let source = "function update(value) {" +
+        "var result = \{expression};" +
+        "return result === \{result} && value === \{stored};" +
+        "} update(\{input});"
+      let (value, evidence) = local_update_candidate_run(source)
+      assert_true(
+        value is Bool(true),
+        msg="\{expression} on \{input}: expected result \{result}, stored \{stored}",
+      )
+      assert_true(evidence.val.summary.bytecode_starts > 0)
+      assert_eq(evidence.val.summary.tree_starts, 0)
+      assert_eq(evidence.val.summary.fallback_violations, 0)
+      assert_eq(evidence.val.summary.replay_violations, 0)
+    }
+  }
+}
+
+///|
 test "candidate local update preserves numeric conversion and result order" {
   let source =
     #|function update() {
