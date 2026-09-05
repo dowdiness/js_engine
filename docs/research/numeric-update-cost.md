@@ -140,11 +140,16 @@ applications were not remeasured in this investigation.
 
 ## Reproduce
 
-Copy the cost fixture identically into clean checkouts of the two revisions.
-Run `node scripts/measure_numeric_update_cost.cjs BEFORE AFTER OUTPUT 4` from a
-checkout containing the script. It checks fixture identity, runs the three
-targets serially, and records versions, revisions, fixture hash, and raw output.
-Use `node scripts/summarize_numeric_update_cost.cjs OUTPUT` to regenerate tables.
+For historical reproduction of the first series, copy the cost fixture
+identically into clean checkouts of the two revisions and run
+`node docs/research/numeric-update-cost/measure_original_regression.cjs BEFORE AFTER OUTPUT 4`.
+This research-only script preserves the original rounded-CLI measurement method;
+it is not the ongoing measurement runner.
+
+Use `node scripts/summarize_numeric_update_cost.cjs OUTPUT 4` to regenerate
+either archived table. The explicit expected pair count is required because
+these historical files predate recorded measurement plans. The raw files and
+their original metadata have not been rewritten.
 
 For artifact comparison, build the selected fixture with
 `moon bench compiler/numeric_update_cost_benchmark_wbtest.mbt --target TARGET --release --build-only`.
@@ -153,6 +158,26 @@ Save the reported whitebox artifact from each revision as
 `node scripts/compare_numeric_update_artifacts.cjs ARTIFACT_DIR OUTPUT 4`.
 The JSON test filter targets only the cost fixture; native uses the generated
 driver's file/range argument. Build all artifacts before starting comparison.
+
+## Measurement tool boundaries
+
+- `scripts/compare_numeric_update_artifacts.cjs` owns artifact preflight,
+  subprocess execution, and incremental persistence. It records the expected
+  number of pairs before running and consumes unrounded structured results.
+- `scripts/numeric_update_results.cjs` is the deterministic validation and
+  aggregation core. It requires exactly one before/after run per planned pair
+  on all three targets, exactly the four known cases per run, and finite positive
+  timings. Missing or duplicate runs/cases, unknown labels, invalid pair indices,
+  and non-finite derived changes are errors.
+- `scripts/summarize_numeric_update_cost.cjs` only reads JSON and renders the
+  validated summary. Invalid input exits nonzero with a diagnostic on stderr and
+  no partial table on stdout. New reports supply their pair count; historical
+  reports require the explicit expected count shown above. A count supplied for
+  a new report must agree with its recorded plan.
+
+Run `node --test scripts/test_numeric_update_results.cjs` to check these
+contracts using small fixed datasets and an actual CLI invocation. The benchmark
+workflow also runs these tests. This does not launch performance measurements.
 
 The retained change is limited to synchronous local-update delivery. Further
 changes to the runtime plan representation require a separate measured benefit;

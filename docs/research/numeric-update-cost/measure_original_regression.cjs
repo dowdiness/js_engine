@@ -1,5 +1,6 @@
-// Run identical fixtures serially, alternating before/after order across pairs.
-// Usage: node scripts/measure_numeric_update_cost.cjs BEFORE AFTER OUTPUT [PAIRS]
+// Historical reproduction of the original rounded-CLI measurement only.
+// Ongoing measurements use scripts/compare_numeric_update_artifacts.cjs instead.
+// Usage: node docs/research/numeric-update-cost/measure_original_regression.cjs BEFORE AFTER OUTPUT [PAIRS]
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
