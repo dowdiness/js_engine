@@ -870,6 +870,9 @@ fn ExecutorBindingReferenceFrame::step_environment(
     }
     None =>
       match env.bindings.get(self.request.name) {
+        Some(_) if env.parent is None &&
+          interp.is_immutable_global(self.request.name) =>
+          self.complete_global(true)
         Some(_) => self.complete_lexical(env)
         None => self.parent_or_global(env, interp)
       }
