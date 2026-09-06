@@ -1241,6 +1241,21 @@ pub fn setup_promise(
     wire_proto_constructor=true,
   )
 
+  // Array.fromAsync needs the intrinsic Promise capability after realm setup.
+  let array_ctor = env.get("Array") catch { _ => Undefined }
+  match array_ctor {
+    Object(data) =>
+      @runtime.install_builtin_method(
+        data,
+        "fromAsync",
+        make_array_from_async(
+          realm_state,
+          @runtime.PromiseIntrinsics(promise_ctor, promise_proto),
+        ),
+      )
+    _ => ()
+  }
+
   // queueMicrotask(callback) - schedules a microtask
   // Part of the Web Platform APIs, used for scheduling microtasks directly
   env.def_builtin(

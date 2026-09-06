@@ -1309,6 +1309,14 @@ pub(all) struct PromiseData {
   mut prototype : Value?
 }
 
+pub struct PromiseIntrinsics {
+  ctor : Value
+  prototype : Value
+}
+pub fn PromiseIntrinsics::PromiseIntrinsics(Value, Value) -> Self
+pub fn PromiseIntrinsics::await_value(Self, Interpreter, Value, Value, Value) -> Unit raise
+pub fn PromiseIntrinsics::new_capability(Self, Interpreter) -> (Value, Value, Value)
+
 pub(all) struct PromiseReaction {
   handler : Value?
   resolve : Value
