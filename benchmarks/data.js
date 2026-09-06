@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788077240655,
+  "lastUpdate": 1788678144405,
   "repoUrl": "https://github.com/dowdiness/js_engine",
   "entries": {
     "Benchmark": [
@@ -3756,6 +3756,256 @@ window.BENCHMARK_DATA = {
             "value": 0.49490170999998623,
             "unit": "ms",
             "extra": "category=workflow, cv=7.0%, noisy=false"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Ishimoto Koji",
+            "username": "dowdiness",
+            "email": "koji.ishimoto@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f7788709e0c1c2dc227fdbb743462dd85c17bf79",
+          "message": "fix: localize named-function fallback for Diago bytecode execution (#1025)\n\n* test: add candidate Diago readiness matrix\n\nShare pinned assets and six stable-facade tests between explicit Tree-walker\nand candidate configurations. Record all eight candidate target/profile\ncells passing, with a JS debug Tree-walker comparison and raw output.\n\n* test: profile Diago candidate routes and fallback boundaries\n\nMeasure static candidate plans and actual lifecycle/body entries while\nretaining the six unchanged stable-facade readiness assertions. Record\nwhole-program Tree-walker routing in the MathJax and Rough.js bundles and\npropose a bounded named-function-expression fallback follow-up.\n\nKeep instrumentation in a temporary generated JS copy, add fail-closed\nobserver tests, and classify only the new test-package imports.\n\nValidation: six observer tests, the projection bridge test, six instrumented\nreadiness tests, strict JS checks, interface/format checks, and architecture\nboundary audit. The production engine and pinned inputs are unchanged.\n\n* fix: localize candidate fallback for named function expressions\n\nNamed expressions forced the entire source onto plain tree execution even\nwhen eligible siblings and descendants had verified bytecode plans. Keep\nthe existing named-expression tree selection and runtime self-name binding,\nbut allow the candidate materializer to retain the surrounding plan.\n\nCover actual sibling and descendant routes, recursion, shadowing, escaped\nclosures, later evals, Promise callbacks, source identity and source text.\nKeep the excluded async and generator families on the plain tree route.\n\nValidation: strict JS check; 4,370 JS tests; interface generation and format.\nThe instrumented Diago oracle passed all six unchanged tests; the complete\ntarget/profile matrix is recorded separately after completion.\n\n* docs: record Diago readiness after local named fallback\n\nRecord all eight candidate target/profile cells passing the unchanged six\nassertions for implementation 2c91271e. Preserve the final source-attributed\nroute diagnostic and architecture audit output alongside the earlier evidence.\n\nMathJax contributes 101,472 bytecode starts across five cases and Rough.js\ncontributes 210; neither bundle enters the plain-tree whole-program path.\nThese are execution-route counts, not performance measurements.\n\n* test: express named fallback expectations by function and behavior\n\nMatch observed routes to function source coordinates instead of activation\npositions and complete executor sequences. Keep recorder ownership and the\nwhole-program async/generator exclusions explicit.\n\nName the self-binding cases and expose their names on failure. Express the\nEngine assertions as named JSON fields and compare source text against the\ninput fixture instead of duplicating a long escaped snapshot.\n\nValidation: restoring the old named-expression guard temporarily made three\nroute regressions fail; the guard was then restored to the fixed version.\nAll 4,370 JS tests and strict JS checking pass. Production code is unchanged.\n\n* refactor: keep Diago readiness tooling minimal\n\nMake validates the explicit target, profile and executor, then runs one\nstrict moon test command within the existing 900-second bound. Preserve\nboth build-time policies using the shared original fixture files.\n\nRemove the one-off generated-JS profiler, its helper tests, the profile\npackage and its import rules. Keep the recorded measurements and raw logs\nin an archive with links to the historical diagnostic implementation.\nRewrite the README around the maintained tests and recorded results.\n\nValidation: both JS debug readiness policies pass 6/6; 16 command dispatch\ncombinations, defaults, invalid inputs and failure propagation checked;\nmoon test --deny-warn verified to reject a compilation warning. Boundary\naudit, strict checks, interfaces, formatting, links and evidence hashes pass.\nEngine code and original fixtures are unchanged.\n\n* fix: preserve semantics across mixed candidate execution boundaries\n\nLocal named-expression fallback exposed five latent runtime defects in\nthe Test262 harness and its callbacks. Treat arrow normal completion as\nundefined, retain materializers during native constructor execution, and\nclear the enclosing materializer when entering a separately parsed script.\nRoute typed-array constant string indices through integer-indexed access\nand resolve immutable global bindings as global references in managed code.\n\nAdd five minimal candidate regressions, each observed failing before its\nfix. All CI regressions now pass locally: strict 29/29 executed and\ndiscovered, non-strict 33/33 executed and discovered, no skips. The JS\nsuite passes 4384/4384 and candidate Diago JS debug passes 6/6. Strict\nchecking, boundary audit, interfaces and formatting pass. No skip list,\nbaseline, public interface or original Diago fixture changes.\n\n* fix: distinguish lexical bindings from readonly global properties\n\nApply global-object descriptor semantics only to VarBinding cells in the\nroot environment. A lexical binding can shadow a configurable readonly\nproperty and must retain its own mutable cell. Keep synchronous and managed\nreference resolution aligned.\n\nThe focused shadowing regression failed before the fix. All six boundary\nregressions and the JS suite (4385/4385) now pass. The CI regression subset\npasses in the authoritative runner: strict 29/29 executed and discovered,\nnon-strict 33/33 executed and discovered, no skips. One concurrent local\nrunner invocation aborted without a results artifact; a serial invocation\nafter the build/test processes completed passed. Strict checking, interface\ngeneration, formatting and the architecture boundary audit also pass.",
+          "timestamp": "2026-09-06T04:16:31Z",
+          "url": "https://github.com/dowdiness/js_engine/commit/f7788709e0c1c2dc227fdbb743462dd85c17bf79"
+        },
+        "date": 1788678142925,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "startup/startup/tiny_program",
+            "value": 1.2480492056,
+            "unit": "ms",
+            "extra": "category=regression, cv=6.8%, noisy=false"
+          },
+          {
+            "name": "frontend/lexer/small",
+            "value": 0.033619338600000014,
+            "unit": "ms",
+            "extra": "category=regression, cv=28.3%, noisy=true"
+          },
+          {
+            "name": "frontend/lexer/large",
+            "value": 0.2916162440000023,
+            "unit": "ms",
+            "extra": "category=regression, cv=0.6%, noisy=false"
+          },
+          {
+            "name": "execution/exec/fibonacci_30",
+            "value": 15746.053637399997,
+            "unit": "ms",
+            "extra": "category=regression, cv=0.6%, noisy=false"
+          },
+          {
+            "name": "execution/exec/property_chain",
+            "value": 18.102885250002146,
+            "unit": "ms",
+            "extra": "category=regression, cv=6.0%, noisy=false"
+          },
+          {
+            "name": "frontend/startup/phase/parse_tiny",
+            "value": 0.0019225580480001516,
+            "unit": "ms",
+            "extra": "category=component, cv=10.5%, noisy=false"
+          },
+          {
+            "name": "startup/startup/phase/new_interpreter",
+            "value": 1.178591037999955,
+            "unit": "ms",
+            "extra": "category=component, cv=14.4%, noisy=false"
+          },
+          {
+            "name": "execution/startup/phase/execute_preparsed_tiny",
+            "value": 0.0010086396570001086,
+            "unit": "ms",
+            "extra": "category=component, cv=0.6%, noisy=false"
+          },
+          {
+            "name": "startup/startup/phase/event_loop_drain_empty",
+            "value": 0.0001873307803999749,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/startup/phase/result_stringify_output",
+            "value": 0.00002609100031999929,
+            "unit": "ms",
+            "extra": "category=component, cv=0.3%, noisy=false"
+          },
+          {
+            "name": "execution/exec/array_map_filter",
+            "value": 22.739961900003255,
+            "unit": "ms",
+            "extra": "category=component, cv=21.0%, noisy=true"
+          },
+          {
+            "name": "execution/exec/closure_factory",
+            "value": 32.296870766666444,
+            "unit": "ms",
+            "extra": "category=component, cv=7.0%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/closure_legacy/closure_factory",
+            "value": 29.257036133332683,
+            "unit": "ms",
+            "extra": "category=component, cv=9.2%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/bytecode/closure_factory",
+            "value": 20.197552083332262,
+            "unit": "ms",
+            "extra": "category=component, cv=10.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/dispatch_stack",
+            "value": 73.03178757777786,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/local_access",
+            "value": 70.52775911110933,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/env_access",
+            "value": 70.55931379999966,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/captured_access",
+            "value": 69.53890868889219,
+            "unit": "ms",
+            "extra": "category=component, cv=0.3%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/plain_call_control",
+            "value": 27.02969175555562,
+            "unit": "ms",
+            "extra": "category=component, cv=0.8%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/plain_call",
+            "value": 82.94965973333261,
+            "unit": "ms",
+            "extra": "category=component, cv=1.1%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/runtime_helpers",
+            "value": 30.54798357777698,
+            "unit": "ms",
+            "extra": "category=component, cv=1.0%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/property_get",
+            "value": 107.74128804444335,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/property_set",
+            "value": 99.3950514666678,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/method_call",
+            "value": 21.840372066666735,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/object_literal",
+            "value": 21.408773711109017,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/array_literal",
+            "value": 18.71742911111085,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "execution/exec/for_of",
+            "value": 5.979178500001339,
+            "unit": "ms",
+            "extra": "category=component, cv=11.6%, noisy=false"
+          },
+          {
+            "name": "execution/exec/arithmetic_loop",
+            "value": 1149.530917250002,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/exec/object_construction",
+            "value": 7.132220549999813,
+            "unit": "ms",
+            "extra": "category=component, cv=5.9%, noisy=false"
+          },
+          {
+            "name": "execution/exec/string_ops",
+            "value": 2.353485520000686,
+            "unit": "ms",
+            "extra": "category=component, cv=12.0%, noisy=false"
+          },
+          {
+            "name": "execution/regexp/retained_matcher",
+            "value": 6.232785349998449,
+            "unit": "ms",
+            "extra": "category=component, cv=16.0%, noisy=true"
+          },
+          {
+            "name": "frontend/pipeline/exec/lex",
+            "value": 0.030578497066672816,
+            "unit": "ms",
+            "extra": "category=workflow, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/parse",
+            "value": 0.026044872412499538,
+            "unit": "ms",
+            "extra": "category=workflow, cv=3.1%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/exec/evaluate",
+            "value": 29.977681299994583,
+            "unit": "ms",
+            "extra": "category=workflow, cv=15.7%, noisy=true"
+          },
+          {
+            "name": "execution/pipeline/closure_legacy/evaluate",
+            "value": 25.696289329999416,
+            "unit": "ms",
+            "extra": "category=workflow, cv=5.7%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/bytecode/compile",
+            "value": 0.17394334816665405,
+            "unit": "ms",
+            "extra": "category=workflow, cv=12.7%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/bytecode/evaluate",
+            "value": 15.123386759999558,
+            "unit": "ms",
+            "extra": "category=workflow, cv=6.8%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/parse_heavy",
+            "value": 0.501017330666616,
+            "unit": "ms",
+            "extra": "category=workflow, cv=4.0%, noisy=false"
           }
         ]
       }
