@@ -4634,6 +4634,18 @@ fn BytecodeBuilder::compile_expr_body(
     Binary(op, left, right, loc) => {
       self.compile_expr(left)
       self.compile_expr(right)
+      // Both normal results are strings, so loose equality is strict equality.
+      // Keep operand evaluation and source ownership on the original AST.
+      let op : @ast.BinOp = match (left, right) {
+        (StringLit(_, _, _, _), Unary(Typeof, _, _))
+        | (Unary(Typeof, _, _), StringLit(_, _, _, _)) =>
+          match op {
+            EqEq => EqEqEq
+            NotEq => NotEqEq
+            _ => op
+          }
+        _ => op
+      }
       let _ = self.emit_with_source_locations(
         BinaryOp(op, BinaryExpression, loc),
         [(Operator, loc)],
