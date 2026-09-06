@@ -2577,6 +2577,7 @@ fn Interpreter::exec_try_catch(
   // Phase 0: Try body (skip if resuming at catch or finally)
   if start_phase == 0 {
     let try_env = Environment::new(parent=Some(env))
+    hoist_block_tdz(try_body, try_env)
     let try_yield_base = match gen_opt {
       Some(g) => g.yield_index
       _ => 0
@@ -2605,6 +2606,7 @@ fn Interpreter::exec_try_catch(
               let error_value = js_error_to_value_with_env(e, Some(env))
               // Bind the catch parameter - supports simple identifier and destructuring
               self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+              hoist_block_tdz(body, catch_env)
               let catch_yield_base = match gen_opt {
                 Some(g) => g.yield_index
                 _ => 0
@@ -2649,6 +2651,7 @@ fn Interpreter::exec_try_catch(
         }
         // Bind the catch parameter - supports simple identifier and destructuring
         self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+        hoist_block_tdz(body, catch_env)
         let catch_yield_base = match gen_opt {
           Some(g) => g.yield_index
           _ => 0
@@ -2682,11 +2685,9 @@ fn Interpreter::exec_try_catch(
         Some(g) => g.yield_index
         _ => 0
       }
-      let finally_result = self.exec_stmts(
-        ctx,
-        body,
-        Environment::new(parent=Some(env)),
-      ) catch {
+      let finally_env = Environment::new(parent=Some(env))
+      hoist_block_tdz(body, finally_env)
+      let finally_result = self.exec_stmts(ctx, body, finally_env) catch {
         fe =>
           if fe is YieldSignal(_) {
             // Yield inside finally body — save phase and pending state for resume
