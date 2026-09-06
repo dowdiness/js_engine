@@ -895,10 +895,7 @@ pub fn get_string_method(
         interp,
         args,
       ) raise {
-        if args.length() == 0 {
-          return Null
-        }
-        let regexp = args[0]
+        let regexp = if args.length() > 0 { args[0] } else { Undefined }
         // §22.1.3.13: GetMethod(regexp, @@match) before RegExpCreate.
         let match_sym = Value::Symbol(well_known_symbols.match_sym)
         match string_symbol_method(interp, regexp, match_sym) {
@@ -911,17 +908,14 @@ pub fn get_string_method(
             )
           None => ()
         }
-        match regexp {
-          Object(data) =>
-            if data.class_name == "RegExp" {
-              let (pattern, flags) = extract_regexp_source_flags(regexp)
-              return string_match_regex(str, pattern, flags)
-            }
-          _ => ()
-        }
-        // If not a RegExp, treat as string pattern
-        let pattern = interp.to_js_string(regexp)
-        string_match_regex(str, pattern, "")
+        let loc = @token.Loc::default()
+        let rx = make_regexp_object_with_realm_state(
+          regexp_constructor_string(interp, regexp),
+          "",
+          realm_state,
+        )
+        let matcher = interp.get_computed_property(rx, match_sym, loc)
+        interp.call_value(matcher, rx, [Value::String_(str)], loc)
       })
     }
     "matchAll" => {
@@ -1018,10 +1012,7 @@ pub fn get_string_method(
         interp,
         args,
       ) raise {
-        if args.length() == 0 {
-          return Value::Number(0.0)
-        }
-        let regexp = args[0]
+        let regexp = if args.length() > 0 { args[0] } else { Undefined }
         // §22.1.3.21: GetMethod(regexp, @@search) before RegExpCreate.
         let search_sym = Value::Symbol(well_known_symbols.search)
         match string_symbol_method(interp, regexp, search_sym) {
@@ -1034,23 +1025,14 @@ pub fn get_string_method(
             )
           None => ()
         }
-        match regexp {
-          Object(data) =>
-            if data.class_name == "RegExp" {
-              let pattern = match data.bag.properties.get("source") {
-                Some(Value::String_(s)) => s
-                _ => ""
-              }
-              let flags = match data.bag.properties.get("flags") {
-                Some(Value::String_(s)) => s
-                _ => ""
-              }
-              return string_search_regex(str, pattern, flags)
-            }
-          _ => ()
-        }
-        let pattern = interp.to_js_string(regexp)
-        string_search_regex(str, pattern, "")
+        let loc = @token.Loc::default()
+        let rx = make_regexp_object_with_realm_state(
+          regexp_constructor_string(interp, regexp),
+          "",
+          realm_state,
+        )
+        let searcher = interp.get_computed_property(rx, search_sym, loc)
+        interp.call_value(searcher, rx, [Value::String_(str)], loc)
       })
     }
     "startsWith" => {

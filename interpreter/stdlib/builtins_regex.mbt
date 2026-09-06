@@ -3059,25 +3059,6 @@ fn escape_regexp_source(source : String) -> String {
 }
 
 ///|
-/// Extract source pattern and flags from a RegExp value
-fn extract_regexp_source_flags(val : Value) -> (String, String) {
-  match val {
-    Object(data) if data.class_name == "RegExp" => {
-      let pat = match regexp_original_source_from_data(data) {
-        Some(s) => s
-        None => ""
-      }
-      let fl = match regexp_original_flags_from_data(data) {
-        Some(s) => s
-        None => ""
-      }
-      (pat, fl)
-    }
-    _ => ("", "")
-  }
-}
-
-///|
 fn regexp_this_is_object(value : Value) -> Bool {
   match value {
     Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
