@@ -1,0 +1,1 @@
+../diago_readiness_test.mbt

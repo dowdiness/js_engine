@@ -336,6 +336,9 @@ fn candidate_make_callable(
 fn candidate_requires_plain_tree_execution(
   candidate : CandidateFunction,
 ) -> Bool {
+  // Named expressions use runtime-owned tree materialization, including the
+  // self-name environment, while their eligible children keep this plan.
+  // Suspended function families still require ordinary whole-program execution.
   let current_requires_plain = match candidate.selection {
     UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
       match unsupported.reason {
@@ -346,7 +349,6 @@ fn candidate_requires_plain_tree_execution(
         | AsyncArrowFunction
         | AsyncGeneratorDeclaration
         | AsyncGeneratorExpression
-        | NamedFunctionExpression
         | ObjectLiteralGeneratorMethodProperty
         | ObjectLiteralAsyncMethodProperty
         | ObjectLiteralAsyncGeneratorMethodProperty => true

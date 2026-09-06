@@ -1,0 +1,42 @@
+JS debug route diagnostic, 2026-09-05 (Asia/Tokyo)
+Engine HEAD: 7756b4c9dfd79dcebe06da8d98f1b080afb56444
+Command: node scripts/diago_route_profile.cjs /tmp/diago-route-profile-validated-2026-09-05.json
+Exit status: 0
+The following is the generated test driver output; this diagnostic does not replace the readiness matrix.
+
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":0}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":0,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":1}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":1,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":2}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":2,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":3}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":3,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":4}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":4,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"sketch_readiness_test.mbt","index":0}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"sketch_readiness_test.mbt","index":0,"message":""}
+----- END MOON TEST RESULT -----

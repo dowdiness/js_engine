@@ -1057,30 +1057,32 @@ fn Interpreter::construct_value_impl(
               VarBinding,
             )
           }
-          // Hoist declarations and top-level lexical TDZ markers.
-          self.hoist_declarations(data.body, func_env, strict=func_strict)
-          hoist_block_tdz(data.body, func_env)
-          if data.has_name_binding {
-            match data.name {
-              Some(name) =>
-                if !func_env.bindings.contains(name) {
-                  func_env.def(name, ctor, FunctionNameBinding)
-                }
-              None => ()
-            }
-          }
-          let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
-          raise_if_break_continue(exec_result)
-          match exec_result {
-            Normal(_) => new_obj
-            ReturnSignal(v) =>
-              if is_object_like_for_constructor_return(v) {
-                v
-              } else {
-                new_obj
+          self.run_materialized_function(data.materializer, fn() raise {
+            // Hoist declarations and top-level lexical TDZ markers.
+            self.hoist_declarations(data.body, func_env, strict=func_strict)
+            hoist_block_tdz(data.body, func_env)
+            if data.has_name_binding {
+              match data.name {
+                Some(name) =>
+                  if !func_env.bindings.contains(name) {
+                    func_env.def(name, ctor, FunctionNameBinding)
+                  }
+                None => ()
               }
-            _ => new_obj
-          }
+            }
+            let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+            raise_if_break_continue(exec_result)
+            match exec_result {
+              Normal(_) => new_obj
+              ReturnSignal(v) =>
+                if is_object_like_for_constructor_return(v) {
+                  v
+                } else {
+                  new_obj
+                }
+              _ => new_obj
+            }
+          })
         }
         Some(UserFuncExt(data)) => {
           // §13.3.5.1 step 5: method-shorthand functions have no [[Construct]]
@@ -1153,22 +1155,24 @@ fn Interpreter::construct_value_impl(
           }
           // ES §10.2.2 [[Construct]] steps 13-14: object-like return
           // replaces the instance; anything else yields `new_obj`.
-          match
-            self.bind_ext_params_and_exec_body_signal(
-              data,
-              args,
-              param_env,
-              func_ctx,
-              is_arrow=false,
-            ) {
-            ReturnSignal(v) =>
-              if is_object_like_for_constructor_return(v) {
-                v
-              } else {
-                new_obj
-              }
-            _ => new_obj
-          }
+          self.run_materialized_function(data.materializer, fn() raise {
+            match
+              self.bind_ext_params_and_exec_body_signal(
+                data,
+                args,
+                param_env,
+                func_ctx,
+                is_arrow=false,
+              ) {
+              ReturnSignal(v) =>
+                if is_object_like_for_constructor_return(v) {
+                  v
+                } else {
+                  new_obj
+                }
+              _ => new_obj
+            }
+          })
         }
         Some(BoundFunc(target, _, bound_args)) => {
           // new BoundFunc(...args) delegates to new Target(...boundArgs, ...args)

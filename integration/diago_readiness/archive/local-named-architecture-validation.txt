@@ -1,0 +1,9 @@
+python3 scripts/audit_bytecode_vm_semantic_edges.py --root . --self-test
+ok: semantic resolver covers aliases, wrappers, and interpolation
+ok: bytecode VM semantic lifecycle multigraph matches inventory (162 semantic edges, 147 runtime boundaries)
+python3 scripts/audit_bytecode_vm_ast_boundary.py --root . --self-test
+ok: typed bytecode VM AST boundary rejects all inferred AST values and permits only AST-free destructuring plan dispatch
+python3 scripts/audit_destructuring_plan_interface.py
+ok: destructuring plan interface is opaque to compiler consumers
+python3 scripts/audit_bytecode_continuation_ownership.py --root . --self-test
+ok: bytecode continuation ownership has one publisher and one consumer

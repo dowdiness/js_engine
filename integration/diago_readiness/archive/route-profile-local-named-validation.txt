@@ -1,0 +1,36 @@
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":0}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":0,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":1}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":1,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":2}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":2,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":3}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":3,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"diago_readiness_test.mbt","index":4}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"diago_readiness_test.mbt","index":4,"message":""}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"start","file":"sketch_readiness_test.mbt","index":0}
+----- END MOON TEST RESULT -----
+----- BEGIN MOON TEST RESULT -----
+{"type":"result","file":"sketch_readiness_test.mbt","index":0,"message":""}
+----- END MOON TEST RESULT -----

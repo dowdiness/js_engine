@@ -780,43 +780,47 @@ pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
-  let strict = @static_semantics.has_use_strict(stmts)
-  let ctx : ExecContext = { strict, current_generator: None }
-  try {
-    let admission = self.classify_activation_dispatch_root_program(stmts)
-    let result = match admission {
-      ActivationDispatchManagedRoot(root) =>
-        activation_dispatch_root_value(
-          self.run_activation_dispatch_root_program(stmts, ctx, root),
-        )
-      ActivationDispatchLegacyRoot =>
-        with_cleared_active_callee_realm(self.realm_state, () => {
-          self.prepare_root_program_execution(stmts, self.global, strict)
-          let mut last : Value = Undefined
-          for stmt in stmts {
-            match self.exec_stmt(ctx, stmt, self.global) {
-              Normal(v) => last = v
-              ReturnSignal(_) =>
-                raise @errors.SyntaxError(
-                  message="return statement outside of function",
-                )
-              sig => raise_if_break_continue(sig)
+  // A newly parsed script owns its functions; an enclosing source's candidate
+  // materializer cannot identify its syntax sites.
+  self.with_function_materializer(None, fn() raise {
+    let strict = @static_semantics.has_use_strict(stmts)
+    let ctx : ExecContext = { strict, current_generator: None }
+    try {
+      let admission = self.classify_activation_dispatch_root_program(stmts)
+      let result = match admission {
+        ActivationDispatchManagedRoot(root) =>
+          activation_dispatch_root_value(
+            self.run_activation_dispatch_root_program(stmts, ctx, root),
+          )
+        ActivationDispatchLegacyRoot =>
+          with_cleared_active_callee_realm(self.realm_state, () => {
+            self.prepare_root_program_execution(stmts, self.global, strict)
+            let mut last : Value = Undefined
+            for stmt in stmts {
+              match self.exec_stmt(ctx, stmt, self.global) {
+                Normal(v) => last = v
+                ReturnSignal(_) =>
+                  raise @errors.SyntaxError(
+                    message="return statement outside of function",
+                  )
+                sig => raise_if_break_continue(sig)
+              }
             }
-          }
-          last
-        })
-    }
-    result
-  } catch {
-    e =>
-      if is_js_catchable_error(e) {
-        let translated = JsException(
-          js_error_to_value_with_env(e, Some(self.global)),
-        )
-        remap_observed_source_failure(self.realm_state, e, translated)
-        raise translated
-      } else {
-        raise e
+            last
+          })
       }
-  }
+      result
+    } catch {
+      e =>
+        if is_js_catchable_error(e) {
+          let translated = JsException(
+            js_error_to_value_with_env(e, Some(self.global)),
+          )
+          remap_observed_source_failure(self.realm_state, e, translated)
+          raise translated
+        } else {
+          raise e
+        }
+    }
+  })
 }
