@@ -2574,105 +2574,90 @@ fn Interpreter::exec_try_catch(
       }
     _ => None
   }
-  // Phase 0: Try body (skip if resuming at catch or finally)
+  let mut caught_value : Value? = None
+  // Phase 0: capture the try completion before deciding whether to run catch.
   if start_phase == 0 {
     let try_env = Environment::new(parent=Some(env))
+    hoist_block_tdz(try_body, try_env)
     let try_yield_base = match gen_opt {
       Some(g) => g.yield_index
       _ => 0
     }
     result = self.exec_stmts(ctx, try_body, try_env) catch {
-      e =>
-        if e is YieldSignal(_) {
-          // Yield inside try body — save phase for resume
+      error => {
+        if error is YieldSignal(_) {
           match gen_opt {
             Some(g) => {
               g.try_resume_phase = 0
               g.try_resume_yield_base = try_yield_base
             }
-            _ => ()
+            None => ()
           }
-          raise e
-        } else if e is GeneratorReturnSignal(_) {
-          // .return(v) injected at yield — save for finally
-          pending_error = Some(e)
-          Normal(Undefined)
-        } else if is_js_catchable_error(e) {
-          // JS exception caught — run catch body (phase 1)
-          match (catch_param, catch_body) {
-            (Some(param), Some(body)) => {
-              let catch_env = Environment::new(parent=Some(env))
-              let error_value = js_error_to_value_with_env(e, Some(env))
-              // Bind the catch parameter - supports simple identifier and destructuring
-              self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
-              let catch_yield_base = match gen_opt {
-                Some(g) => g.yield_index
-                _ => 0
-              }
-              self.exec_stmts(ctx, body, catch_env) catch {
-                ce =>
-                  if ce is YieldSignal(_) {
-                    // Yield inside catch body — save phase and error for resume
-                    match gen_opt {
-                      Some(g) => {
-                        g.try_resume_phase = 1
-                        g.try_resume_yield_base = catch_yield_base
-                        g.try_resume_error = error_value
-                      }
-                      _ => ()
-                    }
-                    raise ce
-                  } else {
-                    raise ce
-                  }
-              }
-            }
-            _ => Normal(Undefined)
-          }
-        } else {
-          raise e
+          raise error
         }
+        if is_js_catchable_error(error) {
+          if catch_body is Some(_) {
+            caught_value = Some(js_error_to_value_with_env(error, Some(env)))
+          } else {
+            pending_error = Some(error)
+          }
+        } else if error is GeneratorReturnSignal(_) {
+          pending_error = Some(error)
+        } else {
+          raise error
+        }
+        Normal(Undefined)
+      }
     }
   } else if start_phase == 1 {
-    // Resuming in catch body — skip try, go directly to catch
-    match (catch_param, catch_body) {
-      (Some(param), Some(body)) => {
-        let catch_env = Environment::new(parent=Some(env))
-        // Restore saved error value
-        let error_value = match gen_opt {
-          Some(g) => {
-            let ev = g.try_resume_error
-            g.try_resume_error = Undefined
-            ev
-          }
-          _ => Undefined
+    match gen_opt {
+      Some(g) => {
+        caught_value = Some(g.try_resume_error)
+        g.try_resume_error = Undefined
+      }
+      None => ()
+    }
+  }
+  // Phase 1: binding initialization and the catch body share one completion.
+  // An absent catch parameter does not mean that the catch body is absent.
+  match (caught_value, catch_body) {
+    (Some(error_value), Some(body)) => {
+      let catch_env = Environment::new(parent=Some(env))
+      let catch_yield_base = match gen_opt {
+        Some(g) => g.yield_index
+        None => 0
+      }
+      result = try {
+        match catch_param {
+          Some(param) =>
+            self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+          None => ()
         }
-        // Bind the catch parameter - supports simple identifier and destructuring
-        self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
-        let catch_yield_base = match gen_opt {
-          Some(g) => g.yield_index
-          _ => 0
-        }
-        result = self.exec_stmts(ctx, body, catch_env) catch {
-          ce =>
-            if ce is YieldSignal(_) {
-              // Yield inside catch body again — save phase
-              match gen_opt {
-                Some(g) => {
-                  g.try_resume_phase = 1
-                  g.try_resume_yield_base = catch_yield_base
-                  g.try_resume_error = error_value
-                }
-                _ => ()
+        hoist_block_tdz(body, catch_env)
+        self.exec_stmts(ctx, body, catch_env)
+      } catch {
+        error => {
+          if error is YieldSignal(_) {
+            match gen_opt {
+              Some(g) => {
+                g.try_resume_phase = 1
+                g.try_resume_yield_base = catch_yield_base
+                g.try_resume_error = error_value
               }
-              raise ce
-            } else {
-              raise ce
+              None => ()
             }
+            raise error
+          }
+          if is_js_catchable_error(error) || error is GeneratorReturnSignal(_) {
+            pending_error = Some(error)
+            Normal(Undefined)
+          } else {
+            raise error
+          }
         }
       }
-      _ => result = Normal(Undefined)
     }
+    _ => ()
   }
   // else start_phase == 2: skip try and catch, go to finally
   // Phase 2: Finally body (always runs if present)
@@ -2682,11 +2667,9 @@ fn Interpreter::exec_try_catch(
         Some(g) => g.yield_index
         _ => 0
       }
-      let finally_result = self.exec_stmts(
-        ctx,
-        body,
-        Environment::new(parent=Some(env)),
-      ) catch {
+      let finally_env = Environment::new(parent=Some(env))
+      hoist_block_tdz(body, finally_env)
+      let finally_result = self.exec_stmts(ctx, body, finally_env) catch {
         fe =>
           if fe is YieldSignal(_) {
             // Yield inside finally body — save phase and pending state for resume
@@ -2704,18 +2687,13 @@ fn Interpreter::exec_try_catch(
             raise fe
           }
       }
-      match pending_error {
-        Some(e) =>
-          match finally_result {
-            Normal(_) => raise e
-            ReturnSignal(_) => finally_result
-            _ => raise e
+      match finally_result {
+        Normal(_) =>
+          match pending_error {
+            Some(error) => raise error
+            None => result
           }
-        None =>
-          match finally_result {
-            Normal(_) => result
-            other => other
-          }
+        other => other
       }
     }
     None =>
