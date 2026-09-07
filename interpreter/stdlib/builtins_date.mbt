@@ -680,13 +680,9 @@ fn parse_int_from_chars(chars : Array[Char], start : Int, end : Int) -> Int {
 fn get_date_value(this_val : Value) -> Double raise Error {
   match this_val {
     Object(data) =>
-      if data.class_name == "Date" {
-        match data.bag.internal_slots.get(@runtime.DateValue) {
-          Some(Value::Number(v)) => v
-          _ => 0.0 / 0.0
-        }
-      } else {
-        raise @errors.TypeError(message="this is not a Date object")
+      match data.bag.internal_slots.get(@runtime.DateValue) {
+        Some(Value::Number(v)) => v
+        _ => raise @errors.TypeError(message="this is not a Date object")
       }
     _ => raise @errors.TypeError(message="this is not a Date object")
   }
@@ -1687,8 +1683,6 @@ pub fn setup_date_builtins(
         setter: None,
         is_accessor: false,
       }
-      // Also store [[DateValue]] on proto for "Invalid Date" default
-      data.bag.internal_slots[@runtime.DateValue] = Value::Number(0.0 / 0.0)
     }
     _ => ()
   }
