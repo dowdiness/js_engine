@@ -520,7 +520,7 @@ fn Interpreter::perform_eval_unscoped(
   if eval_strict {
     exec_env.is_var_scope = true
   }
-  let eval_ctx : ExecContext = { strict: eval_strict, current_generator: None }
+  let eval_ctx : ExecContext = { strict: eval_strict, current_generator: None, }
   if eval_strict {
     // Strict eval: all declarations stay in the eval scope (isolated)
     self.hoist_declarations(stmts, exec_env, strict=eval_strict)
@@ -1334,7 +1334,7 @@ fn PreparedUserFuncActivation::PreparedUserFuncActivation(
   ctx~ : ExecContext,
   env~ : Environment,
 ) -> PreparedUserFuncActivation {
-  { ctx, env }
+  { ctx, env, }
 }
 
 ///|
@@ -1365,7 +1365,7 @@ fn Interpreter::prepare_user_func_activation(
   func_env.is_var_scope = true
   func_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
   let func_strict = data.strict
-  let func_ctx : ExecContext = { strict: func_strict, current_generator: None }
+  let func_ctx : ExecContext = { strict: func_strict, current_generator: None, }
   if func_strict {
     // Strict mode: check for duplicate parameters
     check_duplicate_params(data.params)

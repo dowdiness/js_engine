@@ -76,11 +76,11 @@ pub(all) struct SymbolState {
 ///|
 pub fn SymbolState::new() -> SymbolState {
   {
-    symbol_id_counter: { val: 0 },
+    symbol_id_counter: { val: 0, },
     all_symbols: Map([]),
     global_symbol_registry: Map([]),
     symbol_registry_reverse: Map([]),
-    well_known_symbols_cache: { val: None },
+    well_known_symbols_cache: { val: None, },
   }
 }
 
@@ -92,7 +92,7 @@ pub fn SymbolState::new_symbol(
 ) -> SymbolData {
   let id = self.symbol_id_counter.val
   self.symbol_id_counter.val = id + 1
-  let sym : SymbolData = { id, description }
+  let sym : SymbolData = { id, description, }
   self.all_symbols[id] = sym
   sym
 }

@@ -1,7 +1,7 @@
 ///|
 /// Test-only microtask payload that never invokes JavaScript.
 fn microtask_policy_test_job(id : String) -> Microtask {
-  { callback: String_(id), args: [] }
+  { callback: String_(id), args: [], }
 }
 
 ///|

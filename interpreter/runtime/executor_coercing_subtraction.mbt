@@ -42,7 +42,7 @@ priv struct ExecutorCoercingSubtractionFrame {
 fn ExecutorCoercingSubtractionFrame::ExecutorCoercingSubtractionFrame(
   request : ExecutorCoercingSubtractionRequest,
 ) -> ExecutorCoercingSubtractionFrame {
-  { request, phase: ExecutorCoercingSubtractionNeedLeft }
+  { request, phase: ExecutorCoercingSubtractionNeedLeft, }
 }
 
 ///|

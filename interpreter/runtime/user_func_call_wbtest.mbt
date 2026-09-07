@@ -114,7 +114,7 @@ test "simple UserFunc parameter gate scopes restore nested state in LIFO order" 
 ///|
 test "simple UserFunc preparation binds parameters without executing its body" {
   let interp = Interpreter::new()
-  let body_calls : Ref[Int] = { val: 0 }
+  let body_calls : Ref[Int] = { val: 0, }
   interp.global.def(
     "body_probe",
     user_func_call_test_counting_probe(interp, "body_probe", body_calls),
@@ -147,8 +147,8 @@ test "simple UserFunc preparation binds parameters without executing its body" {
 ///|
 test "simple UserFunc preparation uses pre-resolved ThrowTypeError without routing" {
   let interp = Interpreter::new()
-  let has_calls : Ref[Int] = { val: 0 }
-  let get_calls : Ref[Int] = { val: 0 }
+  let has_calls : Ref[Int] = { val: 0, }
+  let get_calls : Ref[Int] = { val: 0, }
   let has_trap = user_func_call_test_counting_probe(
     interp, "has trap", has_calls,
   )
@@ -204,7 +204,7 @@ test "simple UserFunc preparation uses pre-resolved ThrowTypeError without routi
 ///|
 test "simple UserFunc successful call restores parameter gate" {
   let interp = Interpreter::new()
-  let body_calls : Ref[Int] = { val: 0 }
+  let body_calls : Ref[Int] = { val: 0, }
   interp.global.def(
     "body_probe",
     user_func_call_test_counting_probe(interp, "body_probe", body_calls),
@@ -236,9 +236,9 @@ test "simple UserFunc successful call restores parameter gate" {
 ///|
 test "simple UserFunc setup failure preserves error and restores parameter gate" {
   let interp = Interpreter::new()
-  let has_calls : Ref[Int] = { val: 0 }
-  let get_calls : Ref[Int] = { val: 0 }
-  let body_calls : Ref[Int] = { val: 0 }
+  let has_calls : Ref[Int] = { val: 0, }
+  let get_calls : Ref[Int] = { val: 0, }
+  let body_calls : Ref[Int] = { val: 0, }
   let sentinel : Error = @errors.TypeError(message="setup sentinel")
   let has_trap = make_native_func(
     name="has trap",
@@ -300,7 +300,7 @@ test "simple UserFunc setup failure preserves error and restores parameter gate"
 ///|
 test "simple UserFunc body failure preserves error and restores parameter gate" {
   let interp = Interpreter::new()
-  let body_calls : Ref[Int] = { val: 0 }
+  let body_calls : Ref[Int] = { val: 0, }
   let sentinel : Error = @errors.RangeError(message="body sentinel")
   interp.global.def(
     "body_probe",

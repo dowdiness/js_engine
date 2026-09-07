@@ -348,7 +348,7 @@ test "to_number - non-numeric string is NaN" {
 ///|
 test "to_number - symbol raises TypeError" {
   let raised = try {
-    let _ = to_number(Symbol({ id: 1, description: None }))
+    let _ = to_number(Symbol({ id: 1, description: None, }))
     false
   } catch {
     @errors.TypeError(_) => true
@@ -427,7 +427,7 @@ test "subtraction falls back from Array valueOf to its toString hook" {
 ///|
 test "subtraction observes inherited Array conversion hooks" {
   let interp = Interpreter::new()
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let value_of = make_method_func(
     name="inheritedValueOf",
     realm_state=Some(interp.realm_state),
@@ -629,7 +629,7 @@ test "to_js_string - undefined" {
 ///|
 test "to_js_string - symbol raises TypeError" {
   let raised = try {
-    let _ = to_js_string(Symbol({ id: 1, description: None }))
+    let _ = to_js_string(Symbol({ id: 1, description: None, }))
     false
   } catch {
     @errors.TypeError(_) => true

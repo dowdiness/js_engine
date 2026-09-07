@@ -81,6 +81,24 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "EngineError::output",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineError::to_repr",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineError::to_string",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "Engine",
       "category": "stable_embedding",
       "reason": "documented persistent realm for application embedding"
@@ -435,6 +453,24 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "SessionCreationError::output",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SessionCreationError::to_repr",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SessionCreationError::to_string",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "ExecutionSession",
       "category": "stable_embedding",
       "reason": "documented single-Realm Hosted Turn owner"
@@ -444,6 +480,18 @@
       "symbol": "ExecutionSessionError",
       "category": "stable_embedding",
       "reason": "documented Hosted Turn and Session lifecycle failure"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSessionError::output",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "ExecutionSessionError::to_string",
+      "category": "stable_embedding",
+      "reason": "existing error trait method exported explicitly for MoonBit compatibility"
     },
     {
       "package": "dowdiness/js_engine",

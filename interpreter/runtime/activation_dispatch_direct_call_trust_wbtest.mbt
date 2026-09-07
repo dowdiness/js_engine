@@ -119,7 +119,7 @@ test "direct numeric recursion trust rejects closure lookalikes and incomplete m
         Some(UserFunc(data)) =>
           Object({
             ..object_data,
-            callable: Some(UserFunc({ ..data, closure: Environment::new() })),
+            callable: Some(UserFunc({ ..data, closure: Environment::new(), })),
           })
         _ => fail("expected a simple UserFunc")
       }

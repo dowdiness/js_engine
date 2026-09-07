@@ -114,7 +114,7 @@ test "execution control normal activation exit restores depth" {
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
-  let depth_inside : Ref[Int64] = { val: -1L }
+  let depth_inside : Ref[Int64] = { val: -1L, }
   match
     control.with_activation(() => {
       depth_inside.val = control.active_depth()

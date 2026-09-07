@@ -101,5 +101,5 @@ fn OwnedReceiverCall::validate_call(
       "receiver activation lost its exact UserFunc provenance",
     )
   }
-  { data, throw_type_error }
+  { data, throw_type_error, }
 }

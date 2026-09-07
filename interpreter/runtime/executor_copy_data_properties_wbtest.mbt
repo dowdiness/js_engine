@@ -18,7 +18,13 @@ fn ExecutorCopyDataPropertiesTestRootFrame::ExecutorCopyDataPropertiesTestRootFr
   excluded_keys~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorCopyDataPropertiesTestRootFrame {
-  { target, source, excluded_keys: excluded_keys.copy(), loc, requested: false }
+  {
+    target,
+    source,
+    excluded_keys: excluded_keys.copy(),
+    loc,
+    requested: false,
+  }
 }
 
 ///|
@@ -511,7 +517,7 @@ test "managed CopyDataProperties enforces non-configurable Proxy ownKeys invaria
 ///|
 test "managed CopyDataProperties keeps one key snapshot across source mutation" {
   let interp = Interpreter::new()
-  let source_ref : Ref[Value] = { val: Undefined }
+  let source_ref : Ref[Value] = { val: Undefined, }
   let getter = make_method_func(
     name="mutating source getter",
     realm_state=Some(interp.realm_state),
@@ -574,7 +580,7 @@ test "managed CopyDataProperties keeps one key snapshot across source mutation" 
 ///|
 test "managed CopyDataProperties creates data properties for proto-named and symbol keys" {
   let interp = Interpreter::new()
-  let setter_calls : Ref[Int] = { val: 0 }
+  let setter_calls : Ref[Int] = { val: 0, }
   let inherited_setter = make_method_func(
     name="inherited proto setter",
     realm_state=Some(interp.realm_state),

@@ -13,6 +13,9 @@ pub struct SkipMetadata {
 } derive(Debug)
 
 ///|
+pub extend SkipMetadata with @debug.Debug::{to_repr}
+
+///|
 fn skip_metadata_path(root~ : String) -> String {
   @path_utils.join_path(root, "scripts/test262_skip_metadata.json")
 }

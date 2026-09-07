@@ -27,7 +27,7 @@ priv struct MicrotaskQueuePolicy {
 fn MicrotaskQueuePolicy::MicrotaskQueuePolicy(
   queue : Array[Microtask],
 ) -> MicrotaskQueuePolicy {
-  { queue, next_index: 0, phase: MicrotaskQueueReady }
+  { queue, next_index: 0, phase: MicrotaskQueueReady, }
 }
 
 ///|

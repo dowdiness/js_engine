@@ -267,7 +267,7 @@ fn make_get_own_property_descriptor_func() -> Value {
         let idx = @string.parse_int(prop_name) catch { _ => -1 }
         if idx >= 0 && idx.to_string() == prop_name && idx < s.length() {
           let chars = s.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           buf.write_char(chars[idx])
           return make_data_desc_obj(
             Value::String_(buf.to_string()),

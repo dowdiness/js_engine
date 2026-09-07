@@ -20,7 +20,7 @@ fn DispatchManagedUserFuncCatalog::DispatchManagedUserFuncCatalog(
   numeric~ : TrustedNumericRecursionRegistry,
   array_map~ : TrustedArrayMapRecursionRegistry,
 ) -> DispatchManagedUserFuncCatalog {
-  { numeric, array_map }
+  { numeric, array_map, }
 }
 
 ///|
@@ -343,7 +343,7 @@ priv struct DispatchExpressionPlan {
 fn DispatchExpressionPlan::DispatchExpressionPlan(
   steps~ : Array[DispatchExpressionPlanStep],
 ) -> DispatchExpressionPlan {
-  { steps: steps.map(snapshot_dispatch_expression_plan_step) }
+  { steps: steps.map(snapshot_dispatch_expression_plan_step), }
 }
 
 ///|
@@ -463,7 +463,7 @@ fn expression_call_source(expr : @ast.Expr) -> DispatchExpressionCallSource? {
     ) if (name == "step" || name == "u") &&
       lex_form == @token.LexForm::LexNormal &&
       argument == NUMERIC_RECURSION_INITIAL_ARGUMENT =>
-      Some({ name, argument, call_loc, argument_loc })
+      Some({ name, argument, call_loc, argument_loc, })
     _ => None
   }
 }
@@ -621,7 +621,7 @@ fn numeric_map_expression_source(
   }
   let numeric_stmts = [stmts[0], @ast.ExprStmt(step_expr, stmt_loc)]
   let array_map_stmts = [stmts[1], stmts[2], @ast.ExprStmt(u_expr, stmt_loc)]
-  Some({ numeric_stmts, array_map_stmts, steps })
+  Some({ numeric_stmts, array_map_stmts, steps, })
 }
 
 ///|
@@ -652,7 +652,7 @@ fn Interpreter::preflight_dispatchable_numeric_map_expression_program(
     Some(preflight) => preflight
     None => return None
   }
-  Some({ numeric, array_map, source })
+  Some({ numeric, array_map, source, })
 }
 
 ///|

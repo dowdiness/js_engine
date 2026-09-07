@@ -16,6 +16,11 @@ pub(all) enum LexForm {
   NumberLegacyOctalInt
   NumberNonOctalDecimalInt
 } derive(Eq, @debug.Debug)
+pub fn LexForm::equal(Self, Self) -> Bool
+pub fn LexForm::not_equal(Self, Self) -> Bool
+pub fn LexForm::output(Self, &Logger) -> Unit
+pub fn LexForm::to_repr(Self) -> @debug.Repr
+pub fn LexForm::to_string(Self) -> String
 pub impl Show for LexForm
 
 pub(all) struct Loc {
@@ -24,6 +29,11 @@ pub(all) struct Loc {
   offset : Int
 } derive(Eq, @debug.Debug)
 pub fn Loc::default() -> Self
+pub fn Loc::equal(Self, Self) -> Bool
+pub fn Loc::not_equal(Self, Self) -> Bool
+pub fn Loc::output(Self, &Logger) -> Unit
+pub fn Loc::to_repr(Self) -> @debug.Repr
+pub fn Loc::to_string(Self) -> String
 pub impl Show for Loc
 
 pub struct SourceSpan {
@@ -31,7 +41,10 @@ pub struct SourceSpan {
   end_ : Loc
 } derive(Eq, @debug.Debug)
 pub fn SourceSpan::end(Self) -> Loc
+pub fn SourceSpan::equal(Self, Self) -> Bool
+pub fn SourceSpan::not_equal(Self, Self) -> Bool
 pub fn SourceSpan::start(Self) -> Loc
+pub fn SourceSpan::to_repr(Self) -> @debug.Repr
 
 pub(all) struct Token {
   kind : TokenKind
@@ -42,8 +55,13 @@ pub(all) struct Token {
 } derive(Eq, @debug.Debug)
 pub fn Token::Token(TokenKind, Loc, String, lex_form? : LexForm, end_offset? : Int) -> Self
 pub fn Token::eof(Loc) -> Self
+pub fn Token::equal(Self, Self) -> Bool
 pub fn Token::new(TokenKind, Loc, String, lex_form? : LexForm, end_offset? : Int) -> Self
+pub fn Token::not_equal(Self, Self) -> Bool
+pub fn Token::output(Self, &Logger) -> Unit
 pub fn Token::source_span(Self, String) -> SourceSpan?
+pub fn Token::to_repr(Self) -> @debug.Repr
+pub fn Token::to_string(Self) -> String
 pub impl Show for Token
 
 pub(all) enum TokenKind {
@@ -157,6 +175,11 @@ pub(all) enum TokenKind {
   Of
   EOF
 } derive(Eq, @debug.Debug)
+pub fn TokenKind::equal(Self, Self) -> Bool
+pub fn TokenKind::not_equal(Self, Self) -> Bool
+pub fn TokenKind::output(Self, &Logger) -> Unit
+pub fn TokenKind::to_repr(Self) -> @debug.Repr
+pub fn TokenKind::to_string(Self) -> String
 pub impl Show for TokenKind
 
 // Type aliases

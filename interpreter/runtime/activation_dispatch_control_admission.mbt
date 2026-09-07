@@ -34,7 +34,7 @@ fn TrustedControlLifecycleProgram::TrustedControlLifecycleProgram(
   plan~ : ControlLifecyclePlan,
   root_env~ : Environment,
 ) -> TrustedControlLifecycleProgram {
-  { plan, root_env }
+  { plan, root_env, }
 }
 
 ///|

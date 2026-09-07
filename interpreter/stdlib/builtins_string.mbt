@@ -7,7 +7,7 @@ fn get_substitution(
   position : Int,
 ) -> String {
   let repl_chars = replacement.to_array()
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let mut i = 0
   while i < repl_chars.length() {
     if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
@@ -217,7 +217,7 @@ pub fn get_string_method(
             0
           }
           if idx >= 0 && idx < chars.length() {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             buf.write_char(chars[idx])
             Value::String_(buf.to_string())
           } else {
@@ -260,7 +260,7 @@ pub fn get_string_method(
           let len = chars.length()
           let actual_idx = if idx < 0 { len + idx } else { idx }
           if actual_idx >= 0 && actual_idx < len {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             buf.write_char(chars[actual_idx])
             Value::String_(buf.to_string())
           } else {
@@ -305,7 +305,7 @@ pub fn get_string_method(
         name="concat",
         length=1,
         fn(interp, _this_val, args) raise {
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           buf.write_string(str)
           for arg in args {
             buf.write_string(interp.to_js_string(arg))
@@ -444,7 +444,7 @@ pub fn get_string_method(
             return Value::String_("")
           }
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for i = start; i < end; i = i + 1 {
             buf.write_char(s_chars[i])
           }
@@ -491,7 +491,7 @@ pub fn get_string_method(
             end = tmp
           }
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for i = start; i < end; i = i + 1 {
             buf.write_char(s_chars[i])
           }
@@ -545,7 +545,7 @@ pub fn get_string_method(
             end = slen
           }
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for i = start; i < end; i = i + 1 {
             buf.write_char(s_chars[i])
           }
@@ -560,7 +560,7 @@ pub fn get_string_method(
         name="toLowerCase",
         fn(_args) {
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for c in s_chars {
             let code = c.to_int()
             let lower = unicode_to_lower(code)
@@ -577,7 +577,7 @@ pub fn get_string_method(
         name="toUpperCase",
         fn(_args) {
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for c in s_chars {
             let code = c.to_int()
             let upper = unicode_to_upper(code)
@@ -595,7 +595,7 @@ pub fn get_string_method(
         name="toLocaleLowerCase",
         fn(_args) {
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for c in s_chars {
             let code = c.to_int()
             let lower = unicode_to_lower(code)
@@ -613,7 +613,7 @@ pub fn get_string_method(
         name="toLocaleUpperCase",
         fn(_args) {
           let s_chars = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for c in s_chars {
             let code = c.to_int()
             let upper = unicode_to_upper(code)
@@ -736,7 +736,7 @@ pub fn get_string_method(
             limit.to_int()
           }
           for i = 0; i < count; i = i + 1 {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             buf.write_char(chars[i])
             result.push(Value::String_(buf.to_string()))
           }
@@ -758,7 +758,7 @@ pub fn get_string_method(
             }
           }
           if matched {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             for k = last; k < i; k = k + 1 {
               buf.write_char(s_chars[k])
             }
@@ -775,7 +775,7 @@ pub fn get_string_method(
         }
         // Add remaining part if we haven't hit the limit
         if result.length().to_int64() < limit {
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for k = last; k < slen; k = k + 1 {
             buf.write_char(s_chars[k])
           }
@@ -860,7 +860,7 @@ pub fn get_string_method(
             }
           }
           if matched {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             for k = 0; k < i; k = k + 1 {
               buf.write_char(s_chars[k])
             }
@@ -1159,7 +1159,7 @@ pub fn get_string_method(
           if count.to_int64() * str.length().to_int64() >= 9007199254740991L {
             raise @errors.RangeError(message="Invalid repeat count")
           }
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for _i = 0; _i < count; _i = _i + 1 {
             interp.observe_execution_step()
             buf.write_string(str)
@@ -1195,7 +1195,7 @@ pub fn get_string_method(
           if pad_str.length() == 0 {
             return Value::String_(str)
           }
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           let pad_chars = pad_str.to_array()
           let mut filled = 0
           let needed = target_len - slen
@@ -1235,7 +1235,7 @@ pub fn get_string_method(
           if pad_str.length() == 0 {
             return Value::String_(str)
           }
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           buf.write_string(str)
           let pad_chars = pad_str.to_array()
           let mut filled = 0
@@ -1359,7 +1359,7 @@ pub fn get_string_method(
           let search_len = search.length()
           if search_len == 0 {
             // Empty string: insert replacement before each char and at end
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             let s_chars = str.to_array()
             for i, c in s_chars {
               let rep = if is_func {
@@ -1400,7 +1400,7 @@ pub fn get_string_method(
           }
           let s_chars = str.to_array()
           let search_chars = search.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           let mut i = 0
           while i < slen {
             if i <= slen - search_len {
@@ -1516,7 +1516,7 @@ pub fn get_string_method(
         fn(_args) {
           // Replace lone surrogates with U+FFFD
           let c = str.to_array()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           let mut i = 0
           while i < c.length() {
             let code = c[i].to_int()
@@ -1701,7 +1701,7 @@ pub fn get_string_method(
 /// Escape double-quotes in attribute values per CreateHTML (ECMA-262 Annex B)
 fn escape_html_attr(value : String) -> String {
   let chars = value.to_array()
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for c in chars {
     if c == '"' {
       buf.write_string("&quot;")
@@ -1860,7 +1860,7 @@ fn string_trim_start(s : String) -> String {
   if start == 0 {
     return s
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for i = start; i < chars.length(); i = i + 1 {
     buf.write_char(chars[i])
   }
@@ -2024,7 +2024,7 @@ fn string_trim_end(s : String) -> String {
   if end == chars.length() {
     return s
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for i = 0; i < end; i = i + 1 {
     buf.write_char(chars[i])
   }

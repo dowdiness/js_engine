@@ -69,7 +69,7 @@ test "Token creation via Token::new (backward compat)" {
 
 ///|
 test "Token EOF" {
-  let loc : @token.Loc = { line: 1, col: 2, offset: 1 }
+  let loc : @token.Loc = { line: 1, col: 2, offset: 1, }
   let tok = @token.Token::eof(loc)
   expect_token_kind(tok.kind, @token.TokenKind::EOF)
   match tok.source_span("x") {
@@ -122,7 +122,7 @@ test "Token source span rejects an invalid offset range" {
   }
   let split_surrogate = @token.Token(
     @token.TokenKind::Ident(""),
-    { line: 1, col: 1, offset: 1 },
+    { line: 1, col: 1, offset: 1, },
     "",
     end_offset=2,
   )

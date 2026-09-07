@@ -46,7 +46,7 @@ fn regex_chars_to_string(
   end_ : Int,
   code_units : Bool,
 ) -> String {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for i = start; i < end_; i = i + 1 {
     let ch = chars[i]
     if code_units {
@@ -69,7 +69,7 @@ fn regex_domain_substring(
   if code_units {
     input.unsafe_substring(start~, end=end_)
   } else {
-    let buf = StringBuilder::new()
+    let buf = StringBuilder()
     for i = start; i < end_; i = i + 1 {
       buf.write_char(chars[i])
     }
@@ -525,7 +525,7 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
         // Named backreference \k<name> — interpret \u escapes in name
         let saved_pos = self.pos
         self.pos += 1 // skip '<'
-        let name_buf = StringBuilder::new()
+        let name_buf = StringBuilder()
         let mut valid = true
         // Try to parse the name with Unicode escape interpretation
         while self.pos < self.pattern.length() && self.pattern[self.pos] != '>' {
@@ -1007,7 +1007,7 @@ priv struct RegexNameSummary {
 
 ///|
 fn RegexNameSummary::RegexNameSummary() -> RegexNameSummary {
-  { names: Default::default() }
+  { names: Default::default(), }
 }
 
 ///|
@@ -1160,7 +1160,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
             message="Invalid regex: unterminated group name",
           )
         }
-        let name_buf = StringBuilder::new()
+        let name_buf = StringBuilder()
         // First char: must be ID_Start (or \u escape that resolves to ID_Start)
         let first = if self.pattern[self.pos] == '\\' &&
           self.pos + 1 < self.pattern.length() &&
@@ -2039,7 +2039,7 @@ fn collect_quantified_states(
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
   let states : Array[QuantifiedMatchState] = [
-    { pos, snapshot: state.snapshot() },
+    { pos, snapshot: state.snapshot(), },
   ]
   let mut current = pos
   let mut count = 0
@@ -2077,7 +2077,7 @@ fn collect_quantified_states(
             }
           }
         }
-        states.push({ pos: current, snapshot: state.snapshot() })
+        states.push({ pos: current, snapshot: state.snapshot(), })
       }
       None => {
         state.restore(before)
@@ -2098,7 +2098,7 @@ fn match_sequence_candidates(
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
   if idx >= nodes.length() {
-    return [{ pos, snapshot: state.snapshot() }]
+    return [{ pos, snapshot: state.snapshot(), }]
   }
   let saved = state.snapshot()
   // Fast-path for Quantified with simple inner node (Literal, Dot, CharClass).
@@ -2197,7 +2197,7 @@ fn match_node_candidates(
             regex_chars_to_string(input, pos, candidate.pos, !flags.unicode),
           )
         }
-        results.push({ pos: candidate.pos, snapshot: state.snapshot() })
+        results.push({ pos: candidate.pos, snapshot: state.snapshot(), })
         state.restore(saved)
       }
     }
@@ -2249,8 +2249,8 @@ fn match_node_candidates(
         children, 0, input, pos, state, flags,
       )
       match (assertion_result, positive) {
-        (Some(_), true) => results.push({ pos, snapshot: state.snapshot() })
-        (None, false) => results.push({ pos, snapshot: saved })
+        (Some(_), true) => results.push({ pos, snapshot: state.snapshot(), })
+        (None, false) => results.push({ pos, snapshot: saved, })
         _ => ()
       }
     }
@@ -2298,12 +2298,12 @@ fn match_node_candidates(
       state.preserve_first_capture = prior_preserve
       if found_leftmost {
         state.restore(best_snapshot)
-        results.push({ pos, snapshot: state.snapshot() })
+        results.push({ pos, snapshot: state.snapshot(), })
       } else {
         state.restore(saved)
         match positive {
           true => () // No match → assertion fails
-          false => results.push({ pos, snapshot: state.snapshot() })
+          false => results.push({ pos, snapshot: state.snapshot(), })
         }
       }
     }
@@ -2316,7 +2316,7 @@ fn match_node_candidates(
     | NamedBackreference(_)
     | DuplicateNamedBackreference(_) =>
       match regex_exec_single(node, input, pos, state, flags) {
-        Some(next) => results.push({ pos: next, snapshot: state.snapshot() })
+        Some(next) => results.push({ pos: next, snapshot: state.snapshot(), })
         None => ()
       }
   }
@@ -2465,7 +2465,7 @@ fn parse_regex_domain(
   let num_groups = count_groups(node)
   let names = parser.group_name_entries.copy()
   names.sort_by(fn(a, b) { a.1.compare(b.1) })
-  { node, num_groups, group_names: names }
+  { node, num_groups, group_names: names, }
 }
 
 ///|
@@ -2897,7 +2897,7 @@ fn normalize_regexp_flags(flags : String) -> String raise Error {
     }
     seen_flags[ch] = true
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   if flags.contains("g") {
     buf.write_string("g")
   }
@@ -3044,7 +3044,7 @@ fn escape_regexp_source(source : String) -> String {
   if source == "" {
     return "(?:)"
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for ch in source {
     match ch {
       '/' => buf.write_string("\\/")
@@ -3386,7 +3386,7 @@ fn make_regexp_flags_getter(realm_state : @runtime.RealmState) -> Value {
       if !regexp_this_is_object(this_val) {
         return regexp_proto_incompatible("get RegExp.prototype.flags")
       }
-      let result = StringBuilder::new()
+      let result = StringBuilder()
       let flag_props = [
         ("hasIndices", "d"),
         ("global", "g"),
@@ -3541,7 +3541,7 @@ pub fn make_regexp_object_with_realm_state(
 
 ///|
 pub fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for i = start; i < end_; i = i + 1 {
     buf.write_char(chars[i])
   }
@@ -4007,7 +4007,7 @@ fn regexp_get_substitution(
   let input_chars = regex_input_chars(input, code_units)
   let matched_length = regex_input_chars(matched, code_units).length()
   let repl_chars = replacement.to_array()
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let mut i = 0
   while i < repl_chars.length() {
     if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
@@ -4081,7 +4081,7 @@ fn regexp_get_substitution(
           i += 2
           continue
         }
-        let name_buf = StringBuilder::new()
+        let name_buf = StringBuilder()
         let mut j = i + 2
         while j < repl_chars.length() && repl_chars[j] != '>' {
           name_buf.write_char(repl_chars[j])
@@ -4208,7 +4208,7 @@ fn regexp_symbol_replace(
   // The result array exposes index/length in UTF-16 code units even when the
   // matcher itself runs in the Unicode scalar domain.
   let input_chars = regex_input_chars(input, true)
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let mut next_source_position = 0
   for result in results {
     let item = regexp_replace_match_from_result(interp, result, input)
@@ -4664,7 +4664,7 @@ pub fn string_replace_regex(
     if matches.length() == 0 {
       return Value::String_(s)
     }
-    let buf = StringBuilder::new()
+    let buf = StringBuilder()
     let mut last_end = 0
     for m in matches {
       // Add text before this match
@@ -4698,7 +4698,7 @@ pub fn string_replace_regex(
     }
     match result {
       Some(m) => {
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         regex_append_domain_range(buf, s, input_chars, 0, m.start, code_units)
         let repl = process_replacement(
           replacement, s, input_chars, m, code_units,
@@ -4750,7 +4750,7 @@ fn string_replace_regex_func_impl(
     if matches.length() == 0 {
       return Value::String_(s)
     }
-    let buf = StringBuilder::new()
+    let buf = StringBuilder()
     let mut last_end = 0
     for m in matches {
       regex_append_domain_range(
@@ -4788,7 +4788,7 @@ fn string_replace_regex_func_impl(
     }
     match result {
       Some(m) => {
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         regex_append_domain_range(buf, s, input_chars, 0, m.start, code_units)
         let repl = call_replace_fn(
           replace_fn,
@@ -4891,7 +4891,7 @@ fn process_replacement(
   code_units : Bool,
 ) -> String {
   let repl_chars = replacement.to_array()
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let mut i = 0
   while i < repl_chars.length() {
     if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
@@ -4976,7 +4976,7 @@ fn process_replacement(
           continue
         }
         // Parse name until '>'
-        let name_buf = StringBuilder::new()
+        let name_buf = StringBuilder()
         let mut j = i + 2
         while j < repl_chars.length() && repl_chars[j] != '>' {
           name_buf.write_char(repl_chars[j])

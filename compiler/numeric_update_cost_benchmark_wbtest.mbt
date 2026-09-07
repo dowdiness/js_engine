@@ -19,7 +19,7 @@ fn numeric_update_cost_run(
 ) -> Double {
   let result = run_bytecode_function(
     interp,
-    { strict: false, current_generator: None },
+    { strict: false, current_generator: None, },
     interp.global,
     function,
     direct_args=Some([Value::Number(seed.to_double())]),

@@ -1,13 +1,22 @@
 ///| Embedder-owned host slots (#518). Separate from engine `internal_slots`.
 
 ///|
-let host_slot_id_counter : Ref[Int] = { val: 0 }
+let host_slot_id_counter : Ref[Int] = { val: 0, }
 
 ///|
 /// Embedder-owned slot identity. Construct only via `HostSlotKey::reserve`.
 pub(all) struct HostSlotKey {
   priv id : Int
 } derive(Eq, Hash, Debug)
+
+///|
+pub extend HostSlotKey with Eq::{equal, not_equal}
+
+///|
+pub extend HostSlotKey with Hash::{hash, hash_combine}
+
+///|
+pub extend HostSlotKey with @debug.Debug::{to_repr}
 
 ///|
 /// Allocate a unique key within this loaded runtime package instance.

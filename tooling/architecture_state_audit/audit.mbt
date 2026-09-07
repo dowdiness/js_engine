@@ -20,6 +20,9 @@ struct MutableBinding {
 } derive(Debug)
 
 ///|
+pub extend MutableBinding with @debug.Debug::{to_repr}
+
+///|
 fn is_identifier_start(ch : UInt16) -> Bool {
   (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_'
 }

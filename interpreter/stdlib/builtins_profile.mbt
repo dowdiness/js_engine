@@ -6,7 +6,7 @@ priv struct BuiltinSetupProfiler {
 
 ///|
 fn BuiltinSetupProfiler::BuiltinSetupProfiler() -> BuiltinSetupProfiler {
-  { timings: [], last_ms: builtin_setup_profile_now_ms() }
+  { timings: [], last_ms: builtin_setup_profile_now_ms(), }
 }
 
 ///|

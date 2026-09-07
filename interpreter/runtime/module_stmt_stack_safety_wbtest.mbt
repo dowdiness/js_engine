@@ -15,7 +15,7 @@ fn nest_module_stmt_lists(stmt : @ast.Stmt, depth : Int) -> @ast.Stmt {
 
 ///|
 fn module_test_record(stmts : Array[@ast.Stmt]) -> ModuleRunRecord {
-  { specifier: "./main", stmts, exports: Map([]), env: Environment::new() }
+  { specifier: "./main", stmts, exports: Map([]), env: Environment::new(), }
 }
 
 ///|
@@ -23,7 +23,7 @@ fn module_test_record_at(
   specifier : String,
   stmts : Array[@ast.Stmt],
 ) -> ModuleRunRecord {
-  { specifier, stmts, exports: Map([]), env: Environment::new() }
+  { specifier, stmts, exports: Map([]), env: Environment::new(), }
 }
 
 ///|

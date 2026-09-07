@@ -35,7 +35,7 @@ fn NumericRecursionClosedArgumentRecipe::NumericRecursionClosedArgumentRecipe(
   root_loc~ : @token.Loc,
   final_loc~ : @token.Loc,
 ) -> NumericRecursionClosedArgumentRecipe {
-  { value, observation_count, root_loc, final_loc }
+  { value, observation_count, root_loc, final_loc, }
 }
 
 ///|
@@ -106,7 +106,7 @@ fn NumericRecursionFunctionPlan::NumericRecursionFunctionPlan(
   syntax~ : NumericRecursionFunctionSyntax,
   declaration_index~ : Int,
 ) -> NumericRecursionFunctionPlan {
-  { syntax, declaration_index }
+  { syntax, declaration_index, }
 }
 
 ///|
@@ -161,7 +161,7 @@ fn NumericRecursionProtectedRootRecipe::NumericRecursionProtectedRootRecipe(
   catch_recipe~ : NumericRecursionCatchRecipe,
   finalizer_recipe~ : NumericRecursionFinalizerRecipe,
 ) -> NumericRecursionProtectedRootRecipe {
-  { try_completion, catch_recipe, finalizer_recipe }
+  { try_completion, catch_recipe, finalizer_recipe, }
 }
 
 ///|

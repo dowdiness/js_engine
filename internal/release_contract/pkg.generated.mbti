@@ -24,11 +24,17 @@ pub struct ConformanceCounts {
   discovered : Int
   skipped : Int
 } derive(Eq, @debug.Debug)
+pub fn ConformanceCounts::equal(Self, Self) -> Bool
+pub fn ConformanceCounts::not_equal(Self, Self) -> Bool
+pub fn ConformanceCounts::to_repr(Self) -> @debug.Repr
 
 pub struct PackageEvidence {
   content_sha256 : String
   file_count : Int
 } derive(Eq, @debug.Debug)
+pub fn PackageEvidence::equal(Self, Self) -> Bool
+pub fn PackageEvidence::not_equal(Self, Self) -> Bool
+pub fn PackageEvidence::to_repr(Self) -> @debug.Repr
 
 pub struct ReleaseCandidateManifest {
   schema_version : Int
@@ -38,6 +44,9 @@ pub struct ReleaseCandidateManifest {
   test262 : Test262Evidence
   package_evidence : PackageEvidence
 } derive(Eq, @debug.Debug)
+pub fn ReleaseCandidateManifest::equal(Self, Self) -> Bool
+pub fn ReleaseCandidateManifest::not_equal(Self, Self) -> Bool
+pub fn ReleaseCandidateManifest::to_repr(Self) -> @debug.Repr
 
 pub struct ReleaseDiagnostic {
   code : String
@@ -46,7 +55,10 @@ pub struct ReleaseDiagnostic {
 } derive(Eq, @debug.Debug)
 pub fn ReleaseDiagnostic::actual(Self) -> String
 pub fn ReleaseDiagnostic::code(Self) -> String
+pub fn ReleaseDiagnostic::equal(Self, Self) -> Bool
 pub fn ReleaseDiagnostic::expected(Self) -> String
+pub fn ReleaseDiagnostic::not_equal(Self, Self) -> Bool
+pub fn ReleaseDiagnostic::to_repr(Self) -> @debug.Repr
 
 pub struct ReleaseValidation {
   allowed : Bool
@@ -67,11 +79,17 @@ pub struct Test262Evidence {
   strict : ConformanceCounts
   non_strict : ConformanceCounts
 } derive(Eq, @debug.Debug)
+pub fn Test262Evidence::equal(Self, Self) -> Bool
+pub fn Test262Evidence::not_equal(Self, Self) -> Bool
+pub fn Test262Evidence::to_repr(Self) -> @debug.Repr
 
 pub struct UnitTestCounts {
   passed : Int
   executed : Int
 } derive(Eq, @debug.Debug)
+pub fn UnitTestCounts::equal(Self, Self) -> Bool
+pub fn UnitTestCounts::not_equal(Self, Self) -> Bool
+pub fn UnitTestCounts::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

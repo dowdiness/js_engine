@@ -110,13 +110,16 @@ pub struct UnicodeConfig {
 } derive(Debug)
 
 ///|
+pub extend UnicodeConfig with @debug.Debug::{to_repr}
+
+///|
 pub fn UnicodeConfig::UnicodeConfig(
   unicode_version~ : String,
   output~ : String,
   case_fold_output? : String? = None,
   fetch_timeout_ms? : Int = UNICODE_FETCH_TIMEOUT_MS,
 ) -> UnicodeConfig {
-  { unicode_version, output, case_fold_output, fetch_timeout_ms }
+  { unicode_version, output, case_fold_output, fetch_timeout_ms, }
 }
 
 ///|
@@ -404,5 +407,5 @@ pub async fn run_unicode_tables(config : UnicodeConfig) -> ToolRun {
     }
     None => ()
   }
-  { stdout: "", stderr: stderr.to_string(), code: 0 }
+  { stdout: "", stderr: stderr.to_string(), code: 0, }
 }

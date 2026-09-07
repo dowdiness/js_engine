@@ -511,7 +511,7 @@ fn merge_partial_into(
   } else {
     current.is_accessor
   }
-  { writable, enumerable, configurable, getter, setter, is_accessor }
+  { writable, enumerable, configurable, getter, setter, is_accessor, }
 }
 
 ///|
@@ -540,7 +540,7 @@ fn complete_partial_for_new(partial : PartialDescriptor) -> PropDescriptor {
     None
   }
   let is_accessor = partial.has_getter || partial.has_setter
-  { writable, enumerable, configurable, getter, setter, is_accessor }
+  { writable, enumerable, configurable, getter, setter, is_accessor, }
 }
 
 ///|
@@ -921,12 +921,12 @@ pub fn Interpreter::ordinary_define_own_property(
       let current_is_accessor = current.is_accessor
       let final_desc = if partial.is_accessor() && !current_is_accessor {
         // Data → Accessor: writable not meaningful for accessor; set to false.
-        { ..merged, writable: false }
+        { ..merged, writable: false, }
       } else if partial.is_data() && current_is_accessor {
         // Accessor → Data: clear residual getter/setter so the merged
         // descriptor is a pure data descriptor. Without this, reads via
         // ordinary_get_value would still fire the old getter.
-        { ..merged, getter: None, setter: None }
+        { ..merged, getter: None, setter: None, }
       } else {
         merged
       }
@@ -1008,9 +1008,9 @@ pub fn Interpreter::array_define_own_property(
           }
           let merged = merge_partial_into(current, partial)
           let final_desc = if !merged.is_accessor && current.is_accessor {
-            { ..merged, getter: None, setter: None }
+            { ..merged, getter: None, setter: None, }
           } else if merged.is_accessor && !current.is_accessor {
-            { ..merged, writable: false }
+            { ..merged, writable: false, }
           } else {
             merged
           }
@@ -1086,9 +1086,9 @@ pub fn Interpreter::array_define_own_property(
                 // Clear fields that become invalid after a descriptor-kind transition.
                 arr.bag.descriptors[k] = if !merged.is_accessor &&
                   current.is_accessor {
-                  { ..merged, getter: None, setter: None }
+                  { ..merged, getter: None, setter: None, }
                 } else if merged.is_accessor && !current.is_accessor {
-                  { ..merged, writable: false }
+                  { ..merged, writable: false, }
                 } else {
                   merged
                 }
@@ -1141,9 +1141,9 @@ pub fn Interpreter::array_define_own_property(
                 }
                 let merged = merge_partial_into(current, partial)
                 let final_desc = if !merged.is_accessor && current.is_accessor {
-                  { ..merged, getter: None, setter: None }
+                  { ..merged, getter: None, setter: None, }
                 } else if merged.is_accessor && !current.is_accessor {
-                  { ..merged, writable: false }
+                  { ..merged, writable: false, }
                 } else {
                   merged
                 }
@@ -1182,9 +1182,9 @@ pub fn Interpreter::array_define_own_property(
           }
           let merged = merge_partial_into(current, partial)
           let final_desc = if !merged.is_accessor && current.is_accessor {
-            { ..merged, getter: None, setter: None }
+            { ..merged, getter: None, setter: None, }
           } else if merged.is_accessor && !current.is_accessor {
-            { ..merged, writable: false }
+            { ..merged, writable: false, }
           } else {
             merged
           }

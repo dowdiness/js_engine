@@ -89,7 +89,7 @@ fn setup_json_builtins(
           Value::Number(n) => {
             let spaces = if n.to_int() > 10 { 10 } else { n.to_int() }
             if spaces > 0 {
-              let buf = StringBuilder::new()
+              let buf = StringBuilder()
               for _i = 0; _i < spaces; _i = _i + 1 {
                 buf.write_char(' ')
               }
@@ -289,7 +289,7 @@ fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
   }
   and parse_string = fn() -> Value raise Error {
     pos[0] += 1 // skip opening "
-    let buf = StringBuilder::new()
+    let buf = StringBuilder()
     while pos[0] < len {
       let ch = chars[pos[0]]
       if ch == '"' {
@@ -371,7 +371,7 @@ fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
         pos[0] += 1
       }
     }
-    let buf = StringBuilder::new()
+    let buf = StringBuilder()
     for i = start; i < pos[0]; i = i + 1 {
       buf.write_char(chars[i])
     }
@@ -653,7 +653,7 @@ fn json_serialize_json_array(
   seen.push(val)
   let len = @runtime.to_array_like_length_interp(val, ip)
   let new_depth = depth + 1
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   buf.write_char('[')
   let mut first = true
   for i in 0L..<len {
@@ -707,7 +707,7 @@ fn json_serialize_json_object(
   }
   seen.push(val)
   let new_depth = depth + 1
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   buf.write_char('{')
   let mut first = true
   // Key enumeration: property_list (from replacer array) wins over own enumerable
@@ -963,7 +963,7 @@ fn json_stringify_value(
 
 ///|
 fn json_escape_string(s : String) -> String {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   buf.write_char('"')
   let chars = s.to_array()
   for c in chars {

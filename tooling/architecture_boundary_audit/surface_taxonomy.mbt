@@ -9,6 +9,9 @@ struct PackageDefault {
 } derive(Debug)
 
 ///|
+pub extend PackageDefault with @debug.Debug::{to_repr}
+
+///|
 struct SymbolOverride {
   pkg : String
   symbol : String
@@ -17,10 +20,16 @@ struct SymbolOverride {
 } derive(Debug)
 
 ///|
+pub extend SymbolOverride with @debug.Debug::{to_repr}
+
+///|
 struct TaxonomyRules {
   package_defaults : Array[PackageDefault]
   symbol_overrides : Array[SymbolOverride]
 } derive(Debug)
+
+///|
+pub extend TaxonomyRules with @debug.Debug::{to_repr}
 
 ///|
 struct PackageSurface {
@@ -30,11 +39,20 @@ struct PackageSurface {
 } derive(Debug)
 
 ///|
+pub extend PackageSurface with @debug.Debug::{to_repr}
+
+///|
 enum SurfaceClassification {
   ClassifiedDefault(String, String)
   ClassifiedOverride(String, String)
   Unclassified
 } derive(Debug, Eq)
+
+///|
+pub extend SurfaceClassification with @debug.Debug::{to_repr}
+
+///|
+pub extend SurfaceClassification with Eq::{equal, not_equal}
 
 ///|
 fn taxonomy_rules_path(root : String) -> String {
@@ -62,7 +80,7 @@ fn decode_package_default(
   let pkg = decode_string_field(data, "package", path)
   let category = decode_string_field(data, "category", path)
   let reason = decode_string_field(data, "reason", path)
-  { pkg, category, reason }
+  { pkg, category, reason, }
 }
 
 ///|
@@ -74,7 +92,7 @@ fn decode_symbol_override(
   let symbol = decode_string_field(data, "symbol", path)
   let category = decode_string_field(data, "category", path)
   let reason = decode_string_field(data, "reason", path)
-  { pkg, symbol, category, reason }
+  { pkg, symbol, category, reason, }
 }
 
 ///|
@@ -280,7 +298,7 @@ fn discover_package_surfaces(root : String) -> Array[PackageSurface] raise {
     let source = @fs.read_file_to_string(full_path)
     let (pkg_name, symbols) = parse_mbti(source)
     if pkg_name != "" {
-      surfaces.push({ pkg: pkg_name, mbti_path, symbols })
+      surfaces.push({ pkg: pkg_name, mbti_path, symbols, })
     }
   }
   surfaces

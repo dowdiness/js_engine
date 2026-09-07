@@ -260,8 +260,8 @@ pub fn Interpreter::new(
     console_output_sink,
     microtask_queue: [],
     timer_queue: @priority_queue.PriorityQueue([]),
-    timer_id_counter: { val: 1 },
-    timer_insertion_counter: { val: 0 },
+    timer_id_counter: { val: 1, },
+    timer_insertion_counter: { val: 0, },
     cancelled_timer_ids: Map([]),
     module_loader,
   }
@@ -275,7 +275,7 @@ pub fn Interpreter::new(
     module_exports: Map([]),
     module_export_bindings: [],
     generator_objects: Map([]),
-    gen_id_counter: { val: 0 },
+    gen_id_counter: { val: 0, },
     symbols,
     stdlib_hooks,
     in_nonarrow_param_default_eval: false,
@@ -327,7 +327,7 @@ pub fn Interpreter::new(
           match global.bindings.get(name) {
             Some(binding) => {
               data.bag.properties[name] = binding.value
-              data.bag.descriptors[name] = { ..builtin_desc }
+              data.bag.descriptors[name] = { ..builtin_desc, }
             }
             None => ()
           }
@@ -350,9 +350,9 @@ pub fn Interpreter::new(
           setter: None,
           is_accessor: false,
         }
-        data.bag.descriptors["undefined"] = { ..frozen_desc }
-        data.bag.descriptors["NaN"] = { ..frozen_desc }
-        data.bag.descriptors["Infinity"] = { ..frozen_desc }
+        data.bag.descriptors["undefined"] = { ..frozen_desc, }
+        data.bag.descriptors["NaN"] = { ..frozen_desc, }
+        data.bag.descriptors["Infinity"] = { ..frozen_desc, }
       }
       _ => ()
     }
@@ -784,7 +784,7 @@ pub fn Interpreter::run(
   // materializer cannot identify its syntax sites.
   self.with_function_materializer(None, fn() raise {
     let strict = @static_semantics.has_use_strict(stmts)
-    let ctx : ExecContext = { strict, current_generator: None }
+    let ctx : ExecContext = { strict, current_generator: None, }
     try {
       let admission = self.classify_activation_dispatch_root_program(stmts)
       let result = match admission {

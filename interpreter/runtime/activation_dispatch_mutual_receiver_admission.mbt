@@ -69,7 +69,7 @@ fn MutualReceiverNodePlan::MutualReceiverNodePlan(
   parameter~ : String,
   recipe~ : MutualReceiverExpressionRecipe,
 ) -> MutualReceiverNodePlan {
-  { node, function_name, property_name, parameter, recipe }
+  { node, function_name, property_name, parameter, recipe, }
 }
 
 ///|

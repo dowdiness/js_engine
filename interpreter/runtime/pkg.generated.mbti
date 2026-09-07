@@ -579,6 +579,7 @@ pub suberror JsException {
 pub(all) suberror JsonBridgeError {
   JsonBridgeFailure(String)
 } derive(@debug.Debug)
+pub fn JsonBridgeError::to_repr(Self) -> @debug.Repr
 
 pub suberror YieldSignal {
   YieldSignal(Value)
@@ -614,6 +615,11 @@ pub(all) enum BindingKind {
   VarBinding
   FunctionNameBinding
 } derive(Eq, @debug.Debug)
+pub fn BindingKind::equal(Self, Self) -> Bool
+pub fn BindingKind::not_equal(Self, Self) -> Bool
+pub fn BindingKind::output(Self, &Logger) -> Unit
+pub fn BindingKind::to_repr(Self) -> @debug.Repr
+pub fn BindingKind::to_string(Self) -> String
 pub impl Show for BindingKind
 
 pub(all) enum BuiltinCtorPrototypeInstall {
@@ -1006,6 +1012,8 @@ pub(all) enum FunctionMaterializationForm {
   ComputedMethodFunction
   ArrowFunction
 } derive(Eq)
+pub fn FunctionMaterializationForm::equal(Self, Self) -> Bool
+pub fn FunctionMaterializationForm::not_equal(Self, Self) -> Bool
 
 pub(all) enum FunctionMaterializationParameters {
   SimpleFunctionParameters(Array[String])
@@ -1110,7 +1118,12 @@ pub fn HostEnv::emit_console_output(Self, ConsoleOutputKind, String) -> Unit rai
 pub(all) struct HostSlotKey {
   // private fields
 } derive(Eq, Hash, @debug.Debug)
+pub fn HostSlotKey::equal(Self, Self) -> Bool
+pub fn HostSlotKey::hash(Self) -> Int
+pub fn HostSlotKey::hash_combine(Self, Hasher) -> Unit
+pub fn HostSlotKey::not_equal(Self, Self) -> Bool
 pub fn HostSlotKey::reserve() -> Self
+pub fn HostSlotKey::to_repr(Self) -> @debug.Repr
 
 pub(all) enum InternalSlotKey {
   StringData
@@ -1134,6 +1147,11 @@ pub(all) enum InternalSlotKey {
   SourceText
   PrivateBrandStore
 } derive(Eq, Hash, @debug.Debug)
+pub fn InternalSlotKey::equal(Self, Self) -> Bool
+pub fn InternalSlotKey::hash(Self) -> Int
+pub fn InternalSlotKey::hash_combine(Self, Hasher) -> Unit
+pub fn InternalSlotKey::not_equal(Self, Self) -> Bool
+pub fn InternalSlotKey::to_repr(Self) -> @debug.Repr
 
 pub(all) struct Interpreter {
   host : HostEnv
@@ -1538,6 +1556,13 @@ pub(all) struct TimerTask {
   is_interval : Bool
   insertion_order : Int
 }
+pub fn TimerTask::compare(Self, Self) -> Int
+pub fn TimerTask::equal(Self, Self) -> Bool
+pub fn TimerTask::not_equal(Self, Self) -> Bool
+pub fn TimerTask::op_ge(Self, Self) -> Bool
+pub fn TimerTask::op_gt(Self, Self) -> Bool
+pub fn TimerTask::op_le(Self, Self) -> Bool
+pub fn TimerTask::op_lt(Self, Self) -> Bool
 pub impl Compare for TimerTask
 pub impl Eq for TimerTask
 
@@ -1555,6 +1580,8 @@ pub(all) enum Value {
   Promise(PromiseData)
   Proxy(ProxyData)
 }
+pub fn Value::output(Self, &Logger) -> Unit
+pub fn Value::to_string(Self) -> String
 pub impl Show for Value
 
 pub(all) struct WellKnownSymbols {

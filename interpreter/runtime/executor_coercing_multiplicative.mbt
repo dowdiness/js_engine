@@ -31,7 +31,7 @@ fn ExecutorCoercingMultiplicativeRequest::ExecutorCoercingMultiplicativeRequest(
   operator~ : ExecutorMultiplicativeOperator,
   loc~ : @token.Loc,
 ) -> ExecutorCoercingMultiplicativeRequest {
-  { left, right, operator, loc }
+  { left, right, operator, loc, }
 }
 
 ///|
@@ -88,7 +88,7 @@ priv struct ExecutorCoercingMultiplicativeFrame {
 fn ExecutorCoercingMultiplicativeFrame::ExecutorCoercingMultiplicativeFrame(
   request : ExecutorCoercingMultiplicativeRequest,
 ) -> ExecutorCoercingMultiplicativeFrame {
-  { request, phase: ExecutorCoercingMultiplicativeNeedLeft }
+  { request, phase: ExecutorCoercingMultiplicativeNeedLeft, }
 }
 
 ///|

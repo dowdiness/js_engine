@@ -51,7 +51,7 @@ fn DirectNumericRecursionPreflight::DirectNumericRecursionPreflight(
   throw_type_error_snapshot~ : CallbackFreeBindingSnapshot,
   expected_global_object~ : ObjectData,
 ) -> DirectNumericRecursionPreflight {
-  { plan, entry, peer, throw_type_error_snapshot, expected_global_object }
+  { plan, entry, peer, throw_type_error_snapshot, expected_global_object, }
 }
 
 ///|

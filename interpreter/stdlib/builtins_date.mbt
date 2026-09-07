@@ -270,7 +270,7 @@ fn time_clip(time : Double) -> Double {
 /// Zero-pad a number to specified width
 fn pad_number(n : Int, width : Int) -> String {
   let s = n.abs().to_string()
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   if n < 0 {
     buf.write_string("-")
   }
@@ -483,7 +483,7 @@ fn parse_date_string(s : String) -> Double {
       break
     }
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for i = trim_start; i < trim_end; i = i + 1 {
     buf.write_char(s_chars[i])
   }

@@ -181,7 +181,7 @@ fn trace_control_lifecycle_program(
     interp,
     control_root_preflight=Some(preflight),
   )
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let mut state = ActivationDispatchState::ActivationDispatchState()
   let mut event = DispatchStart(
     DispatchProgramActivation(
@@ -294,7 +294,7 @@ fn install_one_shot_control_step_failure(
   failure_ordinal : Int,
   runtime_failure : Error,
 ) -> Ref[Int] {
-  let calls : Ref[Int] = { val: 0 }
+  let calls : Ref[Int] = { val: 0, }
   let observer = make_object(
     Map([]),
     Null,
@@ -369,7 +369,7 @@ test "control preflight rejects cross-plan and source drift before execution" {
         interp,
         control_root_preflight=Some(preflight),
       )
-      let ctx : ExecContext = { strict: false, current_generator: None }
+      let ctx : ExecContext = { strict: false, current_generator: None, }
       try {
         ignore(shell.drive_root_program(stmts, ctx))
         "accepted"
@@ -402,7 +402,7 @@ test "control shell rejects a direct invalid loop advance without evaluation" {
     interp,
     control_root_preflight=Some(preflight),
   )
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let cleanup = match
     shell.perform_effect(
       DispatchEnterActivation(
@@ -576,7 +576,7 @@ test "leaf program cleanup capability is consumed exactly once" {
     DispatchEnterActivation(
       DispatchProgramActivation(
         DispatchStatementCursor(
-          ctx={ strict: false, current_generator: None },
+          ctx={ strict: false, current_generator: None, },
           stmts~,
           env=interp.global,
         ),
@@ -620,7 +620,7 @@ test "leaf program cleanup capability is consumed exactly once" {
     DispatchEnterActivation(
       DispatchProgramActivation(
         DispatchStatementCursor(
-          ctx={ strict: false, current_generator: None },
+          ctx={ strict: false, current_generator: None, },
           stmts~,
           env=interp.global,
         ),
@@ -659,7 +659,7 @@ test "rejected entry rollback capability cannot consume a later rejection" {
   let entry_effect = DispatchEnterActivation(
     DispatchProgramActivation(
       DispatchStatementCursor(
-        ctx={ strict: true, current_generator: None },
+        ctx={ strict: true, current_generator: None, },
         stmts~,
         env=interp.global,
       ),
@@ -735,7 +735,7 @@ fn dispatch_shell_test_expect_exhausted_entry_preserves_realm(
       DispatchEnterActivation(
         DispatchProgramActivation(
           DispatchStatementCursor(
-            ctx={ strict, current_generator: None },
+            ctx={ strict, current_generator: None, },
             stmts~,
             env=interp.global,
           ),
@@ -765,7 +765,7 @@ test "program cleanup capabilities enforce nested LIFO ownership" {
   let entry_effect = DispatchEnterActivation(
     DispatchProgramActivation(
       DispatchStatementCursor(
-        ctx={ strict: false, current_generator: None },
+        ctx={ strict: false, current_generator: None, },
         stmts~,
         env=interp.global,
       ),
@@ -901,7 +901,7 @@ test "property scope shell shares activation LIFO ownership" {
       DispatchEnterActivation(
         DispatchProgramActivation(
           DispatchStatementCursor(
-            ctx={ strict: false, current_generator: None },
+            ctx={ strict: false, current_generator: None, },
             stmts~,
             env=interp.global,
           ),
@@ -1041,7 +1041,7 @@ fn dispatch_shell_test_restore_property(
 test "ordinary own accessor work suspends without invoking its getter" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 16)
-  let calls : Ref[Int] = { val: 0 }
+  let calls : Ref[Int] = { val: 0, }
   let getter = make_native_func(name="x getter", _args => {
     calls.val += 1
     Number(99.0)

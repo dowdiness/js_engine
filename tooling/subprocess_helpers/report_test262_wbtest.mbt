@@ -10,7 +10,14 @@ fn sample_run_info() -> RunInfo {
 
 ///|
 fn sample_strict_summary() -> Test262Summary {
-  { total: 1000, passed: 800, failed: 50, skipped: 100, timeout: 40, error: 10 }
+  {
+    total: 1000,
+    passed: 800,
+    failed: 50,
+    skipped: 100,
+    timeout: 40,
+    error: 10,
+  }
 }
 
 ///|

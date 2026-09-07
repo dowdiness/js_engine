@@ -424,7 +424,7 @@ fn bytecode_instruction_transfer(
 
 ///|
 fn bytecode_observation_context_empty() -> BytecodeObservationContext {
-  { active: [] }
+  { active: [], }
 }
 
 ///|
@@ -1591,14 +1591,14 @@ fn finalize_bytecode_program(
   verify_bytecode_shape_operands(program)
   verify_bytecode_frame_shapes(program)
   let verified_main = make_verified_bytecode_function(program.main)
-  { script_preparation: program.script_preparation, verified_main }
+  { script_preparation: program.script_preparation, verified_main, }
 }
 
 ///|
 fn make_verified_bytecode_function(
   function : BytecodeFunction,
 ) -> VerifiedBytecodeFunction {
-  { function, preparation: function.preparation }
+  { function, preparation: function.preparation, }
 }
 
 ///|

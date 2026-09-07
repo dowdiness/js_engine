@@ -353,7 +353,7 @@ test "Proxy root owns and releases its registry and caller realm" {
     None => fail("expected callback-free Proxy get preflight")
   }
   dispatch_shell_test_install_realm_sentinel(interp, 54)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let result = activation_dispatch_root_value(
     interp.run_activation_dispatch_proxy_program(stmts, ctx, preflight),
   )

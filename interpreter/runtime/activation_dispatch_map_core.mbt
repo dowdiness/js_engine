@@ -98,13 +98,13 @@ fn map_next_decision(
     invalid_map_transition("map next decision requires Ready")
   }
   if state.index >= state.length {
-    let completed = { ..state, phase: MapCompleted }
+    let completed = { ..state, phase: MapCompleted, }
     (
       completed,
       MapDecision::MapComplete(state.result, state.pending_result_consumer),
     )
   } else {
-    let awaiting = { ..state, phase: MapAwaitingHasProperty }
+    let awaiting = { ..state, phase: MapAwaitingHasProperty, }
     (awaiting, MapDecision::MapRequestHasProperty(state.index))
   }
 }
@@ -122,16 +122,16 @@ fn reduce_array_map(
     (MapReady, MapStart) => map_next_decision(state)
     (MapAwaitingHasProperty, MapHasProperty(true)) =>
       (
-        { ..state, phase: MapAwaitingGet },
+        { ..state, phase: MapAwaitingGet, },
         MapDecision::MapRequestGet(state.index),
       )
     (MapAwaitingHasProperty, MapHasProperty(false)) => {
-      let next = { ..state, index: state.index + 1L, phase: MapReady }
+      let next = { ..state, index: state.index + 1L, phase: MapReady, }
       map_next_decision(next)
     }
     (MapAwaitingGet, MapGotValue(value)) =>
       (
-        { ..state, phase: MapAwaitingCallback },
+        { ..state, phase: MapAwaitingCallback, },
         MapDecision::MapRequestCallback(
           state.callback,
           state.this_arg,
@@ -142,15 +142,15 @@ fn reduce_array_map(
       )
     (MapAwaitingCallback, MapCallbackReturned(value)) =>
       (
-        { ..state, phase: MapAwaitingDefine },
+        { ..state, phase: MapAwaitingDefine, },
         MapDecision::MapRequestDefine(state.index, value),
       )
     (MapAwaitingDefine, MapPropertyDefined) => {
-      let next = { ..state, index: state.index + 1L, phase: MapReady }
+      let next = { ..state, index: state.index + 1L, phase: MapReady, }
       map_next_decision(next)
     }
     (_, MapAbrupt(error)) =>
-      ({ ..state, phase: MapFailed }, MapDecision::MapAbort(error))
+      ({ ..state, phase: MapFailed, }, MapDecision::MapAbort(error))
     _ => invalid_map_transition("map event arrived outside its semantic order")
   }
 }

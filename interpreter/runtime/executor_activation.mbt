@@ -85,7 +85,7 @@ fn ExecutorCallRequest::ExecutorCallRequest(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorCallRequest {
-  { callee, this_value, args: args.copy(), loc }
+  { callee, this_value, args: args.copy(), loc, }
 }
 
 ///|
@@ -113,7 +113,7 @@ fn ExecutorIterableSpreadRequest::ExecutorIterableSpreadRequest(
   iterable~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorIterableSpreadRequest {
-  { iterable, loc }
+  { iterable, loc, }
 }
 
 ///|
@@ -163,7 +163,7 @@ fn ExecutorCopyDataPropertiesRequest::ExecutorCopyDataPropertiesRequest(
   excluded_keys~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorCopyDataPropertiesRequest {
-  { target, source, excluded_keys: excluded_keys.copy(), loc }
+  { target, source, excluded_keys: excluded_keys.copy(), loc, }
 }
 
 ///|
@@ -234,7 +234,7 @@ fn ExecutorPropertyKeyRequest::ExecutorPropertyKeyRequest(
   raw_key~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorPropertyKeyRequest {
-  { raw_key, loc }
+  { raw_key, loc, }
 }
 
 ///|
@@ -258,7 +258,7 @@ fn ExecutorComputedPropertyGetRequest::ExecutorComputedPropertyGetRequest(
   key~ : ExecutorComputedPropertyGetKey,
   loc~ : @token.Loc,
 ) -> ExecutorComputedPropertyGetRequest {
-  { target, key, loc }
+  { target, key, loc, }
 }
 
 ///|
@@ -466,7 +466,7 @@ fn ExecutorComputedPropertyGetFrame::ExecutorComputedPropertyGetFrame(
     ExecutorSealedComputedPropertyGetKey(key) =>
       ExecutorComputedPropertyGetNeedPropertyGet(key)
   }
-  { request, phase, lookup_target: None }
+  { request, phase, lookup_target: None, }
 }
 
 ///|
@@ -599,7 +599,7 @@ priv struct ExecutorPropertyKeyFrame {
 fn ExecutorPropertyKeyFrame::ExecutorPropertyKeyFrame(
   request : ExecutorPropertyKeyRequest,
 ) -> ExecutorPropertyKeyFrame {
-  { operation: ExecutorToPropertyKeyOperation(request.raw_key, request.loc) }
+  { operation: ExecutorToPropertyKeyOperation(request.raw_key, request.loc), }
 }
 
 ///|
@@ -627,7 +627,7 @@ fn ExecutorPropertyGetRequest::ExecutorPropertyGetRequest(
   manage_proxy~ : Bool,
   admission? : ExecutorPropertyGetAdmission? = None,
 ) -> ExecutorPropertyGetRequest {
-  { target, key, receiver, loc, manage_proxy, admission }
+  { target, key, receiver, loc, manage_proxy, admission, }
 }
 
 ///|
@@ -732,7 +732,7 @@ fn ExecutorPropertySetRequest::ExecutorPropertySetRequest(
   strict~ : Bool,
   manage_proxy? : Bool = false,
 ) -> ExecutorPropertySetRequest {
-  { target, key, value, receiver, loc, strict, manage_proxy }
+  { target, key, value, receiver, loc, strict, manage_proxy, }
 }
 
 ///|
@@ -786,7 +786,7 @@ fn ExecutorComputedPropertySetFrame::ExecutorComputedPropertySetFrame(
       ExecutorComputedPropertySetNeedKey(raw_key)
     ExecutorSealedPropertySetKey(_) => ExecutorComputedPropertySetComplete
   }
-  { request, phase }
+  { request, phase, }
 }
 
 ///|
@@ -1066,7 +1066,7 @@ fn ExecutorCoercingAdditionRequest::ExecutorCoercingAdditionRequest(
   right~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorCoercingAdditionRequest {
-  { left, right, loc }
+  { left, right, loc, }
 }
 
 ///|
@@ -1103,7 +1103,7 @@ fn ExecutorCoercingSubtractionRequest::ExecutorCoercingSubtractionRequest(
   right~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorCoercingSubtractionRequest {
-  { left, right, loc }
+  { left, right, loc, }
 }
 
 ///|
@@ -1212,7 +1212,7 @@ fn ExecutorPropertyDeleteRequest::ExecutorPropertyDeleteRequest(
   strict~ : Bool,
   loc~ : @token.Loc,
 ) -> ExecutorPropertyDeleteRequest {
-  { target, key, strict, loc }
+  { target, key, strict, loc, }
 }
 
 ///|
@@ -1332,7 +1332,7 @@ fn ExecutorBindingUpdateRequest::ExecutorBindingUpdateRequest(
   loc~ : @token.Loc,
   phase~ : ExecutorBindingUpdatePhase,
 ) -> ExecutorBindingUpdateRequest {
-  { ctx, env, name, operator, prefix, loc, phase }
+  { ctx, env, name, operator, prefix, loc, phase, }
 }
 
 ///|
@@ -1681,7 +1681,7 @@ fn ExecutorPropertyUpdateRequest::ExecutorPropertyUpdateRequest(
   loc~ : @token.Loc,
   strict~ : Bool,
 ) -> ExecutorPropertyUpdateRequest {
-  { target, property_name, operator, prefix, member_loc, loc, strict }
+  { target, property_name, operator, prefix, member_loc, loc, strict, }
 }
 
 ///|
@@ -1792,7 +1792,7 @@ fn ExecutorPropertyGetAdmission::ExecutorPropertyGetAdmission(
   getter~ : Value,
   executable~ : ExecutorCallableData,
 ) -> ExecutorPropertyGetAdmission {
-  { getter, executable }
+  { getter, executable, }
 }
 
 ///|
@@ -1811,7 +1811,7 @@ fn ExecutorConstructRequest::ExecutorConstructRequest(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorConstructRequest {
-  { ctor, args: args.copy(), loc }
+  { ctor, args: args.copy(), loc, }
 }
 
 ///|
@@ -1851,7 +1851,7 @@ fn PreparedExecutorActivation::PreparedExecutorActivation(
   env~ : Environment,
   args~ : Array[Value],
 ) -> PreparedExecutorActivation {
-  { ctx, env, args: args.copy() }
+  { ctx, env, args: args.copy(), }
 }
 
 ///|
@@ -2144,7 +2144,7 @@ priv struct ExecutorPropertyUpdateFrame {
 fn ExecutorPropertyUpdateFrame::ExecutorPropertyUpdateFrame(
   request : ExecutorPropertyUpdateRequest,
 ) -> ExecutorPropertyUpdateFrame {
-  { request, phase: ExecutorPropertyUpdateNeedGet }
+  { request, phase: ExecutorPropertyUpdateNeedGet, }
 }
 
 ///|
@@ -3616,7 +3616,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
   root : &ExecutorActivationFrame,
 ) -> ExecutorActivationStep raise Error {
   self.drive_executor_activation_stack([
-    { frame: root, completion: None, cleanup: None, graph_cursor: None },
+    { frame: root, completion: None, cleanup: None, graph_cursor: None, },
   ])
 }
 
@@ -3669,7 +3669,7 @@ pub fn Interpreter::prepare_executor_callable_call(
         )
       } else {
         PreparedExecutorActivation(
-          ctx={ strict: executable.strict, current_generator: None },
+          ctx={ strict: executable.strict, current_generator: None, },
           env=executable.closure,
           args~,
         )
@@ -3728,7 +3728,10 @@ fn prepare_executor_arrow_activation(
   executable : ExecutorCallableData,
   args : Array[Value],
 ) -> PreparedExecutorActivation raise Error {
-  let ctx : ExecContext = { strict: executable.strict, current_generator: None }
+  let ctx : ExecContext = {
+    strict: executable.strict,
+    current_generator: None,
+  }
   let env = Environment::new(parent=Some(executable.closure))
   env.is_var_scope = true
   bind_executor_parameters(env, executable.params, args)
@@ -3756,7 +3759,7 @@ fn Interpreter::prepare_executor_activation(
   self_name : String?,
   define_arguments_object : Bool,
 ) -> PreparedExecutorActivation raise Error {
-  let ctx : ExecContext = { strict, current_generator: None }
+  let ctx : ExecContext = { strict, current_generator: None, }
   let env = Environment::new(parent=Some(closure))
   env.is_var_scope = true
   env.def_builtin("[[EvalMethodContext]]", Bool(is_method))

@@ -8,12 +8,18 @@ struct PackageGroup {
 } derive(Debug)
 
 ///|
+pub extend PackageGroup with @debug.Debug::{to_repr}
+
+///|
 struct ImportRule {
   from : String
   to : String
   scope : String
   reason : String
 } derive(Debug)
+
+///|
+pub extend ImportRule with @debug.Debug::{to_repr}
 
 ///|
 struct ImportDebt {
@@ -26,11 +32,17 @@ struct ImportDebt {
 } derive(Debug)
 
 ///|
+pub extend ImportDebt with @debug.Debug::{to_repr}
+
+///|
 struct BoundaryRules {
   groups : Array[PackageGroup]
   allowed_imports : Array[ImportRule]
   allowlisted_import_debt : Array[ImportDebt]
 } derive(Debug)
+
+///|
+pub extend BoundaryRules with @debug.Debug::{to_repr}
 
 ///|
 struct ImportEdge {
@@ -43,12 +55,18 @@ struct ImportEdge {
 } derive(Debug)
 
 ///|
+pub extend ImportEdge with @debug.Debug::{to_repr}
+
+///|
 enum ImportClassification {
   Allowed(String)
   Debt(retire_by_stage~ : String, String)
   Ignored(String)
   Unclassified
 } derive(Debug)
+
+///|
+pub extend ImportClassification with @debug.Debug::{to_repr}
 
 ///|
 fn[T] schema_error(path : String, message : String) -> T raise {
@@ -172,7 +190,7 @@ fn decode_package_group(
   if packages.length() == 0 {
     schema_error(path, "package group \{name} must list at least one package")
   }
-  { name, packages }
+  { name, packages, }
 }
 
 ///|
@@ -185,7 +203,7 @@ fn decode_import_rule(
   let scope = decode_string_field(data, "scope", path)
   validate_scope(scope, path)
   let reason = decode_string_field(data, "reason", path)
-  { from, to, scope, reason }
+  { from, to, scope, reason, }
 }
 
 ///|
@@ -200,7 +218,7 @@ fn decode_import_debt(
   let owner = decode_string_field(data, "owner", path)
   let retire_by_stage = decode_string_field(data, "retire_by_stage", path)
   let reason = decode_string_field(data, "reason", path)
-  { from, to, scope, owner, retire_by_stage, reason }
+  { from, to, scope, owner, retire_by_stage, reason, }
 }
 
 ///|

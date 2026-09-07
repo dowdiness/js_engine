@@ -32,7 +32,7 @@ test "post-parse stack safety: deep pattern name preparation" {
           pattern: Some(deep_x),
           is_rest_pattern: false,
         },
-        { name: "x", default_val: None, pattern: None, is_rest_pattern: false },
+        { name: "x", default_val: None, pattern: None, is_rest_pattern: false, },
       ],
       None,
     ),

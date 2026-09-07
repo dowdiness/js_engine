@@ -183,7 +183,11 @@ test "taxonomy_pkg_matches supports wildcard suffix" {
 test "classify_symbol uses override over default" {
   let rules : TaxonomyRules = {
     package_defaults: [
-      { pkg: "example/pkg", category: "internal_api", reason: "default reason" },
+      {
+        pkg: "example/pkg",
+        category: "internal_api",
+        reason: "default reason",
+      },
     ],
     symbol_overrides: [
       {
@@ -206,7 +210,7 @@ test "classify_symbol uses override over default" {
 
 ///|
 test "classify_symbol returns Unclassified with no default and no override" {
-  let rules : TaxonomyRules = { package_defaults: [], symbol_overrides: [] }
+  let rules : TaxonomyRules = { package_defaults: [], symbol_overrides: [], }
   assert_true(classify_symbol("example/pkg", "run", rules) == Unclassified)
 }
 

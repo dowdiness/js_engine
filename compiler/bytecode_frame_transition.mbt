@@ -20,7 +20,7 @@ fn BytecodeSuspension::BytecodeSuspension(
   continuation~ : BytecodeContinuation,
   request~ : @runtime.ExecutorActivationStep,
 ) -> BytecodeSuspension {
-  { continuation, request }
+  { continuation, request, }
 }
 
 ///|

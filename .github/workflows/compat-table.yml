@@ -28,9 +28,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  MOONBIT_INSTALL_VERSION: "latest"
-  MOONBIT_EXPECTED_VERSION: "moon 0.1.20260819 (fc2a4ee 2026-08-19)"
-  MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
+  MOONBIT_INSTALL_VERSION: "nightly"
 
 jobs:
   compat-table:
@@ -43,26 +41,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Cache MoonBit toolchain
-        id: toolchain-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.moon
-          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
-
       - name: Install MoonBit toolchain
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Verify MoonBit toolchain identity
-        run: bash scripts/verify_moonbit_toolchain.sh
-
       - name: Get MoonBit version
         id: moonbit-version
-        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          moon version --all
+          echo "version=$(moon version | head -1); $(moonc -v)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
         uses: actions/cache@v5

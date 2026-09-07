@@ -11,7 +11,7 @@ pub fn PromiseIntrinsics::PromiseIntrinsics(
   ctor : Value,
   prototype : Value,
 ) -> PromiseIntrinsics {
-  { ctor, prototype }
+  { ctor, prototype, }
 }
 
 ///|

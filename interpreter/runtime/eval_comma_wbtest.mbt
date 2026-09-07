@@ -35,7 +35,7 @@ fn comma_test_record_call(label : String, loc : @token.Loc) -> @ast.Expr {
 fn comma_test_eval(
   interp : Interpreter,
   expr : @ast.Expr,
-  ctx? : ExecContext = { strict: false, current_generator: None },
+  ctx? : ExecContext = { strict: false, current_generator: None, },
 ) -> Value raise Error {
   interp.eval_expr(ctx, expr, interp.global)
 }
@@ -306,7 +306,7 @@ fn comma_test_expect_exact_steps(
   let result = comma_test_eval_with_control(
     interp,
     expr,
-    { strict: false, current_generator: None },
+    { strict: false, current_generator: None, },
     control,
   )
   match result {
@@ -389,7 +389,7 @@ test "resuming generator skips a no-yield comma subtree without observing it" {
       comma_test_number(3.0, loc),
       loc,
     ),
-    { strict: false, current_generator: Some(generator) },
+    { strict: false, current_generator: Some(generator), },
     control,
   )
   match result {
@@ -422,7 +422,7 @@ test "direct comma budget rejects before the next leaf effect and later leaf suc
     let _ = comma_test_eval_with_control(
       interp,
       expr,
-      { strict: false, current_generator: None },
+      { strict: false, current_generator: None, },
       control,
     )
     "completed"
@@ -473,7 +473,7 @@ test "nested direct comma interruption stops before the next scheduled effect" {
     let _ = comma_test_eval_with_control(
       interp,
       expr,
-      { strict: false, current_generator: None },
+      { strict: false, current_generator: None, },
       control,
     )
     "completed"

@@ -625,7 +625,7 @@ pub fn setup_object_builtins(
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
   realm_state.object_prototype.val = Some(obj_proto)
-  let object_ctor_ref : Ref[Value] = { val: Undefined }
+  let object_ctor_ref : Ref[Value] = { val: Undefined, }
   env.def_builtin(
     "Object",
     Value::Object({

@@ -56,7 +56,14 @@ fn GetterRecursionPlan::GetterRecursionPlan(
   placement~ : GetterRecursionAccessorPlacement,
   recipe~ : GetterRecursionExpressionRecipe,
 ) -> GetterRecursionPlan {
-  { counter_name, object_name, property_name, initial_count, placement, recipe }
+  {
+    counter_name,
+    object_name,
+    property_name,
+    initial_count,
+    placement,
+    recipe,
+  }
 }
 
 ///|

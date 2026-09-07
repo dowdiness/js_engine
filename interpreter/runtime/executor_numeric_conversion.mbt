@@ -12,7 +12,7 @@ fn ExecutorNumericConversionRequest::ExecutorNumericConversionRequest(
   value~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorNumericConversionRequest {
-  { value, loc }
+  { value, loc, }
 }
 
 ///|
@@ -78,7 +78,7 @@ priv struct ExecutorNumericConversionFrame {
 fn ExecutorNumericConversionFrame::ExecutorNumericConversionFrame(
   request : ExecutorNumericConversionRequest,
 ) -> ExecutorNumericConversionFrame {
-  { request, phase: ExecutorNumericConversionNeedInput }
+  { request, phase: ExecutorNumericConversionNeedInput, }
 }
 
 ///|

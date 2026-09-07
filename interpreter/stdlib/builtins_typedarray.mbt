@@ -1550,7 +1550,7 @@ pub fn setup_typedarray_builtins(
       } else {
         ","
       }
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       for i = 0; i < len; i = i + 1 {
         if i > 0 {
           buf.write_string(sep)
@@ -1577,7 +1577,7 @@ pub fn setup_typedarray_builtins(
           Some(Value::Number(n)) => n.to_int()
           _ => 0
         }
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         for i = 0; i < len; i = i + 1 {
           if i > 0 {
             buf.write_string(",")
@@ -1797,7 +1797,7 @@ pub fn setup_typedarray_builtins(
     length=0,
     fn(this_val, _args) raise {
       let (data, _) = validate_typed_array(this_val, "entries", realm_state)
-      let index_ref : Ref[Int] = { val: 0 }
+      let index_ref : Ref[Int] = { val: 0, }
       let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
         // Re-check detachment and length on each next() call per spec
         let buf_id = match @runtime.get_typedarray_buffer_id(data) {
@@ -1890,7 +1890,7 @@ pub fn setup_typedarray_builtins(
     _args,
   ) raise {
     let (data, _) = validate_typed_array(this_val, "keys", realm_state)
-    let index_ref : Ref[Int] = { val: 0 }
+    let index_ref : Ref[Int] = { val: 0, }
     let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
       // Re-check detachment and length on each next() call per spec
       let buf_id = match @runtime.get_typedarray_buffer_id(data) {
@@ -1980,7 +1980,7 @@ pub fn setup_typedarray_builtins(
     _args,
   ) raise {
     let (data, _) = validate_typed_array(this_val, "values", realm_state)
-    let index_ref : Ref[Int] = { val: 0 }
+    let index_ref : Ref[Int] = { val: 0, }
     let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
       // Re-check detachment and length on each next() call per spec
       let buf_id = match @runtime.get_typedarray_buffer_id(data) {

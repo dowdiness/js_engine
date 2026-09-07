@@ -211,31 +211,31 @@ fn setup_symbol_builtins(
 
   // Well-known symbols as static properties (all { writable: false, enumerable: false, configurable: false })
   symbol_props["iterator"] = Symbol(iterator_sym)
-  symbol_descs["iterator"] = { ..wks_desc }
+  symbol_descs["iterator"] = { ..wks_desc, }
   symbol_props["toPrimitive"] = Symbol(to_primitive_sym)
-  symbol_descs["toPrimitive"] = { ..wks_desc }
+  symbol_descs["toPrimitive"] = { ..wks_desc, }
   symbol_props["toStringTag"] = Symbol(to_string_tag_sym)
-  symbol_descs["toStringTag"] = { ..wks_desc }
+  symbol_descs["toStringTag"] = { ..wks_desc, }
   symbol_props["hasInstance"] = Symbol(has_instance_sym)
-  symbol_descs["hasInstance"] = { ..wks_desc }
+  symbol_descs["hasInstance"] = { ..wks_desc, }
   symbol_props["isConcatSpreadable"] = Symbol(is_concat_spreadable_sym)
-  symbol_descs["isConcatSpreadable"] = { ..wks_desc }
+  symbol_descs["isConcatSpreadable"] = { ..wks_desc, }
   symbol_props["species"] = Symbol(species_sym)
-  symbol_descs["species"] = { ..wks_desc }
+  symbol_descs["species"] = { ..wks_desc, }
   symbol_props["match"] = Symbol(match_sym)
-  symbol_descs["match"] = { ..wks_desc }
+  symbol_descs["match"] = { ..wks_desc, }
   symbol_props["matchAll"] = Symbol(match_all_sym)
-  symbol_descs["matchAll"] = { ..wks_desc }
+  symbol_descs["matchAll"] = { ..wks_desc, }
   symbol_props["replace"] = Symbol(replace_sym)
-  symbol_descs["replace"] = { ..wks_desc }
+  symbol_descs["replace"] = { ..wks_desc, }
   symbol_props["search"] = Symbol(search_sym)
-  symbol_descs["search"] = { ..wks_desc }
+  symbol_descs["search"] = { ..wks_desc, }
   symbol_props["split"] = Symbol(split_sym)
-  symbol_descs["split"] = { ..wks_desc }
+  symbol_descs["split"] = { ..wks_desc, }
   symbol_props["unscopables"] = Symbol(unscopables_sym)
-  symbol_descs["unscopables"] = { ..wks_desc }
+  symbol_descs["unscopables"] = { ..wks_desc, }
   symbol_props["asyncIterator"] = Symbol(async_iterator_sym)
-  symbol_descs["asyncIterator"] = { ..wks_desc }
+  symbol_descs["asyncIterator"] = { ..wks_desc, }
 
   // Symbol.for(key) - returns symbol from global registry
   // Spec: 1. Let stringKey be ? ToString(key).  (throws TypeError for symbols)

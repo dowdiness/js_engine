@@ -41,6 +41,11 @@ pub(all) enum BinOp {
   In
   Instanceof
 } derive(Eq, @debug.Debug)
+pub fn BinOp::equal(Self, Self) -> Bool
+pub fn BinOp::not_equal(Self, Self) -> Bool
+pub fn BinOp::output(Self, &Logger) -> Unit
+pub fn BinOp::to_repr(Self) -> @debug.Repr
+pub fn BinOp::to_string(Self) -> String
 pub impl Show for BinOp
 
 pub(all) struct ClassField {
@@ -50,6 +55,11 @@ pub(all) struct ClassField {
   is_static : Bool
   is_private : Bool
 } derive(Eq, @debug.Debug)
+pub fn ClassField::equal(Self, Self) -> Bool
+pub fn ClassField::not_equal(Self, Self) -> Bool
+pub fn ClassField::output(Self, &Logger) -> Unit
+pub fn ClassField::to_repr(Self) -> @debug.Repr
+pub fn ClassField::to_string(Self) -> String
 pub impl Show for ClassField
 
 pub(all) enum ClassMember {
@@ -57,6 +67,11 @@ pub(all) enum ClassMember {
   Field(ClassField)
   StaticBlock(Array[Stmt], @token.Loc)
 } derive(Eq, @debug.Debug)
+pub fn ClassMember::equal(Self, Self) -> Bool
+pub fn ClassMember::not_equal(Self, Self) -> Bool
+pub fn ClassMember::output(Self, &Logger) -> Unit
+pub fn ClassMember::to_repr(Self) -> @debug.Repr
+pub fn ClassMember::to_string(Self) -> String
 pub impl Show for ClassMember
 
 pub(all) struct ClassMethod {
@@ -67,6 +82,11 @@ pub(all) struct ClassMethod {
   is_static : Bool
   is_private : Bool
 } derive(Eq, @debug.Debug)
+pub fn ClassMethod::equal(Self, Self) -> Bool
+pub fn ClassMethod::not_equal(Self, Self) -> Bool
+pub fn ClassMethod::output(Self, &Logger) -> Unit
+pub fn ClassMethod::to_repr(Self) -> @debug.Repr
+pub fn ClassMethod::to_string(Self) -> String
 pub impl Show for ClassMethod
 
 pub(all) enum CompoundOp {
@@ -86,12 +106,22 @@ pub(all) enum CompoundOp {
   LogicalOrAssign
   NullishAssign
 } derive(Eq, @debug.Debug)
+pub fn CompoundOp::equal(Self, Self) -> Bool
+pub fn CompoundOp::not_equal(Self, Self) -> Bool
+pub fn CompoundOp::output(Self, &Logger) -> Unit
+pub fn CompoundOp::to_repr(Self) -> @debug.Repr
+pub fn CompoundOp::to_string(Self) -> String
 pub impl Show for CompoundOp
 
 pub(all) struct ExportSpecifier {
   local_name : String
   exported : String
 } derive(Eq, @debug.Debug)
+pub fn ExportSpecifier::equal(Self, Self) -> Bool
+pub fn ExportSpecifier::not_equal(Self, Self) -> Bool
+pub fn ExportSpecifier::output(Self, &Logger) -> Unit
+pub fn ExportSpecifier::to_repr(Self) -> @debug.Repr
+pub fn ExportSpecifier::to_string(Self) -> String
 pub impl Show for ExportSpecifier
 
 pub(all) enum Expr {
@@ -155,12 +185,22 @@ pub(all) enum Expr {
   PrivateIdent(String, @token.Loc)
   PrivateMember(Expr, String, @token.Loc)
 } derive(Eq, @debug.Debug)
+pub fn Expr::equal(Self, Self) -> Bool
+pub fn Expr::not_equal(Self, Self) -> Bool
+pub fn Expr::output(Self, &Logger) -> Unit
+pub fn Expr::to_repr(Self) -> @debug.Repr
+pub fn Expr::to_string(Self) -> String
 pub impl Show for Expr
 
 pub(all) struct ImportSpecifier {
   local_name : String
   imported : String
 } derive(Eq, @debug.Debug)
+pub fn ImportSpecifier::equal(Self, Self) -> Bool
+pub fn ImportSpecifier::not_equal(Self, Self) -> Bool
+pub fn ImportSpecifier::output(Self, &Logger) -> Unit
+pub fn ImportSpecifier::to_repr(Self) -> @debug.Repr
+pub fn ImportSpecifier::to_string(Self) -> String
 pub impl Show for ImportSpecifier
 
 pub(all) struct Param {
@@ -169,6 +209,11 @@ pub(all) struct Param {
   pattern : Pattern?
   is_rest_pattern : Bool
 } derive(Eq, @debug.Debug)
+pub fn Param::equal(Self, Self) -> Bool
+pub fn Param::not_equal(Self, Self) -> Bool
+pub fn Param::output(Self, &Logger) -> Unit
+pub fn Param::to_repr(Self) -> @debug.Repr
+pub fn Param::to_string(Self) -> String
 pub impl Show for Param
 
 pub(all) enum Pattern {
@@ -178,11 +223,21 @@ pub(all) enum Pattern {
   DefaultPat(Pattern, Expr)
   AssignTarget(Expr)
 } derive(Eq, @debug.Debug)
+pub fn Pattern::equal(Self, Self) -> Bool
+pub fn Pattern::not_equal(Self, Self) -> Bool
+pub fn Pattern::output(Self, &Logger) -> Unit
+pub fn Pattern::to_repr(Self) -> @debug.Repr
+pub fn Pattern::to_string(Self) -> String
 pub impl Show for Pattern
 
 pub(all) struct Program {
   stmts : Array[Stmt]
 } derive(Eq, @debug.Debug)
+pub fn Program::equal(Self, Self) -> Bool
+pub fn Program::not_equal(Self, Self) -> Bool
+pub fn Program::output(Self, &Logger) -> Unit
+pub fn Program::to_repr(Self) -> @debug.Repr
+pub fn Program::to_string(Self) -> String
 pub impl Show for Program
 
 pub(all) enum PropKind {
@@ -191,6 +246,11 @@ pub(all) enum PropKind {
   Set
   Spread
 } derive(Eq, @debug.Debug)
+pub fn PropKind::equal(Self, Self) -> Bool
+pub fn PropKind::not_equal(Self, Self) -> Bool
+pub fn PropKind::output(Self, &Logger) -> Unit
+pub fn PropKind::to_repr(Self) -> @debug.Repr
+pub fn PropKind::to_string(Self) -> String
 pub impl Show for PropKind
 
 pub(all) struct PropPat {
@@ -201,6 +261,11 @@ pub(all) struct PropPat {
   default_val : Expr?
   computed_key : Expr?
 } derive(Eq, @debug.Debug)
+pub fn PropPat::equal(Self, Self) -> Bool
+pub fn PropPat::not_equal(Self, Self) -> Bool
+pub fn PropPat::output(Self, &Logger) -> Unit
+pub fn PropPat::to_repr(Self) -> @debug.Repr
+pub fn PropPat::to_string(Self) -> String
 pub impl Show for PropPat
 
 pub(all) struct Property {
@@ -210,6 +275,11 @@ pub(all) struct Property {
   computed : Bool
   is_method : Bool
 } derive(Eq, @debug.Debug)
+pub fn Property::equal(Self, Self) -> Bool
+pub fn Property::not_equal(Self, Self) -> Bool
+pub fn Property::output(Self, &Logger) -> Unit
+pub fn Property::to_repr(Self) -> @debug.Repr
+pub fn Property::to_string(Self) -> String
 pub impl Show for Property
 
 pub(all) enum Stmt {
@@ -253,12 +323,22 @@ pub(all) enum Stmt {
   ExportDefaultDecl(Expr, @token.Loc)
   ExportAllDecl(String?, String, @token.LexForm, @token.Loc)
 } derive(Eq, @debug.Debug)
+pub fn Stmt::equal(Self, Self) -> Bool
+pub fn Stmt::not_equal(Self, Self) -> Bool
+pub fn Stmt::output(Self, &Logger) -> Unit
+pub fn Stmt::to_repr(Self) -> @debug.Repr
+pub fn Stmt::to_string(Self) -> String
 pub impl Show for Stmt
 
 pub(all) struct SwitchCase {
   condition : Expr?
   body : Array[Stmt]
 } derive(Eq, @debug.Debug)
+pub fn SwitchCase::equal(Self, Self) -> Bool
+pub fn SwitchCase::not_equal(Self, Self) -> Bool
+pub fn SwitchCase::output(Self, &Logger) -> Unit
+pub fn SwitchCase::to_repr(Self) -> @debug.Repr
+pub fn SwitchCase::to_string(Self) -> String
 pub impl Show for SwitchCase
 
 pub(all) enum UnaryOp {
@@ -270,12 +350,22 @@ pub(all) enum UnaryOp {
   Delete
   BitNot
 } derive(Eq, @debug.Debug)
+pub fn UnaryOp::equal(Self, Self) -> Bool
+pub fn UnaryOp::not_equal(Self, Self) -> Bool
+pub fn UnaryOp::output(Self, &Logger) -> Unit
+pub fn UnaryOp::to_repr(Self) -> @debug.Repr
+pub fn UnaryOp::to_string(Self) -> String
 pub impl Show for UnaryOp
 
 pub(all) enum UpdateOp {
   Increment
   Decrement
 } derive(Eq, @debug.Debug)
+pub fn UpdateOp::equal(Self, Self) -> Bool
+pub fn UpdateOp::not_equal(Self, Self) -> Bool
+pub fn UpdateOp::output(Self, &Logger) -> Unit
+pub fn UpdateOp::to_repr(Self) -> @debug.Repr
+pub fn UpdateOp::to_string(Self) -> String
 pub impl Show for UpdateOp
 
 pub(all) enum VarKind {
@@ -283,6 +373,11 @@ pub(all) enum VarKind {
   ConstKind
   VarKind
 } derive(Eq, @debug.Debug)
+pub fn VarKind::equal(Self, Self) -> Bool
+pub fn VarKind::not_equal(Self, Self) -> Bool
+pub fn VarKind::output(Self, &Logger) -> Unit
+pub fn VarKind::to_repr(Self) -> @debug.Repr
+pub fn VarKind::to_string(Self) -> String
 pub impl Show for VarKind
 
 // Type aliases

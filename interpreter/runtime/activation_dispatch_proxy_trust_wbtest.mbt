@@ -52,7 +52,7 @@ fn proxy_get_recursion_trust_execute_root_setup(
   interp : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Unit raise {
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   interp.prepare_root_program_execution(stmts, interp.global, false)
   for index in 0..<3 {
     match interp.exec_stmt(ctx, stmts[index], interp.global) {

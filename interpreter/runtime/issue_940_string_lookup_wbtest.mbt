@@ -35,7 +35,7 @@ test "issue 940 String lookup distinguishes Found undefined from Absent" {
 
 ///|
 test "issue 940 absent String property retains guarded builtin fallback" {
-  let fallback_calls : Ref[Int] = { val: 0 }
+  let fallback_calls : Ref[Int] = { val: 0, }
   let hooks = {
     ..default_stdlib_hooks(),
     get_string_method: fn(s, prop, realm_state, _annex_b) {

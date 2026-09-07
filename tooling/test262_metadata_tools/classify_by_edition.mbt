@@ -5,6 +5,9 @@ struct FailureRecord {
 } derive(Debug)
 
 ///|
+pub extend FailureRecord with @debug.Debug::{to_repr}
+
+///|
 struct EditionBucket {
   total : Int
   passed : Int
@@ -16,6 +19,9 @@ struct EditionBucket {
 } derive(Debug)
 
 ///|
+pub extend EditionBucket with @debug.Debug::{to_repr}
+
+///|
 struct ResultRecord {
   path : String
   status : String
@@ -23,10 +29,16 @@ struct ResultRecord {
 } derive(Debug)
 
 ///|
+pub extend ResultRecord with @debug.Debug::{to_repr}
+
+///|
 struct ResultFileData {
   mode : String
   results : Array[ResultRecord]
 } derive(Debug)
+
+///|
+pub extend ResultFileData with @debug.Debug::{to_repr}
 
 ///|
 fn empty_bucket() -> EditionBucket {
@@ -58,7 +70,7 @@ fn bucket_record(
     "pass" => passed += 1
     "fail" => {
       failed += 1
-      failures.push({ path, reason })
+      failures.push({ path, reason, })
     }
     "skip" => skipped += 1
     "timeout" => {
@@ -85,7 +97,15 @@ fn bucket_record(
     }
     _ => ()
   }
-  { total: bucket.total + 1, passed, failed, skipped, timeout, error, failures }
+  {
+    total: bucket.total + 1,
+    passed,
+    failed,
+    skipped,
+    timeout,
+    error,
+    failures,
+  }
 }
 
 ///|
@@ -555,7 +575,7 @@ fn load_result_file(path : String) -> ResultFileData raise {
   } else {
     @path_utils.basename(path)
   }
-  { mode, results }
+  { mode, results, }
 }
 
 ///|
@@ -1204,5 +1224,5 @@ pub fn run_classify_by_edition(
       Json::object(payload).stringify(indent=2) + "\n",
     )
   }
-  { stdout_lines, stderr_lines: [], code: 0 }
+  { stdout_lines, stderr_lines: [], code: 0, }
 }

@@ -74,7 +74,7 @@ fn ActivationObservationAttemptHooks::ActivationObservationAttemptHooks(
   rejected~ : () -> Unit,
   released~ : () -> Unit,
 ) -> ActivationObservationAttemptHooks {
-  { acquired, accepted, rejected, released }
+  { acquired, accepted, rejected, released, }
 }
 
 ///|
@@ -88,7 +88,7 @@ fn ActivationObservationPort::ActivationObservationPort(
   begin_entry~ : () -> ActivationObservationAttemptHooks raise Error,
   denied~ : () -> Unit,
 ) -> ActivationObservationPort {
-  { begin_entry, denied }
+  { begin_entry, denied, }
 }
 
 ///|
@@ -101,7 +101,7 @@ priv struct ActivationEntryAttempt {
 fn ActivationEntryAttempt::ActivationEntryAttempt(
   hooks : ActivationObservationAttemptHooks,
 ) -> ActivationEntryAttempt {
-  { phase: { val: ActivationEntryAttempted }, hooks }
+  { phase: { val: ActivationEntryAttempted, }, hooks, }
 }
 
 ///|
@@ -115,7 +115,7 @@ fn ActivationObservationToken::ActivationObservationToken(
   phase~ : Ref[ActivationObservationPhase],
   released~ : () -> Unit,
 ) -> ActivationObservationToken {
-  { phase, released }
+  { phase, released, }
 }
 
 ///|

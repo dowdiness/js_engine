@@ -38,7 +38,7 @@ fn FromAsync::FromAsync(
   reject : Value,
   realm : @runtime.RealmState,
 ) -> FromAsync {
-  { source, output, mapper, this_arg, promises, resolve, reject, realm }
+  { source, output, mapper, this_arg, promises, resolve, reject, realm, }
 }
 
 ///|

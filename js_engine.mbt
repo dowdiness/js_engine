@@ -98,6 +98,9 @@ pub(all) suberror EngineError {
 } derive(Debug)
 
 ///|
+pub extend EngineError with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for EngineError with fn output(self, logger) {
   let (name, message) = match self {
     ParseError(message) => ("ParseError", message)
@@ -113,6 +116,9 @@ pub impl Show for EngineError with fn output(self, logger) {
 }
 
 ///|
+pub extend EngineError with Show::{output, to_string}
+
+///|
 /// A persistent JavaScript realm for repeated evaluation and JSON calls.
 pub struct Engine {
   interp : @interpreter.Interpreter
@@ -120,7 +126,7 @@ pub struct Engine {
 
 ///|
 pub fn Engine::Engine(annex_b? : Bool = false) -> Engine {
-  { interp: @interpreter.new_interpreter(annex_b~) }
+  { interp: @interpreter.new_interpreter(annex_b~), }
 }
 
 ///|
@@ -286,7 +292,7 @@ pub fn LoadedScript::LoadedScript(
   identity~ : String,
   source~ : String,
 ) -> LoadedScript {
-  { identity, source }
+  { identity, source, }
 }
 
 ///|

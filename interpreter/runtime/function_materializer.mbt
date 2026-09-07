@@ -12,6 +12,9 @@ pub(all) enum FunctionMaterializationForm {
 } derive(Eq)
 
 ///|
+pub extend FunctionMaterializationForm with Eq::{equal, not_equal}
+
+///|
 pub(all) enum FunctionMaterializationParameters {
   SimpleFunctionParameters(Array[String])
   ExtendedFunctionParameters(Array[@ast.Param], String?)
@@ -46,7 +49,7 @@ pub fn FunctionExecutionHooks::FunctionExecutionHooks(
   start~ : () -> Unit raise Error,
   complete~ : (Bool) -> Unit raise Error,
 ) -> FunctionExecutionHooks {
-  { start, complete }
+  { start, complete, }
 }
 
 ///|
@@ -60,7 +63,7 @@ pub fn FunctionMaterializationRequest::FunctionMaterializationRequest(
   strict~ : Bool,
   source_text~ : String?,
 ) -> FunctionMaterializationRequest {
-  { form, site, name, parameters, body, closure, strict, source_text }
+  { form, site, name, parameters, body, closure, strict, source_text, }
 }
 
 ///|
@@ -76,7 +79,7 @@ pub fn FunctionMaterializer::FunctionMaterializer(
   materialize~ : (Interpreter, FunctionMaterializationRequest) -> Value raise Error,
   hooks? : FunctionExecutionHooks? = None,
 ) -> FunctionMaterializer {
-  { begin, materialize, hooks }
+  { begin, materialize, hooks, }
 }
 
 ///|
@@ -286,7 +289,7 @@ pub fn Interpreter::run_with_function_materializer(
   materializer : FunctionMaterializer,
 ) -> Value raise Error {
   let strict = @static_semantics.has_use_strict(stmts)
-  let ctx : ExecContext = { strict, current_generator: None }
+  let ctx : ExecContext = { strict, current_generator: None, }
   self.run_materialized_function(Some(materializer), fn() raise {
     with_cleared_active_callee_realm(self.realm_state, () => {
       self.prepare_root_program_execution(stmts, self.global, strict)

@@ -38,7 +38,7 @@ fn aggregate_results(
     increment_status(categories[cat], result.status)
     increment_status(overall, result.status)
   }
-  { overall, categories }
+  { overall, categories, }
 }
 
 ///|

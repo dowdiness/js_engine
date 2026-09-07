@@ -97,20 +97,20 @@ test "direct numeric call admission rejects non-exact public call inputs" {
       match object_data.callable {
         Some(UserFunc(data)) =>
           [
-            Object({ ..object_data, callable: Some(ArrowFunc(data)) }),
+            Object({ ..object_data, callable: Some(ArrowFunc(data)), }),
             Object({
               ..object_data,
-              callable: Some(UserFunc({ ..data, strict: true })),
+              callable: Some(UserFunc({ ..data, strict: true, })),
             }),
             Object({
               ..object_data,
-              callable: Some(UserFunc({ ..data, has_name_binding: true })),
+              callable: Some(UserFunc({ ..data, has_name_binding: true, })),
             }),
             Object({
               ..object_data,
-              callable: Some(UserFunc({ ..data, is_method: true })),
+              callable: Some(UserFunc({ ..data, is_method: true, })),
             }),
-            Object({ ..object_data, class_name: "Callable" }),
+            Object({ ..object_data, class_name: "Callable", }),
           ]
         _ => fail("expected the exact fixture to contain a UserFunc")
       }

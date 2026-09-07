@@ -52,7 +52,7 @@ fn call_array_index_of_with_observation_probe_961(
 
 ///|
 test "Array.indexOf sparse holes observe each logical index" {
-  let trace : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
   let sparse = @runtime.make_array_with_holes(
     [Undefined, Undefined, Undefined],
     [0, 1, 2],
@@ -73,7 +73,7 @@ test "Array.indexOf sparse holes observe each logical index" {
 
 ///|
 test "Array.indexOf observes before indexed getter work" {
-  let trace : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
   let getter = @runtime.make_object(
     Map([]),
     Null,
@@ -119,7 +119,7 @@ test "Array.indexOf observes before indexed getter work" {
 
 ///|
 test "Array.indexOf observation interrupts before indexed property work" {
-  let trace : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
   let getter = @runtime.make_object(
     Map([]),
     Null,
@@ -174,8 +174,8 @@ test "Array.indexOf observation interrupts before indexed property work" {
 
 ///|
 test "Array.indexOf observation interrupts before Proxy has/get" {
-  let trace : Ref[Array[String]] = { val: [] }
-  let proxy_events : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
+  let proxy_events : Ref[Array[String]] = { val: [], }
   let target = @runtime.make_array([Number(1.0)])
   let interp = @runtime.Interpreter::new(setup_builtins=fn(env, args, rs, ab) {
     setup_builtins_with_realm_state(env, args, rs, annex_b=ab)
@@ -260,7 +260,7 @@ test "Array.indexOf observation interrupts before Proxy has/get" {
 
 ///|
 test "Array.indexOf fast returns do not observe" {
-  let empty_trace : Ref[Array[String]] = { val: [] }
+  let empty_trace : Ref[Array[String]] = { val: [], }
   let empty = @runtime.make_array([])
   match
     call_array_index_of_with_observation_probe_961(
@@ -275,7 +275,7 @@ test "Array.indexOf fast returns do not observe" {
   }
   json_inspect(empty_trace.val, content=[])
 
-  let bounded_trace : Ref[Array[String]] = { val: [] }
+  let bounded_trace : Ref[Array[String]] = { val: [], }
   let array = @runtime.make_array([Undefined, Undefined])
   match
     call_array_index_of_with_observation_probe_961(
@@ -290,7 +290,7 @@ test "Array.indexOf fast returns do not observe" {
   }
   json_inspect(bounded_trace.val, content=[])
 
-  let infinite_trace : Ref[Array[String]] = { val: [] }
+  let infinite_trace : Ref[Array[String]] = { val: [], }
   let infinite_start = @runtime.make_array([Undefined])
   match
     call_array_index_of_with_observation_probe_961(

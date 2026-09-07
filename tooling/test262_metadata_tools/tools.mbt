@@ -6,10 +6,16 @@ pub struct ToolRun {
 } derive(Debug)
 
 ///|
+pub extend ToolRun with @debug.Debug::{to_repr}
+
+///|
 struct TestFile {
   full_path : String
   rel_path : String
 } derive(Debug)
+
+///|
+pub extend TestFile with @debug.Debug::{to_repr}
 
 ///|
 struct SuiteMetadata {
@@ -20,11 +26,17 @@ struct SuiteMetadata {
 } derive(Debug)
 
 ///|
+pub extend SuiteMetadata with @debug.Debug::{to_repr}
+
+///|
 struct ValidationIssue {
   kind : String
   entry : String
   detail : String
 } derive(Debug)
+
+///|
+pub extend ValidationIssue with @debug.Debug::{to_repr}
 
 ///|
 
@@ -93,7 +105,7 @@ fn collect_js_files_in_dir(
     if @fs.is_dir(full_path) {
       collect_js_files_in_dir(full_path, rel_path, files)
     } else if @fs.is_file(full_path) && entry.has_suffix(".js") {
-      files.push({ full_path, rel_path })
+      files.push({ full_path, rel_path, })
     }
   }
 }
@@ -141,7 +153,7 @@ fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
     }
   }
 
-  { files_scanned, features, flags, paths }
+  { files_scanned, features, flags, paths, }
 }
 
 ///|
@@ -206,7 +218,7 @@ fn render_validation_result(
     }
     stdout_lines.push("")
     stdout_lines.push("No conformance numbers were produced.")
-    { stdout_lines, stderr_lines: [], code: 1 }
+    { stdout_lines, stderr_lines: [], code: 1, }
   } else {
     stdout_lines.push(
       "ok: shared Test262 skip metadata matches current Test262 metadata/path usage (" +
@@ -214,7 +226,7 @@ fn render_validation_result(
       " files scanned)",
     )
     stdout_lines.push("No conformance numbers were produced.")
-    { stdout_lines, stderr_lines: [], code: 0 }
+    { stdout_lines, stderr_lines: [], code: 0, }
   }
 }
 

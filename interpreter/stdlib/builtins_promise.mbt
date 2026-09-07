@@ -187,8 +187,8 @@ fn create_promise_capability_from_constructor(
   ctor : Value,
   loc : @token.Loc,
 ) -> (Value, Value, Value) raise Error {
-  let resolve_ref : Ref[Value] = { val: Undefined }
-  let reject_ref : Ref[Value] = { val: Undefined }
+  let resolve_ref : Ref[Value] = { val: Undefined, }
+  let reject_ref : Ref[Value] = { val: Undefined, }
   let executor = @runtime.make_interp_method_func(
     name="",
     length=2,
@@ -612,7 +612,7 @@ pub fn setup_promise(
         interp, _this, loc,
       )
       let results : Array[Value] = []
-      let remaining : Ref[Int] = { val: 1 }
+      let remaining : Ref[Int] = { val: 1, }
       let mut iterator : Value = Undefined
       let mut has_iterator = false
       let mut iterator_done = false
@@ -666,7 +666,7 @@ pub fn setup_promise(
           let next_promise = call_promise_resolve_method(
             interp, promise_resolve, _this, next_value, loc,
           )
-          let already_called : Ref[Bool] = { val: false }
+          let already_called : Ref[Bool] = { val: false, }
           let resolve_element = @runtime.make_interp_method_func(
             name="",
             length=1,
@@ -806,7 +806,7 @@ pub fn setup_promise(
         interp, _this, loc,
       )
       let results : Array[Value] = []
-      let remaining : Ref[Int] = { val: 1 }
+      let remaining : Ref[Int] = { val: 1, }
       let mut iterator : Value = Undefined
       let mut has_iterator = false
       let mut iterator_done = false
@@ -860,7 +860,7 @@ pub fn setup_promise(
           let next_promise = call_promise_resolve_method(
             interp, promise_resolve, _this, next_value, loc,
           )
-          let already_called : Ref[Bool] = { val: false }
+          let already_called : Ref[Bool] = { val: false, }
           let on_fulfilled = @runtime.make_interp_method_func(
             name="",
             length=1,
@@ -981,7 +981,7 @@ pub fn setup_promise(
         interp, _this, loc,
       )
       let errors : Array[Value] = []
-      let remaining : Ref[Int] = { val: 1 }
+      let remaining : Ref[Int] = { val: 1, }
       let mut iterator : Value = Undefined
       let mut has_iterator = false
       let mut iterator_done = false
@@ -1050,7 +1050,7 @@ pub fn setup_promise(
             },
           )
           // §27.2.4.3.2: Promise.any reject element has its own alreadyCalled guard.
-          let already_called_reject : Ref[Bool] = { val: false }
+          let already_called_reject : Ref[Bool] = { val: false, }
           let on_rejected = @runtime.make_interp_method_func(
             name="",
             length=1,

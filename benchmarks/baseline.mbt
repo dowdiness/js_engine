@@ -92,7 +92,7 @@ fn parse_single_expr(src : String) -> @ast.Expr raise Error {
 
 ///|
 fn default_exec_ctx() -> ExecContext {
-  { strict: false, current_generator: None }
+  { strict: false, current_generator: None, }
 }
 
 ///|
@@ -334,7 +334,7 @@ fn bench_arithmetic_loop() -> BenchResult raise {
   run_bench(
     "exec/arithmetic_loop",
     Component,
-    { warmup: 2, iterations: 8, group_size: 1 },
+    { warmup: 2, iterations: 8, group_size: 1, },
     fn() raise { let _ = @lib.run(BASELINE_ARITHMETIC_LOOP_SRC) },
   )
 }

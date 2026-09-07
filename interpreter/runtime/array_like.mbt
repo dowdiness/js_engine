@@ -310,7 +310,7 @@ pub fn get_array_like_element(val : Value, index : Int64) -> Value {
       let chars = s.to_array()
       if index >= 0L && index <= 0x7FFFFFFFL && index.to_int() < chars.length() {
         let i = index.to_int()
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         buf.write_char(chars[i])
         String_(buf.to_string())
       } else {

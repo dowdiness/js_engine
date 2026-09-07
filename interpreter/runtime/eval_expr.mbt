@@ -567,7 +567,7 @@ fn tagged_template_cache_key(
   loc : @token.Loc,
   quasis : Array[(String, String?)],
 ) -> String {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   buf.write_string(loc.line.to_string())
   buf.write_string(":")
   buf.write_string(loc.col.to_string())
@@ -1719,7 +1719,7 @@ fn Interpreter::eval_expr(
       self.eval_compound_assign(ctx, op, target, value_expr, env, loc)
     Comma(left, right, _) => self.eval_direct_comma(ctx, left, right, env)
     TemplateLit(quasis, exprs, _) => {
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       for i = 0; i < quasis.length(); i = i + 1 {
         // Validator ensures cooked is always Some for untagged templates
         buf.write_string(

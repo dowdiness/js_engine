@@ -30,7 +30,7 @@ fn getter_recursion_trust_execute_root_setup(
   stmts : Array[@ast.Stmt],
   plan : GetterRecursionPlan,
 ) -> Unit raise {
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   interp.prepare_root_program_execution(stmts, interp.global, false)
   for index in 0..<(getter_recursion_seal_statement_index(plan) + 1) {
     match interp.exec_stmt(ctx, stmts[index], interp.global) {
@@ -162,7 +162,7 @@ test "getter recursion trust rejects direct prototype link and descriptor drift"
   }
   target_data.prototype = holder
 
-  holder_data.bag.descriptors["x"] = { ..descriptor, getter: None }
+  holder_data.bag.descriptors["x"] = { ..descriptor, getter: None, }
   let descriptor_result = try {
     let _ = registry.require_target(interp)
     "accepted"
@@ -240,7 +240,7 @@ test "getter recursion trust rejects binding and descriptor drift" {
   }
   object_binding.value = target
 
-  target_data.bag.descriptors["x"] = { ..descriptor, getter: None }
+  target_data.bag.descriptors["x"] = { ..descriptor, getter: None, }
   let descriptor_result = try {
     let _ = registry.require_target(interp)
     "accepted"

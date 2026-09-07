@@ -47,5 +47,5 @@ fn parse_bench_arg_values(args : ArrayView[String]) -> BenchArgs raise {
     }
     i += 1
   }
-  { run_all, csv, startup_phases, list_only, rows }
+  { run_all, csv, startup_phases, list_only, rows, }
 }

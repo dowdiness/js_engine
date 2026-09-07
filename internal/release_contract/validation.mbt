@@ -6,12 +6,18 @@ pub struct ReleaseDiagnostic {
 } derive(Debug, Eq)
 
 ///|
+pub extend ReleaseDiagnostic with @debug.Debug::{to_repr}
+
+///|
+pub extend ReleaseDiagnostic with Eq::{equal, not_equal}
+
+///|
 fn ReleaseDiagnostic::ReleaseDiagnostic(
   code : String,
   expected : String,
   actual : String,
 ) -> ReleaseDiagnostic {
-  { code, expected, actual }
+  { code, expected, actual, }
 }
 
 ///|
@@ -39,7 +45,7 @@ pub struct ReleaseValidation {
 fn ReleaseValidation::ReleaseValidation(
   diagnostics : Array[ReleaseDiagnostic],
 ) -> ReleaseValidation {
-  { allowed: diagnostics.is_empty(), diagnostics: diagnostics.copy() }
+  { allowed: diagnostics.is_empty(), diagnostics: diagnostics.copy(), }
 }
 
 ///|

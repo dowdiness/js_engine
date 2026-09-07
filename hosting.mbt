@@ -14,7 +14,7 @@ fn ConsoleOutput::ConsoleOutput(
   kind~ : ConsoleOutputKind,
   text~ : String,
 ) -> ConsoleOutput {
-  { kind_: kind, text_: text }
+  { kind_: kind, text_: text, }
 }
 
 ///|
@@ -40,7 +40,7 @@ fn ScriptResourceRequest::ScriptResourceRequest(
   request~ : String,
   referrer~ : String?,
 ) -> ScriptResourceRequest {
-  { request_: request, referrer_: referrer }
+  { request_: request, referrer_: referrer, }
 }
 
 ///|
@@ -65,7 +65,7 @@ pub fn ScriptResource::ScriptResource(
   identity~ : String,
   source~ : String,
 ) -> ScriptResource {
-  { identity_: identity, source_: source }
+  { identity_: identity, source_: source, }
 }
 
 ///|
@@ -90,7 +90,7 @@ fn ScheduledTurn::ScheduledTurn(
   host_binding~ : SessionHostBinding,
   id~ : Int,
 ) -> ScheduledTurn {
-  { host_binding, id }
+  { host_binding, id, }
 }
 
 ///|
@@ -105,7 +105,7 @@ fn TimerSchedule::TimerSchedule(
   delay_milliseconds~ : Int,
   turn~ : ScheduledTurn,
 ) -> TimerSchedule {
-  { delay_milliseconds_: delay_milliseconds, turn_: turn }
+  { delay_milliseconds_: delay_milliseconds, turn_: turn, }
 }
 
 ///|
@@ -138,7 +138,7 @@ pub fn HostEnvironment::HostEnvironment(
   script_resources? : Bool = false,
   timers? : Bool = false,
 ) -> HostEnvironment {
-  { annex_b, console, script_resources, timers }
+  { annex_b, console, script_resources, timers, }
 }
 
 ///|
@@ -155,7 +155,7 @@ pub fn SessionBindings::SessionBindings(
   script_resource_resolver? : ((ScriptResourceRequest) -> ScriptResource? raise Error)? = None,
   timer_scheduler? : ((TimerSchedule) -> Unit raise Error)? = None,
 ) -> SessionBindings {
-  { console_output_sink, script_resource_resolver, timer_scheduler }
+  { console_output_sink, script_resource_resolver, timer_scheduler, }
 }
 
 ///|
@@ -164,6 +164,9 @@ pub(all) suberror SessionCreationError {
   BindingForAbsentCapability(String)
   MissingBindingForCapability(String)
 } derive(Debug)
+
+///|
+pub extend SessionCreationError with @debug.Debug::{to_repr}
 
 ///|
 pub impl Show for SessionCreationError with fn output(self, logger) {
@@ -178,6 +181,9 @@ pub impl Show for SessionCreationError with fn output(self, logger) {
     }
   }
 }
+
+///|
+pub extend SessionCreationError with Show::{output, to_string}
 
 ///|
 /// Errors reported by an Execution Session at its application boundary.
@@ -210,6 +216,9 @@ pub impl Show for ExecutionSessionError with fn output(self, logger) {
     ScheduledTurnUnavailable => logger.write_string("ScheduledTurnUnavailable")
   }
 }
+
+///|
+pub extend ExecutionSessionError with Show::{output, to_string}
 
 ///|
 priv struct SessionHostFailure {
@@ -268,7 +277,7 @@ fn SessionHostBinding::record_failure(
   capability : String,
   error : Error,
 ) -> Unit {
-  self.failure = Some({ capability, detail: error.to_string() })
+  self.failure = Some({ capability, detail: error.to_string(), })
 }
 
 ///|
@@ -350,7 +359,7 @@ fn SessionHostBinding::schedule_timer(
   }
   let id = self.next_scheduled_turn_id
   self.next_scheduled_turn_id += 1
-  self.scheduled_callbacks[id] = { callback, arguments }
+  self.scheduled_callbacks[id] = { callback, arguments, }
   let result : Result[Unit, Error] = Ok(
     schedule(
       TimerSchedule(
@@ -693,7 +702,7 @@ fn ExecutionSession::ExecutionSession(
   engine : Engine,
   host_binding : SessionHostBinding,
 ) -> ExecutionSession {
-  { engine, host_binding, state: Available }
+  { engine, host_binding, state: Available, }
 }
 
 ///|

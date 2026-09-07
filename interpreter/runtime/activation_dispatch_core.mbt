@@ -40,7 +40,7 @@ fn DispatchStatementCursor::DispatchStatementCursor(
   last_value? : Value = Undefined,
   production? : Bool = false,
 ) -> DispatchStatementCursor {
-  { ctx, stmts: stmts.copy(), env, index, last_value, production }
+  { ctx, stmts: stmts.copy(), env, index, last_value, production, }
 }
 
 ///|
@@ -65,7 +65,7 @@ fn DispatchStatementResume::DispatchStatementResume(
   cursor~ : DispatchStatementCursor,
   updates_last_value~ : Bool,
 ) -> DispatchStatementResume {
-  { cursor, updates_last_value }
+  { cursor, updates_last_value, }
 }
 
 ///|
@@ -81,7 +81,7 @@ fn DispatchCatchResume::DispatchCatchResume(
   parameter~ : @ast.Pattern?,
   body~ : DispatchStatementCursor,
 ) -> DispatchCatchResume {
-  { parameter, body }
+  { parameter, body, }
 }
 
 ///|
@@ -101,7 +101,7 @@ fn DispatchCallRequest::DispatchCallRequest(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> DispatchCallRequest {
-  { callee, this_value, args: args.copy(), loc }
+  { callee, this_value, args: args.copy(), loc, }
 }
 
 ///|
@@ -118,7 +118,7 @@ fn DispatchConstructRequest::DispatchConstructRequest(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> DispatchConstructRequest {
-  { ctor, args: args.copy(), loc }
+  { ctor, args: args.copy(), loc, }
 }
 
 ///|
@@ -137,7 +137,7 @@ fn DispatchConstructAssignResume::DispatchConstructAssignResume(
   loc~ : @token.Loc,
   strict~ : Bool,
 ) -> DispatchConstructAssignResume {
-  { target, property, loc, strict }
+  { target, property, loc, strict, }
 }
 
 ///|
@@ -163,7 +163,7 @@ fn DispatchBinaryResume::DispatchBinaryResume(
   left~ : Value,
   loc~ : @token.Loc,
 ) -> DispatchBinaryResume {
-  { op, left, loc }
+  { op, left, loc, }
 }
 
 ///|
@@ -231,7 +231,7 @@ fn DispatchMapMemberCallResume::DispatchMapMemberCallResume(
   receiver~ : Value,
   loc~ : @token.Loc,
 ) -> DispatchMapMemberCallResume {
-  { receiver, loc }
+  { receiver, loc, }
 }
 
 ///|
@@ -242,7 +242,7 @@ fn DispatchPropertyGetResume::DispatchPropertyGetResume(
   receiver~ : Value,
   loc~ : @token.Loc,
 ) -> DispatchPropertyGetResume {
-  { target, property_key, receiver, loc }
+  { target, property_key, receiver, loc, }
 }
 
 ///|
@@ -262,7 +262,7 @@ fn DispatchProxyGetResume::DispatchProxyGetResume(
   receiver~ : Value,
   loc~ : @token.Loc,
 ) -> DispatchProxyGetResume {
-  { target, property_key, receiver, loc }
+  { target, property_key, receiver, loc, }
 }
 
 ///|
@@ -283,7 +283,7 @@ fn DispatchProxyGetTrapLookupResume::DispatchProxyGetTrapLookupResume(
   handler~ : Value,
   post_trap~ : DispatchProxyGetResume,
 ) -> DispatchProxyGetTrapLookupResume {
-  { proxy, handler, post_trap }
+  { proxy, handler, post_trap, }
 }
 
 ///|
@@ -345,7 +345,7 @@ fn DispatchNumericCallStart::DispatchNumericCallStart(
   recipe~ : NumericRecursionExpressionRecipe,
   return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> DispatchNumericCallStart {
-  { parameter, retained_parameter, recursive_callee, recipe, return_recipe }
+  { parameter, retained_parameter, recursive_callee, recipe, return_recipe, }
 }
 
 ///|
@@ -377,7 +377,7 @@ fn DispatchNumericProtectedStatementStart::DispatchNumericProtectedStatementStar
   expression~ : DispatchNumericExpression,
   completion~ : NumericRecursionRootCallCompletion,
 ) -> DispatchNumericProtectedStatementStart {
-  { expression, completion }
+  { expression, completion, }
 }
 
 ///|
@@ -395,7 +395,7 @@ fn DispatchNumericProtectedStart::DispatchNumericProtectedStart(
   recipe~ : NumericRecursionProtectedRootRecipe,
   catch_binding~ : DispatchNumericCatchBindingToken,
 ) -> DispatchNumericProtectedStart {
-  { expression, recipe, catch_binding }
+  { expression, recipe, catch_binding, }
 }
 
 ///|
@@ -411,7 +411,7 @@ fn DispatchNumericProtectedReturnStart::DispatchNumericProtectedReturnStart(
   expression~ : DispatchNumericExpression,
   finalizer~ : NumericRecursionClosedBodyRecipe,
 ) -> DispatchNumericProtectedReturnStart {
-  { expression, finalizer }
+  { expression, finalizer, }
 }
 
 ///|
@@ -429,7 +429,7 @@ fn DispatchNumericCatchResume::DispatchNumericCatchResume(
   parameter~ : String?,
   body~ : NumericRecursionClosedBodyRecipe,
 ) -> DispatchNumericCatchResume {
-  { token, parameter, body }
+  { token, parameter, body, }
 }
 
 ///|
@@ -449,7 +449,7 @@ fn DispatchNumericProgramStart::DispatchNumericProgramStart(
   root_control~ : NumericRecursionRootControlRecipe,
   catch_binding~ : DispatchNumericCatchBindingToken,
 ) -> DispatchNumericProgramStart {
-  { declaration_count, expression, root_control, catch_binding }
+  { declaration_count, expression, root_control, catch_binding, }
 }
 
 ///|
@@ -504,7 +504,7 @@ fn DispatchNumericRootDeclarationResume::DispatchNumericRootDeclarationResume(
   root_control~ : NumericRecursionRootControlRecipe,
   catch_binding~ : DispatchNumericCatchBindingToken,
 ) -> DispatchNumericRootDeclarationResume {
-  { next_index, remaining, expression, root_control, catch_binding }
+  { next_index, remaining, expression, root_control, catch_binding, }
 }
 
 ///|
@@ -557,7 +557,7 @@ fn DispatchForLoopState::DispatchForLoopState(
   for_env~ : Environment,
   loop_vars~ : Array[String],
 ) -> DispatchForLoopState {
-  { condition, update, body, outer_env, for_env, loop_vars: loop_vars.copy() }
+  { condition, update, body, outer_env, for_env, loop_vars: loop_vars.copy(), }
 }
 
 ///|
@@ -587,7 +587,7 @@ fn DispatchLoopResume::DispatchLoopResume(
   completion~ : Value,
   production? : Bool = false,
 ) -> DispatchLoopResume {
-  { kind, ctx, label, completion, production }
+  { kind, ctx, label, completion, production, }
 }
 
 ///|
@@ -1128,7 +1128,7 @@ fn with_dispatch_frames(
   state : ActivationDispatchState,
   frames : DispatchFrameStack,
 ) -> ActivationDispatchState {
-  { frames, phase: state.phase, ticket_cursor: state.ticket_cursor }
+  { frames, phase: state.phase, ticket_cursor: state.ticket_cursor, }
 }
 
 ///|
@@ -1860,7 +1860,7 @@ fn route_dispatch_completion(
             match routed {
               DispatchNormal(value) => {
                 let cursor = if statement_resume.updates_last_value {
-                  { ..statement_resume.cursor, last_value: value }
+                  { ..statement_resume.cursor, last_value: value, }
                 } else {
                   statement_resume.cursor
                 }

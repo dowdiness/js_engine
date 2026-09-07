@@ -75,7 +75,7 @@ fn BytecodeUnsupported::BytecodeUnsupported(
   reason : BytecodeUnsupportedReason,
   loc : @token.Loc,
 ) -> BytecodeUnsupported {
-  { reason, loc }
+  { reason, loc, }
 }
 
 ///|
@@ -1697,7 +1697,7 @@ fn plan_bytecode_locals(
       }
     }
   }
-  { names, indices, env_names, env_indices }
+  { names, indices, env_names, env_indices, }
 }
 
 ///|
@@ -1903,7 +1903,7 @@ fn build_script_bytecode(
     lexical_bindings=root_provenance.lexical_bindings,
     settlement=root_provenance.settlement,
   )
-  { script_preparation, root_provenance, main }
+  { script_preparation, root_provenance, main, }
 }
 
 ///|
@@ -2703,7 +2703,7 @@ fn BytecodeBuilder::compile_stmt_body(
             raise @errors.InternalError(
               message="bytecode label context invariant violated",
             )
-            { label, break_jumps: [], loop_depth: self.loop_contexts.length() }
+            { label, break_jumps: [], loop_depth: self.loop_contexts.length(), }
           }
         }
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())

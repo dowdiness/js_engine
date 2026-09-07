@@ -785,7 +785,7 @@ fn create_generator_instance(
   // NOT when .next() is called. This means parameter binding errors throw immediately.
   // Use the stored strict flag instead of re-scanning the body.
   let gen_strict = strict
-  let setup_ctx : ExecContext = { strict: gen_strict, current_generator: None }
+  let setup_ctx : ExecContext = { strict: gen_strict, current_generator: None, }
   // §10.2.11 split: Ext-shape generator params (params_ext=Some) get a
   // separate body_env for body var/let/const. Simple params (params_ext=None)
   // stay single-env. `func_env` below is the param env in the Ext case and

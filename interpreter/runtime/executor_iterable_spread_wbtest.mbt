@@ -11,7 +11,7 @@ fn ExecutorIterableSpreadTestRootFrame::ExecutorIterableSpreadTestRootFrame(
   iterable~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorIterableSpreadTestRootFrame {
-  { iterable, loc, requested: false, result: None }
+  { iterable, loc, requested: false, result: None, }
 }
 
 ///|
@@ -147,9 +147,9 @@ test "managed iterable spread owns the built-in array protocol" {
 test "managed iterable spread preserves receivers and protocol order" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let iterable_ref : Ref[Value] = { val: Undefined }
-  let iterator_ref : Ref[Value] = { val: Undefined }
-  let index : Ref[Int] = { val: 0 }
+  let iterable_ref : Ref[Value] = { val: Undefined, }
+  let iterator_ref : Ref[Value] = { val: Undefined, }
+  let index : Ref[Int] = { val: 0, }
   let next = make_method_func(
     name="next",
     realm_state=Some(interp.realm_state),
@@ -490,8 +490,8 @@ test "bare Map and Set fallback cannot bypass getterless own iterators" {
 
 ///|
 test "tree-walker spread uses the bare Map iterator hook" {
-  let map_ref : Ref[Value] = { val: Undefined }
-  let method_calls : Ref[Int] = { val: 0 }
+  let map_ref : Ref[Value] = { val: Undefined, }
+  let method_calls : Ref[Int] = { val: 0, }
   let hooks = {
     ..default_stdlib_hooks(),
     get_map_method: fn(_data, prop, realm_state) {
@@ -521,10 +521,10 @@ test "tree-walker spread uses the bare Map iterator hook" {
 
 ///|
 test "tree-walker spread uses the bare Set iterator hook" {
-  let map_ref : Ref[Value] = { val: Undefined }
-  let set_ref : Ref[Value] = { val: Undefined }
-  let map_calls : Ref[Int] = { val: 0 }
-  let set_calls : Ref[Int] = { val: 0 }
+  let map_ref : Ref[Value] = { val: Undefined, }
+  let set_ref : Ref[Value] = { val: Undefined, }
+  let map_calls : Ref[Int] = { val: 0, }
+  let set_calls : Ref[Int] = { val: 0, }
   let interp = Interpreter::new(
     stdlib_hooks=bare_map_set_hooks_for_wb(
       map_ref, set_ref, map_calls, set_calls,
@@ -540,10 +540,10 @@ test "tree-walker spread uses the bare Set iterator hook" {
 
 ///|
 test "managed iterable spread uses bare Map and Set iterator hooks" {
-  let map_ref : Ref[Value] = { val: Undefined }
-  let set_ref : Ref[Value] = { val: Undefined }
-  let map_calls : Ref[Int] = { val: 0 }
-  let set_calls : Ref[Int] = { val: 0 }
+  let map_ref : Ref[Value] = { val: Undefined, }
+  let set_ref : Ref[Value] = { val: Undefined, }
+  let map_calls : Ref[Int] = { val: 0, }
+  let set_calls : Ref[Int] = { val: 0, }
   let interp = Interpreter::new(
     stdlib_hooks=bare_map_set_hooks_for_wb(
       map_ref, set_ref, map_calls, set_calls,
@@ -563,9 +563,9 @@ test "managed iterable spread uses bare Map and Set iterator hooks" {
 
 ///|
 test "managed bare Map fallback defers a Proxy method to call activation" {
-  let map_ref : Ref[Value] = { val: Undefined }
-  let method_ref : Ref[Value] = { val: Undefined }
-  let method_calls : Ref[Int] = { val: 0 }
+  let map_ref : Ref[Value] = { val: Undefined, }
+  let method_ref : Ref[Value] = { val: Undefined, }
+  let method_calls : Ref[Int] = { val: 0, }
   let hooks = {
     ..default_stdlib_hooks(),
     get_map_method: fn(_data, prop, realm_state) {
@@ -618,8 +618,8 @@ test "managed bare Map fallback defers a Proxy method to call activation" {
 
 ///|
 test "tree-walker bare Map fallback invokes the deferred Proxy method" {
-  let map_ref : Ref[Value] = { val: Undefined }
-  let method_calls : Ref[Int] = { val: 0 }
+  let map_ref : Ref[Value] = { val: Undefined, }
+  let method_calls : Ref[Int] = { val: 0, }
   let hooks = {
     ..default_stdlib_hooks(),
     get_map_method: fn(_data, prop, realm_state) {
@@ -656,7 +656,7 @@ test "tree-walker bare Map fallback invokes the deferred Proxy method" {
 
 ///|
 test "Map and Set spread fallback respects observable overrides" {
-  let fallback_calls : Ref[Int] = { val: 0 }
+  let fallback_calls : Ref[Int] = { val: 0, }
   let hooks = {
     ..default_stdlib_hooks(),
     get_map_method: fn(_data, _prop, _realm_state) {
@@ -694,7 +694,7 @@ test "Map and Set spread fallback respects observable overrides" {
     _ => fail("Map prototype fixture must be an object")
   }
   let map_inherited = Map(MapData([], prototype=Some(map_proto)))
-  let getter_calls : Ref[Int] = { val: 0 }
+  let getter_calls : Ref[Int] = { val: 0, }
   let getter = make_method_func(
     name="Set iterator getter",
     realm_state=Some(interp.realm_state),
@@ -739,7 +739,7 @@ test "Map and Set spread fallback respects observable overrides" {
 test "tree-walker spread deep Array accessor shadows higher iterator" {
   let interp = Interpreter::new()
   let iterator_sym = interp.realm_state.well_known_symbols.iterator
-  let higher_calls : Ref[Int] = { val: 0 }
+  let higher_calls : Ref[Int] = { val: 0, }
   let next = make_method_func(
     name="next",
     realm_state=Some(interp.realm_state),
@@ -809,7 +809,7 @@ test "tree-walker spread deep Array accessor shadows higher iterator" {
 test "tree-walker spread deep Array getterless iterator is absent" {
   let interp = Interpreter::new()
   let iterator_sym = interp.realm_state.well_known_symbols.iterator
-  let higher_calls : Ref[Int] = { val: 0 }
+  let higher_calls : Ref[Int] = { val: 0, }
   let higher_iterator = make_method_func(
     name="higher iterator",
     realm_state=Some(interp.realm_state),
@@ -861,9 +861,9 @@ test "tree-walker spread deep Array getterless iterator is absent" {
 test "tree-walker spread deep Array getter keeps receiver and returned iterator" {
   let interp = Interpreter::new()
   let iterator_sym = interp.realm_state.well_known_symbols.iterator
-  let getter_calls : Ref[Int] = { val: 0 }
-  let iterator_calls : Ref[Int] = { val: 0 }
-  let array_ref : Ref[Value] = { val: Undefined }
+  let getter_calls : Ref[Int] = { val: 0, }
+  let iterator_calls : Ref[Int] = { val: 0, }
+  let array_ref : Ref[Value] = { val: Undefined, }
   let next = make_method_func(
     name="next",
     realm_state=Some(interp.realm_state),
@@ -929,7 +929,7 @@ test "tree-walker spread deep Array getter keeps receiver and returned iterator"
 test "tree-walker spread Promise setter-only iterator shadows inherited callable" {
   let interp = Interpreter::new()
   let iterator_sym = interp.realm_state.well_known_symbols.iterator
-  let inherited_calls : Ref[Int] = { val: 0 }
+  let inherited_calls : Ref[Int] = { val: 0, }
   let inherited_iterator = make_method_func(
     name="inherited promise iterator",
     realm_state=Some(interp.realm_state),

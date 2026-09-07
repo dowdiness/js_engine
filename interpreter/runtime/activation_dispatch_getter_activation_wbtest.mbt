@@ -35,7 +35,7 @@ fn getter_activation_test_fixture_for(
     Some(found) => found
     None => fail("expected callback-free getter preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   interp.prepare_root_program_execution(stmts, interp.global, false)
   for index in 0..<(getter_recursion_seal_statement_index(plan) + 1) {
     match interp.exec_stmt(ctx, stmts[index], interp.global) {
@@ -305,7 +305,7 @@ test "getter root owns and releases its registry and caller realm" {
     None => fail("expected callback-free getter preflight")
   }
   dispatch_shell_test_install_realm_sentinel(interp, 44)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let result = activation_dispatch_root_value(
     interp.run_activation_dispatch_getter_program(stmts, ctx, preflight),
   )

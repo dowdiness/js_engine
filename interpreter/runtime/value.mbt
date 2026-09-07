@@ -172,6 +172,15 @@ pub(all) enum InternalSlotKey {
 } derive(Eq, Hash, Debug)
 
 ///|
+pub extend InternalSlotKey with Eq::{equal, not_equal}
+
+///|
+pub extend InternalSlotKey with Hash::{hash, hash_combine}
+
+///|
+pub extend InternalSlotKey with @debug.Debug::{to_repr}
+
+///|
 /// Unified named/symbol property + descriptor storage embedded in every
 /// exotic Value variant. Consolidates what used to be four parallel fields
 /// so descriptor invariants are enforced in one place.
@@ -206,7 +215,7 @@ pub(all) struct ArrayBufferState {
 
 ///|
 pub fn ArrayBufferState::ArrayBufferState() -> ArrayBufferState {
-  { id_counter: { val: 0 }, store: Map([]), detached: Map([]) }
+  { id_counter: { val: 0, }, store: Map([]), detached: Map([]), }
 }
 
 ///|
@@ -743,4 +752,4 @@ pub impl Show for Value with fn output(self, logger) {
 }
 
 ///|
-extend Value with Show::{to_string, output}
+pub extend Value with Show::{output, to_string}

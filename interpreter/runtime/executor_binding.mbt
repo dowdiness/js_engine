@@ -28,7 +28,7 @@ fn ExecutorBindingRequest::ExecutorBindingRequest(
   operation~ : ExecutorBindingOperation,
   loc~ : @token.Loc,
 ) -> ExecutorBindingRequest {
-  { ctx, env, name, operation, loc }
+  { ctx, env, name, operation, loc, }
 }
 
 ///|
@@ -327,7 +327,7 @@ priv struct ExecutorBindingFrame {
 fn ExecutorBindingFrame::ExecutorBindingFrame(
   request : ExecutorBindingRequest,
 ) -> ExecutorBindingFrame {
-  { request, phase: ExecutorBindingNeedEnvironment(request.env) }
+  { request, phase: ExecutorBindingNeedEnvironment(request.env), }
 }
 
 ///|

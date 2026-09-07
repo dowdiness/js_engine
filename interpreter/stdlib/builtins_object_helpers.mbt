@@ -21,7 +21,7 @@ fn to_object(
       props["length"] = Value::Number(s.length().to_double())
       let chars = s.to_array()
       for i = 0; i < chars.length(); i = i + 1 {
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         buf.write_char(chars[i])
         props[i.to_string()] = Value::String_(buf.to_string())
       }
