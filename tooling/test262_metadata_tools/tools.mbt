@@ -6,10 +6,16 @@ pub struct ToolRun {
 } derive(Debug)
 
 ///|
+pub extend ToolRun with @debug.Debug::{to_repr}
+
+///|
 struct TestFile {
   full_path : String
   rel_path : String
 } derive(Debug)
+
+///|
+pub extend TestFile with @debug.Debug::{to_repr}
 
 ///|
 struct SuiteMetadata {
@@ -20,11 +26,17 @@ struct SuiteMetadata {
 } derive(Debug)
 
 ///|
+pub extend SuiteMetadata with @debug.Debug::{to_repr}
+
+///|
 struct ValidationIssue {
   kind : String
   entry : String
   detail : String
 } derive(Debug)
+
+///|
+pub extend ValidationIssue with @debug.Debug::{to_repr}
 
 ///|
 

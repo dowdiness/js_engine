@@ -10,6 +10,15 @@ pub(all) struct HostSlotKey {
 } derive(Eq, Hash, Debug)
 
 ///|
+pub extend HostSlotKey with Eq::{equal, not_equal}
+
+///|
+pub extend HostSlotKey with Hash::{hash, hash_combine}
+
+///|
+pub extend HostSlotKey with @debug.Debug::{to_repr}
+
+///|
 /// Allocate a unique key within this loaded runtime package instance.
 /// Aborts if the allocator is exhausted — never wraps.
 pub fn HostSlotKey::reserve() -> HostSlotKey {

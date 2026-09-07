@@ -13,6 +13,12 @@ pub struct UnitTestCounts {
 } derive(Debug, Eq)
 
 ///|
+pub extend UnitTestCounts with @debug.Debug::{to_repr}
+
+///|
+pub extend UnitTestCounts with Eq::{equal, not_equal}
+
+///|
 fn UnitTestCounts::UnitTestCounts(
   passed : Int,
   executed : Int,
@@ -27,6 +33,12 @@ pub struct ConformanceCounts {
   discovered : Int
   skipped : Int
 } derive(Debug, Eq)
+
+///|
+pub extend ConformanceCounts with @debug.Debug::{to_repr}
+
+///|
+pub extend ConformanceCounts with Eq::{equal, not_equal}
 
 ///|
 fn ConformanceCounts::ConformanceCounts(
@@ -51,6 +63,12 @@ pub struct Test262Evidence {
   strict : ConformanceCounts
   non_strict : ConformanceCounts
 } derive(Debug, Eq)
+
+///|
+pub extend Test262Evidence with @debug.Debug::{to_repr}
+
+///|
+pub extend Test262Evidence with Eq::{equal, not_equal}
 
 ///|
 fn Test262Evidence::Test262Evidence(
@@ -86,6 +104,12 @@ pub struct PackageEvidence {
 } derive(Debug, Eq)
 
 ///|
+pub extend PackageEvidence with @debug.Debug::{to_repr}
+
+///|
+pub extend PackageEvidence with Eq::{equal, not_equal}
+
+///|
 fn PackageEvidence::PackageEvidence(
   content_sha256 : String,
   file_count : Int,
@@ -102,6 +126,12 @@ pub struct ReleaseCandidateManifest {
   test262 : Test262Evidence
   package_evidence : PackageEvidence
 } derive(Debug, Eq)
+
+///|
+pub extend ReleaseCandidateManifest with @debug.Debug::{to_repr}
+
+///|
+pub extend ReleaseCandidateManifest with Eq::{equal, not_equal}
 
 ///|
 fn ReleaseCandidateManifest::ReleaseCandidateManifest(

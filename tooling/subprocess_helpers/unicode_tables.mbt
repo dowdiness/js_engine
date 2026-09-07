@@ -110,6 +110,9 @@ pub struct UnicodeConfig {
 } derive(Debug)
 
 ///|
+pub extend UnicodeConfig with @debug.Debug::{to_repr}
+
+///|
 pub fn UnicodeConfig::UnicodeConfig(
   unicode_version~ : String,
   output~ : String,

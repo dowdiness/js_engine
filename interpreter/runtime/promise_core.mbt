@@ -9,6 +9,9 @@ pub impl Eq for TimerTask with fn equal(self : TimerTask, other : TimerTask) -> 
 }
 
 ///|
+pub extend TimerTask with Eq::{equal, not_equal}
+
+///|
 pub impl Compare for TimerTask with fn compare(
   self : TimerTask,
   other : TimerTask,
@@ -20,6 +23,9 @@ pub impl Compare for TimerTask with fn compare(
     -self.insertion_order.compare(other.insertion_order)
   }
 }
+
+///|
+pub extend TimerTask with Compare::{compare, op_ge, op_gt, op_le, op_lt}
 
 ///|
 /// Enqueue a microtask to be executed when the current execution context completes.

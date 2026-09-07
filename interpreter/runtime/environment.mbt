@@ -10,9 +10,18 @@ pub(all) enum BindingKind {
 } derive(Debug, Eq)
 
 ///|
+pub extend BindingKind with @debug.Debug::{to_repr}
+
+///|
+pub extend BindingKind with Eq::{equal, not_equal}
+
+///|
 pub impl Show for BindingKind with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend BindingKind with Show::{output, to_string}
 
 ///|
 pub(all) struct Binding {

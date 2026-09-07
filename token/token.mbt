@@ -6,9 +6,18 @@ pub(all) struct Loc {
 } derive(Eq, Debug)
 
 ///|
+pub extend Loc with Eq::{equal, not_equal}
+
+///|
+pub extend Loc with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for Loc with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend Loc with Show::{output, to_string}
 
 ///|
 pub fn Loc::default() -> Loc noraise {
@@ -21,6 +30,12 @@ pub struct SourceSpan {
   start_ : Loc
   end_ : Loc
 } derive(Eq, Debug)
+
+///|
+pub extend SourceSpan with Eq::{equal, not_equal}
+
+///|
+pub extend SourceSpan with @debug.Debug::{to_repr}
 
 ///|
 fn SourceSpan::SourceSpan(start : Loc, end : Loc) -> SourceSpan {
@@ -46,9 +61,18 @@ pub(all) enum LexForm {
 } derive(Eq, Debug)
 
 ///|
+pub extend LexForm with Eq::{equal, not_equal}
+
+///|
+pub extend LexForm with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for LexForm with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend LexForm with Show::{output, to_string}
 
 ///|
 pub(all) enum TokenKind {
@@ -182,9 +206,18 @@ pub(all) enum TokenKind {
 } derive(Eq, Debug)
 
 ///|
+pub extend TokenKind with Eq::{equal, not_equal}
+
+///|
+pub extend TokenKind with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for TokenKind with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend TokenKind with Show::{output, to_string}
 
 ///|
 pub(all) struct Token {
@@ -196,9 +229,18 @@ pub(all) struct Token {
 } derive(Eq, Debug)
 
 ///|
+pub extend Token with Eq::{equal, not_equal}
+
+///|
+pub extend Token with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for Token with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend Token with Show::{output, to_string}
 
 ///|
 /// `end_offset` is the exclusive UTF-16 code-unit offset in the original source

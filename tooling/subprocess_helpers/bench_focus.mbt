@@ -15,11 +15,17 @@ pub struct ToolRun {
 } derive(Debug)
 
 ///|
+pub extend ToolRun with @debug.Debug::{to_repr}
+
+///|
 struct ProcessCapture {
   code : Int
   stdout : String
   stderr : String
 } derive(Debug)
+
+///|
+pub extend ProcessCapture with @debug.Debug::{to_repr}
 
 ///|
 pub struct BenchConfig {
@@ -31,6 +37,9 @@ pub struct BenchConfig {
   priv fail_on_missing : Bool
   priv command_timeout_ms : Int
 } derive(Debug)
+
+///|
+pub extend BenchConfig with @debug.Debug::{to_repr}
 
 ///|
 pub fn BenchConfig::BenchConfig(
@@ -64,6 +73,9 @@ struct BenchSummary {
   run_cv_pct : Double
   median_in_run_cv_pct : Double
 } derive(Debug)
+
+///|
+pub extend BenchSummary with @debug.Debug::{to_repr}
 
 ///|
 pub fn default_bench_rows() -> Array[String] {

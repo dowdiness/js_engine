@@ -5,6 +5,9 @@ pub(all) suberror JsonBridgeError {
 } derive(Debug)
 
 ///|
+pub extend JsonBridgeError with @debug.Debug::{to_repr}
+
+///|
 fn json_bridge_number_is_finite(value : Double) -> Bool {
   !value.is_nan() && value != 1.0 / 0.0 && value != -1.0 / 0.0
 }

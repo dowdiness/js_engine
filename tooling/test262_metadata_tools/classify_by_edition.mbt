@@ -5,6 +5,9 @@ struct FailureRecord {
 } derive(Debug)
 
 ///|
+pub extend FailureRecord with @debug.Debug::{to_repr}
+
+///|
 struct EditionBucket {
   total : Int
   passed : Int
@@ -16,6 +19,9 @@ struct EditionBucket {
 } derive(Debug)
 
 ///|
+pub extend EditionBucket with @debug.Debug::{to_repr}
+
+///|
 struct ResultRecord {
   path : String
   status : String
@@ -23,10 +29,16 @@ struct ResultRecord {
 } derive(Debug)
 
 ///|
+pub extend ResultRecord with @debug.Debug::{to_repr}
+
+///|
 struct ResultFileData {
   mode : String
   results : Array[ResultRecord]
 } derive(Debug)
+
+///|
+pub extend ResultFileData with @debug.Debug::{to_repr}
 
 ///|
 fn empty_bucket() -> EditionBucket {

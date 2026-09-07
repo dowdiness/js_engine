@@ -9,6 +9,9 @@ struct ParityCase {
 } derive(Debug)
 
 ///|
+pub extend ParityCase with @debug.Debug::{to_repr}
+
+///|
 fn parity_string_field(data : Map[String, Json], key : String) -> String raise {
   match data.get(key) {
     Some(raw) =>

@@ -36,6 +36,9 @@ pub(all) suberror EngineError {
   JsonConversionError(String)
   InternalError(String)
 } derive(@debug.Debug)
+pub fn EngineError::output(Self, &Logger) -> Unit
+pub fn EngineError::to_repr(Self) -> @debug.Repr
+pub fn EngineError::to_string(Self) -> String
 pub impl Show for EngineError
 
 pub(all) suberror ExecutionSessionError {
@@ -46,12 +49,17 @@ pub(all) suberror ExecutionSessionError {
   SessionFaulted
   ScheduledTurnUnavailable
 }
+pub fn ExecutionSessionError::output(Self, &Logger) -> Unit
+pub fn ExecutionSessionError::to_string(Self) -> String
 pub impl Show for ExecutionSessionError
 
 pub(all) suberror SessionCreationError {
   BindingForAbsentCapability(String)
   MissingBindingForCapability(String)
 } derive(@debug.Debug)
+pub fn SessionCreationError::output(Self, &Logger) -> Unit
+pub fn SessionCreationError::to_repr(Self) -> @debug.Repr
+pub fn SessionCreationError::to_string(Self) -> String
 pub impl Show for SessionCreationError
 
 // Types and methods

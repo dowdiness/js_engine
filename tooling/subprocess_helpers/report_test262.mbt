@@ -18,6 +18,9 @@ pub struct ReportConfig {
 } derive(Debug)
 
 ///|
+pub extend ReportConfig with @debug.Debug::{to_repr}
+
+///|
 pub fn ReportConfig::ReportConfig(
   run_id~ : Int64?,
   repo~ : String?,
@@ -51,6 +54,9 @@ struct RunInfo {
 } derive(Debug)
 
 ///|
+pub extend RunInfo with @debug.Debug::{to_repr}
+
+///|
 struct Test262Summary {
   total : Int
   passed : Int
@@ -61,11 +67,17 @@ struct Test262Summary {
 } derive(Debug)
 
 ///|
+pub extend Test262Summary with @debug.Debug::{to_repr}
+
+///|
 struct BaselineInfo {
   strict_min : Int
   nonstrict_min : Int
   updated : String
 } derive(Debug)
+
+///|
+pub extend BaselineInfo with @debug.Debug::{to_repr}
 
 ///|
 fn json_object(value : Json, context : String) -> Map[String, Json] raise {

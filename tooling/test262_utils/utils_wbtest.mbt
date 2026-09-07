@@ -6,6 +6,9 @@ struct ParseFrontmatterCase {
 } derive(Debug)
 
 ///|
+pub extend ParseFrontmatterCase with @debug.Debug::{to_repr}
+
+///|
 struct AsListCase {
   name : String
   input : Json
@@ -13,10 +16,16 @@ struct AsListCase {
 } derive(Debug)
 
 ///|
+pub extend AsListCase with @debug.Debug::{to_repr}
+
+///|
 struct UtilityParityCases {
   parse_cases : Array[ParseFrontmatterCase]
   as_list_cases : Array[AsListCase]
 } derive(Debug)
+
+///|
+pub extend UtilityParityCases with @debug.Debug::{to_repr}
 
 ///|
 fn fixture_field(data : Map[String, Json], key : String) -> Json raise {

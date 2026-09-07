@@ -116,6 +116,9 @@ pub struct ToolRun {
 } derive(Debug)
 
 ///|
+pub extend ToolRun with @debug.Debug::{to_repr}
+
+///|
 struct ProcessCapture {
   code : Int
   stdout : String
@@ -123,10 +126,16 @@ struct ProcessCapture {
 } derive(Debug)
 
 ///|
+pub extend ProcessCapture with @debug.Debug::{to_repr}
+
+///|
 pub struct HarnessOptions {
   priv helpers : Array[String]
   priv atomics_timeout_profile : String
 } derive(Debug)
+
+///|
+pub extend HarnessOptions with @debug.Debug::{to_repr}
 
 ///|
 fn HarnessOptions::HarnessOptions(
@@ -300,6 +309,9 @@ pub struct RunnerConfig {
 } derive(Debug)
 
 ///|
+pub extend RunnerConfig with @debug.Debug::{to_repr}
+
+///|
 pub fn RunnerConfig::RunnerConfig(
   engine~ : String?,
   test262? : String = DEFAULT_TEST262_DIR,
@@ -357,6 +369,9 @@ struct TestMetadata {
 } derive(Debug)
 
 ///|
+pub extend TestMetadata with @debug.Debug::{to_repr}
+
+///|
 struct TestResult {
   path : String
   status : String
@@ -364,6 +379,9 @@ struct TestResult {
   duration_ms : Double
   mode : String
 } derive(Debug)
+
+///|
+pub extend TestResult with @debug.Debug::{to_repr}
 
 ///|
 fn TestResult::TestResult(
@@ -387,6 +405,9 @@ struct CategoryStats {
 } derive(Debug)
 
 ///|
+pub extend CategoryStats with @debug.Debug::{to_repr}
+
+///|
 fn CategoryStats::CategoryStats() -> CategoryStats {
   { total: 0, passed: 0, failed: 0, skipped: 0, timeout: 0, error: 0 }
 }
@@ -406,3 +427,6 @@ struct AggregatedResults {
   overall : CategoryStats
   categories : Map[String, CategoryStats]
 } derive(Debug)
+
+///|
+pub extend AggregatedResults with @debug.Debug::{to_repr}

@@ -453,7 +453,7 @@ fn setup_builtins_with_realm_state_active(
         }
       }
       // Build the prefix string and parse once
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       for i = 0; i < pos; i = i + 1 {
         buf.write_char(chars[i])
       }
@@ -599,7 +599,7 @@ fn setup_builtins_with_realm_state_active(
           name="fromCharCode",
           length=1,
           fn(interp, args) raise {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             for arg in args {
               let code = interp.to_number(arg).to_int()
               // fromCharCode uses UTF-16 code units, modulo 2^16
@@ -614,7 +614,7 @@ fn setup_builtins_with_realm_state_active(
           length=1,
           fn(interp, args) raise {
             // String.fromCodePoint() - accepts Unicode code points (not code units)
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             for arg in args {
               let num = interp.to_number(arg)
               // Check if it's a valid number
@@ -668,7 +668,7 @@ fn setup_builtins_with_realm_state_active(
             return Value::String_("")
           }
           let substitution_count = args.length() - 1
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           for i = 0L; i < literal_segments; i = i + 1L {
             let segment = @runtime.get_array_like_element_interp(interp, raw, i)
             buf.write_string(interp.to_js_string(segment))
@@ -1514,7 +1514,7 @@ fn uri_encode(s : String, encode_component : Bool) -> String {
   // Characters that are never encoded
   // For encodeURIComponent: A-Z a-z 0-9 - _ . ! ~ * ' ( )
   // For encodeURI: A-Z a-z 0-9 - _ . ! ~ * ' ( ) ; , / ? : @ & = + $ #
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let chars = s.to_array()
   let hex_digits = "0123456789ABCDEF"
   let hd = hex_digits.to_array()
@@ -1654,7 +1654,7 @@ fn validate_uri_code_point(cp : Int, min_cp : Int) -> Unit raise Error {
 
 ///|
 fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let chars = s.to_array()
   let len = chars.length()
   let mut i = 0
@@ -1785,7 +1785,7 @@ fn decode_percent_byte(chars : Array[Char], pos : Int) -> Int {
 /// Characters A-Z, a-z, 0-9, @, *, _, +, -, ., / are left unchanged.
 /// Code points < 256 are encoded as %XX, others as %uXXXX.
 fn js_escape(s : String) -> String {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let hex_digits = "0123456789ABCDEF"
   let hd = hex_digits.to_array()
   let chars = s.to_array()
@@ -1836,7 +1836,7 @@ fn js_escape(s : String) -> String {
 /// unescape() helper — Annex B decoding.
 /// Recognises %uXXXX and %XX sequences; everything else passes through.
 fn js_unescape(s : String) -> String {
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   let chars = s.to_array()
   let len = chars.length()
   let mut i = 0

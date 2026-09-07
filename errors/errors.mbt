@@ -30,6 +30,9 @@ pub(all) suberror JsError {
 } derive(Debug)
 
 ///|
+pub extend JsError with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for JsError with fn output(self, logger) {
   logger.write_string(self.name())
   logger.write_string(": ")
@@ -37,7 +40,7 @@ pub impl Show for JsError with fn output(self, logger) {
 }
 
 ///|
-extend JsError with Show::{to_string}
+pub extend JsError with Show::{output, to_string}
 
 ///|
 pub fn JsError::name(self : JsError) -> String noraise {

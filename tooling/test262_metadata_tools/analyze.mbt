@@ -5,6 +5,9 @@ struct CategoryInfo {
 } derive(Debug)
 
 ///|
+pub extend CategoryInfo with @debug.Debug::{to_repr}
+
+///|
 struct StaticAnalysis {
   path : String
   classification : String
@@ -19,6 +22,9 @@ struct StaticAnalysis {
   uses_this : Bool
   uses_prototype : Bool
 } derive(Debug)
+
+///|
+pub extend StaticAnalysis with @debug.Debug::{to_repr}
 
 ///|
 fn category_analysis() -> Map[String, CategoryInfo] {

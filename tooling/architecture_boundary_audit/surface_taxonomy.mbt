@@ -9,6 +9,9 @@ struct PackageDefault {
 } derive(Debug)
 
 ///|
+pub extend PackageDefault with @debug.Debug::{to_repr}
+
+///|
 struct SymbolOverride {
   pkg : String
   symbol : String
@@ -17,10 +20,16 @@ struct SymbolOverride {
 } derive(Debug)
 
 ///|
+pub extend SymbolOverride with @debug.Debug::{to_repr}
+
+///|
 struct TaxonomyRules {
   package_defaults : Array[PackageDefault]
   symbol_overrides : Array[SymbolOverride]
 } derive(Debug)
+
+///|
+pub extend TaxonomyRules with @debug.Debug::{to_repr}
 
 ///|
 struct PackageSurface {
@@ -30,11 +39,20 @@ struct PackageSurface {
 } derive(Debug)
 
 ///|
+pub extend PackageSurface with @debug.Debug::{to_repr}
+
+///|
 enum SurfaceClassification {
   ClassifiedDefault(String, String)
   ClassifiedOverride(String, String)
   Unclassified
 } derive(Debug, Eq)
+
+///|
+pub extend SurfaceClassification with @debug.Debug::{to_repr}
+
+///|
+pub extend SurfaceClassification with Eq::{equal, not_equal}
 
 ///|
 fn taxonomy_rules_path(root : String) -> String {

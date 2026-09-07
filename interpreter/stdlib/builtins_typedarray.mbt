@@ -1550,7 +1550,7 @@ pub fn setup_typedarray_builtins(
       } else {
         ","
       }
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       for i = 0; i < len; i = i + 1 {
         if i > 0 {
           buf.write_string(sep)
@@ -1577,7 +1577,7 @@ pub fn setup_typedarray_builtins(
           Some(Value::Number(n)) => n.to_int()
           _ => 0
         }
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         for i = 0; i < len; i = i + 1 {
           if i > 0 {
             buf.write_string(",")

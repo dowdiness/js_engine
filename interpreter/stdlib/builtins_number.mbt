@@ -12,7 +12,7 @@ fn trim_start(s : String) -> String {
   if start == 0 {
     return s
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   for i = start; i < chars.length(); i = i + 1 {
     buf.write_char(chars[i])
   }
@@ -129,7 +129,7 @@ fn setup_number_builtins(
       let rounded_abs = rounded.abs()
       let int_part_abs = (rounded_abs / multiplier).floor()
       let frac_abs = rounded_abs - int_part_abs * multiplier
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
         buf.write_string("-")
       }
@@ -185,7 +185,7 @@ fn setup_number_builtins(
         val = (val / radix.to_double()).floor()
       }
       chars.rev_in_place()
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       if is_neg {
         buf.write_string("-")
       }
@@ -233,7 +233,7 @@ fn setup_number_builtins(
       let is_neg = n < 0.0
       let abs_n = n.abs()
       if abs_n == 0.0 {
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         if is_neg {
           buf.write_string("-")
         }
@@ -263,7 +263,7 @@ fn setup_number_builtins(
         } else {
           mantissa = rounded_mantissa
         }
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         if is_neg {
           buf.write_string("-")
         }
@@ -279,7 +279,7 @@ fn setup_number_builtins(
       }
       // Use fixed notation
       let decimal_places = precision - exp - 1
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       if is_neg {
         buf.write_string("-")
       }
@@ -334,7 +334,7 @@ fn setup_number_builtins(
       let abs_n = n.abs()
       // Handle zero specially
       if abs_n == 0.0 {
-        let buf = StringBuilder::new()
+        let buf = StringBuilder()
         if is_neg {
           buf.write_string("-")
         }
@@ -365,7 +365,7 @@ fn setup_number_builtins(
       let log_val = @math.log10(abs_n)
       let mut exp = log_val.floor().to_int()
       let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       if is_neg {
         buf.write_string("-")
       }
@@ -678,7 +678,7 @@ pub fn get_number_method(
           let rounded_abs = rounded.abs()
           let int_part_abs = (rounded_abs / multiplier).floor()
           let frac_abs = rounded_abs - int_part_abs * multiplier
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
             buf.write_string("-")
           }
@@ -738,7 +738,7 @@ pub fn get_number_method(
             val = (val / radix.to_double()).floor()
           }
           digits_arr.rev_in_place()
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           if is_neg {
             buf.write_string("-")
           }
@@ -792,7 +792,7 @@ pub fn get_number_method(
           let is_neg = n < 0.0
           let abs_n = n.abs()
           if abs_n == 0.0 {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             if is_neg {
               buf.write_string("-")
             }
@@ -818,7 +818,7 @@ pub fn get_number_method(
             } else {
               mantissa = rounded_mantissa
             }
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             if is_neg {
               buf.write_string("-")
             }
@@ -832,7 +832,7 @@ pub fn get_number_method(
             return Value::String_(buf.to_string())
           }
           let decimal_places = precision - exp - 1
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           if is_neg {
             buf.write_string("-")
           }
@@ -893,7 +893,7 @@ pub fn get_number_method(
           let is_neg = n < 0.0
           let abs_n = n.abs()
           if abs_n == 0.0 {
-            let buf = StringBuilder::new()
+            let buf = StringBuilder()
             if is_neg {
               buf.write_string("-")
             }
@@ -923,7 +923,7 @@ pub fn get_number_method(
           let log_val = @math.log10(abs_n)
           let mut exp = log_val.floor().to_int()
           let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
-          let buf = StringBuilder::new()
+          let buf = StringBuilder()
           if is_neg {
             buf.write_string("-")
           }
@@ -976,7 +976,7 @@ fn format_number_precision(n : Double, precision : Int) -> String {
   }
   let abs_n = n.abs()
   if abs_n == 0.0 {
-    let buf = StringBuilder::new()
+    let buf = StringBuilder()
     buf.write_char('0')
     if precision > 1 {
       buf.write_char('.')
@@ -1006,7 +1006,7 @@ fn format_number_precision(n : Double, precision : Int) -> String {
   } else {
     int_chars
   }
-  let buf = StringBuilder::new()
+  let buf = StringBuilder()
   if actual_chars.length() == 1 {
     buf.write_char(actual_chars[0])
     if precision > 1 {

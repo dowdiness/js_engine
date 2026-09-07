@@ -24,6 +24,9 @@ pub(all) suberror JsError {
 pub fn JsError::format(Self) -> String
 pub fn JsError::get_message(Self) -> String
 pub fn JsError::name(Self) -> String
+pub fn JsError::output(Self, &Logger) -> Unit
+pub fn JsError::to_repr(Self) -> @debug.Repr
+pub fn JsError::to_string(Self) -> String
 pub impl Show for JsError
 
 // Types and methods

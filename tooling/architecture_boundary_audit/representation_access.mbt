@@ -12,6 +12,9 @@ struct RepresentationPattern {
 } derive(Debug)
 
 ///|
+pub extend RepresentationPattern with @debug.Debug::{to_repr}
+
+///|
 struct RepresentationDebt {
   path : String
   pattern_id : String
@@ -23,12 +26,18 @@ struct RepresentationDebt {
 } derive(Debug)
 
 ///|
+pub extend RepresentationDebt with @debug.Debug::{to_repr}
+
+///|
 struct RepresentationRules {
   scan_roots : Array[String]
   ignore_globs : Array[String]
   representation_patterns : Array[RepresentationPattern]
   allowlisted_access : Array[RepresentationDebt]
 } derive(Debug)
+
+///|
+pub extend RepresentationRules with @debug.Debug::{to_repr}
 
 ///|
 struct RepresentationAccess {
@@ -40,6 +49,9 @@ struct RepresentationAccess {
   token : String
   signature : String
 } derive(Debug)
+
+///|
+pub extend RepresentationAccess with @debug.Debug::{to_repr}
 
 ///|
 fn representation_path(root : String) -> String {

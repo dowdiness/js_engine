@@ -1,4 +1,5 @@
 import {
+  "moonbitlang/core/debug",
   "dowdiness/js_engine/tooling/test262_metadata" @metadata,
   "dowdiness/js_engine/tooling/test262_utils" @utils,
   "moonbitlang/core/env",

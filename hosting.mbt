@@ -166,6 +166,9 @@ pub(all) suberror SessionCreationError {
 } derive(Debug)
 
 ///|
+pub extend SessionCreationError with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for SessionCreationError with fn output(self, logger) {
   match self {
     BindingForAbsentCapability(capability) => {
@@ -178,6 +181,9 @@ pub impl Show for SessionCreationError with fn output(self, logger) {
     }
   }
 }
+
+///|
+pub extend SessionCreationError with Show::{output, to_string}
 
 ///|
 /// Errors reported by an Execution Session at its application boundary.
@@ -210,6 +216,9 @@ pub impl Show for ExecutionSessionError with fn output(self, logger) {
     ScheduledTurnUnavailable => logger.write_string("ScheduledTurnUnavailable")
   }
 }
+
+///|
+pub extend ExecutionSessionError with Show::{output, to_string}
 
 ///|
 priv struct SessionHostFailure {

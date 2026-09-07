@@ -6,6 +6,12 @@ pub struct ReleaseDiagnostic {
 } derive(Debug, Eq)
 
 ///|
+pub extend ReleaseDiagnostic with @debug.Debug::{to_repr}
+
+///|
+pub extend ReleaseDiagnostic with Eq::{equal, not_equal}
+
+///|
 fn ReleaseDiagnostic::ReleaseDiagnostic(
   code : String,
   expected : String,

@@ -98,6 +98,9 @@ pub(all) suberror EngineError {
 } derive(Debug)
 
 ///|
+pub extend EngineError with @debug.Debug::{to_repr}
+
+///|
 pub impl Show for EngineError with fn output(self, logger) {
   let (name, message) = match self {
     ParseError(message) => ("ParseError", message)
@@ -111,6 +114,9 @@ pub impl Show for EngineError with fn output(self, logger) {
   logger.write_string(": ")
   logger.write_string(message)
 }
+
+///|
+pub extend EngineError with Show::{output, to_string}
 
 ///|
 /// A persistent JavaScript realm for repeated evaluation and JSON calls.

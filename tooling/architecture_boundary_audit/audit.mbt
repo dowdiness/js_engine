@@ -8,12 +8,18 @@ struct PackageGroup {
 } derive(Debug)
 
 ///|
+pub extend PackageGroup with @debug.Debug::{to_repr}
+
+///|
 struct ImportRule {
   from : String
   to : String
   scope : String
   reason : String
 } derive(Debug)
+
+///|
+pub extend ImportRule with @debug.Debug::{to_repr}
 
 ///|
 struct ImportDebt {
@@ -26,11 +32,17 @@ struct ImportDebt {
 } derive(Debug)
 
 ///|
+pub extend ImportDebt with @debug.Debug::{to_repr}
+
+///|
 struct BoundaryRules {
   groups : Array[PackageGroup]
   allowed_imports : Array[ImportRule]
   allowlisted_import_debt : Array[ImportDebt]
 } derive(Debug)
+
+///|
+pub extend BoundaryRules with @debug.Debug::{to_repr}
 
 ///|
 struct ImportEdge {
@@ -43,12 +55,18 @@ struct ImportEdge {
 } derive(Debug)
 
 ///|
+pub extend ImportEdge with @debug.Debug::{to_repr}
+
+///|
 enum ImportClassification {
   Allowed(String)
   Debt(retire_by_stage~ : String, String)
   Ignored(String)
   Unclassified
 } derive(Debug)
+
+///|
+pub extend ImportClassification with @debug.Debug::{to_repr}
 
 ///|
 fn[T] schema_error(path : String, message : String) -> T raise {

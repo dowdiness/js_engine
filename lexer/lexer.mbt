@@ -252,7 +252,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       // \u{XXXXX} extended form
       offset += 1
       col += 1
-      let hex_buf = StringBuilder::new()
+      let hex_buf = StringBuilder()
       while offset < len && is_hex_digit(char_at(offset)) {
         hex_buf.write_char(char_at(offset))
         offset += 1
@@ -280,7 +280,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       cp
     } else {
       // \uXXXX - exactly 4 hex digits
-      let hex_buf = StringBuilder::new()
+      let hex_buf = StringBuilder()
       let mut count = 0
       while count < 4 {
         if offset >= len || !is_hex_digit(char_at(offset)) {
@@ -342,8 +342,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   // raw: verbatim template section with \r\n normalized to \n (TRV).
   // cooked: escape-processed value; None when any escape is invalid (NotEscapeSequence).
   fn scan_template_string() -> (String, String?, Bool) raise Error {
-    let cooked_buf = StringBuilder::new()
-    let raw_buf = StringBuilder::new()
+    let cooked_buf = StringBuilder()
+    let raw_buf = StringBuilder()
     let mut cooked_valid = true
     while offset < len {
       let tc = char_at(offset)
@@ -607,7 +607,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let rloc = make_loc()
           offset += 1 // skip opening /
           col += 1
-          let pattern_buf = StringBuilder::new()
+          let pattern_buf = StringBuilder()
           let mut in_class = false // inside [...]
           while offset < len {
             let rc = char_at(offset)
@@ -648,7 +648,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           offset += 1 // skip closing /
           col += 1
           // Read flags
-          let flags_buf = StringBuilder::new()
+          let flags_buf = StringBuilder()
           while offset < len && is_alpha(char_at(offset)) {
             flags_buf.write_char(char_at(offset))
             offset += 1
@@ -673,7 +673,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     // Numbers (supports numeric separators, hex, binary, octal, exponent)
     if is_digit(c) {
       let start = offset
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       let mut is_non_octal_decimal_int = false
       // Check for hex (0x), binary (0b), octal (0o)
       if c == '0' && offset + 1 < len {
@@ -966,7 +966,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     // Identifiers / Keywords (including \uXXXX and \u{XXXXX} escapes)
     if is_id_start_cp(c.to_int()) ||
       (c == '\\' && offset + 1 < len && char_at(offset + 1) == 'u') {
-      let ident_buf = StringBuilder::new()
+      let ident_buf = StringBuilder()
       let mut has_escape = false
       if c == '\\' {
         // Unicode escape at identifier start
@@ -1081,7 +1081,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let start = offset
       offset += 1
       col += 1
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       let mut has_legacy_octal_escape = false
       while offset < len && char_at(offset) != quote {
         if char_at(offset) == '\\' && offset + 1 < len {
@@ -1574,7 +1574,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       let raw_str = String::from_array(chars[num_start:offset])
       // Remove numeric separators for parsing
-      let buf = StringBuilder::new()
+      let buf = StringBuilder()
       for ch in raw_str {
         if ch != '_' {
           buf.write_char(ch)
@@ -1616,7 +1616,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           message="Invalid private name at line \{line}, col \{col}",
         )
       }
-      let name_buf = StringBuilder::new()
+      let name_buf = StringBuilder()
       name_buf.write_char(next)
       start_offset += 1
       let mut col_offset = 2 // # + first char

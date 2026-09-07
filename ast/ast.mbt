@@ -28,6 +28,12 @@ pub(all) enum BinOp {
 } derive(Debug, Eq)
 
 ///|
+pub extend BinOp with @debug.Debug::{to_repr}
+
+///|
+pub extend BinOp with Eq::{equal, not_equal}
+
+///|
 pub(all) enum UnaryOp {
   Neg
   Pos
@@ -39,10 +45,22 @@ pub(all) enum UnaryOp {
 } derive(Debug, Eq)
 
 ///|
+pub extend UnaryOp with @debug.Debug::{to_repr}
+
+///|
+pub extend UnaryOp with Eq::{equal, not_equal}
+
+///|
 pub(all) enum UpdateOp {
   Increment
   Decrement
 } derive(Debug, Eq)
+
+///|
+pub extend UpdateOp with @debug.Debug::{to_repr}
+
+///|
+pub extend UpdateOp with Eq::{equal, not_equal}
 
 ///|
 pub(all) enum CompoundOp {
@@ -64,11 +82,23 @@ pub(all) enum CompoundOp {
 } derive(Debug, Eq)
 
 ///|
+pub extend CompoundOp with @debug.Debug::{to_repr}
+
+///|
+pub extend CompoundOp with Eq::{equal, not_equal}
+
+///|
 pub(all) enum VarKind {
   LetKind
   ConstKind
   VarKind
 } derive(Debug, Eq)
+
+///|
+pub extend VarKind with @debug.Debug::{to_repr}
+
+///|
+pub extend VarKind with Eq::{equal, not_equal}
 
 ///|
 pub(all) enum PropKind {
@@ -77,6 +107,12 @@ pub(all) enum PropKind {
   Set // setter
   Spread // spread property: { ...expr }
 } derive(Debug, Eq)
+
+///|
+pub extend PropKind with @debug.Debug::{to_repr}
+
+///|
+pub extend PropKind with Eq::{equal, not_equal}
 
 ///|
 pub(all) struct Property {
@@ -92,10 +128,22 @@ pub(all) struct Property {
 } derive(Debug, Eq)
 
 ///|
+pub extend Property with @debug.Debug::{to_repr}
+
+///|
+pub extend Property with Eq::{equal, not_equal}
+
+///|
 pub(all) struct SwitchCase {
   condition : Expr?
   body : Array[Stmt]
 } derive(Debug, Eq)
+
+///|
+pub extend SwitchCase with @debug.Debug::{to_repr}
+
+///|
+pub extend SwitchCase with Eq::{equal, not_equal}
 
 ///|
 pub(all) enum Expr {
@@ -191,12 +239,24 @@ pub(all) enum Expr {
 } derive(Debug, Eq)
 
 ///|
+pub extend Expr with @debug.Debug::{to_repr}
+
+///|
+pub extend Expr with Eq::{equal, not_equal}
+
+///|
 pub(all) struct Param {
   name : String
   default_val : Expr?
   pattern : Pattern? // For destructuring parameters like ({x, y}) or ([a, b])
   is_rest_pattern : Bool // true only for destructuring rest parameters like ...[x]
 } derive(Debug, Eq)
+
+///|
+pub extend Param with @debug.Debug::{to_repr}
+
+///|
+pub extend Param with Eq::{equal, not_equal}
 
 ///|
 pub(all) enum Pattern {
@@ -206,6 +266,12 @@ pub(all) enum Pattern {
   DefaultPat(Pattern, Expr) // pattern with default initializer: pat = expr
   AssignTarget(Expr) // member expression target for destructuring assignment: [obj.x] = [1]
 } derive(Debug, Eq)
+
+///|
+pub extend Pattern with @debug.Debug::{to_repr}
+
+///|
+pub extend Pattern with Eq::{equal, not_equal}
 
 ///|
 pub(all) struct PropPat {
@@ -218,16 +284,34 @@ pub(all) struct PropPat {
 } derive(Debug, Eq)
 
 ///|
+pub extend PropPat with @debug.Debug::{to_repr}
+
+///|
+pub extend PropPat with Eq::{equal, not_equal}
+
+///|
 pub(all) struct ImportSpecifier {
   local_name : String // local binding name
   imported : String // name exported by the module
 } derive(Debug, Eq)
 
 ///|
+pub extend ImportSpecifier with @debug.Debug::{to_repr}
+
+///|
+pub extend ImportSpecifier with Eq::{equal, not_equal}
+
+///|
 pub(all) struct ExportSpecifier {
   local_name : String // local binding name
   exported : String // name to export as
 } derive(Debug, Eq)
+
+///|
+pub extend ExportSpecifier with @debug.Debug::{to_repr}
+
+///|
+pub extend ExportSpecifier with Eq::{equal, not_equal}
 
 ///|
 pub(all) struct ClassMethod {
@@ -240,6 +324,12 @@ pub(all) struct ClassMethod {
 } derive(Debug, Eq)
 
 ///|
+pub extend ClassMethod with @debug.Debug::{to_repr}
+
+///|
+pub extend ClassMethod with Eq::{equal, not_equal}
+
+///|
 pub(all) struct ClassField {
   key : Expr // StringLit for string keys, any Expr for computed keys
   initializer : Expr? // None if no `= expr`
@@ -249,11 +339,23 @@ pub(all) struct ClassField {
 } derive(Debug, Eq)
 
 ///|
+pub extend ClassField with @debug.Debug::{to_repr}
+
+///|
+pub extend ClassField with Eq::{equal, not_equal}
+
+///|
 pub(all) enum ClassMember {
   Method(ClassMethod)
   Field(ClassField)
   StaticBlock(Array[Stmt], @token.Loc) // static { ... } block
 } derive(Debug, Eq)
+
+///|
+pub extend ClassMember with @debug.Debug::{to_repr}
+
+///|
+pub extend ClassMember with Eq::{equal, not_equal}
 
 ///|
 pub(all) enum Stmt {
@@ -354,6 +456,12 @@ pub(all) enum Stmt {
 } derive(Debug, Eq)
 
 ///|
+pub extend Stmt with @debug.Debug::{to_repr}
+
+///|
+pub extend Stmt with Eq::{equal, not_equal}
+
+///|
 pub(all) struct Program {
   stmts : Array[Stmt]
 } derive(Debug, Eq)
@@ -361,9 +469,18 @@ pub(all) struct Program {
 // Show impls delegating to Debug (derive(Show) is deprecated in MoonBit v0.9)
 
 ///|
+pub extend Program with @debug.Debug::{to_repr}
+
+///|
+pub extend Program with Eq::{equal, not_equal}
+
+///|
 pub impl Show for BinOp with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend BinOp with Show::{output, to_string}
 
 ///|
 pub impl Show for UnaryOp with fn output(self, logger) {
@@ -371,9 +488,15 @@ pub impl Show for UnaryOp with fn output(self, logger) {
 }
 
 ///|
+pub extend UnaryOp with Show::{output, to_string}
+
+///|
 pub impl Show for UpdateOp with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend UpdateOp with Show::{output, to_string}
 
 ///|
 pub impl Show for CompoundOp with fn output(self, logger) {
@@ -381,9 +504,15 @@ pub impl Show for CompoundOp with fn output(self, logger) {
 }
 
 ///|
+pub extend CompoundOp with Show::{output, to_string}
+
+///|
 pub impl Show for VarKind with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend VarKind with Show::{output, to_string}
 
 ///|
 pub impl Show for PropKind with fn output(self, logger) {
@@ -391,9 +520,15 @@ pub impl Show for PropKind with fn output(self, logger) {
 }
 
 ///|
+pub extend PropKind with Show::{output, to_string}
+
+///|
 pub impl Show for Property with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend Property with Show::{output, to_string}
 
 ///|
 pub impl Show for SwitchCase with fn output(self, logger) {
@@ -401,9 +536,15 @@ pub impl Show for SwitchCase with fn output(self, logger) {
 }
 
 ///|
+pub extend SwitchCase with Show::{output, to_string}
+
+///|
 pub impl Show for Expr with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend Expr with Show::{output, to_string}
 
 ///|
 pub impl Show for Param with fn output(self, logger) {
@@ -411,9 +552,15 @@ pub impl Show for Param with fn output(self, logger) {
 }
 
 ///|
+pub extend Param with Show::{output, to_string}
+
+///|
 pub impl Show for Pattern with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend Pattern with Show::{output, to_string}
 
 ///|
 pub impl Show for PropPat with fn output(self, logger) {
@@ -421,9 +568,15 @@ pub impl Show for PropPat with fn output(self, logger) {
 }
 
 ///|
+pub extend PropPat with Show::{output, to_string}
+
+///|
 pub impl Show for ImportSpecifier with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend ImportSpecifier with Show::{output, to_string}
 
 ///|
 pub impl Show for ExportSpecifier with fn output(self, logger) {
@@ -431,9 +584,15 @@ pub impl Show for ExportSpecifier with fn output(self, logger) {
 }
 
 ///|
+pub extend ExportSpecifier with Show::{output, to_string}
+
+///|
 pub impl Show for ClassMethod with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend ClassMethod with Show::{output, to_string}
 
 ///|
 pub impl Show for ClassField with fn output(self, logger) {
@@ -441,9 +600,15 @@ pub impl Show for ClassField with fn output(self, logger) {
 }
 
 ///|
+pub extend ClassField with Show::{output, to_string}
+
+///|
 pub impl Show for ClassMember with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend ClassMember with Show::{output, to_string}
 
 ///|
 pub impl Show for Stmt with fn output(self, logger) {
@@ -451,6 +616,12 @@ pub impl Show for Stmt with fn output(self, logger) {
 }
 
 ///|
+pub extend Stmt with Show::{output, to_string}
+
+///|
 pub impl Show for Program with fn output(self, logger) {
   logger.write(Debug::to_repr(self))
 }
+
+///|
+pub extend Program with Show::{output, to_string}

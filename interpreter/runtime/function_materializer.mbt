@@ -12,6 +12,9 @@ pub(all) enum FunctionMaterializationForm {
 } derive(Eq)
 
 ///|
+pub extend FunctionMaterializationForm with Eq::{equal, not_equal}
+
+///|
 pub(all) enum FunctionMaterializationParameters {
   SimpleFunctionParameters(Array[String])
   ExtendedFunctionParameters(Array[@ast.Param], String?)
