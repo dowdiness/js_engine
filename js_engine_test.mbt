@@ -122,6 +122,36 @@ test "nested non-simple duplicate declarations are early errors" {
 }
 
 ///|
+test "Date valueOf returns the epoch value" {
+  let (_, result) = @js_engine.run("new Date(0).valueOf()")
+  expect_string(result, "0", "Date valueOf epoch")
+}
+
+///|
+test "Date.prototype.valueOf rejects its prototype receiver" {
+  let (_, result) = @js_engine.run(
+    "try { Date.prototype.valueOf(); false } " +
+    "catch (e) { e instanceof TypeError }",
+  )
+  expect_string(result, "true", "Date.prototype.valueOf receiver")
+}
+
+///|
+test "Date valueOf rejects a plain object receiver" {
+  let (_, result) = @js_engine.run(
+    "try { Date.prototype.valueOf.call({}); false } " +
+    "catch (e) { e instanceof TypeError }",
+  )
+  expect_string(result, "true", "Date valueOf plain object receiver")
+}
+
+///|
+test "invalid Date valueOf returns NaN" {
+  let (_, result) = @js_engine.run("new Date(NaN).valueOf()")
+  expect_string(result, "NaN", "invalid Date valueOf")
+}
+
+///|
 test "Number primitive method lookup returns the built-in" {
   let src = "(2).toFixed === Number.prototype.toFixed && " +
     "(2)[\"toFixed\"] === Number.prototype.toFixed"
