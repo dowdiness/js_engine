@@ -17,7 +17,7 @@ fn ResolvedModuleExport::ResolvedModuleExport(
   module_specifier : String,
   binding_name : String,
 ) -> ResolvedModuleExport {
-  { value, module_specifier, binding_name }
+  { value, module_specifier, binding_name, }
 }
 
 ///|
@@ -716,7 +716,7 @@ fn Interpreter::module_get_exported_names_driver(
             if sources.length() == 0 {
               returned = Some(names)
             } else {
-              continuations.push({ names, seen_names, sources, next_index: 1 })
+              continuations.push({ names, seen_names, sources, next_index: 1, })
               request = ExportedNamesSource(sources[0])
             }
           }
@@ -738,7 +738,7 @@ fn Interpreter::module_get_exported_names_driver(
               returned = Some(continuation.names)
             } else {
               let next_index = continuation.next_index
-              continuations.push({ ..continuation, next_index: next_index + 1 })
+              continuations.push({ ..continuation, next_index: next_index + 1, })
               request = ExportedNamesSource(continuation.sources[next_index])
               returned = None
             }
@@ -1127,7 +1127,7 @@ fn Interpreter::evaluate_module_record(
 ) -> Map[String, Value] raise Error {
   self.with_module_exports(record.exports, fn() raise {
     with_cleared_active_callee_realm(self.realm_state, fn() raise {
-      let module_ctx : ExecContext = { strict: true, current_generator: None }
+      let module_ctx : ExecContext = { strict: true, current_generator: None, }
       for stmt in record.stmts {
         match stmt {
           ImportDecl(_, _, _, _, _, _) => ()

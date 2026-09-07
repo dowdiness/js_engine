@@ -51,7 +51,7 @@ fn get_set_record(
       message="Set method argument's keys property is not callable",
     )
   }
-  { set_object: obj, size: int_size, has: has_val, keys: keys_val }
+  { set_object: obj, size: int_size, has: has_val, keys: keys_val, }
 }
 
 ///|

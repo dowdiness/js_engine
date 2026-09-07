@@ -13,7 +13,7 @@ pub fn CompiledScriptLexicalBinding::CompiledScriptLexicalBinding(
   kind~ : BindingKind,
   name~ : String,
 ) -> CompiledScriptLexicalBinding {
-  { kind, name }
+  { kind, name, }
 }
 
 ///|
@@ -129,10 +129,10 @@ pub fn prepare_compiled_script_early_error(
     error => Some(error)
   }
   {
-    token: { val: () },
+    token: { val: (), },
     provenance_token: match provenance_token {
       Some(token) => token
-      None => { val: () }
+      None => { val: (), }
     },
     error,
   }

@@ -15,7 +15,7 @@ fn mutual_receiver_activation_test_fixture_for(
     None => fail("expected callback-free mutual receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -136,7 +136,7 @@ test "mutual receiver body observes five expression steps before cross-call" {
       None => fail("expected a mutual receiver owner")
     }
     let result = shell.execute_mutual_receiver_body_statement(
-      { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1 },
+      { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1, },
       owned,
     ) catch {
       InvalidActivationDispatchShell(message) =>
@@ -169,7 +169,7 @@ test "mutual receiver root observes setup steps before first call" {
     Some(found) => found
     None => fail("expected callback-free mutual receiver preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let control = ExecutionControl(
     remaining_steps=2,
     maximum_active_depth=1024,

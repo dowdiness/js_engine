@@ -39,7 +39,7 @@ fn make_function_prototype_call(realm_state : @runtime.RealmState) -> Value {
   guard call_func is Object(data) else {
     abort("Function.prototype.call factory must return an Object")
   }
-  Object({ ..data, callable: Some(FuncCallMethod(Undefined)) })
+  Object({ ..data, callable: Some(FuncCallMethod(Undefined)), })
 }
 
 ///|
@@ -56,7 +56,7 @@ fn make_function_prototype_apply(realm_state : @runtime.RealmState) -> Value {
   guard apply_func is Object(data) else {
     abort("Function.prototype.apply factory must return an Object")
   }
-  Object({ ..data, callable: Some(FuncApplyMethod(Undefined)) })
+  Object({ ..data, callable: Some(FuncApplyMethod(Undefined)), })
 }
 
 ///|

@@ -880,7 +880,7 @@ fn array_map_direct_call_arguments(
   let count = array_map_enclosing_number(env, plan.parameter_name)
   let value = Number(array_map_enclosing_number(env, plan.callback_parameter))
   let flag = array_map_enclosing_bool(env, plan.flag_parameter_name)
-  { count, value, flag }
+  { count, value, flag, }
 }
 
 ///|

@@ -741,7 +741,10 @@ fn Interpreter::create_class(
   }
   // Evaluate static field initializers (run once at class definition time).
   // Class bodies are strict, but field initializers are not generator bodies.
-  let static_field_ctx : ExecContext = { strict: true, current_generator: None }
+  let static_field_ctx : ExecContext = {
+    strict: true,
+    current_generator: None,
+  }
   for sf in static_fields {
     let key_str : String = match sf.key {
       String_(s) => s

@@ -229,7 +229,7 @@ fn ExecutorToPropertyKeyOperation::ExecutorToPropertyKeyOperation(
   input : Value,
   loc : @token.Loc,
 ) -> ExecutorToPropertyKeyOperation {
-  { loc, phase: ExecutorToPropertyKeyNeedInput(input) }
+  { loc, phase: ExecutorToPropertyKeyNeedInput(input), }
 }
 
 ///|
@@ -437,7 +437,7 @@ priv struct ExecutorCoercingAdditionFrame {
 fn ExecutorCoercingAdditionFrame::ExecutorCoercingAdditionFrame(
   request : ExecutorCoercingAdditionRequest,
 ) -> ExecutorCoercingAdditionFrame {
-  { request, phase: ExecutorCoercingAdditionNeedLeft }
+  { request, phase: ExecutorCoercingAdditionNeedLeft, }
 }
 
 ///|

@@ -35,7 +35,7 @@ fn ExecutorActivationCapabilitySummary::ExecutorActivationCapabilitySummary(
   parameter_count~ : Int,
   direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
 ) -> ExecutorActivationCapabilitySummary {
-  { parameter_count, direct_calls: direct_calls.copy() }
+  { parameter_count, direct_calls: direct_calls.copy(), }
 }
 
 ///|
@@ -55,7 +55,7 @@ fn ExecutorActivationCapabilityExpressionProof::ExecutorActivationCapabilityExpr
   value~ : ExecutorActivationCapabilityValueProof,
   direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
 ) -> ExecutorActivationCapabilityExpressionProof {
-  { value, direct_calls: direct_calls.copy() }
+  { value, direct_calls: direct_calls.copy(), }
 }
 
 ///|
@@ -69,7 +69,7 @@ fn ExecutorActivationCapabilityStatementProof::ExecutorActivationCapabilityState
   direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
   guaranteed_return~ : Bool,
 ) -> ExecutorActivationCapabilityStatementProof {
-  { direct_calls: direct_calls.copy(), guaranteed_return }
+  { direct_calls: direct_calls.copy(), guaranteed_return, }
 }
 
 ///|
@@ -279,7 +279,7 @@ fn executor_activation_capability_statement(
     }
     ReturnStmt(Some(expr), _) => {
       guard executor_activation_capability_expression(expr, params)
-        is Some({ value: ExecutorActivationCapabilityNumber, direct_calls }) else {
+        is Some({ value: ExecutorActivationCapabilityNumber, direct_calls, }) else {
         return None
       }
       Some(
@@ -328,7 +328,7 @@ fn executor_activation_capability_summary(
   body : Array[@ast.Stmt],
 ) -> ExecutorActivationCapabilitySummary? {
   guard executor_activation_capability_statements(body, params)
-    is Some({ direct_calls, guaranteed_return: true }) else {
+    is Some({ direct_calls, guaranteed_return: true, }) else {
     return None
   }
   Some(

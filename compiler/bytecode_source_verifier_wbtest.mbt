@@ -506,7 +506,7 @@ test "source metadata verifier diagnoses mismatched observation barriers" {
     fail("expected typed barrier defect")
   } catch {
     BytecodeVerifierDefect(
-      { function_path, instruction_index, invariant, expected, actual }
+      { function_path, instruction_index, invariant, expected, actual, }
     ) => {
       assert_eq(function_path, [])
       assert_eq(instruction_index, Some(index))
@@ -765,7 +765,7 @@ test "RED: source owner allocator refuses exhaustion without wrap-around" {
   let allocator : Ref[SourcePointOwnerAllocator] = {
     val: {
       next_id: MAX_SOURCE_POINT_OWNER_ID - 1,
-      program_identity: { val: () },
+      program_identity: { val: (), },
     },
   }
   let last_owner = allocate_source_point_owner(allocator)
@@ -785,7 +785,7 @@ test "RED: source owner allocator refuses exhaustion without wrap-around" {
   }
   assert_eq(allocator.val.next_id, MAX_SOURCE_POINT_OWNER_ID)
   let negative_allocator : Ref[SourcePointOwnerAllocator] = {
-    val: { next_id: -1, program_identity: { val: () } },
+    val: { next_id: -1, program_identity: { val: (), }, },
   }
   let negative_attempt : Result[
     SourcePointOwnerId,
@@ -2255,7 +2255,7 @@ test "RED: finalization rejects contexts coordinated to empty" {
     "if (condition) first; else second;",
   )
   for index in 0..<program.main.observation_contexts.length() {
-    program.main.observation_contexts[index] = { active: [] }
+    program.main.observation_contexts[index] = { active: [], }
   }
   let defect = expect_observation_coverage_defect_for_wb(
     program, "all reachable observation contexts were shortened",
@@ -2272,7 +2272,7 @@ test "RED: finalization rejects a shortened reachable observation context" {
     "if (condition) first; else second;",
   )
   let target = load_name_index_for_wb(program.main, "first")
-  program.main.observation_contexts[target] = { active: [] }
+  program.main.observation_contexts[target] = { active: [], }
   let defect = expect_observation_coverage_defect_for_wb(
     program, "reachable statement expression context was shortened",
   )
@@ -2321,7 +2321,10 @@ test "RED: coordinated target and observation facts bypass a statement" {
   program.main.observation_edge_contexts[jump_index] = program.main.observation_edge_contexts[jump_index].map(edge => {
       if edge.successor == original_target {
         edge_rewritten = true
-        { successor: target, context: { active: outer_context.active.copy() } }
+        {
+          successor: target,
+          context: { active: outer_context.active.copy(), },
+        }
       } else {
         edge
       }

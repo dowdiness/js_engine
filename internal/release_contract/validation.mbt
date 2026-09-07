@@ -17,7 +17,7 @@ fn ReleaseDiagnostic::ReleaseDiagnostic(
   expected : String,
   actual : String,
 ) -> ReleaseDiagnostic {
-  { code, expected, actual }
+  { code, expected, actual, }
 }
 
 ///|
@@ -45,7 +45,7 @@ pub struct ReleaseValidation {
 fn ReleaseValidation::ReleaseValidation(
   diagnostics : Array[ReleaseDiagnostic],
 ) -> ReleaseValidation {
-  { allowed: diagnostics.is_empty(), diagnostics: diagnostics.copy() }
+  { allowed: diagnostics.is_empty(), diagnostics: diagnostics.copy(), }
 }
 
 ///|

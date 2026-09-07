@@ -120,7 +120,7 @@ fn TrustedProxyGetCapture::TrustedProxyGetCapture(
   property_key~ : Value,
   receiver~ : Value,
 ) -> TrustedProxyGetCapture {
-  { proxy, target, handler, property_key, receiver }
+  { proxy, target, handler, property_key, receiver, }
 }
 
 ///|

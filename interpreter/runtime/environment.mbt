@@ -60,7 +60,7 @@ pub fn Environment::resolve_slot(
   name : String,
 ) -> EnvironmentSlot? {
   match self.bindings.get(name) {
-    Some(binding) => Some({ name, binding })
+    Some(binding) => Some({ name, binding, })
     None => None
   }
 }

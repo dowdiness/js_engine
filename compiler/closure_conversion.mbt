@@ -1394,7 +1394,7 @@ fn make_compiled_func(
   func_props["name"] = Value::String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
-  let func_ref : Ref[Value?] = { val: None }
+  let func_ref : Ref[Value?] = { val: None, }
   let func_obj = @runtime.stamp_function_realm(
     Value::Object({
       bag: {
@@ -1553,7 +1553,7 @@ fn call_compiled_func(
     errdefer {
       interp.in_nonarrow_param_default_eval = saved_in_default
     }
-    let func_ctx : ExecContext = { strict, current_generator: None }
+    let func_ctx : ExecContext = { strict, current_generator: None, }
     let func_env = Environment::new(parent=Some(closure))
     func_env.is_var_scope = true
     func_env.def_builtin("[[EvalMethodContext]]", Value::Bool(is_method))
@@ -1602,7 +1602,7 @@ fn call_compiled_arrow_func(
     }
     let func_env = Environment::new(parent=Some(closure))
     func_env.is_var_scope = true
-    let func_ctx : ExecContext = { strict, current_generator: None }
+    let func_ctx : ExecContext = { strict, current_generator: None, }
     bind_simple_params(func_env, params, args)
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
   }

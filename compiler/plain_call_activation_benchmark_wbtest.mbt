@@ -37,7 +37,7 @@ fn PlainCallCoordinatorBenchmarkFrame::PlainCallCoordinatorBenchmarkFrame(
   arguments~ : Array[@runtime.Value],
   loc~ : @token.Loc,
 ) -> PlainCallCoordinatorBenchmarkFrame {
-  { callee, arguments, loc, state: Ready }
+  { callee, arguments, loc, state: Ready, }
 }
 
 ///|

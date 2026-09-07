@@ -42,7 +42,7 @@ fn call_locale_compare_with_observation_probe(
 
 ///|
 test "String.localeCompare observes before opaque comparison" {
-  let observations : Ref[Int] = { val: 0 }
+  let observations : Ref[Int] = { val: 0, }
   match call_locale_compare_with_observation_probe("a", "b", observations) {
     Number(value) => inspect(value, content="-1")
     _ => fail("localeCompare must return a number")
@@ -52,7 +52,7 @@ test "String.localeCompare observes before opaque comparison" {
 
 ///|
 test "String.normalize remains the current bounded identity stub" {
-  let observations : Ref[Int] = { val: 0 }
+  let observations : Ref[Int] = { val: 0, }
   let interp = @runtime.Interpreter::new()
   interp.global.def(
     "[[ExecutionControl]]",

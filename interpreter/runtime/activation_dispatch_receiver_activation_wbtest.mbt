@@ -23,7 +23,7 @@ fn receiver_activation_test_fixture() -> (
     None => fail("expected callback-free receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
   let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
@@ -263,7 +263,7 @@ test "receiver root runtime abrupt preserves identity and balances cleanup" {
     Some(found) => found
     None => fail("expected callback-free receiver preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let control = ExecutionControl(
     remaining_steps=100,
     maximum_active_depth=1,
@@ -305,7 +305,7 @@ test "receiver body observes five expression steps before recursive call" {
       None => fail("expected a fixed receiver owner")
     }
     let result = shell.execute_receiver_body_statement(
-      { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1 },
+      { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1, },
       owned,
     ) catch {
       InvalidActivationDispatchShell(message) =>

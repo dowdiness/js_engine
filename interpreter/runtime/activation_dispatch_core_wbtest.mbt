@@ -12,7 +12,7 @@ fn expect_dispatch_number(
 ///|
 fn dispatch_test_statement_work(id : Int) -> DispatchStatementCursor {
   let loc = @token.Loc::default()
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   DispatchStatementCursor(
     ctx~,
     stmts=[@ast.BreakStmt(Some(id.to_string()), loc)],
@@ -39,7 +39,7 @@ fn dispatch_test_step_label(step : DispatchStatementStep) -> String raise {
 ///|
 fn dispatch_test_statement_step(id : Int) -> DispatchStatementStep {
   let cursor = dispatch_test_statement_work(id)
-  { ctx: cursor.ctx, stmt: cursor.stmts[0], env: cursor.env, index: 0 }
+  { ctx: cursor.ctx, stmt: cursor.stmts[0], env: cursor.env, index: 0, }
 }
 
 ///|
@@ -50,7 +50,7 @@ fn dispatch_test_statement_resume(
 ) -> DispatchStatementResume {
   DispatchStatementResume(
     cursor=DispatchStatementCursor(
-      ctx={ strict: false, current_generator: None },
+      ctx={ strict: false, current_generator: None, },
       stmts=[@ast.BreakStmt(Some(id.to_string()), @token.Loc::default())],
       env=Environment::new(),
       index=1,
@@ -153,7 +153,12 @@ fn dispatch_test_parameter_progress(
         pattern: None,
         is_rest_pattern: false,
       },
-      { name: "next", default_val: None, pattern: None, is_rest_pattern: false },
+      {
+        name: "next",
+        default_val: None,
+        pattern: None,
+        is_rest_pattern: false,
+      },
     ],
     next_index~,
     effective_param_count=1,
@@ -161,7 +166,7 @@ fn dispatch_test_parameter_progress(
     rest_param=Some("rest"),
     is_arrow=false,
     env=Environment::new(),
-    ctx={ strict: true, current_generator: None },
+    ctx={ strict: true, current_generator: None, },
     body=dispatch_test_statement_work(id).stmts,
   )
 }
@@ -176,7 +181,7 @@ fn dispatch_test_loop_resume(id : Int, label : String?) -> DispatchLoopResume {
       @ast.BreakStmt(None, loc),
       env,
     ),
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     label~,
     completion=Number(id.to_double()),
   )
@@ -186,7 +191,7 @@ fn dispatch_test_loop_resume(id : Int, label : String?) -> DispatchLoopResume {
 fn dispatch_test_ready_state(
   frames : DispatchFrameStack,
 ) -> ActivationDispatchState {
-  { frames, phase: DispatchReady, ticket_cursor: DispatchTicket(value="0") }
+  { frames, phase: DispatchReady, ticket_cursor: DispatchTicket(value="0"), }
 }
 
 ///|
@@ -250,7 +255,7 @@ test "production root statement enters the closed production seam" {
   let initial = ActivationDispatchState::ActivationDispatchState()
   let request = DispatchProgramActivation(
     DispatchStatementCursor(
-      ctx={ strict: false, current_generator: None },
+      ctx={ strict: false, current_generator: None, },
       stmts=[@ast.BreakStmt(Some("901"), @token.Loc::default())],
       env=Environment::new(),
       production=true,
@@ -2949,7 +2954,7 @@ test "dispatch tickets grow without reuse or stranded cleanup" {
 ///|
 test "statement cursor advances once and declarations preserve the last value" {
   let loc = @token.Loc::default()
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let sequential = DispatchStatementCursor(
     ctx~,
     stmts=[
@@ -3221,7 +3226,7 @@ fn run_structural_statement_suspension(
 ///|
 test "structural suspensions install loop switch and label frames" {
   let loc = @token.Loc::default()
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let switch_body = DispatchStatementCursor(
     ctx~,
     stmts=[@ast.BreakStmt(None, loc)],
@@ -3427,7 +3432,7 @@ test "switch and label frames consume only their matching break" {
 
 ///|
 test "semantic payload constructors defensively copy mutable arrays" {
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let stmts = [@ast.BreakStmt(Some("original"), @token.Loc::default())]
   let statement_work = DispatchStatementCursor(
     ctx~,
@@ -3637,7 +3642,7 @@ test "binary accessor and parameter continuations retain semantic payloads" {
     rest_param=Some("remaining"),
     is_arrow=true,
     env=Environment::new(),
-    ctx={ strict: true, current_generator: None },
+    ctx={ strict: true, current_generator: None, },
     body=[],
   )
   match

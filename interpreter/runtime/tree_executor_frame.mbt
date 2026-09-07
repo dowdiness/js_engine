@@ -13,7 +13,7 @@ fn TreeExecutorPlannedCall::TreeExecutorPlannedCall(
   callee~ : Value,
   this_value~ : Value,
 ) -> TreeExecutorPlannedCall {
-  { callee, this_value }
+  { callee, this_value, }
 }
 
 ///|
@@ -27,7 +27,7 @@ fn TreeActivationPlan::TreeActivationPlan(
   body : Array[@ast.Stmt],
   calls : Map[String, TreeExecutorPlannedCall],
 ) -> TreeActivationPlan {
-  { body: body.copy(), calls: calls.copy() }
+  { body: body.copy(), calls: calls.copy(), }
 }
 
 ///|
@@ -244,7 +244,7 @@ fn TreeExecutorCallableProof::TreeExecutorCallableProof(
   parameter_count~ : Int,
   closure~ : Environment,
 ) -> TreeExecutorCallableProof {
-  { callable, object_data, summary, parameter_count, closure }
+  { callable, object_data, summary, parameter_count, closure, }
 }
 
 ///|
@@ -290,7 +290,7 @@ fn TreeExecutorGraphBuildNode::TreeExecutorGraphBuildNode(
   object_data~ : ObjectData,
   parameter_count~ : Int,
 ) -> TreeExecutorGraphBuildNode {
-  { callable, object_data, parameter_count, edges: [] }
+  { callable, object_data, parameter_count, edges: [], }
 }
 
 ///|
@@ -308,7 +308,7 @@ fn TreeExecutorGraphNode::TreeExecutorGraphNode(
   parameter_count~ : Int,
   edges~ : Array[TreeExecutorGraphEdge],
 ) -> TreeExecutorGraphNode {
-  { callable, object_data, parameter_count, edges: edges.copy() }
+  { callable, object_data, parameter_count, edges: edges.copy(), }
 }
 
 ///|
@@ -345,7 +345,7 @@ fn TreeExecutorGraphCursor::TreeExecutorGraphCursor(
   arena~ : TreeExecutorGraphArena,
   node_index~ : Int,
 ) -> TreeExecutorGraphCursor {
-  { arena, node_index }
+  { arena, node_index, }
 }
 
 ///|
@@ -359,7 +359,7 @@ fn TreeExecutorGraphAdmission::TreeExecutorGraphAdmission(
   arena~ : TreeExecutorGraphArena,
   root_node_index~ : Int,
 ) -> TreeExecutorGraphAdmission {
-  { arena, root_node_index }
+  { arena, root_node_index, }
 }
 
 ///|
@@ -445,7 +445,7 @@ fn TreeExecutorGraphAdmissionWork::TreeExecutorGraphAdmissionWork(
   arg_count~ : Int,
   node_index~ : Int,
 ) -> TreeExecutorGraphAdmissionWork {
-  { proof, arg_count, node_index }
+  { proof, arg_count, node_index, }
 }
 
 ///|
@@ -653,7 +653,7 @@ fn TreeExecutorAdmission::TreeExecutorAdmission(
   executable~ : ExecutorCallableData,
   cursor~ : TreeExecutorGraphCursor,
 ) -> TreeExecutorAdmission {
-  { executable, cursor }
+  { executable, cursor, }
 }
 
 ///|

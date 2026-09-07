@@ -52,7 +52,7 @@ test "constructor realm intrinsic preserves explicit Object realm stamps" {
 
 ///|
 test "function realm packed array has Null slots for absent prototypes" {
-  let failure : Ref[String?] = { val: None }
+  let failure : Ref[String?] = { val: None, }
   with_active_realm_state_unit(RealmState(), fn() {
     let func = make_native_func(name="early", fn(_args) { Undefined })
     match func {
@@ -146,7 +146,7 @@ test "source observation blocks the fast path and restores its barrier" {
   if !realm_fast_path_allowed(func, realm_state) {
     fail("identity-free same-realm function should start on the fast path")
   }
-  let fast_path_allowed_during_observation : Ref[Bool] = { val: false }
+  let fast_path_allowed_during_observation : Ref[Bool] = { val: false, }
   let observed = observe_source_failure(realm_state, fn() {
     fast_path_allowed_during_observation.val = realm_fast_path_allowed(
       func, realm_state,
@@ -203,7 +203,7 @@ test "unmarked callees clear inherited active realm overrides" {
   realm_state.function_prototype.val = Some(base_function_proto)
   realm_state.object_prototype.val = Some(base_object_proto)
   realm_state.string_prototype.val = Some(base_string_proto)
-  let failure : Ref[String?] = { val: None }
+  let failure : Ref[String?] = { val: None, }
   with_active_realm_state_unit(realm_state, fn() {
     apply_active_realm_protos(
       realm_state,
@@ -376,7 +376,7 @@ test "explicit scope finish preserves the source-observation realm barrier" {
   if !realm_fast_path_allowed(callee, realm_state) {
     fail("identity-free callable should begin on the realm fast path")
   }
-  let barrier_preserved : Ref[Bool] = { val: false }
+  let barrier_preserved : Ref[Bool] = { val: false, }
   let observed = observe_source_failure(realm_state, fn() {
     let cleared = begin_cleared_active_callee_realm(realm_state)
     let active = begin_active_callee_realm_value(realm_state, callee)

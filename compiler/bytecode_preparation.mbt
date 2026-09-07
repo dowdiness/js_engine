@@ -12,9 +12,9 @@ fn prepare_lexical_bindings(
   for stmt in stmts {
     match stmt {
       VarDecl(LetKind, name, _, loc) =>
-        bindings.push({ kind: BytecodeLet, name, loc })
+        bindings.push({ kind: BytecodeLet, name, loc, })
       VarDecl(ConstKind, name, _, loc) =>
-        bindings.push({ kind: BytecodeConst, name, loc })
+        bindings.push({ kind: BytecodeConst, name, loc, })
       StmtList(children, _) =>
         for child in prepare_lexical_bindings_from_stmt_list(children) {
           bindings.push(child)
@@ -171,7 +171,7 @@ fn scan_bytecode_function_consumers_for_verification(
       None => ()
     }
   }
-  { by_child, declarations, invalid_index }
+  { by_child, declarations, invalid_index, }
 }
 
 ///|

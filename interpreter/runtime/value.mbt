@@ -215,7 +215,7 @@ pub(all) struct ArrayBufferState {
 
 ///|
 pub fn ArrayBufferState::ArrayBufferState() -> ArrayBufferState {
-  { id_counter: { val: 0 }, store: Map([]), detached: Map([]) }
+  { id_counter: { val: 0, }, store: Map([]), detached: Map([]), }
 }
 
 ///|

@@ -3,7 +3,7 @@ test "issue 931 primitive Number update completes at runtime start boundary" {
   let interp = Interpreter::new()
   let env = Environment::new(parent=Some(interp.global))
   env.def("value", Number(1.0), VarBinding)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   match
     begin_executor_binding_update(
       interp,

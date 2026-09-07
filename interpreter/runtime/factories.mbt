@@ -313,12 +313,12 @@ pub fn strip_self_name_binding(v : Value) -> Value {
         Some(UserFunc(fd)) if fd.has_name_binding =>
           Object({
             ..data,
-            callable: Some(UserFunc({ ..fd, has_name_binding: false })),
+            callable: Some(UserFunc({ ..fd, has_name_binding: false, })),
           })
         Some(UserFuncExt(fd)) if fd.has_name_binding =>
           Object({
             ..data,
-            callable: Some(UserFuncExt({ ..fd, has_name_binding: false })),
+            callable: Some(UserFuncExt({ ..fd, has_name_binding: false, })),
           })
         _ => v
       }
@@ -340,14 +340,17 @@ pub fn mark_as_method(v : Value) -> Value {
         Some(UserFunc(fd)) => {
           let _ = data.bag.properties.remove("prototype")
           let _ = data.bag.descriptors.remove("prototype")
-          Object({ ..data, callable: Some(UserFunc({ ..fd, is_method: true })) })
+          Object({
+            ..data,
+            callable: Some(UserFunc({ ..fd, is_method: true, })),
+          })
         }
         Some(UserFuncExt(fd)) => {
           let _ = data.bag.properties.remove("prototype")
           let _ = data.bag.descriptors.remove("prototype")
           Object({
             ..data,
-            callable: Some(UserFuncExt({ ..fd, is_method: true })),
+            callable: Some(UserFuncExt({ ..fd, is_method: true, })),
           })
         }
         _ => v
@@ -849,7 +852,7 @@ fn SourceObservedFailure::SourceObservedFailure(
   cause : Error,
   source_identity : String?,
 ) -> SourceObservedFailure {
-  { cause_: cause, source_identity_: source_identity }
+  { cause_: cause, source_identity_: source_identity, }
 }
 
 ///|
@@ -1431,7 +1434,7 @@ fn begin_active_callee_realm_value(
   let callee_source_identity = function_source_identity(callee)
   apply_active_realm_protos(realm_state, callee_realm_protos(callee))
   realm_state.active_source_identity.val = callee_source_identity
-  { previous_realm_protos, previous_source_identity, callee_source_identity }
+  { previous_realm_protos, previous_source_identity, callee_source_identity, }
 }
 
 ///|

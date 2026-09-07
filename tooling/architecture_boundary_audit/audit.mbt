@@ -190,7 +190,7 @@ fn decode_package_group(
   if packages.length() == 0 {
     schema_error(path, "package group \{name} must list at least one package")
   }
-  { name, packages }
+  { name, packages, }
 }
 
 ///|
@@ -203,7 +203,7 @@ fn decode_import_rule(
   let scope = decode_string_field(data, "scope", path)
   validate_scope(scope, path)
   let reason = decode_string_field(data, "reason", path)
-  { from, to, scope, reason }
+  { from, to, scope, reason, }
 }
 
 ///|
@@ -218,7 +218,7 @@ fn decode_import_debt(
   let owner = decode_string_field(data, "owner", path)
   let retire_by_stage = decode_string_field(data, "retire_by_stage", path)
   let reason = decode_string_field(data, "reason", path)
-  { from, to, scope, owner, retire_by_stage, reason }
+  { from, to, scope, owner, retire_by_stage, reason, }
 }
 
 ///|

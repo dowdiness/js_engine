@@ -921,7 +921,7 @@ fn make_async_from_sync_iterator_proto_value(
       async_from_sync_next(ip, this_val, args)
     },
   )
-  proto_descs["next"] = { ..method_desc }
+  proto_descs["next"] = { ..method_desc, }
   proto_props["return"] = make_interp_method_func(
     name="return",
     length=1,
@@ -930,7 +930,7 @@ fn make_async_from_sync_iterator_proto_value(
       async_from_sync_return(ip, this_val, args)
     },
   )
-  proto_descs["return"] = { ..method_desc }
+  proto_descs["return"] = { ..method_desc, }
   proto_props["throw"] = make_interp_method_func(
     name="throw",
     length=1,
@@ -939,7 +939,7 @@ fn make_async_from_sync_iterator_proto_value(
       async_from_sync_throw(ip, this_val, args)
     },
   )
-  proto_descs["throw"] = { ..method_desc }
+  proto_descs["throw"] = { ..method_desc, }
   let sym_props : Map[Int, Value] = Map([])
   let sym_descs : Map[Int, PropDescriptor] = Map([])
   sym_props[async_iterator_sym.id] = make_method_func(

@@ -204,7 +204,7 @@ test "Execution Sessions may explicitly share one Console Output Sink" {
 
 ///|
 test "Execution Session rejects re-entry while a Hosted Turn is running" {
-  let session_ref : Ref[@js_engine.ExecutionSession?] = { val: None }
+  let session_ref : Ref[@js_engine.ExecutionSession?] = { val: None, }
   let observed : Array[String] = []
   let bindings = @js_engine.SessionBindings(
     console_output_sink=Some(fn(output) raise {
@@ -266,7 +266,7 @@ test "closed Execution Session rejects later Hosted Turns" {
 
 ///|
 test "closing a busy Execution Session does not interrupt its Hosted Turn" {
-  let session_ref : Ref[@js_engine.ExecutionSession?] = { val: None }
+  let session_ref : Ref[@js_engine.ExecutionSession?] = { val: None, }
   let observed : Array[String] = []
   let bindings = @js_engine.SessionBindings(
     console_output_sink=Some(fn(_output) raise {
@@ -581,7 +581,7 @@ test "loaded Script Resource errors remain JavaScript-catchable" {
 
 ///|
 test "application resumes an opaque Scheduled Turn exactly once" {
-  let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None }
+  let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None, }
   let delays : Array[Int] = []
   let session = @js_engine.HostEnvironment(timers=true).create_session(
     bindings=@js_engine.SessionBindings(
@@ -722,7 +722,7 @@ test "Timer Scheduler failure faults the Execution Session" {
 
 ///|
 test "closing a Session rejects its retained Scheduled Turns" {
-  let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None }
+  let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None, }
   let session = @js_engine.HostEnvironment(timers=true).create_session(
     bindings=@js_engine.SessionBindings(
       timer_scheduler=Some(schedule => scheduled.val = Some(schedule.turn())),

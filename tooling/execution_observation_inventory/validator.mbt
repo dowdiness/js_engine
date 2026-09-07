@@ -418,7 +418,7 @@ fn validate_manifest_and_collect_evidence(
       Err(message) => return Err(message)
     }
     for reference in focused_evidence {
-      evidence.push({ row_id: id, field: "focused_evidence", reference })
+      evidence.push({ row_id: id, field: "focused_evidence", reference, })
     }
     match validate_row_metadata(row, row_path) {
       Ok(_) => ()
@@ -434,7 +434,7 @@ fn validate_manifest_and_collect_evidence(
       Err(message) => return Err(message)
     }
     for reference in public_facade_evidence {
-      evidence.push({ row_id: id, field: "public_facade_evidence", reference })
+      evidence.push({ row_id: id, field: "public_facade_evidence", reference, })
     }
   }
   for family in operation_families() {

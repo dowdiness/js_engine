@@ -23,7 +23,7 @@ fn integrity_descriptor(
         writable: Some(false),
         configurable: Some(false),
       }
-    _ => { ..PartialDescriptor::empty(), configurable: Some(false) }
+    _ => { ..PartialDescriptor::empty(), configurable: Some(false), }
   }
 }
 

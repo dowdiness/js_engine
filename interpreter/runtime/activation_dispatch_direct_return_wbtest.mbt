@@ -243,7 +243,7 @@ test "direct-return admission owns an ordered two-helper carried-result plan" {
   ])
   guard plan.entry.syntax.recursive_completion
     is DirectReturnRecursiveResultFedCallChain(
-      { calls: [inner_call, outer_call] }
+      { calls: [inner_call, outer_call], }
     ) else {
     fail("expected the ordered two-stage carried-result chain")
   }
@@ -268,7 +268,7 @@ test "direct-return admission preserves ordered meaning for a three-helper chain
     None => fail("expected the three-helper direct-return shape to be admitted")
   }
   match plan.entry.syntax.recursive_completion {
-    DirectReturnRecursiveResultFedCallChain({ calls }) => {
+    DirectReturnRecursiveResultFedCallChain({ calls, }) => {
       json_inspect(calls.map(call => call.callee_name), content=[
         "inner", "middle", "outer",
       ])
@@ -296,7 +296,7 @@ test "direct-return admission preserves ordered meaning for an eight-helper chai
     None => fail("expected the eight-helper direct-return shape to be admitted")
   }
   match plan.entry.syntax.recursive_completion {
-    DirectReturnRecursiveResultFedCallChain({ calls }) =>
+    DirectReturnRecursiveResultFedCallChain({ calls, }) =>
       json_inspect(calls.map(call => call.callee_name), content=[
         "one", "two", "three", "four", "five", "six", "seven", "eight",
       ])
@@ -463,7 +463,7 @@ test "direct-return admission owns a wrapped root invocation" {
     None => fail("expected the wrapped result-fed direct-return shape")
   }
   guard plan.entry.syntax.recursive_completion
-    is DirectReturnRecursiveResultFedCallChain({ calls: [_] }) else {
+    is DirectReturnRecursiveResultFedCallChain({ calls: [_], }) else {
     fail("expected wrapper fixture to retain its result-fed completion")
   }
   guard plan.first_helper() is Some(_) else {
@@ -650,14 +650,14 @@ test "direct-return syntax snapshots payload leaf plans" {
             { literal: DirectReturnClosedString("done"), .. }
           ),
         ],
-        ..,
+        ..
       }
     ) else {
     fail("expected syntax to own an immutable leaf-plan snapshot")
   }
   guard syntax.recursive_completion
     is DirectReturnRecursiveResultFedCallChain(
-      { calls: [{ argument_sources: [DirectReturnLeafCarriedResult(_)], .. }] }
+      { calls: [{ argument_sources: [DirectReturnLeafCarriedResult(_)], .. }], }
     ) else {
     fail("expected recursive syntax to own an immutable leaf-plan snapshot")
   }
@@ -689,7 +689,7 @@ test "direct-return admission owns a bound leaf argument plan" {
             { literal: DirectReturnClosedString("done"), .. }
           ),
         ],
-        ..,
+        ..
       }
     ) else {
     fail("expected one sealed string call argument with its location")
@@ -719,13 +719,13 @@ test "direct-return admission owns an ordered argument vector plan" {
       {
         argument_sources: [
           DirectReturnLeafClosedArgument(
-            { literal: DirectReturnClosedString("ignored"), loc: first_loc }
+            { literal: DirectReturnClosedString("ignored"), loc: first_loc, }
           ),
           DirectReturnLeafClosedArgument(
-            { literal: DirectReturnClosedString("done"), loc: second_loc }
+            { literal: DirectReturnClosedString("done"), loc: second_loc, }
           ),
         ],
-        ..,
+        ..
       }
     ) &&
     first_loc != second_loc else {
@@ -843,7 +843,7 @@ fn direct_return_observation_fixture_for_source(
     direct_return_root_stmts=Some(stmts),
     activation_observation_port=probe.port(),
   )
-  (shell, stmts, { strict: false, current_generator: None })
+  (shell, stmts, { strict: false, current_generator: None, })
 }
 
 ///|
@@ -1777,7 +1777,7 @@ test "direct-return result-fed trust rejects helper binding mutation" {
     None => fail("expected a trusted result-fed helper")
   }
   let call_loc = match program.entry.syntax.recursive_completion {
-    DirectReturnRecursiveResultFedCallChain({ calls: [plan] }) => plan.call_loc
+    DirectReturnRecursiveResultFedCallChain({ calls: [plan], }) => plan.call_loc
     _ => fail("expected the result-fed call plan")
   }
   guard interp.global.bindings.get("id") is Some(binding) else {
@@ -1884,7 +1884,7 @@ test "direct-return bound leaf rejects a changed prepared parameter" {
   }
   let result = try {
     let _ = direct_return_leaf_parameter_value(
-      { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0 },
+      { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0, },
       program,
       leaf.syntax,
       parameter,
@@ -1938,7 +1938,7 @@ test "direct-return argument vector validates every prepared binding" {
   }
   let result = try {
     let _ = direct_return_leaf_parameter_value(
-      { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0 },
+      { ctx: prepared.ctx, stmt: leaf.body[0], env: prepared.env, index: 0, },
       program,
       leaf.syntax,
       parameter,
@@ -2218,7 +2218,7 @@ test "direct-return execution rejects a foreign activation environment" {
     env.def_parameter("n", Number(1.0))
     let result = try {
       let _ = shell.execute_direct_return_statement({
-        ctx: { strict: false, current_generator: None },
+        ctx: { strict: false, current_generator: None, },
         stmt: program.entry.body[0],
         env,
         index: 0,
@@ -2341,7 +2341,7 @@ test "direct-return interruption suppresses later recursive calls" {
     interruption~,
   )
   let completion = interp.with_execution_control(control, () => {
-    shell.drive_root_program(stmts, { strict: false, current_generator: None })
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, })
   })
   match completion {
     DispatchRuntimeAbrupt(ExecutionControlError(Interrupted)) => ()
@@ -2388,7 +2388,7 @@ fn expect_direct_return_interruption_at_leaf(source : String) -> Unit raise {
     interruption~,
   )
   let completion = interp.with_execution_control(control, () => {
-    shell.drive_root_program(stmts, { strict: false, current_generator: None })
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, })
   })
   match completion {
     DispatchRuntimeAbrupt(ExecutionControlError(Interrupted)) => ()
@@ -2435,7 +2435,7 @@ fn run_direct_return_result_fed_interruption(
     interruption~,
   )
   let completion = interp.with_execution_control(control, () => {
-    shell.drive_root_program(stmts, { strict: false, current_generator: None })
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, })
   })
   match completion {
     DispatchRuntimeAbrupt(ExecutionControlError(Interrupted)) => ()
@@ -2803,7 +2803,7 @@ fn run_direct_return_wrapped_result_fed_interruption(
     interruption~,
   )
   let completion = interp.with_execution_control(control, () => {
-    shell.drive_root_program(stmts, { strict: false, current_generator: None })
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, })
   })
   match completion {
     DispatchRuntimeAbrupt(ExecutionControlError(Interrupted)) => ()
@@ -2865,7 +2865,7 @@ test "direct-return result-fed leaf rejects a changed prepared parameter" {
     None => fail("expected a trusted result-fed helper")
   }
   let call_loc = match program.entry.syntax.recursive_completion {
-    DirectReturnRecursiveResultFedCallChain({ calls: [plan] }) => plan.call_loc
+    DirectReturnRecursiveResultFedCallChain({ calls: [plan], }) => plan.call_loc
     _ => fail("expected the result-fed helper call plan")
   }
   let shell = PrimitiveProgramDispatchShell(
@@ -2892,7 +2892,7 @@ test "direct-return result-fed leaf rejects a changed prepared parameter" {
   binding.value = String_("changed")
   let result = try {
     let _ = shell.execute_direct_return_leaf_statement(
-      { ctx: cursor.ctx, stmt: leaf.body[0], env: cursor.env, index: 0 },
+      { ctx: cursor.ctx, stmt: leaf.body[0], env: cursor.env, index: 0, },
       program,
       leaf,
     )

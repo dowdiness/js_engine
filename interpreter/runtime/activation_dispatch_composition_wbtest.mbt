@@ -970,7 +970,7 @@ test "five-call numeric map expression cleanup permits a second run" {
 fn expression_seal_mutation_result(final_source : String) -> String raise Error {
   let (interp, stmts, preflight) = numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -989,7 +989,7 @@ fn four_call_expression_seal_mutation_result(
 ) -> String raise Error {
   let (interp, stmts, preflight) = four_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1008,7 +1008,7 @@ fn five_call_expression_seal_mutation_result(
 ) -> String raise Error {
   let (interp, stmts, preflight) = five_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1075,7 +1075,7 @@ test "five-call expression sealing rejects source and location drift" {
 test "expression driver rejects adapter identity drift before activation" {
   let (interp, stmts, preflight) = numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1105,7 +1105,7 @@ test "expression driver rejects adapter identity drift before activation" {
   )
   let result = try {
     let _ = shell.execute_numeric_map_expression_root_statement(
-      { ctx, stmt: stmts[3], env: interp.global, index: 3 },
+      { ctx, stmt: stmts[3], env: interp.global, index: 3, },
       preflight,
     )
     "accepted"
@@ -1137,7 +1137,7 @@ test "expression driver rejects adapter identity drift before activation" {
   )
   let same_result = try {
     let _ = same_shell.execute_numeric_map_expression_root_statement(
-      { ctx, stmt: stmts[3], env: interp.global, index: 3 },
+      { ctx, stmt: stmts[3], env: interp.global, index: 3, },
       preflight,
     )
     "accepted"
@@ -1182,7 +1182,7 @@ test "expression plan owns nested call argument arrays" {
 test "four-call expression plan seals adapter families arguments and locations" {
   let (interp, stmts, preflight) = four_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1254,7 +1254,7 @@ test "four-call expression plan seals adapter families arguments and locations" 
 test "five-call expression plan seals adapter families arguments and locations" {
   let (interp, stmts, preflight) = five_call_numeric_map_expression_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1330,7 +1330,7 @@ test "five-call expression plan seals adapter families arguments and locations" 
 test "composition call plan seals source calls and adapter tokens" {
   let (interp, stmts, preflight) = numeric_map_composition_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1445,7 +1445,7 @@ test "composition observations release numeric and map ownership in LIFO order" 
 test "composition catalog rejects post-seal numeric body drift before observation" {
   let (interp, stmts, preflight) = numeric_map_composition_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1498,7 +1498,7 @@ test "composition catalog rejects post-seal numeric body drift before observatio
 test "composition catalog rejects forwarding closure drift before observation" {
   let (interp, stmts, preflight) = numeric_map_composition_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1515,7 +1515,7 @@ test "composition catalog rejects forwarding closure drift before observation" {
         Some(UserFunc(data)) =>
           Object({
             ..object_data,
-            callable: Some(UserFunc({ ..data, closure: Environment::new() })),
+            callable: Some(UserFunc({ ..data, closure: Environment::new(), })),
           })
         _ => fail("expected the forwarding function to retain UserFunc data")
       }
@@ -1523,7 +1523,7 @@ test "composition catalog rejects forwarding closure drift before observation" {
   }
   let mutated_catalog = DispatchManagedUserFuncCatalog(
     numeric=catalog.numeric,
-    array_map={ ..catalog.array_map, forward_function: Some(lookalike) },
+    array_map={ ..catalog.array_map, forward_function: Some(lookalike), },
   )
   match interp.global.bindings.get("f") {
     Some(binding) => binding.value = lookalike
@@ -1575,7 +1575,7 @@ test "composition catalog rejects forwarding closure drift before observation" {
 test "composition sealing rejects outer binary location drift" {
   let (interp, stmts, preflight) = numeric_map_composition_observation_fixture()
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1992,7 +1992,7 @@ test "managed UserFunc catalog selects exact, zero, and ambiguous identities" {
     catalog.select(make_array([]), None, Undefined) is None,
     content="true",
   )
-  let ambiguous_map = { ..map_registry, step_function: numeric_callee }
+  let ambiguous_map = { ..map_registry, step_function: numeric_callee, }
   let ambiguous_catalog = DispatchManagedUserFuncCatalog(
     numeric=numeric_registry,
     array_map=ambiguous_map,

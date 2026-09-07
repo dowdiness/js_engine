@@ -175,7 +175,7 @@ pub fn Interpreter::run_prepared_compiled_script(
   eval : (ExecContext, Environment) -> Value raise Error,
 ) -> Value raise Error {
   let strict = preparation.strict
-  let ctx : ExecContext = { strict, current_generator: None }
+  let ctx : ExecContext = { strict, current_generator: None, }
   try {
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
       self.apply_compiled_script_preparation(preparation)
@@ -206,7 +206,7 @@ pub fn Interpreter::run_compiled_script(
   eval : (ExecContext, Environment) -> Value raise Error,
 ) -> Value raise Error {
   let strict = @static_semantics.has_use_strict(stmts)
-  let ctx : ExecContext = { strict, current_generator: None }
+  let ctx : ExecContext = { strict, current_generator: None, }
   try {
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
       self.validate_block_early_errors(stmts, strict)

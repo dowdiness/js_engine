@@ -35,10 +35,7 @@ concurrency:
 
 env:
   TEST262_COMMIT: "2b2ecead6e82"
-  # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
-  MOONBIT_INSTALL_VERSION: "latest"
-  MOONBIT_EXPECTED_VERSION: "moon 0.1.20260819 (fc2a4ee 2026-08-19)"
-  MOONBIT_CACHE_VERSION: "0.1.20260819-fc2a4ee"
+  MOONBIT_INSTALL_VERSION: "nightly"
   SHARD_TOTAL: 4
 
 jobs:
@@ -99,26 +96,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Cache MoonBit toolchain
-        id: toolchain-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.moon
-          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
-
       - name: Install MoonBit toolchain
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Verify MoonBit toolchain identity
-        run: bash scripts/verify_moonbit_toolchain.sh
-
       - name: Get MoonBit version
         id: moonbit-version
-        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          moon version --all
+          echo "version=$(moon version | head -1); $(moonc -v)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
         uses: actions/cache@v5
@@ -154,8 +142,9 @@ jobs:
 
       - name: Check and test
         run: |
-          moon check
-          moon test
+          moon fmt --check
+          moon check --target all --deny-warn
+          moon test --deny-warn
           node scripts/test_test262_failing_diff.js
 
   unit-test-runner:
@@ -170,26 +159,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Cache MoonBit toolchain
-        id: toolchain-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.moon
-          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
-
       - name: Set up MoonBit
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Verify MoonBit toolchain identity
-        run: bash scripts/verify_moonbit_toolchain.sh
-
       - name: Get MoonBit version
         id: moonbit-version
-        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          moon version --all
+          echo "version=$(moon version | head -1); $(moonc -v)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
         uses: actions/cache@v5
@@ -243,26 +223,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Cache MoonBit toolchain
-        id: toolchain-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.moon
-          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
-
       - name: Install MoonBit toolchain
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Verify MoonBit toolchain identity
-        run: bash scripts/verify_moonbit_toolchain.sh
-
       - name: Get MoonBit version
         id: moonbit-version
-        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          moon version --all
+          echo "version=$(moon version | head -1); $(moonc -v)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
         uses: actions/cache@v5
@@ -368,26 +339,17 @@ jobs:
           pattern: test262-*-results
           merge-multiple: true
 
-      - name: Cache MoonBit toolchain
-        id: toolchain-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.moon
-          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
-
       - name: Install MoonBit toolchain
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
         run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
 
       - name: Add MoonBit to PATH
         run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Verify MoonBit toolchain identity
-        run: bash scripts/verify_moonbit_toolchain.sh
-
       - name: Get MoonBit version
         id: moonbit-version
-        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          moon version --all
+          echo "version=$(moon version | head -1); $(moonc -v)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
         uses: actions/cache@v5

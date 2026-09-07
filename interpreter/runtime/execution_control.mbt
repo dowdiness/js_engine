@@ -184,7 +184,7 @@ priv struct ExecutionInterruptionRequest {
 ///|
 #warnings("-unused_value")
 fn ExecutionInterruptionRequest::ExecutionInterruptionRequest() -> ExecutionInterruptionRequest {
-  { requested: { val: false } }
+  { requested: { val: false, }, }
 }
 
 ///|

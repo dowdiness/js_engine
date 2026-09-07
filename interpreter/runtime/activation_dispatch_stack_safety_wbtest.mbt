@@ -13,7 +13,7 @@ fn dispatch_stack_safety_statement_frames(count : Int) -> DispatchFrameStack {
 ///|
 fn dispatch_stack_safety_empty_statements() -> DispatchStatementCursor {
   DispatchStatementCursor(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     stmts=[],
     env=Environment::new(),
   )

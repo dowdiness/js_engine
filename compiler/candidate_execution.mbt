@@ -20,7 +20,7 @@ fn CandidateBytecodeExecution::CandidateBytecodeExecution(
   bytecode : CandidateVerifiedBytecodeFunction,
   child_materializer : CandidateChildMaterializer,
 ) -> CandidateBytecodeExecution {
-  { bytecode, child_materializer }
+  { bytecode, child_materializer, }
 }
 
 ///|
@@ -232,7 +232,7 @@ fn CandidateBytecodeExecutorCode::CandidateBytecodeExecutorCode(
   source_identity : BytecodeSourceIdentity,
   decision : CandidateSelection,
 ) -> CandidateBytecodeExecutorCode {
-  { execution, evidence, source_identity, decision }
+  { execution, evidence, source_identity, decision, }
 }
 
 ///|

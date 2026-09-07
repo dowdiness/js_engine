@@ -176,7 +176,7 @@ test "timer policy selects smaller delays first" {
     timer_policy_test_task(2, 0, 1),
     timer_policy_test_task(3, 50, 2),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 3 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 3, }, 10)
   let selected : Array[Int] = []
   for _ in 0..<3 {
     selected.push(timer_policy_test_id(timer_policy_test_next(policy)))
@@ -195,7 +195,7 @@ test "timer policy preserves insertion order for equal delays" {
     timer_policy_test_task(2, 10, 0),
     timer_policy_test_task(3, 10, 1),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 3 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 3, }, 10)
   let selected : Array[Int] = []
   for _ in 0..<3 {
     selected.push(timer_policy_test_id(timer_policy_test_next(policy)))
@@ -211,7 +211,7 @@ test "timer policy consumes the selected timer before callback outcome" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2, }, 10)
   inspect(timer_policy_test_id(timer_policy_test_next(policy)), content="1")
   inspect(queue.length(), content="1")
   inspect(timer_policy_test_id(queue.peek()), content="2")
@@ -224,7 +224,7 @@ test "timer policy skips cancelled timers with lazy deletion" {
     timer_policy_test_task(2, 1, 1),
   ])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
-  let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 10)
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 10)
   inspect(timer_policy_test_id(timer_policy_test_next(policy)), content="2")
   inspect(queue.length(), content="0")
 }
@@ -234,7 +234,7 @@ test "timer policy never re-registers one-shot timers" {
   let success_queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(1, 0, 0),
   ])
-  let success_policy = TimerQueuePolicy(success_queue, Map([]), { val: 1 }, 10)
+  let success_policy = TimerQueuePolicy(success_queue, Map([]), { val: 1, }, 10)
   let _ = timer_policy_test_next(success_policy)
   success_policy.callback_succeeded()
   success_policy.checkpoint_succeeded()
@@ -243,7 +243,7 @@ test "timer policy never re-registers one-shot timers" {
   let failure_queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(2, 0, 0),
   ])
-  let failure_policy = TimerQueuePolicy(failure_queue, Map([]), { val: 1 }, 10)
+  let failure_policy = TimerQueuePolicy(failure_queue, Map([]), { val: 1, }, 10)
   let _ = timer_policy_test_next(failure_policy)
   failure_policy.callback_failed()
   inspect(failure_queue.length(), content="0")
@@ -254,7 +254,7 @@ test "timer policy re-registers intervals after callback and checkpoint success"
   let queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(1, 10, 0, period=5, is_interval=true),
   ])
-  let insertion_counter : Ref[Int] = { val: 7 }
+  let insertion_counter : Ref[Int] = { val: 7, }
   let policy = TimerQueuePolicy(queue, Map([]), insertion_counter, 10)
   let _ = timer_policy_test_next(policy)
   policy.callback_succeeded()
@@ -281,7 +281,7 @@ test "timer policy does not re-register an interval after callback failure" {
   let queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(1, 0, 0, period=5, is_interval=true),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 1, }, 10)
   let _ = timer_policy_test_next(policy)
   policy.callback_failed()
   inspect(queue.length(), content="0")
@@ -292,7 +292,7 @@ test "timer policy does not re-register an interval after checkpoint failure" {
   let queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(1, 0, 0, period=5, is_interval=true),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 1, }, 10)
   let _ = timer_policy_test_next(policy)
   policy.callback_succeeded()
   policy.checkpoint_failed()
@@ -305,7 +305,7 @@ test "timer policy does not re-register an interval cancelled in its callback" {
     timer_policy_test_task(1, 0, 0, period=5, is_interval=true),
   ])
   let cancelled : Map[Int, Bool] = Map([])
-  let policy = TimerQueuePolicy(queue, cancelled, { val: 1 }, 10)
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 1, }, 10)
   let _ = timer_policy_test_next(policy)
   cancelled[1] = true
   policy.callback_succeeded()
@@ -317,7 +317,7 @@ test "timer policy does not re-register an interval cancelled in its callback" {
 test "timer policy clears cancellation bookkeeping only after a complete drain" {
   let queue = @priority_queue.PriorityQueue([timer_policy_test_task(1, 0, 0)])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
-  let policy = TimerQueuePolicy(queue, cancelled, { val: 1 }, 10)
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 1, }, 10)
   inspect(timer_policy_test_next(policy) is None, content="true")
   inspect(cancelled.contains(1), content="true")
   policy.complete_run()
@@ -331,7 +331,7 @@ test "timer policy preserves cancellation bookkeeping at the safety limit" {
     timer_policy_test_task(2, 1, 1),
   ])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
-  let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 1)
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 1)
   inspect(timer_policy_test_next(policy) is None, content="true")
   inspect(queue.length(), content="1")
   policy.complete_run()
@@ -344,7 +344,7 @@ test "timer policy readiness does not pop the current entry" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2, }, 10)
   match policy.readiness() {
     TimerQueueObservationRequired => ()
     TimerQueueEmpty | TimerQueueSafetyLimit =>
@@ -360,7 +360,7 @@ test "timer policy rejected observation retains the current entry" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2, }, 10)
   let _ = policy.readiness()
   policy.reject_dispatch_observation()
   inspect(queue.length(), content="2")
@@ -375,7 +375,7 @@ test "timer policy commit discards exactly one cancelled entry" {
     timer_policy_test_task(2, 1, 1),
   ])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
-  let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 10)
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 10)
   let _ = policy.readiness()
   inspect(policy.commit_next() is None, content="true")
   inspect(queue.length(), content="1")
@@ -389,7 +389,7 @@ test "timer policy later rejection does not restore discarded cancellation" {
     timer_policy_test_task(2, 1, 1),
   ])
   let cancelled : Map[Int, Bool] = Map([(1, true)])
-  let policy = TimerQueuePolicy(queue, cancelled, { val: 2 }, 10)
+  let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 10)
   let _ = policy.readiness()
   inspect(policy.commit_next() is None, content="true")
   let _ = policy.readiness()
@@ -405,7 +405,7 @@ test "timer policy safety limit completes without another observation" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 2 }, 1)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 2, }, 1)
   inspect(policy.readiness() is TimerQueueObservationRequired, content="true")
   let _ = policy.commit_next()
   policy.callback_succeeded()
@@ -417,7 +417,7 @@ test "timer policy safety limit completes without another observation" {
 ///|
 test "timer policy rejects invalid transitions" {
   let queue = @priority_queue.PriorityQueue([timer_policy_test_task(1, 0, 0)])
-  let policy = TimerQueuePolicy(queue, Map([]), { val: 1 }, 10)
+  let policy = TimerQueuePolicy(queue, Map([]), { val: 1, }, 10)
   expect_invalid_timer_queue_policy_transition(
     "callback_succeeded requires Selected",
     () => policy.callback_succeeded(),
@@ -457,7 +457,7 @@ test "timer policy rejects invalid transitions" {
   let completed = TimerQueuePolicy(
     @priority_queue.PriorityQueue([]),
     Map([]),
-    { val: 0 },
+    { val: 0, },
     10,
   )
   completed.complete_run()

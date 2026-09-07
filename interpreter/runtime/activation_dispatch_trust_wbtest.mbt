@@ -185,8 +185,8 @@ test "numeric recursion trust seals every closed handler recipe" {
 ///|
 test "numeric recursion trust preflight rejects a with global without traps" {
   let interp = Interpreter::new()
-  let has_calls : Ref[Int] = { val: 0 }
-  let get_calls : Ref[Int] = { val: 0 }
+  let has_calls : Ref[Int] = { val: 0, }
+  let get_calls : Ref[Int] = { val: 0, }
   let target = make_object(Map([]), Null, None, "Object", Map([]), true)
   let handler = make_object(
     {
@@ -228,7 +228,7 @@ test "numeric recursion trust preflight rejects a with global without traps" {
 ///|
 test "numeric recursion trust preflight rejects a ModuleExportCell without calling it" {
   let interp = Interpreter::new()
-  let cell_calls : Ref[Int] = { val: 0 }
+  let cell_calls : Ref[Int] = { val: 0, }
   let cell : Value = Object({
     bag: PropertyBag(),
     prototype: Null,
@@ -992,7 +992,7 @@ test "numeric recursion trust rejects a noncanonical global at seal without trap
     None => fail("expected callback-free preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let trap_calls : Ref[Int] = { val: 0 }
+  let trap_calls : Ref[Int] = { val: 0, }
   let target = make_object(Map([]), Null, None, "Object", Map([]), true)
   let handler = make_object(
     {
@@ -1032,7 +1032,7 @@ test "numeric recursion trust rejects a noncanonical global at seal without trap
 ///|
 test "numeric recursion trust preserves the exact ThrowTypeError identity" {
   let interp = Interpreter::new()
-  let throw_calls : Ref[Int] = { val: 0 }
+  let throw_calls : Ref[Int] = { val: 0, }
   let throw_type_error = make_native_func(name="trusted ThrowTypeError", _args => {
     throw_calls.val += 1
     Undefined

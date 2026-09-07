@@ -17,7 +17,7 @@ fn MultiplicativeRootFrame::MultiplicativeRootFrame(
   operator~ : ExecutorMultiplicativeOperator,
   loc~ : @token.Loc,
 ) -> MultiplicativeRootFrame {
-  { left, right, operator, loc, requested: false, result: None }
+  { left, right, operator, loc, requested: false, result: None, }
 }
 
 ///|
@@ -248,7 +248,7 @@ test "coercing multiplicative converts left before right exactly once" {
 ///|
 test "coercing multiplicative left Symbol failure leaves right untouched" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let right_hook = make_method_func(
     name="multiplicative right hook",
     realm_state=Some(interp.realm_state),
@@ -266,7 +266,7 @@ test "coercing multiplicative left Symbol failure leaves right untouched" {
   let error : Error? = try {
     let _ = run_multiplicative_root_for_wb(
       interp,
-      Symbol({ id: 93801, description: None }),
+      Symbol({ id: 93801, description: None, }),
       right,
       ExecutorMultiplicativeOperator::ExecutorMultiplicativeMultiply,
     )
@@ -374,7 +374,7 @@ test "multiplicative object conversion falls back from valueOf toString" {
 ///|
 test "coercing multiplicative observes Array own and inherited hooks" {
   let interp = Interpreter::new()
-  let own_receiver : Ref[Value] = { val: Undefined }
+  let own_receiver : Ref[Value] = { val: Undefined, }
   let own_hook = make_method_func(
     name="multiplicative Array own @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -405,7 +405,7 @@ test "coercing multiplicative observes Array own and inherited hooks" {
     "Array own hook",
   )
 
-  let inherited_receiver : Ref[Value] = { val: Undefined }
+  let inherited_receiver : Ref[Value] = { val: Undefined, }
   let inherited_hook = make_method_func(
     name="multiplicative Array inherited @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -449,7 +449,7 @@ test "coercing multiplicative observes Array own and inherited hooks" {
 test "coercing multiplicative routes Proxy conversion through get" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let value_of = make_method_func(
     name="multiplicative Proxy valueOf",
     realm_state=Some(interp.realm_state),

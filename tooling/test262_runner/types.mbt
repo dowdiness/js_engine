@@ -142,7 +142,7 @@ fn HarnessOptions::HarnessOptions(
   helpers? : Array[String] = [],
   atomics_timeout_profile? : String = ATOMICS_TIMEOUT_PROFILE_DEFAULT,
 ) -> HarnessOptions {
-  { helpers, atomics_timeout_profile }
+  { helpers, atomics_timeout_profile, }
 }
 
 ///|
@@ -391,7 +391,7 @@ fn TestResult::TestResult(
   duration_ms? : Double = 0.0,
   mode? : String = "non-strict",
 ) -> TestResult {
-  { path, status, reason, duration_ms, mode }
+  { path, status, reason, duration_ms, mode, }
 }
 
 ///|
@@ -409,7 +409,7 @@ pub extend CategoryStats with @debug.Debug::{to_repr}
 
 ///|
 fn CategoryStats::CategoryStats() -> CategoryStats {
-  { total: 0, passed: 0, failed: 0, skipped: 0, timeout: 0, error: 0 }
+  { total: 0, passed: 0, failed: 0, skipped: 0, timeout: 0, error: 0, }
 }
 
 ///|

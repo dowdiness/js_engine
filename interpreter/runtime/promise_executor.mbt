@@ -25,7 +25,7 @@ fn PromiseResolutionExecutorCode::PromiseResolutionExecutorCode(
   already_resolved~ : Ref[Bool],
   kind~ : PromiseResolutionKind,
 ) -> PromiseResolutionExecutorCode {
-  { owner, promise_data, already_resolved, kind }
+  { owner, promise_data, already_resolved, kind, }
 }
 
 ///|
@@ -252,7 +252,7 @@ fn make_promise_resolving_functions(
   interp : Interpreter,
   promise_data : PromiseData,
 ) -> (Value, Value) {
-  let already_resolved : Ref[Bool] = { val: false }
+  let already_resolved : Ref[Bool] = { val: false, }
   let resolve = make_executor_function(
     Some(""),
     ["resolution"],
@@ -313,7 +313,7 @@ fn PromiseThenableJobExecutorCode::PromiseThenableJobExecutorCode(
   realm_protos~ : FunctionRealmProtos,
   consumed~ : Ref[Bool],
 ) -> PromiseThenableJobExecutorCode {
-  { promise_data, thenable, then_method, realm_protos, consumed }
+  { promise_data, thenable, then_method, realm_protos, consumed, }
 }
 
 ///|
@@ -482,7 +482,7 @@ fn make_promise_thenable_job(
       thenable~,
       then_method~,
       realm_protos~,
-      consumed={ val: false },
+      consumed={ val: false, },
     ),
     constructable=false,
     define_arguments_object=false,
@@ -513,7 +513,7 @@ fn PromiseReactionExecutorCode::PromiseReactionExecutorCode(
   reaction~ : PromiseReaction,
   consumed~ : Ref[Bool],
 ) -> PromiseReactionExecutorCode {
-  { reaction, consumed }
+  { reaction, consumed, }
 }
 
 ///|
@@ -541,7 +541,7 @@ fn PromiseReactionExecutorFrame::PromiseReactionExecutorFrame(
   argument~ : Value,
   global~ : Environment,
 ) -> PromiseReactionExecutorFrame {
-  { reaction, argument, global, phase: PromiseReactionNeedHandler }
+  { reaction, argument, global, phase: PromiseReactionNeedHandler, }
 }
 
 ///|
@@ -686,7 +686,7 @@ fn make_promise_reaction_job(
     [],
     interp.global,
     true,
-    PromiseReactionExecutorCode(reaction~, consumed={ val: false }),
+    PromiseReactionExecutorCode(reaction~, consumed={ val: false, }),
     constructable=false,
     define_arguments_object=false,
   )

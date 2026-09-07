@@ -181,7 +181,7 @@ fn run_tree_parent_with_bytecode_child_for_wb() -> Bool raise Error {
   let byte_child = make_bytecode_func(
     bytecode.verified_main.child(0),
     interp.global,
-    { strict: false, current_generator: None },
+    { strict: false, current_generator: None, },
   )
   interp.global.def_builtin("byteChild", byte_child)
   let _ = interp.run(
@@ -634,7 +634,7 @@ test "RED: finalization rejects lexical preparation deletion" {
 ///|
 test "RED: finalization rejects lexical preparation addition" {
   let program = lexical_preparation_mutation_for_wb(bindings => {
-    bindings.push({ kind: BytecodeLet, name: "extra", loc: bindings[0].loc })
+    bindings.push({ kind: BytecodeLet, name: "extra", loc: bindings[0].loc, })
     bindings
   })
   assert_preparation_rejected_for_wb(
@@ -1180,7 +1180,7 @@ test "finalization recursively verifies nested preparation correspondence" {
   let program = build_script_bytecode(parsed.stmts)
   let child = program.main.children[0]
   let bindings = child.preparation.lexical_bindings.copy()
-  bindings[0] = { kind: bindings[0].kind, name: "wrong", loc: bindings[0].loc }
+  bindings[0] = { kind: bindings[0].kind, name: "wrong", loc: bindings[0].loc, }
   program.main.children[0] = preparation_with_lexical_bindings_for_wb(
     child, bindings,
   )
@@ -1365,7 +1365,7 @@ test "RED: private finalization rejects malformed source metadata" {
     fail("expected typed verifier defect")
   } catch {
     BytecodeVerifierDefect(
-      { function_path, instruction_index, invariant, expected, actual }
+      { function_path, instruction_index, invariant, expected, actual, }
     ) => {
       assert_eq(function_path, [])
       assert_eq(instruction_index, None)
@@ -1668,7 +1668,7 @@ test "managed disposition corresponds to a typed VM suspension" {
   let conditional_frame = BytecodeFrame(
     conditional.verified_main,
     interp.global,
-    { strict: false, current_generator: None },
+    { strict: false, current_generator: None, },
   )
   match conditional_frame.step_bytecode(interp) {
     BytecodeFrameSuspensionReady(
@@ -2152,7 +2152,7 @@ test "bytecode lowering outcome preserves frontend and early errors" {
 ///|
 test "bytecode lowering outcome keeps builder invariant defects internal" {
   let builder = BytecodeBuilder::BytecodeBuilder(
-    { names: [], indices: Map([]), env_names: [], env_indices: Map([]) },
+    { names: [], indices: Map([]), env_names: [], env_indices: Map([]), },
     "invariant-test",
     SourcePointOwnerId(0),
     new_source_point_owner_allocator(),

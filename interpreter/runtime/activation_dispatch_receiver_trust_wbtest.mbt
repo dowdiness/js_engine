@@ -14,7 +14,7 @@ fn receiver_recursion_sealed_fixture(
     None => fail("expected callback-free receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
   let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
@@ -37,7 +37,7 @@ fn receiver_recursion_computed_sealed_fixture(
     None => fail("expected callback-free computed receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
   let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
@@ -60,7 +60,7 @@ fn receiver_recursion_escaped_computed_sealed_fixture(
     None => fail("expected callback-free escaped computed receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
   let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
@@ -210,7 +210,7 @@ fn receiver_recursion_toggle_escaped_access(
     }
     let property_index = if drift_index == 0 { 0 } else { 1 }
     let property = properties[property_index]
-    properties[property_index] = { ..property, key: toggle_key(property.key) }
+    properties[property_index] = { ..property, key: toggle_key(property.key), }
   } else if drift_index == 1 || drift_index == 3 {
     guard stmts[0] is @ast.FuncDecl(_, _, body, _, _) else {
       fail("expected the receiver function declaration")
@@ -420,10 +420,10 @@ test "receiver recursion trust rejects computed key drift at seal" {
     Some(found) => found
     None => fail("expected callback-free computed receiver preflight")
   }
-  let drift_loc : @token.Loc = { line: 99, col: 7, offset: 9999 }
+  let drift_loc : @token.Loc = { line: 99, col: 7, offset: 9999, }
   receiver_recursion_drift_computed_property_key(stmts, drift_loc)
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
   inspect(
@@ -449,7 +449,7 @@ test "receiver recursion trust rejects escaped-mode drift at every access site" 
     }
     receiver_recursion_toggle_escaped_access(stmts, drift_index)
     interp.prepare_root_program_execution(stmts, interp.global, false)
-    let ctx : ExecContext = { strict: false, current_generator: None }
+    let ctx : ExecContext = { strict: false, current_generator: None, }
     let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
     let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
     inspect(
@@ -678,7 +678,7 @@ test "mutual receiver recursion preflight seals both function identities" {
     None => fail("expected the exact mutual receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
   let _ = interp.exec_stmt(ctx, stmts[2], interp.global)
@@ -709,7 +709,7 @@ fn mutual_receiver_sealed_fixture(
     None => fail("expected the exact mutual receiver preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = interp.exec_stmt(ctx, stmts[index], interp.global)
   }
@@ -1056,7 +1056,7 @@ test "mutual receiver recursion trust rejects pre-seal key and body location dri
     }),
   }
   key_interp.prepare_root_program_execution(key_stmts, key_interp.global, false)
-  let key_ctx : ExecContext = { strict: false, current_generator: None }
+  let key_ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = key_interp.exec_stmt(key_ctx, key_stmts[index], key_interp.global)
   }
@@ -1096,7 +1096,7 @@ test "mutual receiver recursion trust rejects pre-seal key and body location dri
     body_interp.global,
     false,
   )
-  let body_ctx : ExecContext = { strict: false, current_generator: None }
+  let body_ctx : ExecContext = { strict: false, current_generator: None, }
   for index in 0..<3 {
     let _ = body_interp.exec_stmt(
       body_ctx,

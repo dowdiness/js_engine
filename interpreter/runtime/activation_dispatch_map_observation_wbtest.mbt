@@ -126,7 +126,7 @@ test "array map observations accept and release each managed activation once" {
     array_map_root_stmts=Some(stmts),
     activation_observation_port=probe.port(),
   )
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   match shell.drive_root_program(stmts, ctx) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact map fixture to complete normally")
@@ -166,7 +166,7 @@ test "array map direct observations accept and release each activation once" {
     activation_observation_port=probe.port(),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact direct map fixture to complete normally")
   }
@@ -205,7 +205,7 @@ test "array map forwarding observations resume both indices and release LIFO" {
     activation_observation_port=probe.port(),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the forwarding map fixture to complete normally")
   }
@@ -239,7 +239,7 @@ test "array map direct post-seal body drift rejects before executing" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact direct map setup run to complete")
   }
@@ -286,7 +286,7 @@ test "array map forwarding function body drift rejects before executing" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact forwarding map setup run to complete")
   }
@@ -330,7 +330,7 @@ test "array map forwarding function closure drift rejects before executing" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact forwarding map setup run to complete")
   }
@@ -345,14 +345,14 @@ test "array map forwarding function closure drift rejects before executing" {
               Object({
                 ..object_data,
                 callable: Some(
-                  UserFunc({ ..data, closure: Environment::new() }),
+                  UserFunc({ ..data, closure: Environment::new(), }),
                 ),
               })
             _ => fail("expected a forwarding UserFunc callable")
           }
         _ => fail("expected an object forwarding function")
       }
-      let mutated_registry = { ..registry, forward_function: Some(lookalike) }
+      let mutated_registry = { ..registry, forward_function: Some(lookalike), }
       shell.array_map_registry = Some(mutated_registry)
       match interp.global.bindings.get("f") {
         Some(binding) => binding.value = lookalike
@@ -395,7 +395,7 @@ test "array map forwarding requests own arguments in source order" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact forwarding map setup run to complete")
   }
@@ -438,7 +438,7 @@ test "array map forwarding requests own arguments in source order" {
   let callback_result = Ok(
     shell.execute_array_map_body_statement(
       {
-        ctx: { strict: false, current_generator: None },
+        ctx: { strict: false, current_generator: None, },
         stmt: callback_stmt,
         env: callback_env,
         index: 0,
@@ -485,7 +485,7 @@ test "array map forwarding requests own arguments in source order" {
   let forward_result = Ok(
     shell.execute_array_map_body_statement(
       {
-        ctx: { strict: false, current_generator: None },
+        ctx: { strict: false, current_generator: None, },
         stmt: forward_stmt,
         env: forward_env,
         index: 1,
@@ -539,7 +539,7 @@ test "array map forwarding step body drift rejects before executing" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact forwarding map setup run to complete")
   }
@@ -583,7 +583,7 @@ test "array map forwarding callback body drift rejects before executing" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact forwarding map setup run to complete")
   }
@@ -595,7 +595,7 @@ test "array map forwarding callback body drift rejects before executing" {
     _ => fail("expected a callback function expression")
   }
   let callback = interp.eval_expr(
-    { strict: false, current_generator: None },
+    { strict: false, current_generator: None, },
     callback_expr,
     interp.global,
   )
@@ -705,7 +705,7 @@ test "array map admission rejects prior constructor and species drift" {
     activation_observation_port=probe.port(),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the prior exact map run to complete")
   }
@@ -776,7 +776,7 @@ test "array map shell abort preserves guest identity and pops state" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the exact map setup run to complete")
   }
@@ -842,7 +842,7 @@ test "array map accessor drift invokes getter on renewed exact run" {
     array_map_root_stmts=Some(stmts),
   )
   match
-    shell.drive_root_program(stmts, { strict: false, current_generator: None }) {
+    shell.drive_root_program(stmts, { strict: false, current_generator: None, }) {
     DispatchNormal(Number(value)) => inspect(value, content="256")
     _ => fail("expected the first exact map run to complete")
   }
@@ -970,7 +970,7 @@ fn map_observation_control_run_for_source(
       array_map_root_stmts=Some(stmts),
       activation_observation_port=interp.execution_control_activation_observation_port(),
     )
-    let ctx : ExecContext = { strict: false, current_generator: None }
+    let ctx : ExecContext = { strict: false, current_generator: None, }
     let completion = shell.drive_root_program(stmts, ctx)
     (
       completion,

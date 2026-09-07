@@ -59,7 +59,7 @@ test "issue 933 retains one lexical binding reference across read and write" {
   let interp = Interpreter::new()
   let env = Environment::new(parent=Some(interp.global))
   env.def("value", Number(1.0), VarBinding)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let reference = match
     begin_executor_binding_reference(
       interp,
@@ -95,7 +95,7 @@ test "issue 933 strict reference reads allow eval and arguments" {
   let env = Environment::new(parent=Some(interp.global))
   env.def("eval", Number(1.0), VarBinding)
   env.def("arguments", Number(2.0), VarBinding)
-  let ctx : ExecContext = { strict: true, current_generator: None }
+  let ctx : ExecContext = { strict: true, current_generator: None, }
   for item in [("eval", "1"), ("arguments", "2")] {
     let name = item.0
     let expected = item.1
@@ -139,7 +139,7 @@ test "issue 933 lexical references retain parent cells and runtime errors" {
   let parent = Environment::new(parent=Some(interp.global))
   parent.def("parent_value", Number(3.0), LetBinding)
   let child = Environment::new(parent=Some(parent))
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let reference = match
     begin_executor_binding_reference(
       interp,
@@ -222,7 +222,7 @@ test "issue 933 lexical references retain parent cells and runtime errors" {
 test "issue 933 global and unresolved references preserve current assignment rules" {
   let interp = Interpreter::new()
   let env = Environment::new(parent=Some(interp.global))
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   match interp.global_this {
     Object(data) => data.bag.properties["global_value"] = Number(7.0)
     _ => fail("Interpreter::new must provide a global object")
@@ -288,7 +288,7 @@ test "issue 933 global and unresolved references preserve current assignment rul
     Ok(_) => fail("an unresolved reference must remain unresolved")
   }
 
-  let strict_ctx : ExecContext = { strict: true, current_generator: None }
+  let strict_ctx : ExecContext = { strict: true, current_generator: None, }
   let strict_unresolved = complete_binding_reference_for_wb(
     interp,
     begin_executor_binding_reference(
@@ -605,7 +605,7 @@ fn issue933_run_reference_probe(
 ///|
 test "issue 933 retains with reference across a real managed suspension" {
   let interp = Interpreter::new()
-  let events : Ref[Array[String]] = { val: [] }
+  let events : Ref[Array[String]] = { val: [], }
   let selected_target = make_object(
     Map([]),
     Null,
@@ -719,7 +719,7 @@ test "issue 933 retains with reference across a real managed suspension" {
     is_constructor: false,
   })
   let probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=with_env,
     name="name",
     value=Number(77.0),
@@ -763,7 +763,7 @@ test "issue 933 retains lexical cell across a real managed suspension" {
   let replacement_parent = Environment::new(parent=Some(interp.global))
   replacement_parent.interpreter_context = Some(interp)
   replacement_parent.def("name", Number(99.0), VarBinding)
-  let events : Ref[Array[String]] = { val: [] }
+  let events : Ref[Array[String]] = { val: [], }
   let trigger_get = make_native_func(
     name="lexicalTriggerGet",
     realm_state=Some(interp.realm_state),
@@ -790,7 +790,7 @@ test "issue 933 retains lexical cell across a real managed suspension" {
     is_constructor: false,
   })
   let probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=child,
     name="name",
     value=Number(77.0),
@@ -845,7 +845,7 @@ test "issue 933 suspended abrupt cleanup permits same-engine reuse" {
     is_constructor: false,
   })
   let first_probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=child,
     name="name",
     value=Number(5.0),
@@ -882,7 +882,7 @@ test "issue 933 suspended abrupt cleanup permits same-engine reuse" {
     _ => fail("trigger handler must remain an object")
   }
   let second_probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=child,
     name="name",
     value=Number(6.0),
@@ -937,7 +937,7 @@ test "issue 933 suspended interruption cleans up and permits reuse" {
     is_constructor: false,
   })
   let first_probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=child,
     name="name",
     value=Number(5.0),
@@ -976,7 +976,7 @@ test "issue 933 suspended interruption cleans up and permits reuse" {
   }
   interruption.requested.val = false
   let second_probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=child,
     name="name",
     value=Number(6.0),
@@ -1000,7 +1000,7 @@ test "issue 933 suspended interruption cleans up and permits reuse" {
 ///|
 test "issue 933 with Proxy resolves once and retains the selected base" {
   let interp = Interpreter::new()
-  let events : Ref[Array[String]] = { val: [] }
+  let events : Ref[Array[String]] = { val: [], }
   let has_trap = make_native_func(
     name="has",
     realm_state=Some(interp.realm_state),
@@ -1067,7 +1067,7 @@ test "issue 933 with Proxy resolves once and retains the selected base" {
     Bool(false)
   })
   let probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=with_env,
     name="name",
     value=Number(77.0),
@@ -1133,7 +1133,7 @@ test "issue 933 absent and unscopables-blocked names continue the environment ch
   with_env.interpreter_context = Some(interp)
   with_env.with_object = Some(with_object)
   let probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=with_env,
     name="blocked",
     value=Number(21.0),
@@ -1146,7 +1146,7 @@ test "issue 933 absent and unscopables-blocked names continue the environment ch
   assert_eq(outer.get("blocked").to_string(), "21")
 
   let absent_probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=with_env,
     name="absent_in_with",
     value=Number(22.0),
@@ -1159,7 +1159,7 @@ test "issue 933 absent and unscopables-blocked names continue the environment ch
   assert_eq(outer.get("absent_in_with").to_string(), "22")
 
   let missing_probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=with_env,
     name="not_present",
     value=Number(23.0),
@@ -1235,7 +1235,7 @@ test "issue 933 managed resolution preserves has get set and revoked errors" {
     issue933_run_reference_probe(
       interp,
       Issue933ReferenceProbe(
-        ctx={ strict: false, current_generator: None },
+        ctx={ strict: false, current_generator: None, },
         env=has_scope,
         name="name",
         value=Number(1.0),
@@ -1275,7 +1275,7 @@ test "issue 933 managed resolution preserves has get set and revoked errors" {
     issue933_run_reference_probe(
       interp,
       Issue933ReferenceProbe(
-        ctx={ strict: false, current_generator: None },
+        ctx={ strict: false, current_generator: None, },
         env=get_scope,
         name="name",
         value=Number(2.0),
@@ -1315,7 +1315,7 @@ test "issue 933 managed resolution preserves has get set and revoked errors" {
     issue933_run_reference_probe(
       interp,
       Issue933ReferenceProbe(
-        ctx={ strict: false, current_generator: None },
+        ctx={ strict: false, current_generator: None, },
         env=set_scope,
         name="name",
         value=Number(3.0),
@@ -1344,7 +1344,7 @@ test "issue 933 managed resolution preserves has get set and revoked errors" {
     issue933_run_reference_probe(
       interp,
       Issue933ReferenceProbe(
-        ctx={ strict: false, current_generator: None },
+        ctx={ strict: false, current_generator: None, },
         env=revoked_env,
         name="name",
         value=Number(4.0),
@@ -1368,7 +1368,7 @@ test "issue 933 managed resolution preserves has get set and revoked errors" {
 ///|
 test "issue 933 preserves the selected with base when the recheck disappears" {
   let interp = Interpreter::new()
-  let has_count : Ref[Int] = { val: 0 }
+  let has_count : Ref[Int] = { val: 0, }
   let has_toggle = make_native_func(
     name="hasToggle",
     realm_state=Some(interp.realm_state),
@@ -1388,7 +1388,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
       }
     },
   )
-  let set_count : Ref[Int] = { val: 0 }
+  let set_count : Ref[Int] = { val: 0, }
   let set_trap = make_native_func(
     name="set",
     realm_state=Some(interp.realm_state),
@@ -1401,7 +1401,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
     interp, has_toggle, get_trap, set_trap,
   )
   let probe = Issue933ReferenceProbe(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     env=scope,
     name="vanishing",
     value=Number(31.0),
@@ -1423,7 +1423,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
     _ => fail("with binding must remain a Proxy")
   }
 
-  let strict_count : Ref[Int] = { val: 0 }
+  let strict_count : Ref[Int] = { val: 0, }
   let strict_has = make_native_func(
     name="strictHasToggle",
     realm_state=Some(interp.realm_state),
@@ -1439,7 +1439,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
     issue933_run_reference_probe(
       interp,
       Issue933ReferenceProbe(
-        ctx={ strict: true, current_generator: None },
+        ctx={ strict: true, current_generator: None, },
         env=strict_scope,
         name="vanishing",
         value=Number(32.0),

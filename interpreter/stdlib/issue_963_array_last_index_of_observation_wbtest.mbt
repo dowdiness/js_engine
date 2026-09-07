@@ -56,7 +56,7 @@ fn call_array_last_index_of_with_observation_probe_963(
 
 ///|
 test "Array.lastIndexOf observes every reverse logical index including holes" {
-  let trace : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
   let sparse = @runtime.make_array_with_holes(
     [Undefined, Undefined, Undefined],
     [0, 1, 2],
@@ -77,7 +77,7 @@ test "Array.lastIndexOf observes every reverse logical index including holes" {
 
 ///|
 test "Array.lastIndexOf observes before indexed getter work" {
-  let trace : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
   let getter = @runtime.make_object(
     Map([]),
     Null,
@@ -123,7 +123,7 @@ test "Array.lastIndexOf observes before indexed getter work" {
 
 ///|
 test "Array.lastIndexOf observation interrupts before indexed property work" {
-  let trace : Ref[Array[String]] = { val: [] }
+  let trace : Ref[Array[String]] = { val: [], }
   let completion : Error? = try {
     ignore(
       call_array_last_index_of_with_observation_probe_963(
@@ -147,9 +147,9 @@ test "Array.lastIndexOf observation interrupts before indexed property work" {
 
 ///|
 test "Array.lastIndexOf observation interrupts before Proxy has and get" {
-  let trace : Ref[Array[String]] = { val: [] }
-  let has_calls : Ref[Int] = { val: 0 }
-  let get_calls : Ref[Int] = { val: 0 }
+  let trace : Ref[Array[String]] = { val: [], }
+  let has_calls : Ref[Int] = { val: 0, }
+  let get_calls : Ref[Int] = { val: 0, }
   let interp = @runtime.Interpreter::new(setup_builtins=fn(env, args, rs, ab) {
     setup_builtins_with_realm_state(env, args, rs, annex_b=ab)
   })

@@ -46,12 +46,12 @@ const PIPELINE_EXEC_PROGRAM : String =
 
 ///|
 fn default_ctx() -> @runtime.ExecContext {
-  { strict: false, current_generator: None }
+  { strict: false, current_generator: None, }
 }
 
 ///|
 fn strict_ctx() -> @runtime.ExecContext {
-  { strict: true, current_generator: None }
+  { strict: true, current_generator: None, }
 }
 
 ///|

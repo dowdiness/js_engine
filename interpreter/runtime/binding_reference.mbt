@@ -32,7 +32,7 @@ fn ExecutorBindingReferenceRequest::ExecutorBindingReferenceRequest(
   name~ : String,
   loc~ : @token.Loc,
 ) -> ExecutorBindingReferenceRequest {
-  { ctx, env, name, loc }
+  { ctx, env, name, loc, }
 }
 
 ///|
@@ -227,7 +227,7 @@ fn ExecutorBindingReferencePutOperation::ExecutorBindingReferencePutOperation(
   value : Value,
   obj : Value,
 ) -> ExecutorBindingReferencePutOperation {
-  { reference, value, phase: ExecutorBindingReferencePutNeedHas(obj) }
+  { reference, value, phase: ExecutorBindingReferencePutNeedHas(obj), }
 }
 
 ///|
@@ -370,7 +370,7 @@ priv struct ExecutorBindingReferenceAccessFrame {
 fn ExecutorBindingReferenceAccessFrame::ExecutorBindingReferenceAccessFrame(
   request : ExecutorBindingReferenceAccessRequest,
 ) -> ExecutorBindingReferenceAccessFrame {
-  { request, phase: ExecutorBindingReferenceAccessNeedOperation }
+  { request, phase: ExecutorBindingReferenceAccessNeedOperation, }
 }
 
 ///|
@@ -524,7 +524,7 @@ fn resolved_binding_reference(
   ctx : ExecContext,
   loc : @token.Loc,
 ) -> ResolvedBindingReference {
-  { kind, name, strict: ctx.strict, loc }
+  { kind, name, strict: ctx.strict, loc, }
 }
 
 ///|
@@ -697,7 +697,7 @@ priv struct ExecutorBindingReferenceFrame {
 fn ExecutorBindingReferenceFrame::ExecutorBindingReferenceFrame(
   request : ExecutorBindingReferenceRequest,
 ) -> ExecutorBindingReferenceFrame {
-  { request, phase: ExecutorBindingReferenceNeedEnvironment(request.env) }
+  { request, phase: ExecutorBindingReferenceNeedEnvironment(request.env), }
 }
 
 ///|

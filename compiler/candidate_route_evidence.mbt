@@ -20,7 +20,7 @@ fn CandidateRoutePrepared::CandidateRoutePrepared(
   source_identity : BytecodeSourceIdentity,
   decision : CandidateSelection,
 ) -> CandidateRoutePrepared {
-  { activation_id, source_identity, decision }
+  { activation_id, source_identity, decision, }
 }
 
 ///|
@@ -36,7 +36,7 @@ fn CandidateRouteStarted::CandidateRouteStarted(
   source_identity : BytecodeSourceIdentity,
   executor : CandidateRouteExecutor,
 ) -> CandidateRouteStarted {
-  { activation_id, source_identity, executor }
+  { activation_id, source_identity, executor, }
 }
 
 ///|
@@ -52,7 +52,7 @@ fn CandidateRouteCompleted::CandidateRouteCompleted(
   source_identity : BytecodeSourceIdentity,
   completion : CandidateRouteCompletion,
 ) -> CandidateRouteCompleted {
-  { activation_id, source_identity, completion }
+  { activation_id, source_identity, completion, }
 }
 
 ///|
@@ -213,7 +213,7 @@ fn candidate_route_prepare(
   }
   candidate_route_record_lifecycle(evidence, activation_id, lifecycle.val)
   candidate_route_record_event(evidence, CandidateRoutePreparedEvent(prepared))
-  { evidence, prepared, lifecycle }
+  { evidence, prepared, lifecycle, }
 }
 
 ///|

@@ -1447,7 +1447,7 @@ fn candidate_build_identity_node(
       ),
     )
   }
-  { source_identity, children }
+  { source_identity, children, }
 }
 
 ///|
@@ -1556,7 +1556,7 @@ fn candidate_materialize_function(
             )
         }
       }
-      Some({ function, child_slots })
+      Some({ function, child_slots, })
     }
   }
   let selection = match plan.lowering {

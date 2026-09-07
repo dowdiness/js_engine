@@ -217,7 +217,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   }
 
   fn make_loc() -> @token.Loc {
-    { line, col, offset: utf16_pos() }
+    { line, col, offset: utf16_pos(), }
   }
 
   fn char_at(i : Int) -> Char {

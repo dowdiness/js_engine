@@ -21,7 +21,7 @@ pub extend Loc with Show::{output, to_string}
 
 ///|
 pub fn Loc::default() -> Loc noraise {
-  { line: 1, col: 1, offset: 0 }
+  { line: 1, col: 1, offset: 0, }
 }
 
 ///|
@@ -39,7 +39,7 @@ pub extend SourceSpan with @debug.Debug::{to_repr}
 
 ///|
 fn SourceSpan::SourceSpan(start : Loc, end : Loc) -> SourceSpan {
-  { start_: start, end_: end }
+  { start_: start, end_: end, }
 }
 
 ///|
@@ -261,7 +261,7 @@ pub fn Token::Token(
   } else {
     end_offset
   }
-  { kind, loc, raw, lex_form, end_offset }
+  { kind, loc, raw, lex_form, end_offset, }
 }
 
 ///|
@@ -303,5 +303,5 @@ pub fn Token::source_span(self : Token, source : String) -> SourceSpan? {
       }
     },
   )
-  Some(SourceSpan(self.loc, { line, col, offset: self.end_offset }))
+  Some(SourceSpan(self.loc, { line, col, offset: self.end_offset, }))
 }

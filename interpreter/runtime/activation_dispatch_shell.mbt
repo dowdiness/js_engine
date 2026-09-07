@@ -58,7 +58,7 @@ fn DispatchNumericParameterCapability::DispatchNumericParameterCapability(
   env~ : Environment,
   name~ : String,
 ) -> DispatchNumericParameterCapability {
-  { env, name }
+  { env, name, }
 }
 
 ///|
@@ -74,7 +74,7 @@ fn DispatchNumericCatchBindingCapability::DispatchNumericCatchBindingCapability(
   env~ : Environment,
   name~ : String,
 ) -> DispatchNumericCatchBindingCapability {
-  { env, name }
+  { env, name, }
 }
 
 ///|
@@ -101,7 +101,7 @@ fn DispatchNumericActivationCapabilities::DispatchNumericActivationCapabilities(
   recursive_callee~ : DispatchNumericCalleeCaptureState,
   catch_binding~ : DispatchNumericCatchBindingState,
 ) -> DispatchNumericActivationCapabilities {
-  { parameter, retained_parameter, recursive_callee, catch_binding }
+  { parameter, retained_parameter, recursive_callee, catch_binding, }
 }
 
 ///|
@@ -171,7 +171,7 @@ fn DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
   active_realm~ : ActiveCalleeRealmValueScope,
   parameter_gate~ : SimpleUserFuncParameterGateScope,
 ) -> DispatchNumericCallRealmCleanup {
-  { cleared_realm, active_realm, parameter_gate }
+  { cleared_realm, active_realm, parameter_gate, }
 }
 
 ///|
@@ -187,7 +187,7 @@ fn DispatchGetterCallRealmCleanup::DispatchGetterCallRealmCleanup(
   active_realm~ : ActiveCalleeRealmValueScope,
   parameter_gate~ : SimpleUserFuncParameterGateScope,
 ) -> DispatchGetterCallRealmCleanup {
-  { cleared_realm, active_realm, parameter_gate }
+  { cleared_realm, active_realm, parameter_gate, }
 }
 
 ///|
@@ -203,7 +203,7 @@ fn DispatchProxyCallRealmCleanup::DispatchProxyCallRealmCleanup(
   active_realm~ : ActiveCalleeRealmValueScope,
   parameter_gate~ : SimpleUserFuncParameterGateScope,
 ) -> DispatchProxyCallRealmCleanup {
-  { cleared_realm, active_realm, parameter_gate }
+  { cleared_realm, active_realm, parameter_gate, }
 }
 
 ///|
@@ -226,7 +226,7 @@ fn DispatchConstructorCallRealmCleanup::DispatchConstructorCallRealmCleanup(
   active_realm~ : ActiveCalleeRealmValueScope,
   parameter_gate~ : SimpleUserFuncParameterGateScope,
 ) -> DispatchConstructorCallRealmCleanup {
-  { cleared_realm, active_realm, parameter_gate }
+  { cleared_realm, active_realm, parameter_gate, }
 }
 
 ///|
@@ -235,7 +235,7 @@ fn DispatchReceiverCallRealmCleanup::DispatchReceiverCallRealmCleanup(
   active_realm~ : ActiveCalleeRealmValueScope,
   parameter_gate~ : SimpleUserFuncParameterGateScope,
 ) -> DispatchReceiverCallRealmCleanup {
-  { cleared_realm, active_realm, parameter_gate }
+  { cleared_realm, active_realm, parameter_gate, }
 }
 
 ///|

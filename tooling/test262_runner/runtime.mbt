@@ -362,5 +362,5 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   // process failure. Exit codes signal runner health only: 0 = completed
   // and wrote results; 1 = runtime/internal error (raised before this
   // point, including a failed save_results); 2 = CLI usage error.
-  { stdout: out.to_string(), stderr: err.to_string(), code: 0 }
+  { stdout: out.to_string(), stderr: err.to_string(), code: 0, }
 }

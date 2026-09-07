@@ -49,7 +49,7 @@ priv struct TimerQueuePolicyCore {
 fn TimerQueuePolicyCore::TimerQueuePolicyCore(
   safety_limit : Int,
 ) -> TimerQueuePolicyCore {
-  { safety_limit, iterations: 0, phase: TimerQueueCoreReady }
+  { safety_limit, iterations: 0, phase: TimerQueueCoreReady, }
 }
 
 ///|
@@ -76,7 +76,7 @@ fn TimerQueuePolicyCore::accept_dispatch_observation(
 ) -> TimerQueuePolicyCore raise {
   match self.readiness(queue_is_empty) {
     TimerQueueObservationRequired =>
-      { ..self, phase: TimerQueueCoreCommitRequired }
+      { ..self, phase: TimerQueueCoreCommitRequired, }
     TimerQueueEmpty | TimerQueueSafetyLimit =>
       invalid_timer_queue_policy_transition(
         "accept_dispatch_observation requires ObservationRequired",
@@ -112,12 +112,12 @@ fn TimerQueuePolicyCore::commit_popped(
   let iterations = self.iterations + 1
   if cancelled {
     (
-      { ..self, iterations, phase: TimerQueueCoreReady },
+      { ..self, iterations, phase: TimerQueueCoreReady, },
       TimerQueueDiscardCommitted,
     )
   } else {
     (
-      { ..self, iterations, phase: TimerQueueCoreSelected(timer) },
+      { ..self, iterations, phase: TimerQueueCoreSelected(timer), },
       TimerQueueRunCommitted(timer),
     )
   }
@@ -129,7 +129,7 @@ fn TimerQueuePolicyCore::callback_succeeded(
 ) -> TimerQueuePolicyCore raise {
   match self.phase {
     TimerQueueCoreSelected(timer) =>
-      { ..self, phase: TimerQueueCoreCallbackSucceeded(timer) }
+      { ..self, phase: TimerQueueCoreCallbackSucceeded(timer), }
     TimerQueueCoreReady
     | TimerQueueCoreCommitRequired
     | TimerQueueCoreCallbackSucceeded(_)
@@ -146,7 +146,7 @@ fn TimerQueuePolicyCore::callback_failed(
   self : TimerQueuePolicyCore,
 ) -> TimerQueuePolicyCore raise {
   match self.phase {
-    TimerQueueCoreSelected(_) => { ..self, phase: TimerQueueCoreFailed }
+    TimerQueueCoreSelected(_) => { ..self, phase: TimerQueueCoreFailed, }
     TimerQueueCoreReady
     | TimerQueueCoreCommitRequired
     | TimerQueueCoreCallbackSucceeded(_)
@@ -186,7 +186,7 @@ fn TimerQueuePolicyCore::checkpoint_succeeded(
   } else {
     TimerQueueDoNotRequeue
   }
-  ({ ..self, phase: TimerQueueCoreReady }, decision)
+  ({ ..self, phase: TimerQueueCoreReady, }, decision)
 }
 
 ///|
@@ -195,7 +195,7 @@ fn TimerQueuePolicyCore::checkpoint_failed(
 ) -> TimerQueuePolicyCore raise {
   match self.phase {
     TimerQueueCoreCallbackSucceeded(_) =>
-      { ..self, phase: TimerQueueCoreFailed }
+      { ..self, phase: TimerQueueCoreFailed, }
     TimerQueueCoreReady
     | TimerQueueCoreCommitRequired
     | TimerQueueCoreSelected(_)
@@ -215,5 +215,5 @@ fn TimerQueuePolicyCore::complete_run(
   guard self.phase is TimerQueueCoreReady else {
     invalid_timer_queue_policy_transition("complete_run requires Ready")
   }
-  ({ ..self, phase: TimerQueueCoreCompleted }, queue_is_empty)
+  ({ ..self, phase: TimerQueueCoreCompleted, }, queue_is_empty)
 }

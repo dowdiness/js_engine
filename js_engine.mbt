@@ -126,7 +126,7 @@ pub struct Engine {
 
 ///|
 pub fn Engine::Engine(annex_b? : Bool = false) -> Engine {
-  { interp: @interpreter.new_interpreter(annex_b~) }
+  { interp: @interpreter.new_interpreter(annex_b~), }
 }
 
 ///|
@@ -292,7 +292,7 @@ pub fn LoadedScript::LoadedScript(
   identity~ : String,
   source~ : String,
 ) -> LoadedScript {
-  { identity, source }
+  { identity, source, }
 }
 
 ///|

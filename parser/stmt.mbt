@@ -411,7 +411,7 @@ fn Parser::parse_params_ext(
       } else {
         None
       }
-      params.push({ name, default_val, pattern: None, is_rest_pattern: false })
+      params.push({ name, default_val, pattern: None, is_rest_pattern: false, })
     }
     while self.eat(Comma) {
       if rest_param is Some(_) {
@@ -936,7 +936,7 @@ fn Parser::parse_switch_stmt(self : Parser) -> @ast.Stmt raise Error {
             !self.at(EOF) {
         body.push(self.parse_stmt())
       }
-      cases.push({ condition: Some(test_expr), body })
+      cases.push({ condition: Some(test_expr), body, })
     } else if self.eat(Default) {
       let _ = self.expect(Colon)
       let body : Array[@ast.Stmt] = []
@@ -946,7 +946,7 @@ fn Parser::parse_switch_stmt(self : Parser) -> @ast.Stmt raise Error {
             !self.at(EOF) {
         body.push(self.parse_stmt())
       }
-      cases.push({ condition: None, body })
+      cases.push({ condition: None, body, })
     } else {
       let t = self.peek()
       raise @errors.SyntaxError(
@@ -1126,7 +1126,7 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
       }
       (IdentPat(key), def)
     }
-    props.push({ key, key_lex_form, key_loc, value, default_val, computed_key })
+    props.push({ key, key_lex_form, key_loc, value, default_val, computed_key, })
     if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
@@ -1452,7 +1452,7 @@ fn Parser::parse_import_specifiers(
       }
       imported
     }
-    specs.push({ local_name, imported })
+    specs.push({ local_name, imported, })
     if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }
@@ -1624,7 +1624,7 @@ fn Parser::parse_export_specifiers(
     } else {
       local_name
     }
-    specs.push({ local_name, exported })
+    specs.push({ local_name, exported, })
     if !self.at(RBrace) {
       let _ = self.expect(Comma)
     }

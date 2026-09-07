@@ -497,7 +497,7 @@ fn collect_analyzer_files_in_dir(
     if @fs.is_dir(full_path) {
       collect_analyzer_files_in_dir(full_path, rel_path, files)
     } else if @fs.is_file(full_path) && entry.has_suffix(".js") {
-      files.push({ full_path, rel_path })
+      files.push({ full_path, rel_path, })
     }
   }
 }
@@ -888,5 +888,5 @@ pub fn run_analyze(
   }
   @fs.write_string_to_file(output, report_json.stringify(indent=2) + "\n")
   stdout_lines.push("  Results saved to: " + output)
-  { stdout_lines, stderr_lines: [], code: 0 }
+  { stdout_lines, stderr_lines: [], code: 0, }
 }

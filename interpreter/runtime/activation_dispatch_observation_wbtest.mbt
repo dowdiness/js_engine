@@ -144,7 +144,7 @@ fn dispatch_observation_numeric_fixture(
     Some(found) => found
     None => fail("expected exact numeric recursion preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let shell = PrimitiveProgramDispatchShell(
     interp,
     numeric_root_preflight=Some(preflight),
@@ -168,7 +168,7 @@ fn dispatch_observation_getter_fixture(
     Some(found) => found
     None => fail("expected exact getter recursion preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let shell = PrimitiveProgramDispatchShell(
     interp,
     getter_root_preflight=Some(preflight),
@@ -196,7 +196,7 @@ fn dispatch_observation_proxy_fixture(
     Some(found) => found
     None => fail("expected exact Proxy recursion preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let shell = PrimitiveProgramDispatchShell(
     interp,
     proxy_root_preflight=Some(preflight),
@@ -376,7 +376,7 @@ test "runtime abrupt completion releases every observed numeric call" {
 test "runtime abrupt skips catch, runs finalizers, and preserves identity before release" {
   let interp = Interpreter::new()
   let trace : Array[String] = []
-  let observed_steps : Ref[Int] = { val: 0 }
+  let observed_steps : Ref[Int] = { val: 0, }
   let runtime_failure : Error = ExecutionControlError(Interrupted)
   interp.global.bindings[EXECUTION_CONTROL_BINDING] = {
     value: make_object(
@@ -403,11 +403,11 @@ test "runtime abrupt skips catch, runs finalizers, and preserves identity before
     annex_b_hoisted: false,
     is_parameter: false,
   }
-  let attempts : Ref[Int] = { val: 0 }
-  let accepted : Ref[Int] = { val: 0 }
-  let rejected : Ref[Int] = { val: 0 }
-  let released : Ref[Int] = { val: 0 }
-  let denied : Ref[Int] = { val: 0 }
+  let attempts : Ref[Int] = { val: 0, }
+  let accepted : Ref[Int] = { val: 0, }
+  let rejected : Ref[Int] = { val: 0, }
+  let released : Ref[Int] = { val: 0, }
+  let denied : Ref[Int] = { val: 0, }
   let observation_port = ActivationObservationPort(
     begin_entry=() => {
       attempts.val += 1

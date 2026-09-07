@@ -23,7 +23,7 @@ fn UnitTestCounts::UnitTestCounts(
   passed : Int,
   executed : Int,
 ) -> UnitTestCounts {
-  { passed, executed }
+  { passed, executed, }
 }
 
 ///|
@@ -47,7 +47,7 @@ fn ConformanceCounts::ConformanceCounts(
   discovered : Int,
   skipped : Int,
 ) -> ConformanceCounts {
-  { passed, executed, discovered, skipped }
+  { passed, executed, discovered, skipped, }
 }
 
 ///|
@@ -114,7 +114,7 @@ fn PackageEvidence::PackageEvidence(
   content_sha256 : String,
   file_count : Int,
 ) -> PackageEvidence {
-  { content_sha256, file_count }
+  { content_sha256, file_count, }
 }
 
 ///|

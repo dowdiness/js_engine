@@ -840,7 +840,7 @@ fn numeric_root_activation_test_fixture(
     numeric_root_preflight=Some(preflight),
   )
   let cursor = DispatchStatementCursor(
-    ctx={ strict: false, current_generator: None },
+    ctx={ strict: false, current_generator: None, },
     stmts~,
     env=interp.global,
   )
@@ -1315,7 +1315,7 @@ test "numeric root clears caller realm before sealing and restores it" {
     Some(found) => found
     None => fail("expected callback-free numeric preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let completed = try {
     match
       activation_dispatch_root_value(

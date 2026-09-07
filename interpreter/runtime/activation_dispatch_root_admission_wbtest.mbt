@@ -445,7 +445,7 @@ test "array map sealing rejects a reclassified direct location" {
   let shifted = root_admission_test_program(
     "\n" + MAP_DIRECT_OBSERVATION_SOURCE,
   )
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, original[0], interp.global)
   let _ = try {
     ignore(interp.seal_array_map_recursion_registry(preflight, shifted))

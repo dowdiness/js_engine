@@ -11,7 +11,7 @@ fn ActivationRealmProbe::ActivationRealmProbe(
   failure_phase : String,
   failure : Error,
 ) -> ActivationRealmProbe {
-  { prototype, failure_phase, failure }
+  { prototype, failure_phase, failure, }
 }
 
 ///|
@@ -150,7 +150,7 @@ fn ExecutorActivationTestCode::ExecutorActivationTestCode(
   starts~ : Ref[Int],
   steps~ : Ref[Int],
 ) -> ExecutorActivationTestCode {
-  { starts, steps }
+  { starts, steps, }
 }
 
 ///|
@@ -235,7 +235,7 @@ fn ExecutorActivationThisValueCode::ExecutorActivationThisValueCode(
   expected~ : Value,
   value~ : Value,
 ) -> ExecutorActivationThisValueCode {
-  { expected, value }
+  { expected, value, }
 }
 
 ///|
@@ -244,7 +244,7 @@ fn ExecutorActivationOrderedValueCode::ExecutorActivationOrderedValueCode(
   label~ : String,
   value~ : Value,
 ) -> ExecutorActivationOrderedValueCode {
-  { events, label, value }
+  { events, label, value, }
 }
 
 ///|
@@ -253,7 +253,7 @@ fn ExecutorActivationOrderedIncrementCode::ExecutorActivationOrderedIncrementCod
   label~ : String,
   increment~ : Double,
 ) -> ExecutorActivationOrderedIncrementCode {
-  { events, label, increment }
+  { events, label, increment, }
 }
 
 ///|
@@ -263,7 +263,7 @@ fn ExecutorActivationMutateBindingCode::ExecutorActivationMutateBindingCode(
   replacement~ : Value,
   value~ : Value,
 ) -> ExecutorActivationMutateBindingCode {
-  { closure, binding_name, replacement, value }
+  { closure, binding_name, replacement, value, }
 }
 
 ///|
@@ -295,7 +295,7 @@ fn ExecutorActivationCoercingAdditionRootFrame::ExecutorActivationCoercingAdditi
   right~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorActivationCoercingAdditionRootFrame {
-  { left, right, loc, requested: false, result: None }
+  { left, right, loc, requested: false, result: None, }
 }
 
 ///|
@@ -304,7 +304,7 @@ fn ExecutorActivationCoercingSubtractionRootFrame::ExecutorActivationCoercingSub
   right~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorActivationCoercingSubtractionRootFrame {
-  { left, right, loc, requested: false, result: None }
+  { left, right, loc, requested: false, result: None, }
 }
 
 ///|
@@ -426,7 +426,7 @@ fn ExecutorActivationCallCode::ExecutorActivationCallCode(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorActivationCallCode {
-  { callee, this_value, args: args.copy(), loc }
+  { callee, this_value, args: args.copy(), loc, }
 }
 
 ///|
@@ -434,7 +434,7 @@ fn ExecutorActivationRecoverCode::ExecutorActivationRecoverCode(
   request~ : ExecutorActivationRecoverRequest,
   expected~ : Error,
 ) -> ExecutorActivationRecoverCode {
-  { request, expected }
+  { request, expected, }
 }
 
 ///|
@@ -444,7 +444,14 @@ fn ExecutorActivationCallFrame::ExecutorActivationCallFrame(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorActivationCallFrame {
-  { callee, this_value, args: args.copy(), loc, requested: false, result: None }
+  {
+    callee,
+    this_value,
+    args: args.copy(),
+    loc,
+    requested: false,
+    result: None,
+  }
 }
 
 ///|
@@ -453,7 +460,7 @@ fn ExecutorActivationConstructFrame::ExecutorActivationConstructFrame(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorActivationConstructFrame {
-  { ctor, args: args.copy(), loc, requested: false, result: None }
+  { ctor, args: args.copy(), loc, requested: false, result: None, }
 }
 
 ///|
@@ -461,7 +468,7 @@ fn ExecutorActivationRecoverFrame::ExecutorActivationRecoverFrame(
   callee~ : Value,
   expected~ : Error,
 ) -> ExecutorActivationRecoverFrame {
-  { callee, expected, requested: false, result: None, abrupt: None }
+  { callee, expected, requested: false, result: None, abrupt: None, }
 }
 
 ///|
@@ -469,7 +476,7 @@ fn ExecutorActivationRecoverRequestFrame::ExecutorActivationRecoverRequestFrame(
   request~ : ExecutorActivationRecoverRequest,
   expected~ : Error,
 ) -> ExecutorActivationRecoverRequestFrame {
-  { request, expected, requested: false, result: None, abrupt: None }
+  { request, expected, requested: false, result: None, abrupt: None, }
 }
 
 ///|
@@ -478,7 +485,7 @@ fn ExecutorActivationDeliveryErrorFrame::ExecutorActivationDeliveryErrorFrame(
   expected~ : Error,
   delivery_count~ : Ref[Int],
 ) -> ExecutorActivationDeliveryErrorFrame {
-  { request, expected, delivery_count, requested: false }
+  { request, expected, delivery_count, requested: false, }
 }
 
 ///|
@@ -487,7 +494,7 @@ fn ExecutorActivationCleanupObservationFrame::ExecutorActivationCleanupObservati
   expected~ : Error,
   events~ : Array[String],
 ) -> ExecutorActivationCleanupObservationFrame {
-  { callee, expected, events, requested: false, delivered: false }
+  { callee, expected, events, requested: false, delivered: false, }
 }
 
 ///|
@@ -496,7 +503,7 @@ fn ExecutorActivationPropertyGetFrame::ExecutorActivationPropertyGetFrame(
   property_name~ : String,
   loc~ : @token.Loc,
 ) -> ExecutorActivationPropertyGetFrame {
-  { target, property_name, loc, requested: false, result: None }
+  { target, property_name, loc, requested: false, result: None, }
 }
 
 ///|
@@ -507,7 +514,7 @@ fn ExecutorActivationPropertySetFrame::ExecutorActivationPropertySetFrame(
   loc~ : @token.Loc,
   strict~ : Bool,
 ) -> ExecutorActivationPropertySetFrame {
-  { target, property_name, value, loc, strict, requested: false, result: None }
+  { target, property_name, value, loc, strict, requested: false, result: None, }
 }
 
 ///|
@@ -517,7 +524,7 @@ fn ExecutorActivationPropertySetDeliveryErrorFrame::ExecutorActivationPropertySe
   expected~ : Error,
   delivery_count~ : Ref[Int],
 ) -> ExecutorActivationPropertySetDeliveryErrorFrame {
-  { target, value, expected, delivery_count, requested: false }
+  { target, value, expected, delivery_count, requested: false, }
 }
 
 ///|
@@ -525,7 +532,7 @@ fn ExecutorActivationRecursivePropertySetFrame::ExecutorActivationRecursivePrope
   target~ : Ref[Value],
   remaining~ : Ref[Int],
 ) -> ExecutorActivationRecursivePropertySetFrame {
-  { target, remaining, requested: false, result: None }
+  { target, remaining, requested: false, result: None, }
 }
 
 ///|
@@ -547,7 +554,7 @@ fn ExecutorActivationValueCode::ExecutorActivationValueCode(
   starts~ : Ref[Int],
   value~ : Value,
 ) -> ExecutorActivationValueCode {
-  { starts, value }
+  { starts, value, }
 }
 
 ///|
@@ -558,7 +565,7 @@ fn ExecutorActivationProxyAdditionGetCode::ExecutorActivationProxyAdditionGetCod
   value_of~ : Value,
   to_string~ : Value,
 ) -> ExecutorActivationProxyAdditionGetCode {
-  { events, expected_receiver, to_primitive_id, value_of, to_string }
+  { events, expected_receiver, to_primitive_id, value_of, to_string, }
 }
 
 ///|
@@ -567,7 +574,7 @@ fn ExecutorActivationRecursivePropertySetCode::ExecutorActivationRecursiveProper
   remaining~ : Ref[Int],
   starts~ : Ref[Int],
 ) -> ExecutorActivationRecursivePropertySetCode {
-  { target, remaining, starts }
+  { target, remaining, starts, }
 }
 
 ///|
@@ -1020,8 +1027,8 @@ fn install_executor_activation_probe(
 ///|
 test "static property getter admission rejects mutable exotic state" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
-  let steps : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
+  let steps : Ref[Int] = { val: 0, }
   let getter = make_executor_function(
     Some("getter"),
     [],
@@ -1056,7 +1063,7 @@ test "static property getter admission rejects mutable exotic state" {
 ///|
 test "computed property admission seals only primitive string own accessors" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let getter = make_executor_function(
     Some("getter"),
     [],
@@ -1080,7 +1087,7 @@ test "computed property admission seals only primitive string own accessors" {
       }
     _ => fail("primitive string own accessor should be admitted")
   }
-  let symbol_key = Symbol({ id: 101, description: None })
+  let symbol_key = Symbol({ id: 101, description: None, })
   let object_key = Object({
     bag: PropertyBag::PropertyBag(),
     prototype: Null,
@@ -1183,7 +1190,7 @@ test "static property getter exotic fallback runs once and preserves identity" {
     extensible: true,
     arraybuffer_state: None,
   })
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let getter = make_executor_function(
     Some("getter"),
     [],
@@ -1215,7 +1222,7 @@ test "property activation lifecycle nests outer scope around inner call" {
   let interp = Interpreter::new()
   let events : Array[String] = []
   install_executor_activation_probe(interp, events, None)
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let getter = make_executor_function(
     Some("getter"),
     [],
@@ -1285,7 +1292,7 @@ test "property activation denied observation restores scope without release" {
     message="property observation sentinel",
   )
   install_executor_activation_probe(interp, events, Some(sentinel))
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let getter = make_executor_function(
     Some("getter"),
     [],
@@ -1974,8 +1981,8 @@ impl ExecutorActivationFrame for ExecutorActivationValueFrame with fn deliver_ac
 ///|
 test "executor-neutral shell prepares once and drives explicit frame steps" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
-  let steps : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
+  let steps : Ref[Int] = { val: 0, }
   let function = make_executor_function(
     Some("stepper"),
     ["x"],
@@ -2026,8 +2033,8 @@ test "executor-neutral shell preserves abrupt error and restores dynamic gate" {
 ///|
 test "executor function retains an inspectable neutral payload before entry" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
-  let steps : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
+  let steps : Ref[Int] = { val: 0, }
   let function = make_executor_function(
     Some("inspectable"),
     ["x"],
@@ -2062,7 +2069,7 @@ fn assert_executor_activation_delivery_error(
   sentinel : Error,
 ) -> Unit raise {
   let interp = Interpreter::new()
-  let delivery_count : Ref[Int] = { val: 0 }
+  let delivery_count : Ref[Int] = { val: 0, }
   let root = ExecutorActivationDeliveryErrorFrame(
       request~,
       expected=sentinel,
@@ -2116,8 +2123,8 @@ test "activation coordinator does not redeliver fallback completion failures" {
 ///|
 test "activation coordinator resumes one child result and normalizes it" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
-  let steps : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
+  let steps : Ref[Int] = { val: 0, }
   let child = make_executor_function(
     Some("child"),
     ["x"],
@@ -2144,7 +2151,7 @@ test "activation coordinator resumes one child result and normalizes it" {
 ///|
 test "activation coordinator delivers one normalized construct result" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let child = make_executor_function(
     Some("constructor"),
     [],
@@ -2727,7 +2734,7 @@ test "tree admission rejects an unsupported native callee on an otherwise suppor
 ///|
 test "tree admission rejects unsupported earlier calls before effects" {
   let interp = Interpreter::new()
-  let side_effects : Ref[Int] = { val: 0 }
+  let side_effects : Ref[Int] = { val: 0, }
   let side_effect = make_native_func(name="sideEffect", fn(args) {
     side_effects.val += 1
     args[0]
@@ -2870,7 +2877,7 @@ test "iterative tree admission terminates on a mutual callable cycle" {
 ///|
 test "generic executor code cannot gain tree admission" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let child = make_executor_function(
     Some("missingSummaryLeaf"),
     ["n"],
@@ -2914,7 +2921,7 @@ test "generic executor code cannot gain tree admission" {
 ///|
 test "tree admission rejects native target resolution without preflight effects" {
   let interp = Interpreter::new()
-  let native_calls : Ref[Int] = { val: 0 }
+  let native_calls : Ref[Int] = { val: 0, }
   let native_leaf = make_native_func(name="nativeResolutionLeaf", fn(args) {
     native_calls.val += 1
     args[0]
@@ -3125,7 +3132,7 @@ test "tree admission keeps a parameter-shadowed member receiver on legacy execut
       "return shadowedHolder.outer(1); }",
     ).stmts,
   )
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let outer = make_classified_executor_function(
     Some("shadowedOuter"),
     ["n"],
@@ -3170,7 +3177,7 @@ test "tree admission rejects a static accessor member without preflight effects"
       "function accessorParent(n) { return accessorHolder.outer(n); }",
     ).stmts,
   )
-  let getter_reads : Ref[Int] = { val: 0 }
+  let getter_reads : Ref[Int] = { val: 0, }
   let getter = make_native_func(name="memberGetter", _args => {
     getter_reads.val += 1
     interp.global.get("memberLeaf")
@@ -3213,7 +3220,7 @@ test "tree admission rejects dynamic member keys without preflight effects" {
       "return dynamicHolder[dynamicMemberKey()](n); }",
     ).stmts,
   )
-  let key_reads : Ref[Int] = { val: 0 }
+  let key_reads : Ref[Int] = { val: 0, }
   let dynamic_key = make_native_func(name="dynamicMemberKey", _args => {
     key_reads.val += 1
     String_("outer")
@@ -3311,7 +3318,7 @@ test "tree execution preserves result-fed call result and order" {
 ///|
 test "closed result-fed tree plan keeps outer target after inner mutation" {
   let interp = Interpreter::new()
-  let legacy_calls : Ref[Int] = { val: 0 }
+  let legacy_calls : Ref[Int] = { val: 0, }
   let native_replacement = make_native_func(name="resultFedLegacy", fn(_args) {
     legacy_calls.val += 1
     Number(100.0)
@@ -3479,7 +3486,7 @@ test "result-fed outer abrupt completion preserves identity and cleanup" {
 ///|
 test "result-fed inner native target keeps the root legacy" {
   let interp = Interpreter::new()
-  let native_calls : Ref[Int] = { val: 0 }
+  let native_calls : Ref[Int] = { val: 0, }
   let native_inner = make_native_func(name="resultFedNativeInner", args => {
     native_calls.val += 1
     match args {
@@ -3524,7 +3531,7 @@ test "result-fed inner native target keeps the root legacy" {
 ///|
 test "result-fed outer native target keeps the root legacy" {
   let interp = Interpreter::new()
-  let native_calls : Ref[Int] = { val: 0 }
+  let native_calls : Ref[Int] = { val: 0, }
   let native_outer = make_native_func(name="resultFedNativeOuter", args => {
     native_calls.val += 1
     match args {
@@ -3786,7 +3793,7 @@ test "tree execution preserves two direct call result and order" {
 ///|
 test "closed tree plan keeps nested targets after sibling mutation" {
   let interp = Interpreter::new()
-  let legacy_calls : Ref[Int] = { val: 0 }
+  let legacy_calls : Ref[Int] = { val: 0, }
   let native_replacement = make_native_func(name="closedLegacy", fn(_args) {
     legacy_calls.val += 1
     Number(100.0)
@@ -3887,7 +3894,7 @@ test "tree execution preserves duplicate direct call sites" {
 ///|
 test "tree admission rejects an unsupported unselected branch without preflight effects" {
   let interp = Interpreter::new()
-  let native_calls : Ref[Int] = { val: 0 }
+  let native_calls : Ref[Int] = { val: 0, }
   let native_branch = make_native_func(name="branchNative", fn(args) {
     native_calls.val += 1
     args[0]
@@ -4005,7 +4012,7 @@ test "iterative tree admission handles a deep branching graph" {
 ///|
 test "tree admission rejects a supported and native callee together" {
   let interp = Interpreter::new()
-  let native_calls : Ref[Int] = { val: 0 }
+  let native_calls : Ref[Int] = { val: 0, }
   let native_leaf = make_native_func(name="multiNative", fn(args) {
     native_calls.val += 1
     args[0]
@@ -4111,8 +4118,8 @@ test "tree admission rejects object coercion before valueOf effects" {
 ///|
 test "tree admission rejects executor object results before parent effects" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
-  let coercions : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
+  let coercions : Ref[Int] = { val: 0, }
   let value_of = make_native_func(name="valueOf", fn(_args) {
     coercions.val += 1
     Number(7.0)
@@ -4221,8 +4228,8 @@ test "tree admission rejects with proxy closures without preflight traps" {
     Object({ callable: Some(UserFunc(data)), .. }) => data
     _ => fail("expected proxy closure template")
   }
-  let has_calls : Ref[Int] = { val: 0 }
-  let get_calls : Ref[Int] = { val: 0 }
+  let has_calls : Ref[Int] = { val: 0, }
+  let get_calls : Ref[Int] = { val: 0, }
   let has_trap = make_native_func(name="has", fn(args) {
     match args[1] {
       String_("proxyPeer") => {
@@ -4383,8 +4390,8 @@ test "handled child abrupt completion cleans activation before parent delivery" 
 ///|
 test "activation coordinator rejects depth before child preparation" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
-  let steps : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
+  let steps : Ref[Int] = { val: 0, }
   let leaf = make_executor_function(
     Some("leaf"),
     [],
@@ -4434,7 +4441,7 @@ test "activation coordinator rejects depth before child preparation" {
 ///|
 test "property activation rejects depth before body and releases for later leaf" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let getter = make_executor_function(
     Some("getter"),
     [],
@@ -4541,7 +4548,7 @@ test "property activation abrupt getter restores outer realm and depth" {
 ///|
 test "static property setter admission rejects mutable exotic state" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let setter = make_executor_function(
     Some("setter"),
     ["value"],
@@ -4577,7 +4584,7 @@ test "static property setter admission rejects mutable exotic state" {
 ///|
 test "property activation setter returns original RHS and releases scope" {
   let interp = Interpreter::new()
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let setter = make_executor_function(
     Some("setter"),
     ["value"],
@@ -4730,7 +4737,7 @@ test "coercing addition start selects completion or suspension" {
   }
   let symbol_error : Error? = try {
     let _ = begin_executor_coercing_addition(
-      Symbol({ id: 9002, description: None }),
+      Symbol({ id: 9002, description: None, }),
       Number(1.0),
       loc,
     )
@@ -4804,7 +4811,7 @@ test "coercing subtraction start selects completion or suspension" {
   }
   let symbol_error : Error? = try {
     let _ = begin_executor_coercing_subtraction(
-      Symbol({ id: 9002, description: None }),
+      Symbol({ id: 9002, description: None, }),
       Number(1.0),
       loc,
     )
@@ -4823,7 +4830,7 @@ test "coercing subtraction start selects completion or suspension" {
 test "coercing subtraction uses number hint and original receiver" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let hook = make_method_func(
     name="@@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -4941,7 +4948,7 @@ test "coercing subtraction uses valueOf then toString fallback" {
 ///|
 test "coercing subtraction leaves right untouched after left throw" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let left_hook = make_method_func(
     name="leftToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -4986,7 +4993,7 @@ test "coercing subtraction leaves right untouched after left throw" {
 ///|
 test "coercing subtraction leaves right untouched after left Symbol TypeError" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let right_hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -5004,7 +5011,7 @@ test "coercing subtraction leaves right untouched after left Symbol TypeError" {
   match
     coercing_subtraction_error_for_wb(
       interp,
-      Symbol({ id: 9003, description: None }),
+      Symbol({ id: 9003, description: None, }),
       right,
     ) {
     Some(@errors.TypeError(_)) => ()
@@ -5182,7 +5189,7 @@ test "coercing subtraction reuses one interpreter after a suspended run" {
 test "coercing subtraction routes Proxy conversion lookups through guest activation" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let value_of = make_executor_function(
     Some("proxy valueOf"),
     [],
@@ -5256,7 +5263,7 @@ test "coercing subtraction routes Proxy conversion lookups through guest activat
 test "coercing addition routes Proxy conversion lookups through guest activation" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let fallback = make_object(Map([]), Null, None, "Object", Map([]), true)
   let value_of = make_executor_function(
     Some("proxy valueOf"),
@@ -5331,7 +5338,7 @@ test "coercing addition routes Proxy conversion lookups through guest activation
 test "coercing addition uses default hint and original receiver" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let hook = make_method_func(
     name="@@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -5736,7 +5743,7 @@ test "coercing addition rejects object result from toString fallback" {
 ///|
 test "coercing addition stops on left abrupt completion" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let left_hook = make_method_func(
     name="leftToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -5827,7 +5834,7 @@ test "coercing addition keeps left effects when right throws" {
 ///|
 test "coercing addition converts both operands before Symbol TypeError" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let right_hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -5845,7 +5852,7 @@ test "coercing addition converts both operands before Symbol TypeError" {
   let caught : Error? = try {
     let _ = run_executor_coercing_addition_root_for_wb(
       interp,
-      Symbol({ id: 9001, description: None }),
+      Symbol({ id: 9001, description: None, }),
       right,
     )
     None
@@ -5973,7 +5980,7 @@ test "property activation setter delivery error cleans child once" {
   let sentinel : Error = @errors.RangeError(
     message="property setter delivery sentinel",
   )
-  let starts : Ref[Int] = { val: 0 }
+  let starts : Ref[Int] = { val: 0, }
   let setter = make_executor_function(
     Some("setter"),
     ["value"],
@@ -5983,7 +5990,7 @@ test "property activation setter delivery error cleans child once" {
     constructable=false,
   )
   let target = make_direct_property_setter_target(setter, None)
-  let deliveries : Ref[Int] = { val: 0 }
+  let deliveries : Ref[Int] = { val: 0, }
   let root = ExecutorActivationPropertySetDeliveryErrorFrame(
       target~,
       value=Number(1.0),
@@ -6023,9 +6030,9 @@ test "property activation setter delivery error cleans child once" {
 ///|
 test "property activation setter rejects depth before over-limit body and reuses" {
   let interp = Interpreter::new()
-  let target_ref : Ref[Value] = { val: Undefined }
-  let remaining : Ref[Int] = { val: 4 }
-  let starts : Ref[Int] = { val: 0 }
+  let target_ref : Ref[Value] = { val: Undefined, }
+  let remaining : Ref[Int] = { val: 4, }
+  let starts : Ref[Int] = { val: 0, }
   let setter = make_executor_function(
     Some("recursiveSetter"),
     ["value"],
@@ -6091,7 +6098,7 @@ test "property-set fallback covers native inherited proxy data getter primitive 
     extensible: true,
     arraybuffer_state: None,
   })
-  let native_calls : Ref[Int] = { val: 0 }
+  let native_calls : Ref[Int] = { val: 0, }
   let native_setter = make_native_func(name="nativeSetter", fn(_args) {
     native_calls.val += 1
     Undefined
@@ -6118,7 +6125,7 @@ test "property-set fallback covers native inherited proxy data getter primitive 
   assert_true(physical_equal(inherited_result, rhs))
   inspect(native_calls.val, content="2")
 
-  let proxy_calls : Ref[Int] = { val: 0 }
+  let proxy_calls : Ref[Int] = { val: 0, }
   let proxy_setter = make_native_func(name="proxySetter", fn(args) raise {
     proxy_calls.val += 1
     match args {

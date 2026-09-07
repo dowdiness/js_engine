@@ -67,7 +67,7 @@ fn RepresentationPattern::RepresentationPattern(
   tokens~ : Array[String],
   areas~ : Array[String],
 ) -> RepresentationPattern {
-  { id, pattern, kind, reason, tokens, areas }
+  { id, pattern, kind, reason, tokens, areas, }
 }
 
 ///|

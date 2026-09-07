@@ -249,7 +249,7 @@ fn frontend_diagnostic(
   name : String,
   message : String,
 ) -> FrontendDiagnostic {
-  { stage, name, message, rendered: name + ": " + message }
+  { stage, name, message, rendered: name + ": " + message, }
 }
 
 ///|
@@ -262,7 +262,7 @@ fn compiler_defect(
     Some((_, message)) => message
     None => rendered
   }
-  { stage, message, rendered }
+  { stage, message, rendered, }
 }
 
 ///|
@@ -281,7 +281,7 @@ fn runtime_defect(
         None => rendered
       }
   }
-  { stage, message, rendered, effects }
+  { stage, message, rendered, effects, }
 }
 
 ///|
@@ -299,7 +299,8 @@ fn observe_execution(
   })
   let effects = pending_effects(interp)
   match observed {
-    Ok(value) => Completed({ value: { rendered: value.to_string() }, effects })
+    Ok(value) =>
+      Completed({ value: { rendered: value.to_string(), }, effects, })
     Err(failure) => {
       let error = failure.cause()
       match error {
@@ -309,7 +310,7 @@ fn observe_execution(
             effects,
           })
         EquivalenceControlSignal(point, failure) =>
-          ControlStopped({ point, failure, effects })
+          ControlStopped({ point, failure, effects, })
         _ =>
           match @runtime.execution_control_failure_code(error) {
             Some("interrupted") =>
@@ -555,7 +556,7 @@ fn synthetic_completed_outcome_for_wb(
     value: { rendered, },
     effects: {
       host_output: host_output.copy(),
-      queues: { policy: LeavesQueuesPending, microtasks: 0, timers: 0 },
+      queues: { policy: LeavesQueuesPending, microtasks: 0, timers: 0, },
     },
   })
 }
@@ -578,7 +579,7 @@ fn synthetic_control_outcome_for_wb(
     failure,
     effects: {
       host_output: [],
-      queues: { policy: LeavesQueuesPending, microtasks: 0, timers: 0 },
+      queues: { policy: LeavesQueuesPending, microtasks: 0, timers: 0, },
     },
   })
 }

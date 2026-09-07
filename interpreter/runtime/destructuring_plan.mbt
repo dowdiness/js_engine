@@ -21,7 +21,7 @@ pub struct DestructurePropertyPlan {
 
 ///|
 pub fn destructure_plan_bind_name(name : String) -> DestructurePlan {
-  { node: BindName(name) }
+  { node: BindName(name), }
 }
 
 ///|
@@ -29,7 +29,7 @@ pub fn destructure_plan_array(
   elements : Array[DestructurePlan?],
   rest : DestructurePlan?,
 ) -> DestructurePlan {
-  { node: ArrayPattern(elements.copy(), rest) }
+  { node: ArrayPattern(elements.copy(), rest), }
 }
 
 ///|
@@ -37,7 +37,7 @@ pub fn destructure_plan_property(
   key : String,
   target : DestructurePlan,
 ) -> DestructurePropertyPlan {
-  { key, target }
+  { key, target, }
 }
 
 ///|
@@ -45,7 +45,7 @@ pub fn destructure_plan_object(
   properties : Array[DestructurePropertyPlan],
   rest : DestructurePlan?,
 ) -> DestructurePlan {
-  { node: ObjectPattern(properties.copy(), rest) }
+  { node: ObjectPattern(properties.copy(), rest), }
 }
 
 ///|

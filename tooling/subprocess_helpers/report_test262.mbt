@@ -516,7 +516,7 @@ async fn collect_process_args(
   match result {
     None => fail(exe + " timed out after " + timeout_ms.to_string() + " ms")
     Some((code, stdout, stderr)) =>
-      { code, stdout: stdout.text(), stderr: stderr.text() }
+      { code, stdout: stdout.text(), stderr: stderr.text(), }
   }
 }
 
@@ -956,5 +956,5 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
       _ => ()
     }
   }
-  { stdout, stderr, code }
+  { stdout, stderr, code, }
 }

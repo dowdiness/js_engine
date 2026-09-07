@@ -28,7 +28,7 @@ priv suberror BytecodeSourcePointOwnerAllocationDefect {
 
 ///|
 fn new_source_point_owner_allocator() -> Ref[SourcePointOwnerAllocator] {
-  { val: { next_id: 0, program_identity: { val: () } } }
+  { val: { next_id: 0, program_identity: { val: (), }, }, }
 }
 
 ///|
@@ -169,7 +169,7 @@ priv struct BytecodeObservationAuthority {
 ///|
 fn empty_bytecode_observation_authority() -> BytecodeObservationAuthority {
   {
-    program_identity: { val: () },
+    program_identity: { val: (), },
     source_point_owner: SourcePointOwnerId(-1),
     code_length: -1,
     instructions: EmptyObservationAuthorityInstructions,
@@ -232,11 +232,11 @@ fn bytecode_observation_edge_contexts_from_lowering(
     let append_edge = target => {
       if target >= 0 && target <= code_length {
         let context = if target == code_length {
-          { active: [] }
+          { active: [], }
         } else {
           observation_contexts[target]
         }
-        edge_contexts[instruction_index].push({ successor: target, context })
+        edge_contexts[instruction_index].push({ successor: target, context, })
       }
     }
     match transfer {
@@ -829,7 +829,7 @@ fn BytecodeSourceIdentity::root(
 ) -> BytecodeSourceIdentity {
   let program_identity = match program_identity {
     Some(identity) => identity
-    None => { val: () }
+    None => { val: (), }
   }
   {
     program_identity,
@@ -1126,7 +1126,7 @@ fn BytecodeFunction::resolve_source_point(
 ) -> ResolvedSourcePoint {
   let SourcePointId(_, _, index) = id
   let point = self.source_points[index]
-  { source_unit: self.source_unit, role: point.role, loc: point.loc }
+  { source_unit: self.source_unit, role: point.role, loc: point.loc, }
 }
 
 ///|
@@ -1144,7 +1144,7 @@ fn VerifiedBytecodeFunction::child(
   index : Int,
 ) -> VerifiedBytecodeFunction {
   let function = self.function.children[index]
-  { function, preparation: function.preparation }
+  { function, preparation: function.preparation, }
 }
 
 ///|
@@ -1426,7 +1426,7 @@ fn BytecodeBuilder::allocate_source_point(
     self.source_point_owner,
     self.source_points.length(),
   )
-  self.source_points.push({ role, loc })
+  self.source_points.push({ role, loc, })
   id
 }
 
@@ -1552,7 +1552,7 @@ fn BytecodeBuilder::push_loop_context(
   labels : Array[String],
   cleanup_for_in? : Bool = false,
 ) -> Unit {
-  let ctx = { labels, break_jumps: [], continue_jumps: [], cleanup_for_in }
+  let ctx = { labels, break_jumps: [], continue_jumps: [], cleanup_for_in, }
   self.loop_contexts.push(ctx)
   self.break_contexts.push(LoopBreakContext(ctx))
 }
@@ -1574,14 +1574,19 @@ fn BytecodeBuilder::pop_loop_context(
       raise @errors.InternalError(
         message="bytecode loop context invariant violated",
       )
-      { labels: [], break_jumps: [], continue_jumps: [], cleanup_for_in: false }
+      {
+        labels: [],
+        break_jumps: [],
+        continue_jumps: [],
+        cleanup_for_in: false,
+      }
     }
   }
 }
 
 ///|
 fn BytecodeBuilder::push_switch_context(self : BytecodeBuilder) -> Unit {
-  self.break_contexts.push(SwitchBreakContext({ break_jumps: [] }))
+  self.break_contexts.push(SwitchBreakContext({ break_jumps: [], }))
 }
 
 ///|
@@ -1594,7 +1599,7 @@ fn BytecodeBuilder::pop_switch_context(
       raise @errors.InternalError(
         message="bytecode switch context invariant violated",
       )
-      { break_jumps: [] }
+      { break_jumps: [], }
     }
   }
 }

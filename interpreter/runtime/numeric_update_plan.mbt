@@ -17,7 +17,7 @@ pub fn plan_numeric_update(
   }
   let assigned = Value::Number(next_number)
   let expression = if prefix { assigned } else { Value::Number(old_number) }
-  { assigned, expression }
+  { assigned, expression, }
 }
 
 ///|

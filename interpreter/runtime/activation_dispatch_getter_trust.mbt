@@ -85,7 +85,7 @@ fn TrustedGetterRecursionRegistry::TrustedGetterRecursionRegistry(
   throw_type_error~ : Value?,
   expected_global_object~ : ObjectData,
 ) -> TrustedGetterRecursionRegistry {
-  { plan, trusted, throw_type_error, expected_global_object }
+  { plan, trusted, throw_type_error, expected_global_object, }
 }
 
 ///|

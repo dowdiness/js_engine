@@ -60,21 +60,21 @@ fn validate_dispatch_result_pipeline(
   stages~ : Array[DispatchResultPipelineStage],
 ) -> DispatchResultPipeline? {
   guard !stages.is_empty() else { return None }
-  Some({ stages: stages.map(snapshot_dispatch_result_pipeline_stage) })
+  Some({ stages: stages.map(snapshot_dispatch_result_pipeline_stage), })
 }
 
 ///|
 fn snapshot_dispatch_result_pipeline(
   pipeline : DispatchResultPipeline,
 ) -> DispatchResultPipeline {
-  { stages: pipeline.stages.map(snapshot_dispatch_result_pipeline_stage) }
+  { stages: pipeline.stages.map(snapshot_dispatch_result_pipeline_stage), }
 }
 
 ///|
 fn DispatchResultPipeline::start(
   self : DispatchResultPipeline,
 ) -> DispatchResultPipelineCursor {
-  { pipeline: snapshot_dispatch_result_pipeline(self), next_index: 0 }
+  { pipeline: snapshot_dispatch_result_pipeline(self), next_index: 0, }
 }
 
 ///|

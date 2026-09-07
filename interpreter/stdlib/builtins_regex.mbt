@@ -1007,7 +1007,7 @@ priv struct RegexNameSummary {
 
 ///|
 fn RegexNameSummary::RegexNameSummary() -> RegexNameSummary {
-  { names: Default::default() }
+  { names: Default::default(), }
 }
 
 ///|
@@ -2039,7 +2039,7 @@ fn collect_quantified_states(
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
   let states : Array[QuantifiedMatchState] = [
-    { pos, snapshot: state.snapshot() },
+    { pos, snapshot: state.snapshot(), },
   ]
   let mut current = pos
   let mut count = 0
@@ -2077,7 +2077,7 @@ fn collect_quantified_states(
             }
           }
         }
-        states.push({ pos: current, snapshot: state.snapshot() })
+        states.push({ pos: current, snapshot: state.snapshot(), })
       }
       None => {
         state.restore(before)
@@ -2098,7 +2098,7 @@ fn match_sequence_candidates(
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
   if idx >= nodes.length() {
-    return [{ pos, snapshot: state.snapshot() }]
+    return [{ pos, snapshot: state.snapshot(), }]
   }
   let saved = state.snapshot()
   // Fast-path for Quantified with simple inner node (Literal, Dot, CharClass).
@@ -2197,7 +2197,7 @@ fn match_node_candidates(
             regex_chars_to_string(input, pos, candidate.pos, !flags.unicode),
           )
         }
-        results.push({ pos: candidate.pos, snapshot: state.snapshot() })
+        results.push({ pos: candidate.pos, snapshot: state.snapshot(), })
         state.restore(saved)
       }
     }
@@ -2249,8 +2249,8 @@ fn match_node_candidates(
         children, 0, input, pos, state, flags,
       )
       match (assertion_result, positive) {
-        (Some(_), true) => results.push({ pos, snapshot: state.snapshot() })
-        (None, false) => results.push({ pos, snapshot: saved })
+        (Some(_), true) => results.push({ pos, snapshot: state.snapshot(), })
+        (None, false) => results.push({ pos, snapshot: saved, })
         _ => ()
       }
     }
@@ -2298,12 +2298,12 @@ fn match_node_candidates(
       state.preserve_first_capture = prior_preserve
       if found_leftmost {
         state.restore(best_snapshot)
-        results.push({ pos, snapshot: state.snapshot() })
+        results.push({ pos, snapshot: state.snapshot(), })
       } else {
         state.restore(saved)
         match positive {
           true => () // No match → assertion fails
-          false => results.push({ pos, snapshot: state.snapshot() })
+          false => results.push({ pos, snapshot: state.snapshot(), })
         }
       }
     }
@@ -2316,7 +2316,7 @@ fn match_node_candidates(
     | NamedBackreference(_)
     | DuplicateNamedBackreference(_) =>
       match regex_exec_single(node, input, pos, state, flags) {
-        Some(next) => results.push({ pos: next, snapshot: state.snapshot() })
+        Some(next) => results.push({ pos: next, snapshot: state.snapshot(), })
         None => ()
       }
   }
@@ -2465,7 +2465,7 @@ fn parse_regex_domain(
   let num_groups = count_groups(node)
   let names = parser.group_name_entries.copy()
   names.sort_by(fn(a, b) { a.1.compare(b.1) })
-  { node, num_groups, group_names: names }
+  { node, num_groups, group_names: names, }
 }
 
 ///|

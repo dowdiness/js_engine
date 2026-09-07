@@ -2927,8 +2927,8 @@ test "candidate verification rejects duplicate materialization sites" {
     ..program.root.children[1],
     materialization_site: first.materialization_site,
   }
-  let duplicate_root = { ..program.root, children: [first, second] }
-  let duplicate_program = { ..program, root: duplicate_root }
+  let duplicate_root = { ..program.root, children: [first, second], }
+  let duplicate_program = { ..program, root: duplicate_root, }
   let rejected = try {
     verify_candidate_program(duplicate_program)
     false
@@ -3318,7 +3318,7 @@ test "candidate verification rejects a same-name sibling swap" {
     children: [program.root.children[1], program.root.children[0]],
   }
   let rejected = try {
-    verify_candidate_program({ ..program, root: swapped_root })
+    verify_candidate_program({ ..program, root: swapped_root, })
     false
   } catch {
     _ => true
@@ -3335,7 +3335,7 @@ test "candidate verification rejects stale cross-compilation and malformed paren
     fail("separate preparations reused a program identity")
   }
   let stale = try {
-    verify_candidate_program({ ..second, root: first.root })
+    verify_candidate_program({ ..second, root: first.root, })
     false
   } catch {
     _ => true
@@ -3349,9 +3349,9 @@ test "candidate verification rejects stale cross-compilation and malformed paren
       parent_source_point_owner: None,
     },
   }
-  let malformed_root = { ..second.root, children: [malformed_child] }
+  let malformed_root = { ..second.root, children: [malformed_child], }
   let malformed = try {
-    verify_candidate_program({ ..second, root: malformed_root })
+    verify_candidate_program({ ..second, root: malformed_root, })
     false
   } catch {
     _ => true
@@ -3360,14 +3360,14 @@ test "candidate verification rejects stale cross-compilation and malformed paren
 
   let malformed_index_child = {
     ..child,
-    source_identity: { ..child.source_identity, child_index: Some(99) },
+    source_identity: { ..child.source_identity, child_index: Some(99), },
   }
   let malformed_index_root = {
     ..second.root,
     children: [malformed_index_child],
   }
   let malformed_index = try {
-    verify_candidate_program({ ..second, root: malformed_index_root })
+    verify_candidate_program({ ..second, root: malformed_index_root, })
     false
   } catch {
     _ => true
@@ -3386,7 +3386,7 @@ test "candidate verification rejects stale cross-compilation and malformed paren
     children: [malformed_consumer_child],
   }
   let malformed_consumer = try {
-    verify_candidate_program({ ..second, root: malformed_consumer_root })
+    verify_candidate_program({ ..second, root: malformed_consumer_root, })
     false
   } catch {
     _ => true
@@ -3471,7 +3471,7 @@ test "candidate verification rejects coordinated identity index and consumer mut
     children: [mutated_first, mutated_second],
   }
   let rejected = try {
-    verify_candidate_program({ ..program, root: malformed_root })
+    verify_candidate_program({ ..program, root: malformed_root, })
     false
   } catch {
     _ => true

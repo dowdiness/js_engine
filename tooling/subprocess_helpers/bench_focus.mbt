@@ -199,7 +199,7 @@ async fn collect_command(
   match result {
     None => fail("benchmark command timed out after \{timeout_ms} ms")
     Some((code, stdout, stderr)) =>
-      { code, stdout: stdout.text(), stderr: stderr.text() }
+      { code, stdout: stdout.text(), stderr: stderr.text(), }
   }
 }
 
@@ -580,5 +580,5 @@ pub async fn run_bench_focus(config : BenchConfig) -> ToolRun {
       code = 1
     }
   }
-  { stdout: stdout.to_string(), stderr: stderr.to_string(), code }
+  { stdout: stdout.to_string(), stderr: stderr.to_string(), code, }
 }

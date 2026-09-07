@@ -17,7 +17,7 @@ fn ExecutorArrayForEachRequest::ExecutorArrayForEachRequest(
   args~ : Array[Value],
   loc~ : @token.Loc,
 ) -> ExecutorArrayForEachRequest {
-  { this_value, args: args.copy(), loc }
+  { this_value, args: args.copy(), loc, }
 }
 
 ///|
@@ -80,7 +80,7 @@ priv struct ExecutorArrayForEachFrame {
 fn ExecutorArrayForEachFrame::ExecutorArrayForEachFrame(
   request : ExecutorArrayForEachRequest,
 ) -> ExecutorArrayForEachFrame {
-  { request, phase: ExecutorArrayForEachNeedObject }
+  { request, phase: ExecutorArrayForEachNeedObject, }
 }
 
 ///|

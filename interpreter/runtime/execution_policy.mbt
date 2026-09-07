@@ -28,7 +28,7 @@ let engine_stack_depth_error_slot : HostSlotKey = HostSlotKey::reserve()
 
 ///|
 pub fn InterruptionHandle::InterruptionHandle() -> InterruptionHandle {
-  { request_: ExecutionInterruptionRequest() }
+  { request_: ExecutionInterruptionRequest(), }
 }
 
 ///|
@@ -46,7 +46,7 @@ fn execution_policy_error(
   parameter_code : String,
   message : String,
 ) -> ExecutionPolicyError {
-  { parameter_code_: parameter_code, message_: message }
+  { parameter_code_: parameter_code, message_: message, }
 }
 
 ///|

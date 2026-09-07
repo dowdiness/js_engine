@@ -57,7 +57,7 @@ fn ParseFailure::ParseFailure(
   cause : Error,
   span : @token.SourceSpan?,
 ) -> ParseFailure {
-  { cause_: cause, span_: span }
+  { cause_: cause, span_: span, }
 }
 
 ///|

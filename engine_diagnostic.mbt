@@ -38,7 +38,7 @@ fn SourcePosition::SourcePosition(
   column : Int,
   offset : Int,
 ) -> SourcePosition {
-  { line_: line, column_: column, offset_: offset }
+  { line_: line, column_: column, offset_: offset, }
 }
 
 ///|
@@ -54,7 +54,7 @@ fn SourceLocation::SourceLocation(
   start : SourcePosition,
   end : SourcePosition?,
 ) -> SourceLocation {
-  { start_: start, end_: end }
+  { start_: start, end_: end, }
 }
 
 ///|

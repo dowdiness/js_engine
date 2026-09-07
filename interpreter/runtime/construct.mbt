@@ -70,7 +70,7 @@ fn Interpreter::eval_class_field_initializer(
       // (§19.2.1.1) to forbid `Contains arguments` in the eval source.
       init_env.def_builtin("<new.target>", Undefined)
       init_env.def_builtin("[[InClassFieldInitializer]]", Bool(true))
-      let field_ctx : ExecContext = { strict: true, current_generator: None }
+      let field_ctx : ExecContext = { strict: true, current_generator: None, }
       // A retained class may be constructed under an unrelated candidate
       // activation. Restore the capability captured by its defining source
       // so nested callables cannot consume the caller's syntax plan.
@@ -1278,7 +1278,7 @@ fn Interpreter::construct_value_impl(
               private_instance_fields,
               materializer,
               private_brand,
-              ..,
+              ..
             }
           )
         ) => {

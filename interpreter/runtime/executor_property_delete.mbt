@@ -39,7 +39,7 @@ fn ExecutorDeleteGetOwnOperation::ExecutorDeleteGetOwnOperation(
   key~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorDeleteGetOwnOperation {
-  { key, loc, contexts: [], phase: ExecutorDeleteGetOwnNeedCurrent(target) }
+  { key, loc, contexts: [], phase: ExecutorDeleteGetOwnNeedCurrent(target), }
 }
 
 ///|
@@ -47,7 +47,7 @@ fn executor_delete_descriptor_info(
   entry : (PropDescriptor, Value)?,
 ) -> ExecutorDeleteDescriptorInfo? {
   match entry {
-    Some((descriptor, value)) => Some({ descriptor, value })
+    Some((descriptor, value)) => Some({ descriptor, value, })
     None => None
   }
 }
@@ -83,7 +83,7 @@ fn ExecutorDeleteHasPropertyOperation::ExecutorDeleteHasPropertyOperation(
   key~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorDeleteHasPropertyOperation {
-  { key, loc, phase: ExecutorDeleteHasPropertyNeedCurrent(target) }
+  { key, loc, phase: ExecutorDeleteHasPropertyNeedCurrent(target), }
 }
 
 ///|
@@ -1149,7 +1149,7 @@ fn ExecutorDeleteIsExtensibleOperation::ExecutorDeleteIsExtensibleOperation(
   target~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorDeleteIsExtensibleOperation {
-  { loc, contexts: [], phase: ExecutorDeleteIsExtensibleNeedCurrent(target) }
+  { loc, contexts: [], phase: ExecutorDeleteIsExtensibleNeedCurrent(target), }
 }
 
 ///|
@@ -1197,7 +1197,7 @@ fn ExecutorDeleteIsExtensibleOperation::step(
         Proxy(proxy_data) => {
           let handler = get_proxy_handler(proxy_data)
           let target = get_proxy_target(proxy_data)
-          self.contexts.push({ target, trap_result: None })
+          self.contexts.push({ target, trap_result: None, })
           self.phase = ExecutorDeleteIsExtensibleAwaitTrapLookup(
             target, handler,
           )
@@ -1327,7 +1327,7 @@ priv struct ExecutorPropertyDeleteFrame {
 fn ExecutorPropertyDeleteFrame::ExecutorPropertyDeleteFrame(
   request : ExecutorPropertyDeleteRequest,
 ) -> ExecutorPropertyDeleteFrame {
-  { request, phase: ExecutorPropertyDeleteNeedKey }
+  { request, phase: ExecutorPropertyDeleteNeedKey, }
 }
 
 ///|

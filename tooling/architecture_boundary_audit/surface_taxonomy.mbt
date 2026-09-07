@@ -80,7 +80,7 @@ fn decode_package_default(
   let pkg = decode_string_field(data, "package", path)
   let category = decode_string_field(data, "category", path)
   let reason = decode_string_field(data, "reason", path)
-  { pkg, category, reason }
+  { pkg, category, reason, }
 }
 
 ///|
@@ -92,7 +92,7 @@ fn decode_symbol_override(
   let symbol = decode_string_field(data, "symbol", path)
   let category = decode_string_field(data, "category", path)
   let reason = decode_string_field(data, "reason", path)
-  { pkg, symbol, category, reason }
+  { pkg, symbol, category, reason, }
 }
 
 ///|
@@ -298,7 +298,7 @@ fn discover_package_surfaces(root : String) -> Array[PackageSurface] raise {
     let source = @fs.read_file_to_string(full_path)
     let (pkg_name, symbols) = parse_mbti(source)
     if pkg_name != "" {
-      surfaces.push({ pkg: pkg_name, mbti_path, symbols })
+      surfaces.push({ pkg: pkg_name, mbti_path, symbols, })
     }
   }
   surfaces

@@ -21,7 +21,7 @@ fn constructor_activation_test_fixture(
     None => fail("expected callback-free constructor preflight")
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
   let registry = interp.seal_constructor_recursion_registry(preflight, stmts)
   let shell = PrimitiveProgramDispatchShell(
@@ -75,7 +75,7 @@ fn constructor_root_test_result(
     Some(found) => found
     None => fail("expected callback-free constructor preflight")
   }
-  let ctx : ExecContext = { strict: false, current_generator: None }
+  let ctx : ExecContext = { strict: false, current_generator: None, }
   let shell = PrimitiveProgramDispatchShell(
     interp,
     constructor_root_preflight=Some(preflight),
@@ -104,7 +104,7 @@ fn constructor_root_test_result(
   )
   let result = interp.with_execution_control(control, () => {
     shell.execute_constructor_root_statement(
-      { ctx, stmt: stmts[1], env: interp.global, index: 1 },
+      { ctx, stmt: stmts[1], env: interp.global, index: 1, },
       preflight,
     ) catch {
       InvalidActivationDispatchShell(message) =>

@@ -13,7 +13,7 @@ fn ExecutorCoercingLessThanOrEqualRootFrame::ExecutorCoercingLessThanOrEqualRoot
   right~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorCoercingLessThanOrEqualRootFrame {
-  { left, right, loc, requested: false, result: None }
+  { left, right, loc, requested: false, result: None, }
 }
 
 ///|
@@ -115,7 +115,7 @@ test "coercing less-than-or-equal start completes primitives and suspends object
   }
   let symbol_error : Error? = try {
     let _ = begin_executor_coercing_less_than_or_equal(
-      Symbol({ id: 9010, description: None }),
+      Symbol({ id: 9010, description: None, }),
       Number(1.0),
       loc,
     )
@@ -173,7 +173,7 @@ test "canonical coercing relational start covers less-than" {
   }
   let symbol_error : Error? = try {
     let _ = begin_executor_coercing_relational(
-      Symbol({ id: 9014, description: None }),
+      Symbol({ id: 9014, description: None, }),
       Number(1.0),
       loc,
       ExecutorRelationalLessThan,
@@ -236,8 +236,8 @@ test "canonical coercing relational start covers greater operators" {
 test "coercing less-than-or-equal completes object String primitives in source order" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let left_receiver : Ref[Value] = { val: Undefined }
-  let right_receiver : Ref[Value] = { val: Undefined }
+  let left_receiver : Ref[Value] = { val: Undefined, }
+  let right_receiver : Ref[Value] = { val: Undefined, }
   let left_hook = make_method_func(
     name="left @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -369,7 +369,7 @@ test "coercing less-than-or-equal uses object Number and ordinary fallback" {
 ///|
 test "coercing less-than-or-equal leaves right untouched on left ToPrimitive throw" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let right_hook = make_method_func(
     name="right @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -411,7 +411,7 @@ test "coercing less-than-or-equal leaves right untouched on left ToPrimitive thr
 ///|
 test "coercing less-than-or-equal converts right before left Symbol numeric failure" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0 }
+  let right_calls : Ref[Int] = { val: 0, }
   let right_hook = make_method_func(
     name="right @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -428,7 +428,7 @@ test "coercing less-than-or-equal converts right before left Symbol numeric fail
   }
   let left_symbol_error = coercing_less_than_or_equal_error_for_wb(
     interp,
-    Symbol({ id: 9011, description: None }),
+    Symbol({ id: 9011, description: None, }),
     right_object,
   )
   match left_symbol_error {
@@ -681,7 +681,7 @@ test "coercing less-than-or-equal propagates ordinary fallback errors" {
 ///|
 test "coercing less-than-or-equal observes Array own and inherited hooks" {
   let interp = Interpreter::new()
-  let own_receiver : Ref[Value] = { val: Undefined }
+  let own_receiver : Ref[Value] = { val: Undefined, }
   let own_hook = make_method_func(
     name="array own @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -708,7 +708,7 @@ test "coercing less-than-or-equal observes Array own and inherited hooks" {
   )
   inspect(own_result, content="true")
 
-  let inherited_receiver : Ref[Value] = { val: Undefined }
+  let inherited_receiver : Ref[Value] = { val: Undefined, }
   let inherited_hook = make_method_func(
     name="array inherited @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -741,7 +741,7 @@ test "coercing less-than-or-equal observes Array own and inherited hooks" {
 test "coercing less-than-or-equal routes Proxy conversion through get" {
   let interp = Interpreter::new()
   let events : Array[String] = []
-  let receiver : Ref[Value] = { val: Undefined }
+  let receiver : Ref[Value] = { val: Undefined, }
   let value_of = make_method_func(
     name="proxy valueOf",
     realm_state=Some(interp.realm_state),

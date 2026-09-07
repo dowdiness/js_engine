@@ -35,7 +35,7 @@ pub fn Interpreter::enqueue_microtask(
   callback : Value,
   args : Array[Value],
 ) -> Unit {
-  microtask_policy_enqueue(self.host.microtask_queue, { callback, args })
+  microtask_policy_enqueue(self.host.microtask_queue, { callback, args, })
 }
 
 ///|
@@ -50,7 +50,7 @@ fn MicrotaskRunFailure::MicrotaskRunFailure(
   cause : Error,
   source_identity : String?,
 ) -> MicrotaskRunFailure {
-  { cause_: cause, source_identity_: source_identity }
+  { cause_: cause, source_identity_: source_identity, }
 }
 
 ///|
@@ -248,7 +248,7 @@ fn TimerRunFailure::TimerRunFailure(
   phase : TimerRunFailurePhase,
   source_identity : String?,
 ) -> TimerRunFailure {
-  { cause_: cause, phase_: phase, source_identity_: source_identity }
+  { cause_: cause, phase_: phase, source_identity_: source_identity, }
 }
 
 ///|

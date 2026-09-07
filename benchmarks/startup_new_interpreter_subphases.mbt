@@ -107,8 +107,8 @@ fn make_startup_host(output : Array[String]) -> HostEnv {
     console_output_sink: None,
     microtask_queue: [],
     timer_queue: @priority_queue.PriorityQueue([]),
-    timer_id_counter: { val: 1 },
-    timer_insertion_counter: { val: 0 },
+    timer_id_counter: { val: 1, },
+    timer_insertion_counter: { val: 0, },
     cancelled_timer_ids: Map([]),
     module_loader,
   }
@@ -134,7 +134,7 @@ fn make_startup_interpreter_core() -> StartupInterpreterCore {
     module_exports: Map([]),
     module_export_bindings: [],
     generator_objects: Map([]),
-    gen_id_counter: { val: 0 },
+    gen_id_counter: { val: 0, },
     symbols,
     stdlib_hooks: make_startup_stdlib_hooks(),
     in_nonarrow_param_default_eval: false,
@@ -142,7 +142,7 @@ fn make_startup_interpreter_core() -> StartupInterpreterCore {
     active_function_materializer: None,
   }
   global.interpreter_context = Some(interp)
-  { interp, global, output, global_this, realm_state }
+  { interp, global, output, global_this, realm_state, }
 }
 
 ///|
@@ -172,7 +172,7 @@ fn setup_startup_global_mirroring(core : StartupInterpreterCore) -> Unit {
         match core.global.bindings.get(name) {
           Some(binding) => {
             data.bag.properties[name] = binding.value
-            data.bag.descriptors[name] = { ..builtin_desc }
+            data.bag.descriptors[name] = { ..builtin_desc, }
           }
           None => ()
         }
@@ -192,9 +192,9 @@ fn setup_startup_global_mirroring(core : StartupInterpreterCore) -> Unit {
         setter: None,
         is_accessor: false,
       }
-      data.bag.descriptors["undefined"] = { ..frozen_desc }
-      data.bag.descriptors["NaN"] = { ..frozen_desc }
-      data.bag.descriptors["Infinity"] = { ..frozen_desc }
+      data.bag.descriptors["undefined"] = { ..frozen_desc, }
+      data.bag.descriptors["NaN"] = { ..frozen_desc, }
+      data.bag.descriptors["Infinity"] = { ..frozen_desc, }
     }
     _ => ()
   }
@@ -844,7 +844,7 @@ fn run_realm_stamp_setup_root(
 ) -> BenchResult {
   run_measured_subphase(
     "startup/phase/new_interpreter/realm_stamp/setup_root/\{name}",
-    { warmup: 5, iterations: 50, group_size: 10 },
+    { warmup: 5, iterations: 50, group_size: 10, },
     () => time_realm_stamp_setup_bindings(binding_names),
   )
 }
@@ -997,7 +997,7 @@ fn profile_startup_builtin_setup_once() -> Array[(String, Double)] {
 
 ///|
 fn run_profiled_startup_builtin_setup_phases() -> Array[BenchResult] {
-  let config : BenchConfig = { warmup: 5, iterations: 50, group_size: 10 }
+  let config : BenchConfig = { warmup: 5, iterations: 50, group_size: 10, }
   let initial_rows = profile_startup_builtin_setup_once()
   let names : Array[String] = []
   for row in initial_rows {
@@ -1113,82 +1113,82 @@ fn run_startup_new_interpreter_subphases() -> Array[BenchResult] raise {
   let out : Array[BenchResult] = [
     run_measured_subphase(
       "startup/phase/new_interpreter/full",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_full_new_interpreter,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_state_symbols",
-      { warmup: 5, iterations: 50, group_size: 1000 },
+      { warmup: 5, iterations: 50, group_size: 1000, },
       time_realm_state,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/global_env_object",
-      { warmup: 5, iterations: 50, group_size: 1000 },
+      { warmup: 5, iterations: 50, group_size: 1000, },
       time_global_environment_and_object,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/stdlib_hooks_host",
-      { warmup: 5, iterations: 50, group_size: 1000 },
+      { warmup: 5, iterations: 50, group_size: 1000, },
       time_stdlib_hooks_module_loader_host,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/setup_builtins_with_realm_state",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_setup_builtins_with_realm_state,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/global_globalthis_mirroring",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_global_global_this_mirroring,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/generator_async_constructors",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_generator_async_constructors,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_test262_harness_setup,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness/without_realm_stamp",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_test262_harness_without_realm_stamp,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness/print",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_test262_harness_print,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness/agent_object",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_test262_harness_agent_object,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness/dollar262_methods",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_test262_harness_dollar262_methods,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness/dollar262_bind_mirror",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_test262_harness_dollar262_bind_mirror,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/test262_harness/realm_stamp",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_test262_harness_realm_stamp,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/existing_builtins_env",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_realm_stamp_existing_builtins_env,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/setup_builtins_env",
-      { warmup: 5, iterations: 50, group_size: 10 },
+      { warmup: 5, iterations: 50, group_size: 10, },
       time_realm_stamp_setup_builtins_env,
     ),
     run_realm_stamp_setup_root("object", ["Object", "[[ObjectPrototype]]"]),
@@ -1231,32 +1231,32 @@ fn run_startup_new_interpreter_subphases() -> Array[BenchResult] raise {
     ]),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/new_harness_bindings_only",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_realm_stamp_new_harness_bindings_only,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/global_this_only",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_realm_stamp_global_this_only,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/print_binding_only",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_realm_stamp_print_binding_only,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/dollar262_with_global_only",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_realm_stamp_dollar262_with_global_only,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/dollar262_without_global_link",
-      { warmup: 5, iterations: 50, group_size: 100 },
+      { warmup: 5, iterations: 50, group_size: 100, },
       time_realm_stamp_dollar262_without_global_link,
     ),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/bare_callable_direct",
-      { warmup: 5, iterations: 50, group_size: 1000 },
+      { warmup: 5, iterations: 50, group_size: 1000, },
       time_realm_stamp_bare_callable_direct,
     ),
   ]

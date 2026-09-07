@@ -48,7 +48,7 @@ fn DirectReturnLeafCallPlan::DirectReturnLeafCallPlan(
   call_loc~ : @token.Loc,
   argument_sources~ : Array[DirectReturnLeafArgumentSource],
 ) -> DirectReturnLeafCallPlan {
-  { callee_name, call_loc, argument_sources: argument_sources.copy() }
+  { callee_name, call_loc, argument_sources: argument_sources.copy(), }
 }
 
 ///|
@@ -145,7 +145,7 @@ fn DirectReturnClosedArgument::DirectReturnClosedArgument(
   literal~ : DirectReturnClosedLiteral,
   loc~ : @token.Loc,
 ) -> DirectReturnClosedArgument {
-  { literal, loc }
+  { literal, loc, }
 }
 
 ///|
@@ -161,7 +161,7 @@ fn DirectReturnBoundParameter::DirectReturnBoundParameter(
   index~ : Int,
   loc~ : @token.Loc,
 ) -> DirectReturnBoundParameter {
-  { name, index, loc }
+  { name, index, loc, }
 }
 
 ///|
@@ -187,7 +187,7 @@ fn DirectReturnLeafSyntax::DirectReturnLeafSyntax(
   leaf_completion~ : DirectReturnLeafCompletion,
   completion_loc~ : @token.Loc,
 ) -> DirectReturnLeafSyntax {
-  { name, parameters: parameters.copy(), leaf_completion, completion_loc }
+  { name, parameters: parameters.copy(), leaf_completion, completion_loc, }
 }
 
 ///|
@@ -251,7 +251,7 @@ fn DirectReturnWrapperSyntax::DirectReturnWrapperSyntax(
   inner_call_loc~ : @token.Loc,
   return_loc~ : @token.Loc,
 ) -> DirectReturnWrapperSyntax {
-  { name, entry_name, inner_call_loc, return_loc }
+  { name, entry_name, inner_call_loc, return_loc, }
 }
 
 ///|
@@ -269,7 +269,7 @@ fn DirectReturnWrapperPlan::DirectReturnWrapperPlan(
   outer_call_loc~ : @token.Loc,
   initial_argument~ : Double,
 ) -> DirectReturnWrapperPlan {
-  { syntax, declaration_index, outer_call_loc, initial_argument }
+  { syntax, declaration_index, outer_call_loc, initial_argument, }
 }
 
 ///|
@@ -285,7 +285,7 @@ fn DirectReturnEntryRootPlan::DirectReturnEntryRootPlan(
   call_loc~ : @token.Loc,
   initial_argument~ : Double,
 ) -> DirectReturnEntryRootPlan {
-  { entry_name, call_loc, initial_argument }
+  { entry_name, call_loc, initial_argument, }
 }
 
 ///|
@@ -305,7 +305,7 @@ fn DirectReturnLeafPlan::DirectReturnLeafPlan(
   syntax~ : DirectReturnLeafSyntax,
   declaration_index~ : Int,
 ) -> DirectReturnLeafPlan {
-  { syntax, declaration_index }
+  { syntax, declaration_index, }
 }
 
 ///|
@@ -313,7 +313,7 @@ fn DirectReturnFunctionPlan::DirectReturnFunctionPlan(
   syntax~ : DirectReturnFunctionSyntax,
   declaration_index~ : Int,
 ) -> DirectReturnFunctionPlan {
-  { syntax, declaration_index }
+  { syntax, declaration_index, }
 }
 
 ///|
@@ -329,7 +329,7 @@ fn DirectReturnRecursionPlan::DirectReturnRecursionPlan(
   helpers~ : Array[DirectReturnLeafPlan],
   root_invocation~ : DirectReturnRootInvocation,
 ) -> DirectReturnRecursionPlan {
-  { entry, helpers: helpers.copy(), root_invocation }
+  { entry, helpers: helpers.copy(), root_invocation, }
 }
 
 ///|

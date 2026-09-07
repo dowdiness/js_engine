@@ -26,7 +26,7 @@ fn DirectNumericRecursionCallPlan::DirectNumericRecursionCallPlan(
   initial_argument~ : Double,
   root_call_loc~ : @token.Loc,
 ) -> DirectNumericRecursionCallPlan {
-  { entry, cycle, initial_argument, root_call_loc }
+  { entry, cycle, initial_argument, root_call_loc, }
 }
 
 ///|

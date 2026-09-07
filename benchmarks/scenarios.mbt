@@ -60,7 +60,7 @@ pub fn bench_startup_tiny() -> BenchResult raise {
   run_bench(
     "startup/tiny_program",
     Regression,
-    { warmup: 5, iterations: 50, group_size: 50 },
+    { warmup: 5, iterations: 50, group_size: 50, },
     fn() raise { let _ = @lib.run(STARTUP_TINY_SRC) },
     stage=Startup,
   )
@@ -79,7 +79,7 @@ pub fn bench_startup_parse_tiny() -> BenchResult raise {
   run_bench(
     "startup/phase/parse_tiny",
     Component,
-    { warmup: 5, iterations: 50, group_size: 10000 },
+    { warmup: 5, iterations: 50, group_size: 10000, },
     fn() raise { let _ = @parser.parse(STARTUP_TINY_SRC) },
     stage=Frontend,
   )
@@ -91,7 +91,7 @@ pub fn bench_startup_new_interpreter() -> BenchResult raise {
   run_bench(
     "startup/phase/new_interpreter",
     Component,
-    { warmup: 5, iterations: 50, group_size: 10 },
+    { warmup: 5, iterations: 50, group_size: 10, },
     fn() { let _ = @interpreter.new_interpreter() },
     stage=Startup,
   )
@@ -111,7 +111,7 @@ pub fn bench_startup_execute_preparsed_tiny() -> BenchResult raise {
   run_bench(
     "startup/phase/execute_preparsed_tiny",
     Component,
-    { warmup: 5, iterations: 50, group_size: 20000 },
+    { warmup: 5, iterations: 50, group_size: 20000, },
     fn() raise { let _ = interp.run(prog.stmts) },
   )
 }
@@ -131,7 +131,7 @@ pub fn bench_startup_event_loop_drain_empty() -> BenchResult raise {
   run_bench(
     "startup/phase/event_loop_drain_empty",
     Component,
-    { warmup: 5, iterations: 50, group_size: 50000 },
+    { warmup: 5, iterations: 50, group_size: 50000, },
     fn() raise {
       interp.run_microtasks()
       interp.run_timers()
@@ -155,7 +155,7 @@ pub fn bench_startup_result_stringify_output() -> BenchResult raise {
   run_bench(
     "startup/phase/result_stringify_output",
     Component,
-    { warmup: 5, iterations: 50, group_size: 1000000 },
+    { warmup: 5, iterations: 50, group_size: 1000000, },
     fn() { let _ = (output, result.to_string()) },
   )
 }
@@ -165,7 +165,7 @@ pub fn bench_lexer_small() -> BenchResult raise {
   run_bench(
     "lexer/small",
     Regression,
-    { warmup: 3, iterations: 100, group_size: 100 },
+    { warmup: 3, iterations: 100, group_size: 100, },
     fn() raise { let _ = @lexer.tokenize(LEXER_SMALL_SRC) },
     stage=Frontend,
   )
@@ -176,7 +176,7 @@ pub fn bench_lexer_large() -> BenchResult raise {
   run_bench(
     "lexer/large",
     Regression,
-    { warmup: 3, iterations: 50, group_size: 50 },
+    { warmup: 3, iterations: 50, group_size: 50, },
     fn() raise { let _ = @lexer.tokenize(LEXER_LARGE_SRC) },
     stage=Frontend,
   )
@@ -188,7 +188,7 @@ pub fn bench_fibonacci() -> BenchResult raise {
   run_bench(
     "exec/fibonacci_30",
     Regression,
-    { warmup: 2, iterations: 5, group_size: 1 },
+    { warmup: 2, iterations: 5, group_size: 1, },
     fn() raise { let _ = @lib.run(FIBONACCI_SRC) },
   )
 }
@@ -199,7 +199,7 @@ pub fn bench_property_chain() -> BenchResult raise {
   run_bench(
     "exec/property_chain",
     Regression,
-    { warmup: 2, iterations: 8, group_size: 1 },
+    { warmup: 2, iterations: 8, group_size: 1, },
     fn() raise { let _ = @lib.run(PROPERTY_CHAIN_SRC) },
   )
 }
@@ -210,7 +210,7 @@ fn bench_regexp_retained_matcher() -> BenchResult raise {
   run_bench(
     "regexp/retained_matcher",
     Component,
-    { warmup: 3, iterations: 20, group_size: 1 },
+    { warmup: 3, iterations: 20, group_size: 1, },
     fn() raise { let _ = @lib.run(REGEXP_RETAINED_MATCHER_SRC) },
     stage=Execution,
   )
@@ -222,7 +222,7 @@ pub fn bench_array_map_filter() -> BenchResult raise {
   run_bench(
     "exec/array_map_filter",
     Component,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 2, iterations: 10, group_size: 1, },
     fn() raise { let _ = @lib.run(ARRAY_MAP_FILTER_SRC) },
   )
 }
@@ -233,7 +233,7 @@ pub fn bench_closure_factory() -> BenchResult raise {
   run_bench(
     "exec/closure_factory",
     Component,
-    { warmup: 3, iterations: 20, group_size: 3 },
+    { warmup: 3, iterations: 20, group_size: 3, },
     fn() raise { let _ = @lib.run(CLOSURE_FACTORY_SRC) },
   )
 }
@@ -253,7 +253,7 @@ pub fn bench_closure_legacy_closure_factory() -> BenchResult raise {
   run_bench(
     "baseline/closure_legacy/closure_factory",
     Component,
-    { warmup: 3, iterations: 20, group_size: 3 },
+    { warmup: 3, iterations: 20, group_size: 3, },
     fn() raise {
       let interp = @interpreter.new_interpreter()
       let _ = compiled(interp)
@@ -275,7 +275,7 @@ pub fn bench_bytecode_closure_factory() -> BenchResult raise {
   run_bench(
     "baseline/bytecode/closure_factory",
     Component,
-    { warmup: 3, iterations: 20, group_size: 3 },
+    { warmup: 3, iterations: 20, group_size: 3, },
     fn() raise {
       let interp = @interpreter.new_interpreter()
       let _ = bytecode.run(interp)
@@ -309,7 +309,7 @@ fn bench_bytecode_micro(
 ) -> BenchResult raise {
   let bytecode = prechecked_bytecode_program(name, src, expected)
   let interp = @interpreter.new_interpreter()
-  run_bench(name, Component, { warmup: 3, iterations: 15, group_size: 3 }, fn() raise {
+  run_bench(name, Component, { warmup: 3, iterations: 15, group_size: 3, }, fn() raise {
     let _ = bytecode.run(interp)
   })
 }
@@ -428,7 +428,7 @@ pub fn bench_for_of() -> BenchResult raise {
   run_bench(
     "exec/for_of",
     Component,
-    { warmup: 3, iterations: 20, group_size: 3 },
+    { warmup: 3, iterations: 20, group_size: 3, },
     fn() raise { let _ = @lib.run(FOR_OF_SRC) },
   )
 }
@@ -439,7 +439,7 @@ pub fn bench_object_construction() -> BenchResult raise {
   run_bench(
     "exec/object_construction",
     Component,
-    { warmup: 3, iterations: 20, group_size: 3 },
+    { warmup: 3, iterations: 20, group_size: 3, },
     fn() raise { let _ = @lib.run(OBJECT_CONSTRUCTION_SRC) },
   )
 }
@@ -450,7 +450,7 @@ pub fn bench_string_ops() -> BenchResult raise {
   run_bench(
     "exec/string_ops",
     Component,
-    { warmup: 3, iterations: 20, group_size: 5 },
+    { warmup: 3, iterations: 20, group_size: 5, },
     fn() raise { let _ = @lib.run(STRING_OPS_SRC) },
   )
 }
@@ -461,7 +461,7 @@ pub fn bench_pipeline_exec_lex() -> BenchResult raise {
   run_bench(
     "pipeline/exec/lex",
     Workflow,
-    { warmup: 3, iterations: 30, group_size: 500 },
+    { warmup: 3, iterations: 30, group_size: 500, },
     fn() raise { let _ = @lexer.tokenize(PIPELINE_EXEC_SRC) },
     stage=Frontend,
   )
@@ -475,7 +475,7 @@ pub fn bench_pipeline_exec_parse() -> BenchResult raise {
   run_bench(
     "pipeline/exec/parse",
     Workflow,
-    { warmup: 3, iterations: 40, group_size: 2000 },
+    { warmup: 3, iterations: 40, group_size: 2000, },
     fn() raise { let _ = @parser.parse_tokens(tokens) },
     stage=Frontend,
   )
@@ -496,7 +496,7 @@ pub fn bench_pipeline_exec_evaluate() -> BenchResult raise {
   run_bench(
     "pipeline/exec/evaluate",
     Workflow,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 2, iterations: 10, group_size: 1, },
     fn() raise { let _ = interp.run(prog.stmts) },
   )
 }
@@ -517,7 +517,7 @@ pub fn bench_pipeline_closure_legacy_evaluate() -> BenchResult raise {
   run_bench(
     "pipeline/closure_legacy/evaluate",
     Workflow,
-    { warmup: 3, iterations: 20, group_size: 5 },
+    { warmup: 3, iterations: 20, group_size: 5, },
     fn() raise { let _ = compiled(interp) },
   )
 }
@@ -536,7 +536,7 @@ pub fn bench_pipeline_bytecode_compile() -> BenchResult raise {
   run_bench(
     "pipeline/bytecode/compile",
     Workflow,
-    { warmup: 3, iterations: 30, group_size: 200 },
+    { warmup: 3, iterations: 30, group_size: 200, },
     fn() raise { let _ = @compiler.compile_script_to_bytecode(prog.stmts) },
     stage=Frontend,
   )
@@ -558,7 +558,7 @@ pub fn bench_pipeline_bytecode_evaluate() -> BenchResult raise {
   run_bench(
     "pipeline/bytecode/evaluate",
     Workflow,
-    { warmup: 3, iterations: 20, group_size: 5 },
+    { warmup: 3, iterations: 20, group_size: 5, },
     fn() raise { let _ = bytecode.run(interp) },
   )
 }
@@ -568,7 +568,7 @@ pub fn bench_parse_heavy() -> BenchResult raise {
   run_bench(
     "pipeline/parse_heavy",
     Workflow,
-    { warmup: 3, iterations: 30, group_size: 50 },
+    { warmup: 3, iterations: 30, group_size: 50, },
     fn() raise { let _ = @parser.parse(PARSER_HEAVY_SRC) },
     stage=Frontend,
   )
@@ -593,7 +593,7 @@ fn BenchmarkCase::BenchmarkCase(
   stage : BenchStage,
   run : () -> BenchResult raise,
 ) -> BenchmarkCase {
-  { name, category, stage, run }
+  { name, category, stage, run, }
 }
 
 ///|

@@ -32,7 +32,7 @@ fn ExecutorCoercingRelationalRequest::ExecutorCoercingRelationalRequest(
   operator~ : ExecutorRelationalOperator,
   loc~ : @token.Loc,
 ) -> ExecutorCoercingRelationalRequest {
-  { left, right, operator, loc }
+  { left, right, operator, loc, }
 }
 
 ///|
@@ -94,7 +94,7 @@ priv struct ExecutorCoercingRelationalFrame {
 fn ExecutorCoercingRelationalFrame::ExecutorCoercingRelationalFrame(
   request : ExecutorCoercingRelationalRequest,
 ) -> ExecutorCoercingRelationalFrame {
-  { request, phase: ExecutorCoercingRelationalNeedLeft }
+  { request, phase: ExecutorCoercingRelationalNeedLeft, }
 }
 
 ///|
@@ -230,7 +230,7 @@ fn ExecutorCoercingLessThanOrEqualRequest::ExecutorCoercingLessThanOrEqualReques
   right~ : Value,
   loc~ : @token.Loc,
 ) -> ExecutorCoercingLessThanOrEqualRequest {
-  { left, right, loc }
+  { left, right, loc, }
 }
 
 ///|

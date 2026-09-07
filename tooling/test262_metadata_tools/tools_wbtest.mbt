@@ -54,7 +54,7 @@ test "validate_skip_metadata accepts live shared metadata entries" {
   // Populate paths from path suffix entries so each suffix finds a match.
   // The real filesystem check runs in make test262-validate-skips.
   let paths = metadata.skip_path_suffix_entries().map(fn(e) { e.0 })
-  let suite = { files_scanned: 1, features, flags, paths }
+  let suite = { files_scanned: 1, features, flags, paths, }
   assert_eq(validate_skip_metadata(suite, metadata).length(), 0)
 }
 
