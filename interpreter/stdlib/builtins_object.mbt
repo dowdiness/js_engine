@@ -98,14 +98,16 @@ pub fn setup_object_builtins(
       match this_val {
         Undefined => Value::String_("[object Undefined]")
         Null => Value::String_("[object Null]")
-        Bool(_) | Value::Number(_) | Value::String_(_) | Symbol(_) =>
-          Value::String_("[object \{object_prototype_builtin_tag(this_val)}]")
         _ => {
-          let builtin_tag = object_prototype_builtin_tag(this_val)
+          // Object.prototype.toString performs Get on the ToObject result.
+          // In particular, primitive receivers use their realm's wrapper as
+          // both the lookup target and the accessor receiver.
+          let obj = to_object(this_val, interp, realm_state=Some(realm_state))
+          let builtin_tag = object_prototype_builtin_tag(obj)
           let tag_value = interp.get_property_key_with_receiver(
-            this_val,
+            obj,
             Symbol(well_known_symbols.to_string_tag),
-            this_val,
+            obj,
             @token.Loc::default(),
           )
           let tag = match tag_value {
