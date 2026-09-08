@@ -1,7 +1,6 @@
 import {
   "dowdiness/js_engine/interpreter/runtime",
   "dowdiness/js_engine/interpreter/stdlib",
-  "moonbitlang/core/string",
 }
 
 import {

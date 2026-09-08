@@ -7,7 +7,6 @@ import {
   "dowdiness/js_engine/static_semantics",
   "moonbitlang/core/string",
   "moonbitlang/core/math",
-  "moonbitlang/core/env",
   "moonbitlang/core/set",
   "moonbitlang/core/priority_queue",
 }
