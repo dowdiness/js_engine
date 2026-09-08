@@ -35,7 +35,7 @@ concurrency:
 
 env:
   TEST262_COMMIT: "2b2ecead6e82"
-  MOONBIT_INSTALL_VERSION: "nightly"
+  MOONBIT_INSTALL_VERSION: "latest"
   SHARD_TOTAL: 4
 
 jobs:

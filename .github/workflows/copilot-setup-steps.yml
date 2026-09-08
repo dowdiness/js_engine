@@ -26,7 +26,7 @@ jobs:
     # You can define any steps you want, and they will run before the agent starts.
     # If you do not check out your code, Copilot will do this for you.
     env:
-      MOONBIT_INSTALL_VERSION: "nightly"
+      MOONBIT_INSTALL_VERSION: "latest"
 
     steps:
       - name: Checkout code
