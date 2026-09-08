@@ -47,12 +47,12 @@ pub fn executor_activation_numeric_conversion_request(
 
 ///|
 fn executor_numeric_conversion_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    _ =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="numeric conversion completed with a pending activation",

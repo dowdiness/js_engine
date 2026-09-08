@@ -38,6 +38,30 @@ pub enum ExecutorActivationStep {
 }
 
 ///|
+// Only a finished frame reaches runtime result normalization. Keep this
+// distinct from both a pending executor step and a normalized child completion:
+// ordinary calls must still distinguish fallthrough from an explicit return.
+priv enum ExecutorCompletedStep {
+  ExecutorCompletedNormal(Value)
+  ExecutorCompletedReturn(Value)
+  ExecutorCompletedReference(ResolvedBindingReference)
+}
+
+///|
+// Preserve the public coordinator result without exposing the private terminal
+// representation to executor adapters.
+fn ExecutorCompletedStep::to_activation_step(
+  self : ExecutorCompletedStep,
+) -> ExecutorActivationStep {
+  match self {
+    ExecutorCompletedNormal(value) => ExecutorActivationNormal(value)
+    ExecutorCompletedReturn(value) => ExecutorActivationReturn(value)
+    ExecutorCompletedReference(reference) =>
+      ExecutorActivationReference(reference)
+  }
+}
+
+///|
 // A closed child completion. Runtime owns the completion boundary so executor
 // frames can choose whether an abrupt child result is recoverable without
 // translating or copying the original error.
@@ -2527,7 +2551,7 @@ fn Interpreter::complete_executor_child(
 fn Interpreter::complete_executor_step(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> Unit raise Error {
   let completion = match stack[stack.length() - 1].completion {
     Some(ExecutorChildCall(kind)) =>
@@ -2574,12 +2598,12 @@ fn Interpreter::complete_executor_step(
 
 ///|
 fn executor_array_for_each_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(_) | ExecutorActivationReturn(_) =>
+    ExecutorCompletedNormal(_) | ExecutorCompletedReturn(_) =>
       ExecutorActivationCompletionNormal(Undefined)
-    _ =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(message="forEach frame completed without a value"),
       )
@@ -2588,12 +2612,12 @@ fn executor_array_for_each_completion(
 
 ///|
 fn executor_binding_reference_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationReference(reference) =>
+    ExecutorCompletedReference(reference) =>
       ExecutorActivationCompletionReference(reference)
-    _ =>
+    ExecutorCompletedNormal(_) | ExecutorCompletedReturn(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="binding reference frame completed without a reference",
@@ -2604,12 +2628,12 @@ fn executor_binding_reference_completion(
 
 ///|
 fn executor_binding_update_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    _ =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="binding update completed with a pending activation",
@@ -2620,12 +2644,12 @@ fn executor_binding_update_completion(
 
 ///|
 fn executor_iterable_spread_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    _ =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="iterable spread frame completed without a value",
@@ -2636,12 +2660,12 @@ fn executor_iterable_spread_completion(
 
 ///|
 fn executor_copy_data_properties_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(_) | ExecutorActivationReturn(_) =>
+    ExecutorCompletedNormal(_) | ExecutorCompletedReturn(_) =>
       ExecutorActivationCompletionNormal(Undefined)
-    _ =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="CopyDataProperties frame completed with a pending step",
@@ -2952,31 +2976,31 @@ fn Interpreter::handle_executor_activation_step(
   stack : Array[ExecutorActivationStackEntry],
   index : Int,
   step : ExecutorActivationStep,
-) -> ExecutorActivationStep? raise Error {
+) -> ExecutorCompletedStep? raise Error {
   let frame = stack[index].frame
   match step {
     ExecutorActivationContinue => None
     ExecutorActivationNormal(value) =>
       if index == 0 {
-        Some(ExecutorActivationNormal(value))
+        Some(ExecutorCompletedNormal(value))
       } else {
-        self.complete_executor_step(stack, ExecutorActivationNormal(value))
+        self.complete_executor_step(stack, ExecutorCompletedNormal(value))
         None
       }
     ExecutorActivationReturn(value) =>
       if index == 0 {
-        Some(ExecutorActivationReturn(value))
+        Some(ExecutorCompletedReturn(value))
       } else {
-        self.complete_executor_step(stack, ExecutorActivationReturn(value))
+        self.complete_executor_step(stack, ExecutorCompletedReturn(value))
         None
       }
     ExecutorActivationReference(reference) =>
       if index == 0 {
-        Some(ExecutorActivationReference(reference))
+        Some(ExecutorCompletedReference(reference))
       } else {
         self.complete_executor_step(
           stack,
-          ExecutorActivationReference(reference),
+          ExecutorCompletedReference(reference),
         )
         None
       }
@@ -3533,12 +3557,10 @@ fn Interpreter::handle_executor_activation_step(
 fn Interpreter::drive_executor_activation_stack(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
-) -> ExecutorActivationStep raise Error {
+) -> ExecutorCompletedStep raise Error {
   try {
     while true {
-      guard !stack.is_empty() else {
-        return ExecutorActivationNormal(Undefined)
-      }
+      guard !stack.is_empty() else { return ExecutorCompletedNormal(Undefined) }
       let index = stack.length() - 1
       let frame = stack[index].frame
       let stepped : Result[ExecutorActivationStep, Error] = Ok(frame.step(self)) catch {
@@ -3548,7 +3570,7 @@ fn Interpreter::drive_executor_activation_stack(
         Err(error) =>
           self.deliver_executor_activation_error(stack, index, error)
         Ok(step) => {
-          let handled_result : Result[ExecutorActivationStep?, Error] = Ok(
+          let handled_result : Result[ExecutorCompletedStep?, Error] = Ok(
             self.handle_executor_activation_step(stack, index, step),
           ) catch {
             error => Err(error)
@@ -3605,7 +3627,7 @@ fn Interpreter::drive_executor_activation_stack(
       }
     }
   }
-  ExecutorActivationNormal(Undefined)
+  ExecutorCompletedNormal(Undefined)
 }
 
 ///|
@@ -3615,9 +3637,11 @@ pub fn Interpreter::run_executor_activation_coordinator(
   self : Interpreter,
   root : &ExecutorActivationFrame,
 ) -> ExecutorActivationStep raise Error {
-  self.drive_executor_activation_stack([
+  self
+  .drive_executor_activation_stack([
     { frame: root, completion: None, cleanup: None, graph_cursor: None, },
   ])
+  .to_activation_step()
 }
 
 ///|
@@ -3629,7 +3653,7 @@ fn Interpreter::run_admitted_executor_call_root(
   executable : ExecutorCallableData,
   request : ExecutorCallRequest,
   graph_cursor : TreeExecutorGraphCursor,
-) -> ExecutorActivationStep raise Error {
+) -> ExecutorCompletedStep raise Error {
   let root = self.start_executor_activation(
     executable,
     ExecutorStartCall(request),
@@ -3683,9 +3707,11 @@ fn Interpreter::drive_executor_activation(
   self : Interpreter,
   code : &ExecutorCode,
   prepared : PreparedExecutorActivation,
-) -> ExecutorActivationStep raise Error {
+) -> ExecutorCompletedStep raise Error {
   let frame = code.start(self, prepared)
-  self.run_executor_activation_coordinator(frame)
+  self.drive_executor_activation_stack([
+    { frame, completion: None, cleanup: None, graph_cursor: None, },
+  ])
 }
 
 ///|
@@ -3791,102 +3817,34 @@ fn Interpreter::prepare_executor_activation(
 ///|
 fn executor_call_completion(
   kind : ExecutorCallableKind,
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> Value raise Error {
-  match kind {
-    OrdinaryExecutorCallable =>
-      match step {
-        ExecutorActivationContinue => Undefined
-        ExecutorActivationNormal(_) => Undefined
-        ExecutorActivationReturn(value) => value
-        ExecutorActivationCall(_)
-        | ExecutorActivationConstruct(_)
-        | ExecutorActivationPropertyGet(_)
-        | ExecutorActivationPropertyKey(_)
-        | ExecutorActivationComputedPropertyGet(_)
-        | ExecutorActivationPropertySet(_)
-        | ExecutorActivationPropertyUpdate(_)
-        | ExecutorActivationBindingUpdate(_)
-        | ExecutorActivationCoercingAddition(_)
-        | ExecutorActivationCoercingRelational(_)
-        | ExecutorActivationCoercingSubtraction(_)
-        | ExecutorActivationCoercingMultiplicative(_)
-        | ExecutorActivationNumericConversion(_)
-        | ExecutorActivationPropertyDelete(_)
-        | ExecutorActivationIterableSpread(_)
-        | ExecutorActivationCopyDataProperties(_)
-        | ExecutorActivationBinding(_) => Undefined
-        ExecutorActivationBindingReference(_)
-        | ExecutorActivationBindingReferenceAccess(_)
-        | ExecutorActivationReference(_) =>
-          raise @errors.InternalError(
-            message="executor call completed with a binding reference",
-          )
-      }
-    ArrowExecutorCallable =>
-      match step {
-        ExecutorActivationContinue => Undefined
-        ExecutorActivationNormal(_) => Undefined
-        ExecutorActivationReturn(value) => value
-        ExecutorActivationCall(_)
-        | ExecutorActivationConstruct(_)
-        | ExecutorActivationPropertyGet(_)
-        | ExecutorActivationPropertyKey(_)
-        | ExecutorActivationComputedPropertyGet(_)
-        | ExecutorActivationPropertySet(_)
-        | ExecutorActivationPropertyUpdate(_)
-        | ExecutorActivationBindingUpdate(_)
-        | ExecutorActivationCoercingAddition(_)
-        | ExecutorActivationCoercingRelational(_)
-        | ExecutorActivationCoercingSubtraction(_)
-        | ExecutorActivationCoercingMultiplicative(_)
-        | ExecutorActivationNumericConversion(_)
-        | ExecutorActivationPropertyDelete(_)
-        | ExecutorActivationIterableSpread(_)
-        | ExecutorActivationCopyDataProperties(_)
-        | ExecutorActivationBinding(_) => Undefined
-        ExecutorActivationBindingReference(_)
-        | ExecutorActivationBindingReferenceAccess(_)
-        | ExecutorActivationReference(_) =>
-          raise @errors.InternalError(
-            message="executor arrow call completed with a binding reference",
-          )
-      }
+  match step {
+    ExecutorCompletedNormal(_) => Undefined
+    ExecutorCompletedReturn(value) => value
+    ExecutorCompletedReference(_) =>
+      raise @errors.InternalError(
+        message=match kind {
+          OrdinaryExecutorCallable =>
+            "executor call completed with a binding reference"
+          ArrowExecutorCallable =>
+            "executor arrow call completed with a binding reference"
+        },
+      )
   }
 }
 
 ///|
 fn executor_construct_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
   instance : Value,
 ) -> Value raise Error {
   match step {
-    ExecutorActivationReturn(value) if is_object_like_for_constructor_return(
+    ExecutorCompletedReturn(value) if is_object_like_for_constructor_return(
         value,
       ) => value
-    ExecutorActivationContinue
-    | ExecutorActivationNormal(_)
-    | ExecutorActivationReturn(_)
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_) => instance
-    ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedNormal(_) | ExecutorCompletedReturn(_) => instance
+    ExecutorCompletedReference(_) =>
       raise @errors.InternalError(
         message="executor construct completed with a binding reference",
       )
@@ -3902,32 +3860,12 @@ fn executor_property_set_completion(
 
 ///|
 fn executor_value_operation_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="value operation completed with a pending activation step",
@@ -3938,32 +3876,12 @@ fn executor_value_operation_completion(
 
 ///|
 fn executor_property_update_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property update completed with a pending activation step",
@@ -3974,32 +3892,12 @@ fn executor_property_update_completion(
 
 ///|
 fn executor_coercing_addition_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing addition completed with a pending activation step",
@@ -4010,32 +3908,12 @@ fn executor_coercing_addition_completion(
 
 ///|
 fn executor_coercing_relational_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing relational completed with a pending activation step",
@@ -4046,32 +3924,12 @@ fn executor_coercing_relational_completion(
 
 ///|
 fn executor_coercing_subtraction_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing subtraction completed with a pending activation step",
@@ -4082,32 +3940,12 @@ fn executor_coercing_subtraction_completion(
 
 ///|
 fn executor_coercing_multiplicative_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="coercing multiplicative completed with a pending activation step",
@@ -4118,32 +3956,12 @@ fn executor_coercing_multiplicative_completion(
 
 ///|
 fn executor_property_delete_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    ExecutorActivationContinue
-    | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_)
-    | ExecutorActivationPropertyGet(_)
-    | ExecutorActivationPropertyKey(_)
-    | ExecutorActivationComputedPropertyGet(_)
-    | ExecutorActivationPropertySet(_)
-    | ExecutorActivationPropertyUpdate(_)
-    | ExecutorActivationBindingUpdate(_)
-    | ExecutorActivationCoercingAddition(_)
-    | ExecutorActivationCoercingRelational(_)
-    | ExecutorActivationCoercingSubtraction(_)
-    | ExecutorActivationCoercingMultiplicative(_)
-    | ExecutorActivationNumericConversion(_)
-    | ExecutorActivationPropertyDelete(_)
-    | ExecutorActivationIterableSpread(_)
-    | ExecutorActivationCopyDataProperties(_)
-    | ExecutorActivationBinding(_)
-    | ExecutorActivationBindingReference(_)
-    | ExecutorActivationBindingReferenceAccess(_)
-    | ExecutorActivationReference(_) =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="property delete completed with a pending activation step",

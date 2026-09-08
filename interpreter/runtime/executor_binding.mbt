@@ -734,12 +734,12 @@ pub fn executor_activation_binding_request(
 
 ///|
 fn executor_binding_completion(
-  step : ExecutorActivationStep,
+  step : ExecutorCompletedStep,
 ) -> ExecutorActivationCompletion {
   match step {
-    ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+    ExecutorCompletedNormal(value) | ExecutorCompletedReturn(value) =>
       ExecutorActivationCompletionNormal(value)
-    _ =>
+    ExecutorCompletedReference(_) =>
       ExecutorActivationCompletionAbrupt(
         @errors.InternalError(
           message="binding frame completed with a pending activation step",
