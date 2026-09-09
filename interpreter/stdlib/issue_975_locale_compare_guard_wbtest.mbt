@@ -51,7 +51,7 @@ test "String.localeCompare observes before opaque comparison" {
 }
 
 ///|
-test "String.normalize remains the current bounded identity stub" {
+test "String.normalize uses the normalization library" {
   let observations : Ref[Int] = { val: 0, }
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -63,7 +63,19 @@ test "String.normalize remains the current bounded identity stub" {
   match
     interp.call_value(normalize, String_("abc"), [], @token.Loc::default()) {
     String_(value) => inspect(value, content="abc")
-    _ => fail("normalize stub must return its input string")
+    _ => fail("normalize must return a string")
   }
-  inspect(observations.val, content="0")
+  // The guard is the required single observation before native normalization.
+  inspect(observations.val, content="1")
+}
+
+///|
+test "get_string_method normalize captures its receiver" {
+  let interp = @runtime.Interpreter::new()
+  let normalize = get_string_method("e\u{301}", "normalize", interp.realm_state)
+  match
+    interp.call_value(normalize, String_("ignored"), [], @token.Loc::default()) {
+    String_(value) => inspect(value, content="é")
+    _ => fail("normalize must return a captured receiver")
+  }
 }

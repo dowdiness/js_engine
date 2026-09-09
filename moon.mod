@@ -15,4 +15,5 @@ description = "Pure MoonBit cross-target embedded JavaScript engine"
 import {
   "moonbitlang/x@0.5.1",
   "moonbitlang/async@0.21.0",
+  "moonbit-community/normalization@0.5.0",
 }

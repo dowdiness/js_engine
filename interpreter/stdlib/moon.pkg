@@ -10,4 +10,5 @@ import {
   "moonbitlang/core/math",
   "moonbitlang/core/env",
   "moonbitlang/core/set",
+  "moonbit-community/normalization",
 }

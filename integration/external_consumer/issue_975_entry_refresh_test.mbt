@@ -129,18 +129,57 @@ test "default String.localeCompare conversion throws precede the guard" {
 }
 
 ///|
-test "default String.normalize remains its bounded identity stub" {
+test "default String.normalize rejects unobserved native progress" {
   let engine = @js_engine.Engine()
-  engine.eval("function normalizeValue() { return 'abc'.normalize(); }")
+  engine.eval("function normalizeValue() { return ('a'.repeat(2000) + '\\u0301').normalize(); }")
   match
     engine.call_json_bounded(
       "normalizeValue",
       [],
       locale_compare_guardrail_policy(1000L),
     ) {
-    Ok(value) => json_inspect(value, content="abc")
-    Err(diagnostic) => fail(diagnostic.message())
+    Ok(_) => fail("normalize must fail closed before native normalization")
+    Err(diagnostic) => {
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
+      assert_true(diagnostic.pending_jobs() is @js_engine.PendingJobs::None)
+    }
   }
+}
+
+///|
+test "default String.normalize validates form before bounded guard" {
+  let engine = @js_engine.Engine()
+  engine.eval("function normalizeValue() { return 'abc'.normalize('BAD'); }")
+  match
+    engine.call_json_bounded(
+      "normalizeValue",
+      [],
+      locale_compare_guardrail_policy(1000L),
+    ) {
+    Ok(_) => fail("invalid normalize form must reject")
+    Err(diagnostic) => inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+  }
+}
+
+///|
+test "default String.normalize receiver coercion precedes bounded guard" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    "var events = ''; " +
+    "var receiver = { toString() { events += 'r'; return 'abc'; } }; " +
+    "function normalizeValue() { return String.prototype.normalize.call(receiver); } " +
+    "function readEvents() { return events; }",
+  )
+  match
+    engine.call_json_bounded(
+      "normalizeValue",
+      [],
+      locale_compare_guardrail_policy(1000L),
+    ) {
+    Ok(_) => fail("normalize must fail closed after receiver coercion")
+    Err(diagnostic) => inspect(diagnostic.failure_kind_code(), content="execution-limit")
+  }
+  json_inspect(engine.call_json("readEvents", []), content="r")
 }
 
 ///|

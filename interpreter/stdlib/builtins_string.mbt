@@ -1464,14 +1464,27 @@ pub fn get_string_method(
     }
     "normalize" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="normalize",
-        fn(_args) {
-          // STUB: Unicode normalization (NFC, NFD, NFKC, NFKD) is not implemented.
-          // Returns the input string unchanged. Full implementation requires
-          // Unicode normalization tables and algorithms.
-          Value::String_(str)
+        length=0,
+        fn(interp, _this_val, args) raise {
+          let form = if args.length() == 0 || args[0] is Undefined {
+            @normalization.NormalizationForm::NFC
+          } else {
+            match interp.to_js_string(args[0]) {
+              "NFC" => @normalization.NormalizationForm::NFC
+              "NFD" => @normalization.NormalizationForm::NFD
+              "NFKC" => @normalization.NormalizationForm::NFKC
+              "NFKD" => @normalization.NormalizationForm::NFKD
+              _ =>
+                raise @errors.RangeError(
+                  message="The normalization form is not valid",
+                )
+            }
+          }
+          interp.reject_unobserved_native_progress()
+          Value::String_(@normalization.normalize(str, form))
         },
       )
     }
