@@ -180,6 +180,16 @@ fn Interpreter::with_active_property_access_value(
 }
 
 ///|
+// Keep descriptor classification outside the common empty-descriptor path.
+fn PropertyBag::can_read_data_slot(self : PropertyBag, prop : String) -> Bool {
+  match self.descriptors.get(prop) {
+    None => true
+    Some({ is_accessor: false, getter: None, .. }) => true
+    _ => false
+  }
+}
+
+///|
 pub fn Interpreter::get_property(
   self : Interpreter,
   obj : Value,
@@ -206,7 +216,7 @@ pub fn Interpreter::get_property(
       // Check emptiness first so that hot own-data reads avoid hashing the
       // property name into the descriptor map before the value-map lookup.
       let descriptors = data.bag.descriptors
-      if descriptors.is_empty() || !descriptors.contains(prop) {
+      if descriptors.is_empty() || data.bag.can_read_data_slot(prop) {
         match data.bag.properties.get(prop) {
           Some(v) => return v
           None => ()
