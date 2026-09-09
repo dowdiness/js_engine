@@ -2394,6 +2394,17 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     PrivateIdent(_, _) => true
     _ => false
   }
+  // A non-static, non-computed generator named `constructor` is an early error.
+  // Computed names are not statically known, and static methods are allowed.
+  if is_generator && !is_static && !computed {
+    match key_expr {
+      StringLit("constructor", _, _, _) =>
+        raise @errors.SyntaxError(
+          message="A generator method named 'constructor' is not allowed",
+        )
+      _ => ()
+    }
+  }
   // After parsing the key: decide field vs method
   // If async/generator/get/set modifiers were used -> must be a method
   // Otherwise: if next token is NOT '(' -> it's a field
