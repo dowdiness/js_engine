@@ -553,6 +553,9 @@ fn apply_descriptor_to_bag(
   desc : PropDescriptor,
   value_opt : Value?,
 ) -> Unit raise Error {
+  // Accessor slots must not retain a previous data value. Reads without a
+  // getter use this undefined sentinel, including after conversion back to data.
+  let value_opt = if desc.is_accessor { Some(Undefined) } else { value_opt }
   match key {
     Symbol(sym) => {
       bag.symbol_descriptors[sym.id] = desc
@@ -1109,9 +1112,13 @@ pub fn Interpreter::array_define_own_property(
                 }
             }
             arr.holes.remove(idx)
-            match partial.value {
-              Some(v) => arr.elements[idx] = v
-              None => ()
+            if partial.is_accessor() {
+              arr.elements[idx] = Undefined
+            } else {
+              match partial.value {
+                Some(v) => arr.elements[idx] = v
+                None => ()
+              }
             }
             let new_len = idx64 + 1L
             if existing_override is Some(_) && new_len > logical_len {
