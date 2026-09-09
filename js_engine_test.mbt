@@ -69,6 +69,59 @@ test "run facade" {
 }
 
 ///|
+test "dead-code bare generator constructor is a syntax error" {
+  let src =
+    #|try {
+    #|  eval("if (false) { class C { *constructor() {} } }")
+    #|  false
+    #|} catch (e) {
+    #|  e instanceof SyntaxError
+    #|}
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "dead-code bare generator constructor")
+}
+
+///|
+test "quoted noncomputed generator constructor is a syntax error" {
+  let src =
+    #|try {
+    #|  eval("class C { *\"constructor\"() {} }")
+    #|  false
+    #|} catch (e) {
+    #|  e instanceof SyntaxError
+    #|}
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "quoted noncomputed generator constructor")
+}
+
+///|
+test "static generator constructor is callable" {
+  let src =
+    #|class C { static *constructor() { yield 1; } }
+    #|C.constructor().next().value
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "1", "static generator constructor")
+}
+
+///|
+test "computed literal constructor generator is callable" {
+  let src =
+    #|class C { *["constructor"]() { yield 1; } }
+    #|new C()["constructor"]().next().value
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "1", "computed literal constructor generator")
+}
+
+///|
+test "ordinary generator method is callable" {
+  let src =
+    #|class C { *generator() { yield 1; } }
+    #|new C().generator().next().value
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "1", "ordinary generator method")
+}
+
+///|
 test "non-simple duplicate default parameters are early errors" {
   let (_, result) = @js_engine.run(
     "try { eval(\"function f(a = 0, a) {}\"); false } " +
