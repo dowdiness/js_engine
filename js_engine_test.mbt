@@ -3651,3 +3651,51 @@ test "builtin method descriptors use standard metadata" {
     "function:true:false:true",
   ])
 }
+
+///|
+test "Object.prototype.toString inherited custom tag on string primitive" {
+  let src =
+    #|String.prototype[Symbol.toStringTag] = "StringTag";
+    #|Object.prototype.toString.call("x")
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "[object StringTag]", "string primitive tag")
+}
+
+///|
+test "Object.prototype.toString primitive non-string tag falls back" {
+  let src =
+    #|Number.prototype[Symbol.toStringTag] = 7;
+    #|Object.prototype.toString.call(1)
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "[object Number]", "non-string primitive tag")
+}
+
+///|
+test "Object.prototype.toString primitive getter receives boxed receiver" {
+  let src =
+    #|let receiver;
+    #|Object.defineProperty(Number.prototype, Symbol.toStringTag, {
+    #|  get: function() { 'use strict'; receiver = this; }
+    #|});
+    #|Object.prototype.toString.call(1);
+    #|receiver instanceof Number && receiver.valueOf() === 1
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "boxed getter receiver")
+}
+
+///|
+test "Object.prototype.toString primitive getter preserves thrown identity" {
+  let src =
+    #|const marker = {};
+    #|Object.defineProperty(Boolean.prototype, Symbol.toStringTag, {
+    #|  get: function() { throw marker; }
+    #|});
+    #|try {
+    #|  Object.prototype.toString.call(false);
+    #|  false;
+    #|} catch (error) {
+    #|  error === marker
+    #|}
+  let (_, result) = @js_engine.run(src)
+  expect_string(result, "true", "getter thrown identity")
+}

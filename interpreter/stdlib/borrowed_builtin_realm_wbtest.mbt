@@ -64,6 +64,37 @@ fn assert_borrowed_get_prototype_of(
 }
 
 ///|
+test "borrowed Object.prototype.toString boxes in built-in function realm" {
+  let home = make_borrowed_builtin_realm_interp()
+  let caller = make_borrowed_builtin_realm_interp()
+  let home_tag = home.realm_state.well_known_symbols.to_string_tag
+  let caller_tag = caller.realm_state.well_known_symbols.to_string_tag
+  match home.realm_state.get_number_proto() {
+    Object(data) => data.bag.symbol_properties[home_tag.id] = String_("Home")
+    _ => fail("expected home Number.prototype object")
+  }
+  match caller.realm_state.get_number_proto() {
+    Object(data) =>
+      data.bag.symbol_properties[caller_tag.id] = String_("Caller")
+    _ => fail("expected caller Number.prototype object")
+  }
+  let to_string = home.get_property(
+    home.realm_state.get_obj_proto(),
+    "toString",
+    @token.Loc::default(),
+  )
+  let result = caller.call_value(
+    to_string,
+    Number(1.0),
+    [],
+    @token.Loc::default(),
+  )
+  assert_string_marker(
+    "borrowed Object.prototype.toString", result, "[object Home]",
+  )
+}
+
+///|
 test "borrowed Object.getPrototypeOf uses built-in function realm for primitive" {
   let realm_a = make_borrowed_builtin_realm_interp()
   let realm_b = make_borrowed_builtin_realm_interp()

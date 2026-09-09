@@ -23,8 +23,8 @@ for workflow_name in "${workflows[@]}"; do
   workflow="$ROOT_DIR/.github/workflows/$workflow_name"
   [[ -f "$workflow" ]] || fail "$workflow_name is missing"
 
-  [[ "$(grep -Fc 'MOONBIT_INSTALL_VERSION: "nightly"' "$workflow")" -eq 1 ]] ||
-    fail "$workflow_name must select the official nightly channel once"
+  [[ "$(grep -Fc 'MOONBIT_INSTALL_VERSION: "latest"' "$workflow")" -eq 1 ]] ||
+    fail "$workflow_name must select the official stable channel once"
   if grep -Eq 'MOONBIT_EXPECTED_VERSION|MOONBIT_CACHE_VERSION|toolchain-cache|verify_moonbit_toolchain' "$workflow"; then
     fail "$workflow_name must not pin or restore an obsolete toolchain"
   fi

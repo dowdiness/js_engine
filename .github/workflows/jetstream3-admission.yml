@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 env:
-  MOONBIT_INSTALL_VERSION: "nightly"
+  MOONBIT_INSTALL_VERSION: "latest"
 
 jobs:
   contract:

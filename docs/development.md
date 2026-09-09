@@ -5,11 +5,11 @@ the root README; agent-specific workflow belongs in `AGENTS.md`.
 
 ## MoonBit toolchain
 
-Local development and CI use the official `nightly` channel. Update the whole
+Local development and CI use the official stable `latest` channel. Update the whole
 toolchain (compiler, standard library, and formatter) together:
 
 ```bash
-curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s nightly
+curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s latest
 moon version --all
 moon update
 moon check --target all --deny-warn
@@ -20,9 +20,10 @@ Restart the editor after updating so its language server uses the new toolchain.
 Run `moon fmt` with this same toolchain; older formatters can produce different
 trailing commas.
 
-CI installs nightly for every job and logs `moon version --all`. Dependency and
-build caches include both the build-tool and compiler versions. The toolchain
-itself is not restored from cache, so it cannot silently remain on an old nightly.
+CI installs the stable `latest` channel for every job and logs `moon version --all`.
+Dependency and build caches include both the build-tool and compiler versions. The
+toolchain itself is not restored from cache, so it cannot silently remain on an
+old stable release.
 This tracks upstream updates; it does not pin a reproducible historical release.
 When an upstream update breaks CI, use the logged versions to reproduce and fix
 it. Run `bash scripts/test_moonbit_toolchain_contract.sh` after workflow changes.

@@ -48,7 +48,7 @@ on:
   workflow_dispatch:
 
 env:
-  MOONBIT_INSTALL_VERSION: "nightly"
+  MOONBIT_INSTALL_VERSION: "latest"
 
 jobs:
   bench:
