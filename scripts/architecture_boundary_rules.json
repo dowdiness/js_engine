@@ -55,7 +55,7 @@
     },
     {
       "name": "external",
-      "packages": ["moonbitlang/*"]
+      "packages": ["moonbitlang/*", "moonbit-community/normalization"]
     }
   ],
   "allowed_imports": [

@@ -99,16 +99,19 @@ test "candidate String.localeCompare leaves the Engine reusable" {
 }
 
 ///|
-test "candidate String.normalize remains its bounded identity stub" {
+test "candidate String.normalize rejects unobserved native progress" {
   let engine = @js_engine.Engine()
-  engine.eval("function normalizeValue() { return 'abc'.normalize(); }")
+  engine.eval(
+    "function normalizeValue() { return ('a'.repeat(2000) + '\\u0301').normalize(); }",
+  )
   match
     engine.call_json_bounded(
       "normalizeValue",
       [],
       candidate_locale_compare_guardrail_policy(1000L),
     ) {
-    Ok(value) => json_inspect(value, content="abc")
-    Err(diagnostic) => fail(diagnostic.message())
+    Ok(_) => fail("candidate normalize must fail closed")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
   }
 }
