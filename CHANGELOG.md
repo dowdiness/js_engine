@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [0.9.0] — Unreleased
+
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+
+- **Passed / Executed**: 91.7% strict (31,887 / 34,781),
+  91.1% non-strict (33,740 / 37,016).
+- **Passed / Discovered**: 70.9% strict (31,887 / 44,986),
+  70.7% non-strict (33,740 / 47,692).
+- **Skipped**: 10,201 strict, 10,672 non-strict.
+
+Measured on CI run 34383267304 (tip `bda8e59`, 2026-09-09).
+Regression baseline: +284 non-strict / +252 strict vs `test262-baseline.json` (min 33,456 / 31,635).
+
+Compared with v0.8.0's CI run 31309850133, passing files increased by
+140 in strict mode and 172 in non-strict mode. Both runs use per-mode
+reporting, with unchanged discovered and skipped counts. The figures above
+retain both denominators.
+
+Unit tests: 4,463 / 4,463 passed in CI run 34383267304's
+`unit-test` job (`moon test --deny-warn`, default target).
+
+### Added
+
+- Add stable embedding APIs for capability-selected Host Environments and independent Execution Sessions, including typed console, script-resource, and timer boundaries.
+- Add the stable Shell API and extend the CLI with file execution, module execution, script arguments, and -e evaluation.
+- Add a web playground for running JavaScript examples in the browser.
+- Implement Array.fromAsync for array-like, synchronous iterable, and asynchronous iterable inputs.
+- Implement String.prototype.normalize for NFC, NFD, NFKC, and NFKD normalization forms.
+- Expand bytecode execution support for iterable and object spread, property deletion, dynamic with bindings, Array.prototype.forEach, and Promise reaction jobs.
+
+### Changed
+
+- Route verified eligible activations through the bytecode executor by default; unsupported source continues on the tree-walking executor.
+- Extend progress observation and fail-closed rejection in bounded execution to additional Array, string, typed-array, keyed-collection, JSON, Promise, and locale operations.
+
+### Fixed
+
+- Correct bytecode and interpreter behavior for global assignments, function-local var bindings, try-statement completion and lexical scope, and asynchronous source ownership.
+- Correct built-in and language edge cases including Date receiver validation, primitive Symbol.toStringTag, shared iterator method identity, generator class constructor early errors, destructuring declaration lists, and accessor descriptor transitions.
+
+### Performance
+
+- Reduce bytecode execution overhead for synchronous local updates, proven closure environments, and repeated binding-reference lookups.
+- Fast-path reads of own data properties that have explicit data descriptors.
+
+### Compatibility notes
+
+The documented stable root facade has no removed declarations or changed
+existing signatures compared with v0.8.0. The following changes affect direct
+users of packages outside that stable facade:
+
+- `interpreter/runtime`: `Interpreter::get_console_member` was removed.
+  `has_array_like_element` now raises errors; callers in non-raising contexts
+  need to handle them.
+- `benchmarks`: `BYTECODE_CALL_FRAME_SRC` and `bench_bytecode_call_frame`
+  were removed. `parse_bench_args` now raises errors.
+- Constructor/factory signatures gained optional Console configuration.
+  Existing ordinary calls do not need those arguments; code that stores these
+  APIs as explicitly typed function values should review their signatures.
+
+These advanced/internal declarations remain public to direct dependents.
+Users importing these packages should recompile their integrations and review
+the changes; this release is not claimed to be source-compatible across every
+public package.
+
+### Known limitations
+
+- Unsupported source still uses the tree-walking executor. Default bytecode
+  routing does not imply complete bytecode support or universal stack safety.
+- Bounded operations remain staged availability contracts. The embedding API
+  is intended for trusted scripts and is not a security sandbox.
+- The property-read optimization improves descriptor-backed reads in isolated
+  comparisons. A practical MathJax comparison did not establish an overall
+  application speedup; no general application-speedup claim is made here.
+- Development and CI now use the official stable `latest` MoonBit channel;
+  old compiler compatibility has not been established for this release.
+
 ## [0.8.0] — 2026-08-09
 
 ### Conformance

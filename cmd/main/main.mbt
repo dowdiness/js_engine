@@ -145,7 +145,7 @@ fn main {
       ),
     ],
     about="JavaScript interpreter",
-    version="0.8.1",
+    version="0.9.0",
   )
   let matches = cmd.parse(argv=command_args[:], env=Map([])) catch {
     err => {
