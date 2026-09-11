@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
-## [0.9.0] — Unreleased
+## [0.9.0] — 2026-09-11
+
+This release adds application-owned hosting services, makes verified bytecode
+execution the default for eligible activations, and expands JavaScript built-in
+support. Existing signatures in the stable root API are preserved; direct users
+of runtime and benchmark packages should review the compatibility notes below.
 
 ### Conformance
 
@@ -23,69 +28,88 @@ reported separately — summing would double-count files):
 Measured on CI run 34383267304 (tip `bda8e59`, 2026-09-09).
 Regression baseline: +284 non-strict / +252 strict vs `test262-baseline.json` (min 33,456 / 31,635).
 
-Compared with v0.8.0's CI run 31309850133, passing files increased by
-140 in strict mode and 172 in non-strict mode. Both runs use per-mode
-reporting, with unchanged discovered and skipped counts. The figures above
-retain both denominators.
+Compared with v0.8.0's [CI run 31309850133](https://github.com/dowdiness/js_engine/actions/runs/31309850133),
+passing files increased by **140 strict** and **172 non-strict**. Both runs use
+per-mode reporting with unchanged discovered and skipped counts.
 
-Unit tests: 4,463 / 4,463 passed in CI run 34383267304's
-`unit-test` job (`moon test --deny-warn`, default target).
+Unit tests: **4,463 / 4,463 passed** in the `unit-test` job of
+[CI run 34383267304](https://github.com/dowdiness/js_engine/actions/runs/34383267304)
+(`moon test --deny-warn`, default target).
 
 ### Added
 
-- Add stable embedding APIs for capability-selected Host Environments and independent Execution Sessions, including typed console, script-resource, and timer boundaries.
-- Add the stable Shell API and extend the CLI with file execution, module execution, script arguments, and -e evaluation.
-- Add a web playground for running JavaScript examples in the browser.
-- Implement Array.fromAsync for array-like, synchronous iterable, and asynchronous iterable inputs.
-- Implement String.prototype.normalize for NFC, NFD, NFKC, and NFKD normalization forms.
-- Expand bytecode execution support for iterable and object spread, property deletion, dynamic with bindings, Array.prototype.forEach, and Promise reaction jobs.
+- **Application hosting** — `HostEnvironment`, `SessionBindings`, and
+  `ExecutionSession` let applications select host capabilities and bind console
+  output, script resources, and timers through typed interfaces.
+- **Shell API and CLI** — `Shell` supports script and module execution. The CLI
+  supports file execution, module execution, script arguments, and `-e` evaluation.
+- **Web playground** — run JavaScript examples in the browser.
+- **`Array.fromAsync`** — construct arrays from array-like objects, synchronous
+  iterables, and asynchronous iterables.
+- **`String.prototype.normalize`** — normalize strings using NFC, NFD, NFKC,
+  or NFKD.
+- **Bytecode coverage** — additional execution paths for iterable and object
+  spread, property deletion, dynamic `with` bindings, `Array.prototype.forEach`,
+  and Promise reactions.
 
 ### Changed
 
-- Route verified eligible activations through the bytecode executor by default; unsupported source continues on the tree-walking executor.
-- Extend progress observation and fail-closed rejection in bounded execution to additional Array, string, typed-array, keyed-collection, JSON, Promise, and locale operations.
+- Eligible, verified activations use the bytecode executor by default.
+  Unsupported source continues to use the tree-walking executor.
+- Bounded execution observes progress or rejects additional operations that
+  cannot be safely accounted for across Array, string, TypedArray, keyed
+  collection, JSON, Promise, and locale operations.
+- Development and CI use the official stable `latest` MoonBit channel. Update
+  the compiler, standard library, and formatter together as described in the
+  [development guide](docs/development.md#moonbit-toolchain).
 
 ### Fixed
 
-- Correct bytecode and interpreter behavior for global assignments, function-local var bindings, try-statement completion and lexical scope, and asynchronous source ownership.
-- Correct built-in and language edge cases including Date receiver validation, primitive Symbol.toStringTag, shared iterator method identity, generator class constructor early errors, destructuring declaration lists, and accessor descriptor transitions.
+- Global-object assignments and function-local `var` bindings during bytecode
+  execution.
+- Lexical scope and abrupt completions in `try` statements, and asynchronous
+  source ownership.
+- Stale data values exposed after converting data properties to accessors.
+- Date receiver validation, primitive `Symbol.toStringTag` handling, and shared
+  iterator method identity.
+- Parsing of declaration lists starting with destructuring, and early rejection
+  of generator class constructors.
 
 ### Performance
 
-- Reduce bytecode execution overhead for synchronous local updates, proven closure environments, and repeated binding-reference lookups.
-- Fast-path reads of own data properties that have explicit data descriptors.
+- Reduced bytecode overhead for synchronous local updates, proven closure
+  environments, and repeated binding-reference lookups.
+- Direct reads of own data properties with explicit data descriptors avoid
+  general property dispatch. The improvement is specific to this read path;
+  isolated benchmark gains do not imply application-wide speedups.
 
 ### Compatibility notes
 
-The documented stable root facade has no removed declarations or changed
-existing signatures compared with v0.8.0. The following changes affect direct
-users of packages outside that stable facade:
+The documented stable root API has no removed declarations or changed existing
+signatures compared with v0.8.0. Direct imports of advanced/internal packages
+have the following source-compatibility changes:
 
 - `interpreter/runtime`: `Interpreter::get_console_member` was removed.
-  `has_array_like_element` now raises errors; callers in non-raising contexts
-  need to handle them.
-- `benchmarks`: `BYTECODE_CALL_FRAME_SRC` and `bench_bytecode_call_frame`
-  were removed. `parse_bench_args` now raises errors.
-- Constructor/factory signatures gained optional Console configuration.
-  Existing ordinary calls do not need those arguments; code that stores these
-  APIs as explicitly typed function values should review their signatures.
+  `has_array_like_element` now raises errors; callers must handle or propagate
+  them.
+- `benchmarks`: `BYTECODE_CALL_FRAME_SRC` and `bench_bytecode_call_frame` were
+  removed. `parse_bench_args` now raises errors.
+- `interpreter::new_interpreter` and `runtime::Interpreter::new` gained optional
+  console configuration parameters. Existing direct calls can omit them; users
+  storing these functions with explicit function types should check those types.
 
-These advanced/internal declarations remain public to direct dependents.
-Users importing these packages should recompile their integrations and review
-the changes; this release is not claimed to be source-compatible across every
-public package.
+Applications using these packages directly should recompile and review their
+integrations. See the [embedding guide](docs/EMBEDDING.md#root-public-surface-classification)
+for the boundary between stable and advanced/internal APIs.
 
 ### Known limitations
 
-- Unsupported source still uses the tree-walking executor. Default bytecode
-  routing does not imply complete bytecode support or universal stack safety.
+- Default bytecode routing does not provide complete bytecode coverage or
+  universal stack safety. Unsupported source retains the tree-walking fallback.
 - Bounded operations remain staged availability contracts. The embedding API
-  is intended for trusted scripts and is not a security sandbox.
-- The property-read optimization improves descriptor-backed reads in isolated
-  comparisons. A practical MathJax comparison did not establish an overall
-  application speedup; no general application-speedup claim is made here.
-- Development and CI now use the official stable `latest` MoonBit channel;
-  old compiler compatibility has not been established for this release.
+  is intended for trusted scripts and does not provide security isolation.
+- Compatibility with older MoonBit compilers has not been established for this
+  release.
 
 ## [0.8.0] — 2026-08-09
 
