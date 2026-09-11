@@ -316,6 +316,26 @@ fn startup_stamp_realm_functions_in_bag(
       )
     }
   })
+  // Accessors live in descriptors, not in the corresponding property values.
+  let stamp_accessor = (accessor : Value?) => {
+    match accessor {
+      Some(value) =>
+        startup_stamp_realm_reachable_value(
+          value, realm_state, depth, visited_objects,
+        )
+      None => ()
+    }
+  }
+  bag.descriptors.each((_, descriptor) => {
+    stamp_accessor(descriptor.getter)
+    stamp_accessor(descriptor.setter)
+  })
+  bag.symbol_descriptors.each((key, descriptor) => {
+    if key >= 0 {
+      stamp_accessor(descriptor.getter)
+      stamp_accessor(descriptor.setter)
+    }
+  })
 }
 
 ///|
