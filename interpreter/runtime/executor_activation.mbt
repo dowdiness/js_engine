@@ -3576,12 +3576,17 @@ fn Interpreter::drive_executor_activation_stack(
             error => Err(error)
           }
           match handled_result {
-            Err(error) => {
+            Err(error) =>
               if index < stack.length() {
                 self.deliver_executor_activation_error(stack, index, error)
+                // A parent may consume guest exceptions, never protocol defects.
+                if error is @errors.InternalError(_) ||
+                  !is_js_catchable_error(error) {
+                  raise error
+                }
+              } else {
+                raise error
               }
-              raise error
-            }
             Ok(handled) =>
               match handled {
                 Some(result) => {

@@ -3071,6 +3071,7 @@ test "lowering-unsupported child moves the script root to tree execution" {
 test "lowering-unsupported child with eligible descendant stays tree-local" {
   let source =
     #|function fromIndexThrow() {
+    #|  for (var unused of []) {}
     #|  var position = { valueOf() { throw "position"; } };
     #|  try { [1].includes(1, position); } catch (error) { return error; }
     #|  return "missing";

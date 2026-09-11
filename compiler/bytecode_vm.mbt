@@ -30,7 +30,8 @@ priv struct BytecodeFrame {
   for_in_iters : Array[BytecodeForInState]
   locals : Array[Value]
   env_slots : Array[EnvironmentSlot]
-  env : Environment
+  mut env : Environment
+  handlers : Array[BytecodeHandler]
   ctx : ExecContext
   mut ip : Int
   mut completion : Value
@@ -90,6 +91,7 @@ fn BytecodeFrame::BytecodeFrame(
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
     pending_continuation: None,
+    handlers: [],
     candidate_route_activation: None,
     candidate_route_completed: false,
   }
@@ -137,6 +139,7 @@ fn BytecodeFrame::candidate(
     completion: Value::Undefined,
     optional_chain_short_circuited: false,
     pending_continuation: None,
+    handlers: [],
     candidate_route_activation: Some(route_activation),
     candidate_route_completed: false,
   }
@@ -316,8 +319,12 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn deliver_activati
       )
   }
   self.pending_continuation = None
-  let decision = reduce_bytecode_resume(continuation, completion)
-  self.apply_activation_resume_decision(decision)
+  try {
+    let decision = reduce_bytecode_resume(continuation, completion)
+    self.apply_activation_resume_decision(decision)
+  } catch {
+    error => ignore(self.transfer_completion(ThrowCompletion(error)))
+  }
 }
 
 ///|
@@ -704,6 +711,23 @@ fn BytecodeFrame::step_bytecode(
   frame : BytecodeFrame,
   interp : Interpreter,
 ) -> BytecodeFrameStep raise Error {
+  while true {
+    return frame.run_instructions(interp) catch {
+      error => {
+        ignore(frame.transfer_completion(ThrowCompletion(error)))
+        continue
+      }
+    }
+  } nobreak {
+    fail("unreachable bytecode dispatch exit")
+  }
+}
+
+///|
+fn BytecodeFrame::run_instructions(
+  frame : BytecodeFrame,
+  interp : Interpreter,
+) -> BytecodeFrameStep raise Error {
   let code = frame.func_def.code
   let code_len = code.length()
   guard frame.ip < code_len else {
@@ -711,12 +735,54 @@ fn BytecodeFrame::step_bytecode(
   }
   let stack = frame.stack
   let locals = frame.locals
-  let env = frame.env
   let ctx = frame.ctx
   while frame.ip < code_len {
+    let env = frame.env
     let instr = code[frame.ip]
     frame.ip += 1
     match instr {
+      EnterHandler(kind, target, end) =>
+        frame.handlers.push(
+          BytecodeHandler(
+            kind,
+            frame.ip,
+            target,
+            end,
+            env,
+            stack.length(),
+            frame.binding_references.length(),
+            frame.arg_lists.length(),
+            frame.for_in_iters.copy(),
+            frame.optional_chain_short_circuited,
+          ),
+        )
+      LeaveHandler(target) =>
+        match
+          frame.transfer_completion(
+            JumpCompletion(
+              target,
+              frame.completion,
+              frame.for_in_iters.length(),
+            ),
+          ) {
+          Some(step) => return step
+          None => ()
+        }
+      ResumeCompletion(_) => {
+        let handler = frame.handlers.pop().unwrap()
+        frame.env = handler.env
+        let pending = match handler.phase {
+          Finalizing(completion) => completion
+          _ =>
+            raise @errors.InternalError(
+              message="finally resumed without pending completion",
+            )
+        }
+        match frame.transfer_completion(pending) {
+          Some(step) => return step
+          None => ()
+        }
+      }
       ObserveStatement(_) | ObserveExpression(_) =>
         // Finalization already verifies every observation source reference and
         // its required role. Execution only owns the step-accounting barrier.
@@ -1801,6 +1867,11 @@ fn BytecodeFrame::step_bytecode(
         )
       }
       Return => return BytecodeFrameReturn(frame.pop())
+      ReturnThroughHandler =>
+        match frame.transfer_completion(ReturnCompletion(frame.pop())) {
+          Some(step) => return step
+          None => ()
+        }
       Throw => {
         let value = frame.pop()
         @runtime.raise_js_exception(value)
@@ -1808,4 +1879,172 @@ fn BytecodeFrame::step_bytecode(
     }
   }
   BytecodeFrameNormal(frame.completion)
+}
+
+///|
+// Each nested finalizer owns the completion that it may resume or replace.
+priv enum BytecodeCompletion {
+  JumpCompletion(Int, Value, Int)
+  ReturnCompletion(Value)
+  ThrowCompletion(Error)
+}
+
+///|
+priv struct BytecodeHandler {
+  kind : BytecodeHandlerKind
+  start : Int
+  handler_ip : Int
+  end : Int
+  env : Environment
+  stack_depth : Int
+  reference_depth : Int
+  args_depth : Int
+  for_in_snapshot : Array[BytecodeForInState]
+  optional_chain_short_circuited : Bool
+  mut phase : BytecodeHandlerPhase
+}
+
+///|
+fn BytecodeHandler::BytecodeHandler(
+  kind : BytecodeHandlerKind,
+  start : Int,
+  handler_ip : Int,
+  end : Int,
+  env : Environment,
+  stack_depth : Int,
+  reference_depth : Int,
+  args_depth : Int,
+  for_in_snapshot : Array[BytecodeForInState],
+  optional_chain_short_circuited : Bool,
+) -> BytecodeHandler {
+  {
+    kind,
+    start,
+    handler_ip,
+    end,
+    env,
+    stack_depth,
+    reference_depth,
+    args_depth,
+    for_in_snapshot,
+    optional_chain_short_circuited,
+    phase: Protected,
+  }
+}
+
+///|
+fn BytecodeFrame::transfer_completion(
+  self : BytecodeFrame,
+  completion : BytecodeCompletion,
+) -> BytecodeFrameStep? raise Error {
+  match completion {
+    ThrowCompletion(error) if error is @errors.InternalError(_) ||
+      !@runtime.is_js_catchable_error(error) => raise error
+    _ => ()
+  }
+  while self.handlers.length() > 0 {
+    let handler = self.handlers.last().unwrap()
+    let decision = bytecode_handler_decision(handler, completion)
+    match decision {
+      Stay(target, value, depth) => {
+        while self.for_in_iters.length() > depth {
+          ignore(self.for_in_iters.pop())
+        }
+        self.ip = target
+        self.completion = value
+        return None
+      }
+      _ => ()
+    }
+    while self.stack.length() > handler.stack_depth {
+      ignore(self.stack.pop())
+    }
+    while self.binding_references.length() > handler.reference_depth {
+      ignore(self.binding_references.pop())
+    }
+    while self.arg_lists.length() > handler.args_depth {
+      ignore(self.arg_lists.pop())
+    }
+    // A labeled exit may already have removed enumeration frames. Restore the
+    // live iterator objects while finally runs; its completion can override the exit.
+    self.for_in_iters.clear()
+    self.for_in_iters.append(handler.for_in_snapshot)
+    self.env = handler.env
+    self.optional_chain_short_circuited = handler.optional_chain_short_circuited
+    match decision {
+      Catch(name, error) => {
+        handler.phase = Catching
+        self.env = Environment::new(parent=Some(handler.env))
+        match name {
+          Some(name) =>
+            self.env.def(
+              name,
+              @runtime.js_error_to_value_with_env(error, Some(handler.env)),
+              @runtime.LetBinding,
+            )
+          None => ()
+        }
+        self.ip = handler.handler_ip
+        self.completion = Value::Undefined
+        return None
+      }
+      RunFinally(pending) => {
+        handler.phase = Finalizing(pending)
+        self.ip = handler.handler_ip
+        self.completion = Value::Undefined
+        return None
+      }
+      Stay(_, _, _) | Unwind => ()
+    }
+    ignore(self.handlers.pop())
+  }
+  match completion {
+    JumpCompletion(target, value, depth) => {
+      while self.for_in_iters.length() > depth {
+        ignore(self.for_in_iters.pop())
+      }
+      self.ip = target
+      self.completion = value
+      None
+    }
+    ReturnCompletion(value) => Some(BytecodeFrameReturn(value))
+    ThrowCompletion(error) => raise error
+  }
+}
+
+///|
+priv enum BytecodeHandlerPhase {
+  Protected
+  Catching
+  Finalizing(BytecodeCompletion)
+}
+
+///|
+priv enum BytecodeHandlerDecision {
+  Stay(Int, Value, Int)
+  Catch(String?, Error)
+  RunFinally(BytecodeCompletion)
+  Unwind
+}
+
+///|
+// Select the next action without changing frame state or performing guest work.
+fn bytecode_handler_decision(
+  handler : BytecodeHandler,
+  completion : BytecodeCompletion,
+) -> BytecodeHandlerDecision {
+  let is_protected = handler.phase is Protected
+  match completion {
+    JumpCompletion(target, value, depth) if target >=
+      (if is_protected { handler.start } else { handler.handler_ip }) &&
+      target < (if is_protected { handler.handler_ip } else { handler.end }) =>
+      return Stay(target, value, depth)
+    _ => ()
+  }
+  match (handler.phase, handler.kind, completion) {
+    (Protected, CatchHandler(name), ThrowCompletion(error)) =>
+      Catch(name, error)
+    (Protected, FinallyHandler, _) => RunFinally(completion)
+    _ => Unwind
+  }
 }
