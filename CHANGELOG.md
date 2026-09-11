@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [0.9.0] — 2026-09-11
+
+This release adds application-owned hosting services, makes verified bytecode
+execution the default for eligible activations, and expands JavaScript built-in
+support. Existing signatures in the stable root API are preserved; direct users
+of runtime and benchmark packages should review the compatibility notes below.
+
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+
+- **Passed / Executed**: 91.7% strict (31,887 / 34,781),
+  91.1% non-strict (33,740 / 37,016).
+- **Passed / Discovered**: 70.9% strict (31,887 / 44,986),
+  70.7% non-strict (33,740 / 47,692).
+- **Skipped**: 10,201 strict, 10,672 non-strict.
+
+Measured on CI run 34383267304 (tip `bda8e59`, 2026-09-09).
+Regression baseline: +284 non-strict / +252 strict vs `test262-baseline.json` (min 33,456 / 31,635).
+
+Compared with v0.8.0's [CI run 31309850133](https://github.com/dowdiness/js_engine/actions/runs/31309850133),
+passing files increased by **140 strict** and **172 non-strict**. Both runs use
+per-mode reporting with unchanged discovered and skipped counts.
+
+Unit tests: **4,463 / 4,463 passed** in the `unit-test` job of
+[CI run 34383267304](https://github.com/dowdiness/js_engine/actions/runs/34383267304)
+(`moon test --deny-warn`, default target).
+
+### Added
+
+- **Application hosting** — `HostEnvironment`, `SessionBindings`, and
+  `ExecutionSession` let applications select host capabilities and bind console
+  output, script resources, and timers through typed interfaces.
+- **Shell API and CLI** — `Shell` supports script and module execution. The CLI
+  supports file execution, module execution, script arguments, and `-e` evaluation.
+- **Web playground** — run JavaScript examples in the browser.
+- **`Array.fromAsync`** — construct arrays from array-like objects, synchronous
+  iterables, and asynchronous iterables.
+- **`String.prototype.normalize`** — normalize strings using NFC, NFD, NFKC,
+  or NFKD.
+- **Bytecode coverage** — additional execution paths for iterable and object
+  spread, property deletion, dynamic `with` bindings, `Array.prototype.forEach`,
+  and Promise reactions.
+
+### Changed
+
+- Eligible, verified activations use the bytecode executor by default.
+  Unsupported source continues to use the tree-walking executor.
+- Bounded execution observes progress or rejects additional operations that
+  cannot be safely accounted for across Array, string, TypedArray, keyed
+  collection, JSON, Promise, and locale operations.
+- Development and CI use the official stable `latest` MoonBit channel. Update
+  the compiler, standard library, and formatter together as described in the
+  [development guide](docs/development.md#moonbit-toolchain).
+
+### Fixed
+
+- Global-object assignments and function-local `var` bindings during bytecode
+  execution.
+- Lexical scope and abrupt completions in `try` statements, and asynchronous
+  source ownership.
+- Stale data values exposed after converting data properties to accessors.
+- Date receiver validation, primitive `Symbol.toStringTag` handling, and shared
+  iterator method identity.
+- Parsing of declaration lists starting with destructuring, and early rejection
+  of generator class constructors.
+
+### Performance
+
+- Reduced bytecode overhead for synchronous local updates, proven closure
+  environments, and repeated binding-reference lookups.
+- Direct reads of own data properties with explicit data descriptors avoid
+  general property dispatch. The improvement is specific to this read path;
+  isolated benchmark gains do not imply application-wide speedups.
+
+### Compatibility notes
+
+The documented stable root API has no removed declarations or changed existing
+signatures compared with v0.8.0. Direct imports of advanced/internal packages
+have the following source-compatibility changes:
+
+- `interpreter/runtime`: `Interpreter::get_console_member` was removed.
+  `has_array_like_element` now raises errors; callers must handle or propagate
+  them.
+- `benchmarks`: `BYTECODE_CALL_FRAME_SRC` and `bench_bytecode_call_frame` were
+  removed. `parse_bench_args` now raises errors.
+- `interpreter::new_interpreter` and `runtime::Interpreter::new` gained optional
+  console configuration parameters. Existing direct calls can omit them; users
+  storing these functions with explicit function types should check those types.
+
+Applications using these packages directly should recompile and review their
+integrations. See the [embedding guide](docs/EMBEDDING.md#root-public-surface-classification)
+for the boundary between stable and advanced/internal APIs.
+
+### Known limitations
+
+- Default bytecode routing does not provide complete bytecode coverage or
+  universal stack safety. Unsupported source retains the tree-walking fallback.
+- Bounded operations remain staged availability contracts. The embedding API
+  is intended for trusted scripts and does not provide security isolation.
+- Compatibility with older MoonBit compilers has not been established for this
+  release.
+
 ## [0.8.0] — 2026-08-09
 
 ### Conformance
