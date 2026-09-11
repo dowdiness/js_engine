@@ -358,6 +358,9 @@ fn bytecode_instruction_transfer(
       Fallthrough(bytecode_stack_effect(2, -1))
     UpdateProperty(_, _, _, _, _) => Fallthrough(bytecode_stack_effect(1, 0))
     UpdateComputed(_, _, _, _) => Fallthrough(bytecode_stack_effect(2, -1))
+    EnterHandler(_, target, _) => BranchTo(target, bytecode_stack_effect(0, 0))
+    LeaveHandler(target) | ResumeCompletion(target) =>
+      JumpTo(target, bytecode_stack_effect(0, 0))
     Jump(target) => JumpTo(target, bytecode_stack_effect(0, 0))
     JumpIfFalse(target) => BranchTo(target, bytecode_stack_effect(1, -1))
     JumpIfFalseKeep(target)
@@ -418,7 +421,8 @@ fn bytecode_instruction_transfer(
       )
     CallSpreadWithReceiver(_) =>
       Fallthrough(bytecode_argument_list_effect(2, -1, 1, -1))
-    Return | Throw => Terminate(bytecode_stack_effect(1, -1))
+    Return | ReturnThroughHandler | Throw =>
+      Terminate(bytecode_stack_effect(1, -1))
   }
 }
 
@@ -490,6 +494,7 @@ fn verify_bytecode_observation_authority(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
+  let exceptional = bytecode_exception_successor_table(function.code)
   let authority = function.observation_authority
   guard physical_equal(
       authority.program_identity,
@@ -538,6 +543,7 @@ fn verify_bytecode_observation_authority(
         let actual_successors = bytecode_observation_authority_successors(
           bytecode_instruction_transfer(function.code[instruction_index]),
           instruction_index,
+          exceptional=exceptional[instruction_index],
         )
         guard bytecode_observation_authority_successors_equal(
           actual_successors,
@@ -885,6 +891,7 @@ fn verify_bytecode_observation_edge_facts(
   function : BytecodeFunction,
   function_path : Array[Int],
 ) -> Unit raise Error {
+  let exceptional = bytecode_exception_successor_table(function.code)
   for instruction_index, edges in function.observation_edge_contexts {
     let transfer = bytecode_instruction_transfer(
       function.code[instruction_index],
@@ -902,10 +909,11 @@ fn verify_bytecode_observation_edge_facts(
         )
       }
       guard bytecode_observation_transfer_has_successor(
-        transfer,
-        instruction_index,
-        edge.successor,
-      ) else {
+          transfer,
+          instruction_index,
+          edge.successor,
+        ) ||
+        exceptional[instruction_index].contains(edge.successor) else {
         raise bytecode_observation_coverage_defect(
           function_path,
           Some(instruction_index),
@@ -1007,6 +1015,7 @@ fn verify_bytecode_function_observation_coverage(
   function_path : Array[Int],
   recurse? : Bool = true,
 ) -> Unit raise Error {
+  let exceptional = bytecode_exception_successor_table(function.code)
   let code_length = function.code.length()
   guard function.observation_contexts.length() == code_length else {
     raise bytecode_observation_coverage_defect(
@@ -1081,6 +1090,15 @@ fn verify_bytecode_function_observation_coverage(
         Some(context) => context
         None => source_post_context
       }
+    }
+    for target in exceptional[instruction_index] {
+      let expected = require_bytecode_observation_edge_context(
+        function, instruction_index, target, source_post_context, function_path,
+      )
+      record_bytecode_observation_context(
+        function, states, worklist, target, expected, source_post_context, function_path,
+        instruction_index,
+      )
     }
     match transfer {
       Fallthrough(_) => {
@@ -1334,6 +1352,26 @@ fn verify_bytecode_function_frame_shapes(
     let state = states[instruction_index].unwrap()
     if instruction_index == code_length {
       continue
+    }
+    match function.code[instruction_index] {
+      EnterHandler(_, _, _) | LeaveHandler(_) | ResumeCompletion(_) => {
+        let expected = bytecode_abstract_frame_shape(
+          0,
+          0,
+          state.for_in_iterator_depth,
+        )
+        guard bytecode_frame_shapes_equal(expected, state) else {
+          raise bytecode_frame_shape_defect(
+            function_path,
+            instruction_index,
+            Some(instruction_index),
+            TerminalShape,
+            expected,
+            state,
+          )
+        }
+      }
+      _ => ()
     }
     match bytecode_instruction_transfer(function.code[instruction_index]) {
       Fallthrough(effect) => {
@@ -1804,6 +1842,10 @@ fn bytecode_indexed_operand(
     | Construct(_, _)
     | ConstructSpread(_)
     | Return
+    | ReturnThroughHandler
+    | EnterHandler(_, _, _)
+    | LeaveHandler(_)
+    | ResumeCompletion(_)
     | Throw => None
   }
 }
@@ -1873,7 +1915,10 @@ fn verify_bytecode_function_indexed_operands(
 ///|
 fn bytecode_control_flow_target(instruction : BytecodeInstr) -> Int? {
   match instruction {
-    Jump(target)
+    EnterHandler(_, target, _)
+    | LeaveHandler(target)
+    | ResumeCompletion(target)
+    | Jump(target)
     | JumpIfFalse(target)
     | JumpIfFalseKeep(target)
     | JumpIfTrueKeep(target)
@@ -1913,6 +1958,7 @@ fn verify_bytecode_function_control_flow(
   function_path : Array[Int],
   recurse? : Bool = true,
 ) -> Unit raise Error {
+  verify_bytecode_exception_regions(function)
   let code_length = function.code.length()
   for instruction_index, instruction in function.code {
     match bytecode_control_flow_target(instruction) {
@@ -2163,5 +2209,153 @@ fn verify_observation_barrier_contract(
       }
     }
     _ => ()
+  }
+}
+
+///|
+fn bytecode_region_phase(
+  index : Int,
+  enter : Int,
+  target : Int,
+  end : Int,
+) -> Int {
+  if index <= enter || index >= end {
+    0
+  } else if index < target {
+    1
+  } else {
+    2
+  }
+}
+
+///|
+// Validate structured region ownership before resource or observation traversal.
+fn verify_bytecode_exception_regions(
+  function : BytecodeFunction,
+) -> Unit raise Error {
+  let code = function.code
+  let regions : Array[(Int, BytecodeHandlerKind, Int, Int)] = []
+  for index, instruction in code {
+    match instruction {
+      EnterHandler(kind, target, end) => {
+        guard index + 1 < target && target < end && end <= code.length() else {
+          raise @errors.InternalError(message="invalid try region bounds")
+        }
+        for (parent, _, parent_target, parent_end) in regions {
+          if bytecode_region_phase(index, parent, parent_target, parent_end) !=
+            0 {
+            let boundary = if index < parent_target {
+              parent_target
+            } else {
+              parent_end
+            }
+            guard end <= boundary else {
+              raise @errors.InternalError(message="try regions cross phases")
+            }
+          }
+        }
+        guard code[target - 1] is LeaveHandler(_) else {
+          raise @errors.InternalError(message="try has no normal exit")
+        }
+        match (kind, code[end - 1]) {
+          (CatchHandler(_), LeaveHandler(_)) => ()
+          (FinallyHandler, ResumeCompletion(exit)) if exit == end => ()
+          _ => raise @errors.InternalError(message="handler has no fixed exit")
+        }
+        regions.push((index, kind, target, end))
+      }
+      _ => ()
+    }
+  }
+  // Even a function with no Enter must reject stray Leave/Resume instructions.
+  for index, instruction in code {
+    match instruction {
+      LeaveHandler(exit) => {
+        let mut valid = false
+        let mut is_boundary = false
+        for (enter, kind, target, end) in regions {
+          let owns_exit = index == target - 1 ||
+            (kind is CatchHandler(_) && index == end - 1)
+          if owns_exit {
+            is_boundary = true
+            let expected = match kind {
+              CatchHandler(_) if enter > 0 =>
+                match code[enter - 1] {
+                  EnterHandler(FinallyHandler, finalizer, outer_end) if finalizer ==
+                    end => outer_end
+                  _ => end
+                }
+              _ => end
+            }
+            if exit == expected {
+              valid = true
+            }
+          }
+        }
+        if !is_boundary {
+          for (enter, _, target, end) in regions {
+            let phase = bytecode_region_phase(index, enter, target, end)
+            let next_phase = bytecode_region_phase(exit, enter, target, end)
+            guard next_phase == phase || next_phase == 0 else {
+              raise @errors.InternalError(
+                message="transfer enters a handler region",
+              )
+            }
+            if phase != 0 && next_phase == 0 {
+              valid = true
+            }
+          }
+        }
+        guard valid else {
+          raise @errors.InternalError(message="invalid try leave")
+        }
+      }
+      ResumeCompletion(exit) => {
+        guard regions.any(region => {
+          region.1 is FinallyHandler &&
+          index == region.3 - 1 &&
+          exit == region.3
+        }) else {
+          raise @errors.InternalError(message="invalid try resume")
+        }
+      }
+      ReturnThroughHandler => {
+        guard regions.any(region => {
+          bytecode_region_phase(index, region.0, region.2, region.3) != 0
+        }) else {
+          raise @errors.InternalError(message="handler return outside a region")
+        }
+      }
+      EnterHandler(_, _, _) => ()
+      _ => {
+        if regions.is_empty() {
+          continue
+        }
+        let successors = match bytecode_instruction_transfer(instruction) {
+          Fallthrough(_) => [index + 1]
+          JumpTo(target, _) => [target]
+          BranchTo(target, _) | SplitTo(target, _, _) => [target, index + 1]
+          Terminate(_) => []
+        }
+        for (enter, _, target, end) in regions {
+          let phase = bytecode_region_phase(index, enter, target, end)
+          if instruction is Return && phase != 0 {
+            raise @errors.InternalError(
+              message="ordinary return crosses a handler",
+            )
+          }
+          for successor in successors {
+            let next_phase = bytecode_region_phase(
+              successor, enter, target, end,
+            )
+            guard next_phase == phase else {
+              raise @errors.InternalError(
+                message="ordinary edge crosses try boundary",
+              )
+            }
+          }
+        }
+      }
+    }
   }
 }

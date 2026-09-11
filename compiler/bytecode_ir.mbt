@@ -191,8 +191,9 @@ fn bytecode_observation_authority_context_entries(
 fn bytecode_observation_authority_successors(
   transfer : BytecodeInstructionTransfer,
   instruction_index : Int,
+  exceptional? : Array[Int] = [],
 ) -> BytecodeObservationAuthoritySuccessors {
-  match transfer {
+  let mut successors = match transfer {
     Fallthrough(_) =>
       MoreObservationAuthoritySuccessors(
         instruction_index + 1,
@@ -211,6 +212,13 @@ fn bytecode_observation_authority_successors(
     }
     Terminate(_) => EmptyObservationAuthoritySuccessors
   }
+  for index = exceptional.length() - 1; index >= 0; index = index - 1 {
+    successors = MoreObservationAuthoritySuccessors(
+      exceptional[index],
+      successors,
+    )
+  }
+  successors
 }
 
 ///|
@@ -222,6 +230,7 @@ fn bytecode_observation_edge_contexts_from_lowering(
   code : Array[BytecodeInstr],
   observation_contexts : Array[BytecodeObservationContext],
 ) -> Array[Array[BytecodeObservationEdgeContext]] {
+  let exceptional = bytecode_exception_successor_table(code)
   let code_length = code.length()
   let edge_contexts : Array[Array[BytecodeObservationEdgeContext]] = Array::makei(
     code_length,
@@ -238,6 +247,9 @@ fn bytecode_observation_edge_contexts_from_lowering(
         }
         edge_contexts[instruction_index].push({ successor: target, context, })
       }
+    }
+    for target in exceptional[instruction_index] {
+      append_edge(target)
     }
     match transfer {
       Fallthrough(_) => append_edge(instruction_index + 1)
@@ -262,6 +274,7 @@ fn bytecode_observation_authority_from_lowering(
   observation_contexts : Array[BytecodeObservationContext],
   source_identity : BytecodeSourceIdentity,
 ) -> BytecodeObservationAuthority {
+  let exceptional = bytecode_exception_successor_table(code)
   let mut instructions = EmptyObservationAuthorityInstructions
   for index = code.length() - 1; index >= 0; index = index - 1 {
     let context = if index < observation_contexts.length() {
@@ -277,6 +290,7 @@ fn bytecode_observation_authority_from_lowering(
         successors: bytecode_observation_authority_successors(
           bytecode_instruction_transfer(code[index]),
           index,
+          exceptional=exceptional[index],
         ),
       },
       instructions,
@@ -357,7 +371,18 @@ priv struct BytecodeInstructionContract {
 }
 
 ///|
+// Structured exception regions shared by ordinary and candidate lowering.
+priv enum BytecodeHandlerKind {
+  CatchHandler(String?)
+  FinallyHandler
+}
+
+///|
 priv enum BytecodeInstr {
+  EnterHandler(BytecodeHandlerKind, Int, Int)
+  LeaveHandler(Int)
+  ResumeCompletion(Int)
+  ReturnThroughHandler
   ObserveStatement(SourcePointId)
   ObserveExpression(SourcePointId)
   LoadConst(Value)
@@ -527,6 +552,10 @@ fn bytecode_instruction_contract(
     | DropPropertyAssignReference
     | DropComputedAssignReference
     | DropNameReference
+    | EnterHandler(_, _, _)
+    | LeaveHandler(_)
+    | ResumeCompletion(_)
+    | ReturnThroughHandler
     | Return => bytecode_contract(false, SynchronousLeaf, [])
     LoadThis | LoadEnvSlot(_) | StoreEnvSlot(_) =>
       bytecode_contract(true, SynchronousLeaf, [BindingAccess])
@@ -1756,4 +1785,63 @@ fn local_index_from_names(xs : Array[String], name : String) -> Int? {
 ///|
 fn string_array_contains(xs : Array[String], name : String) -> Bool {
   local_index_from_names(xs, name) is Some(_)
+}
+
+///|
+// Conservative exception/resumption edges supplement ordinary CFG edges.
+// Every protected instruction may fail, including after a suspended child call.
+// Finally can resume each jump that leaves its protected region, or propagate
+// a return/throw. Terminal completions need no successor instruction.
+fn bytecode_exception_successor_table(
+  code : Array[BytecodeInstr],
+) -> Array[Array[Int]] {
+  let edges : Array[Array[Int]] = Array::makei(code.length(), _ => [])
+  for enter, instruction in code {
+    match instruction {
+      EnterHandler(kind, target, end) if enter + 1 < target &&
+        target < end &&
+        end <= code.length() =>
+        for index in (enter + 1)..<target {
+          if !edges[index].contains(target) {
+            edges[index].push(target)
+          }
+          if kind is FinallyHandler {
+            match code[index] {
+              Jump(exit) | LeaveHandler(exit) if exit <= enter || exit >= end =>
+                if !edges[end - 1].contains(exit) {
+                  edges[end - 1].push(exit)
+                }
+              _ => ()
+            }
+          }
+        }
+      _ => ()
+    }
+  }
+  edges
+}
+
+///|
+// Once branch destinations are fixed, mark only exits requiring handler unwind.
+// Ordinary jumps and returns keep their direct VM behavior.
+fn mark_bytecode_exception_exits(code : Array[BytecodeInstr]) -> Unit {
+  for enter, instruction in code {
+    match instruction {
+      EnterHandler(_, target, end) =>
+        for index in (enter + 1)..<end {
+          match code[index] {
+            Return => code[index] = ReturnThroughHandler
+            Jump(exit) => {
+              let phase_end = if index < target { target } else { end }
+              let phase_start = if index < target { enter + 1 } else { target }
+              if exit < phase_start || exit >= phase_end {
+                code[index] = LeaveHandler(exit)
+              }
+            }
+            _ => ()
+          }
+        }
+      _ => ()
+    }
+  }
 }

@@ -110,7 +110,6 @@ test "equivalence harness: typed unsupported outcome" {
     ForOfStatement,
     expected_offset=0,
   )
-  assert_bytecode_unsupported("try {} catch (e) {}", TryCatchStatement)
   assert_bytecode_unsupported("class C {}", ClassDeclaration)
 }
 
@@ -402,10 +401,16 @@ test "bytecode rejects with statements explicitly" {
 }
 
 ///|
-test "bytecode rejects try catch and finally statements explicitly" {
-  assert_bytecode_unsupported(
-    "try { throw 1; } catch (e) { e; }",
-    TryCatchStatement,
-  )
-  assert_bytecode_unsupported("try { 1; } finally { 2; }", TryCatchStatement)
+test "bytecode admits try catch and finally in the ordinary compiler" {
+  for
+    (source, expected) in [
+      ("try { throw 1; } catch (e) { e; }", "1"),
+      ("try { 1; } finally { 2; }", "1"),
+    ] {
+    let actual = run_bytecode_script(
+      @interpreter.new_interpreter(),
+      @parser.parse(source).stmts,
+    )
+    assert_eq(actual.to_string(), expected)
+  }
 }

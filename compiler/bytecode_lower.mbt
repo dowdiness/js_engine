@@ -530,6 +530,17 @@ fn collect_nested_function_refs_from_stmt(
   refs : Map[String, Bool],
 ) -> Unit {
   match stmt {
+    TryCatchStmt(body, _, caught, finalizer, _) => {
+      collect_nested_function_refs_from_stmts(body, refs)
+      match caught {
+        Some(stmts) => collect_nested_function_refs_from_stmts(stmts, refs)
+        None => ()
+      }
+      match finalizer {
+        Some(stmts) => collect_nested_function_refs_from_stmts(stmts, refs)
+        None => ()
+      }
+    }
     FuncDecl(_, _, body, _, _) | FuncDeclExt(_, _, _, body, _, _) =>
       collect_name_refs_from_stmts(body, refs)
     VarDecl(_, _, Some(expr), _)
@@ -777,6 +788,19 @@ fn collect_name_refs_from_stmt(
   nested_functions? : Bool = true,
 ) -> Unit {
   match stmt {
+    TryCatchStmt(body, _, caught, finalizer, _) => {
+      collect_name_refs_from_stmts(body, refs, nested_functions~)
+      match caught {
+        Some(stmts) =>
+          collect_name_refs_from_stmts(stmts, refs, nested_functions~)
+        None => ()
+      }
+      match finalizer {
+        Some(stmts) =>
+          collect_name_refs_from_stmts(stmts, refs, nested_functions~)
+        None => ()
+      }
+    }
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
@@ -1123,6 +1147,16 @@ fn bytecode_body_references_outer_arguments(body : Array[@ast.Stmt]) -> Bool {
 ///|
 fn bytecode_stmt_references_outer_arguments(stmt : @ast.Stmt) -> Bool {
   match stmt {
+    TryCatchStmt(body, _, caught, finalizer, _) =>
+      bytecode_body_references_outer_arguments(body) ||
+      (match caught {
+        Some(stmts) => bytecode_body_references_outer_arguments(stmts)
+        None => false
+      }) ||
+      (match finalizer {
+        Some(stmts) => bytecode_body_references_outer_arguments(stmts)
+        None => false
+      })
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
@@ -1451,6 +1485,16 @@ fn bytecode_body_contains_destructure_assign(body : Array[@ast.Stmt]) -> Bool {
 ///|
 fn bytecode_stmt_contains_destructure_assign(stmt : @ast.Stmt) -> Bool {
   match stmt {
+    TryCatchStmt(body, _, caught, finalizer, _) =>
+      bytecode_body_contains_destructure_assign(body) ||
+      (match caught {
+        Some(stmts) => bytecode_body_contains_destructure_assign(stmts)
+        None => false
+      }) ||
+      (match finalizer {
+        Some(stmts) => bytecode_body_contains_destructure_assign(stmts)
+        None => false
+      })
     DestructureDecl(_, _, _, _) => true
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
@@ -1805,6 +1849,7 @@ fn compile_bytecode_function(
   )
   let needs_arguments_obj = bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body)
+  mark_bytecode_exception_exits(builder.code)
   let observation_edge_contexts = bytecode_observation_edge_contexts_from_lowering(
     builder.code,
     builder.observation_contexts,
@@ -2676,7 +2721,96 @@ fn BytecodeBuilder::compile_stmt_body(
         (Throw, bytecode_stmt_loc(stmt)),
       ])
     }
-    TryCatchStmt(_, _, _, _, loc) => bytecode_reject(TryCatchStatement, loc)
+    TryCatchStmt(body, parameter, caught, finalizer, loc) => {
+      let name = match parameter {
+        Some(@ast.IdentPat(name)) => Some(name)
+        None => None
+        _ => {
+          bytecode_reject(TryCatchStatement, loc)
+          None
+        }
+      }
+      let finally_enter = match finalizer {
+        Some(_) => Some(self.emit(EnterHandler(FinallyHandler, -1, -1)))
+        None => None
+      }
+      let catch_enter = match caught {
+        Some(_) => Some(self.emit(EnterHandler(CatchHandler(name), -1, -1)))
+        None => None
+      }
+      self.compile_stmt(@ast.Block(body, loc))
+      let try_exit = self.emit(LeaveHandler(-1))
+      let catch_start = self.code.length()
+      let catch_exit = match caught {
+        Some(stmts) => {
+          // Route catch names through their fresh environment, even when they
+          // shadow a parameter or a captured outer binding.
+          let saved_slot = match name {
+            Some(name) => self.local_indices.get(name)
+            None => None
+          }
+          let captured = match name {
+            Some(name) => self.env_slot_indices.get(name)
+            None => None
+          }
+          match name {
+            Some(name) => {
+              self.local_indices.remove(name)
+              self.env_slot_indices.remove(name)
+            }
+            None => ()
+          }
+          self.compile_stmt(@ast.Block(stmts, loc))
+          match name {
+            Some(name) => {
+              match saved_slot {
+                Some(slot) => self.local_indices[name] = slot
+                None => ()
+              }
+              match captured {
+                Some(slot) => self.env_slot_indices[name] = slot
+                None => ()
+              }
+            }
+            None => ()
+          }
+          Some(self.emit(LeaveHandler(-1)))
+        }
+        None => None
+      }
+      let finally_start = self.code.length()
+      match finalizer {
+        Some(stmts) => self.compile_stmt(@ast.Block(stmts, loc))
+        None => ()
+      }
+      let resume_pos = match finalizer {
+        Some(_) => Some(self.emit(ResumeCompletion(-1)))
+        None => None
+      }
+      let end = self.code.length()
+      self.patch(try_exit, LeaveHandler(end))
+      match catch_exit {
+        Some(exit) => self.patch(exit, LeaveHandler(end))
+        None => ()
+      }
+      match catch_enter {
+        Some(enter) =>
+          self.patch(
+            enter,
+            EnterHandler(CatchHandler(name), catch_start, finally_start),
+          )
+        None => ()
+      }
+      match finally_enter {
+        Some(enter) =>
+          self.patch(enter, EnterHandler(FinallyHandler, finally_start, end))
+        None => ()
+      }
+      match resume_pos {
+        Some(exit) => self.patch(exit, ResumeCompletion(end))
+        None => ()
+      }
+    }
     LabeledStmt(label, body, _) => {
       bytecode_reject_if_present(
         ControlFlowFunctionDeclaration,
