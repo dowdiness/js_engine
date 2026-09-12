@@ -528,6 +528,12 @@ unicode-tables-mbt: subprocess-helpers-mbt-test
 		echo "built cmd/generate_unicode_id_tables (pass ARGS='--output /tmp/unicode_id.mbt --case-fold-output /tmp/unicode_case_folding.mbt' to fetch/generate)"; \
 	fi
 
+# THROWAWAY Module Host contract probe. First transform acquires pinned esbuild.
+# Interactive by default; ARGS="--all" emits machine-readable observations.
+.PHONY: module-host-prototype
+module-host-prototype:
+	node scripts/module_host_prototype.cjs $(ARGS)
+
 # Clean build artifacts
 clean:
 	moon clean

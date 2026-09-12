@@ -1,0 +1,13 @@
+import {
+  "dowdiness/js_engine/ast",
+  "dowdiness/js_engine/parser",
+  "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/interpreter/runtime",
+  "dowdiness/js_engine/token",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/sys",
+}
+
+pkgtype(kind: "executable")
