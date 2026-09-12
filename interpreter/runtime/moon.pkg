@@ -1,6 +1,7 @@
 import {
   "moonbitlang/core/debug",
   "dowdiness/js_engine/ast",
+  "dowdiness/js_engine/internal/module_host_prototype_plan" @prototype_plan,
   "dowdiness/js_engine/token",
   "dowdiness/js_engine/errors",
   "dowdiness/js_engine/parser",
