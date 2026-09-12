@@ -21,14 +21,18 @@ struct PrototypeInput {
 
 ///|
 struct PrototypeProgram {
+  entry : String
+  plan : @plan.Plan
   modules : Array[(String, Array[@ast.Stmt])]
 }
 
 ///|
 fn PrototypeProgram::PrototypeProgram(
+  entry : String,
+  plan : @plan.Plan,
   modules : Array[(String, Array[@ast.Stmt])],
 ) -> PrototypeProgram {
-  { modules, }
+  { entry, plan, modules, }
 }
 
 ///|
@@ -143,7 +147,7 @@ fn prepare(
     })
     modules.push((key, stmts))
   }
-  @static_link.validate(modules) catch {
+  let plan = @static_link.compile_plan(modules) catch {
     @static_link.LinkError(kind~, module_key~, export_name~, line~, column~) => {
       diagnostic.val = {
         "phase": "static-link",
@@ -156,20 +160,49 @@ fn prepare(
       fail(kind + ": " + module_key + " / " + export_name)
     }
   }
-  // Existing evaluator returns the last record's exports; entry selection is
-  // explicit here, rather than requiring the caller to sort its source set.
-  let entry_module = modules.remove(0)
-  modules.push(entry_module)
+  // Poison source requests after compilation. Any accidental AST-based graph
+  // resolution at Session startup now fails instead of masking duplicate work.
+  let execution_modules = modules.map(pair => {
+    let (key, stmts) = pair
+    (
+      key,
+      stmts.map(stmt => {
+        match stmt {
+          ImportDecl(default_name, names, namespace_name, _, form, loc) =>
+            @ast.Stmt::ImportDecl(
+              default_name, names, namespace_name, "PROBE_INVALID_REQUEST", form,
+              loc,
+            )
+          ExportNamedDecl(decl, names, Some(_), form, loc) =>
+            @ast.Stmt::ExportNamedDecl(
+              decl,
+              names,
+              Some("PROBE_INVALID_REQUEST"),
+              form,
+              loc,
+            )
+          ExportAllDecl(name, _, form, loc) =>
+            @ast.Stmt::ExportAllDecl(name, "PROBE_INVALID_REQUEST", form, loc)
+          _ => stmt
+        }
+      }),
+    )
+  })
   diagnostic.val = { "phase": "prepared" }
-  PrototypeProgram(modules)
+  PrototypeProgram(entry, plan, execution_modules)
 }
 
 ///|
 fn start(program : PrototypeProgram, call : String) -> (Int) -> Json {
   let interp = @interpreter.new_interpreter()
   let phase = Ref("created")
-  let startup : Result[Map[String, @runtime.Value], Error] = Ok(
-    interp.prototype_run_prepared_modules(program.modules, phase),
+  let startup : Result[(String) -> @runtime.Value raise, Error] = Ok(
+    interp.prototype_instantiate_plan(
+      program.entry,
+      program.modules,
+      program.plan,
+      phase,
+    ),
   ) catch {
     error => Err(error)
   }
@@ -177,16 +210,14 @@ fn start(program : PrototypeProgram, call : String) -> (Int) -> Json {
     let values : Array[String] = []
     let outcome : Result[Unit, Error] = Ok(
       {
-        let exports = match startup {
-          Ok(exports) => exports
+        let lookup = match startup {
+          Ok(lookup) => lookup
           Err(error) => raise error
         }
         if call != "" {
           phase.val = "call"
-          guard exports.get(call) is Some(function) else {
-            fail("missing entrypoint: " + call)
-          }
           for _ in 0..<calls {
+            let function = lookup(call)
             values.push(
               interp
               .call_value(
@@ -263,13 +294,22 @@ fn probe(input : PrototypeInput) -> Json {
       let events_before = host.events.length()
       let first_session = start(program, input.call)
       let first = first_session(input.calls)
-      let second_session = start(program, input.call)
+      // Same Program data and bindings, opposite record/plan storage order.
+      let reversed = PrototypeProgram(
+        program.entry,
+        @plan.Plan(program.plan.modules.rev()),
+        program.modules.rev(),
+      )
+      let second_session = start(reversed, input.call)
       let second = second_session(input.calls)
       let resumed_first = first_session(1)
       {
         "preparation": "ok",
         "modules": keys,
         "parse_calls": parses.val,
+        "binding_plan": program.plan,
+        "runtime_requests_poisoned": true,
+        "second_session_modules": reversed.modules.map(pair => pair.0),
         "host_sources_after_release": host.sources.length(),
         "host_calls_during_sessions": host.events.length() - events_before,
         "host_events": host.events,

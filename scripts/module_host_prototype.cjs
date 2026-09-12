@@ -88,7 +88,7 @@ const scenarios = {
       main: 'import { b } from "b"; export const a=b;',
       b: 'import { a } from "main"; export const b=a;',
     },
-    errorPhase: 'evaluate', message: /ReferenceError|initializ|TDZ/i,
+    errorPhase: 'evaluate', message: /Cannot access 'a' before initialization/,
   },
   'missing-source': {
     question: 'Does preparation reject an unresolved reachable source before a Session exists?',
@@ -129,10 +129,9 @@ const scenarios = {
     gap: 'A real source map exists, but this direct graph/call path exposes only a raw JsException; generated-location observation and diagnostic projection are not connected.',
   },
   'live-entrypoint': {
-    question: 'Does looking up an entrypoint in materialized exports observe a changed live binding?',
+    question: 'Does each entrypoint call re-read the binding and reject a non-callable replacement?',
     sources: { main: 'export let main = function(){ main=0; return 1; };' },
-    output: [], calls: ['1', '1'],
-    gap: 'The materialized export snapshot keeps the old function: second call should re-read the live binding and reject 0.',
+    errorPhase: 'call', message: /TypeError/, errorCalls: ['1'], resumedErrorCalls: [],
   },
   'ambiguous-required': {
     question: 'Does a required ambiguous star export fail without creating a Realm?',
@@ -242,6 +241,43 @@ const scenarios = {
     sources: { main: 'console.log("evaluation marker"); throw new Error("evaluation only"); export const value=42;' },
     errorPhase: 'evaluate', message: /JsException/, errorOutput: ['evaluation marker'],
   },
+  'entry-order': {
+    question: 'Does entry-driven traversal preserve requested-module order with shared dependencies?',
+    sources: {
+      main: 'import "left"; export * from "right"; console.log("main"); export function main(){return 42;}',
+      left: 'import "shared"; console.log("left");',
+      right: 'import "shared"; console.log("right");',
+      shared: 'console.log("shared");',
+    },
+    output: ['shared', 'left', 'right', 'main'], calls: ['42', '42'],
+  },
+  'cycle-effects': {
+    question: 'Does a cycle preserve entry-driven DFS effects rather than choosing a storage-order root?',
+    sources: {
+      c: 'console.log("c");',
+      d: 'console.log("d");',
+      b: 'import "main"; import "d"; console.log("b");',
+      main: 'import "b"; import "c"; console.log("main"); export function main(){return 42;}',
+    },
+    output: ['d', 'b', 'c', 'main'], calls: ['42', '42'],
+  },
+  'default-and-namespace-plan': {
+    question: 'Do synthetic default targets and shared live namespace targets survive direct plan instantiation?',
+    sources: {
+      main: 'import value from "barrel"; import * as direct from "dep"; import {ns, alias} from "barrel"; export function main(){ if(ns!==direct || ns!==alias) throw new Error("namespace identity"); ns.bump(); return value+ns.count+Object.keys(ns).length; }',
+      barrel: 'export * as ns from "dep"; import * as imported from "dep"; export { imported as alias }; export {default} from "dep";',
+      dep: 'export default 38; export let count=0; export function bump(){count++;}',
+    },
+    output: [], calls: ['42', '43'], resumed: '44',
+  },
+  'live-reexport-entrypoint': {
+    question: 'Does an entrypoint follow a reexported binding when it changes to a different function?',
+    sources: {
+      main: 'export { run as main } from "dep";',
+      dep: 'let n=0; export let run=function(){ run=function(){return ++n;}; return ++n; };',
+    },
+    output: [], calls: ['1', '2'], resumed: '3',
+  },
 };
 
 function verify(name, scenario, report) {
@@ -269,6 +305,7 @@ function verify(name, scenario, report) {
       requireFact(session.status === 'error' && session.phase === scenario.errorPhase, 'wrong execution failure phase');
       requireFact(scenario.message.test(session.message), 'wrong error category');
       if (scenario.errorOutput) requireFact(JSON.stringify(session.output) === JSON.stringify(scenario.errorOutput), 'evaluation marker missing');
+      if (scenario.errorCalls) requireFact(JSON.stringify(session.calls) === JSON.stringify(scenario.errorCalls), 'wrong calls before entrypoint rejection');
     } else {
       requireFact(session.status === 'ok', 'execution failed');
       requireFact(JSON.stringify(session.calls) === JSON.stringify(scenario.calls), 'wrong call values');
@@ -277,8 +314,13 @@ function verify(name, scenario, report) {
   }
   if (!scenario.errorPhase) {
     const resumed = report.resumed_first;
-    const expected = name === 'plain' || name === 'transformed-js' ? '3' : name === 'aliases' ? '11' : scenario.calls[0];
+    const expected = scenario.resumed || (name === 'plain' || name === 'transformed-js' ? '3' : name === 'aliases' ? '11' : scenario.calls[0]);
     requireFact(resumed.status === 'ok' && JSON.stringify(resumed.calls) === JSON.stringify([expected]), 'first Session changed after second Session ran');
+  }
+  if (scenario.resumedErrorCalls) {
+    const resumed = report.resumed_first;
+    requireFact(resumed.status === 'error' && resumed.phase === 'call' && scenario.message.test(resumed.message), 'resumed entrypoint retained a stale function');
+    requireFact(JSON.stringify(resumed.calls) === JSON.stringify(scenario.resumedErrorCalls), 'resumed entrypoint invoked a stale function');
   }
   const loads = report.host_events.filter(e => e.operation === 'load').map(e => e.key);
   requireFact(new Set(loads).size === loads.length, 'duplicate source load');
@@ -302,10 +344,7 @@ function run(name) {
     const report = JSON.parse(command('moon', ['run', '--target', 'native', 'cmd/module_host_prototype', '--', input]));
     verify(name, scenario, report);
     const result = { scenario: name, question: scenario.question, verdict: scenario.gap ? 'design-gap-observed' : 'supported-for-this-fixture', finding: scenario.gap || null, report };
-    if (scenario.linkError || scenario.prepareOnly || [
-      'cycle', 'cycle-tdz', 'reexports', 'ambiguous-unused', 'diamond-same-binding',
-      'explicit-shadows-stars', 'star-cycle-with-origin', 'namespace-reexport', 'evaluate-side-effects',
-    ].includes(name)) {
+    if (!scenario.preparationError || scenario.linkError) {
       const reference = JSON.parse(command(process.execPath, [
         '--experimental-vm-modules', 'scripts/module_host_reference.mjs', input,
       ]));
@@ -316,15 +355,18 @@ function run(name) {
         if (reference.status !== 'linked' || reference.output.length !== 0) throw new Error(`${name}: Node preparation-only disagrees`);
       } else if (scenario.errorPhase) {
         if (reference.phase !== scenario.errorPhase || reference.status !== 'error') throw new Error(`${name}: Node failure phase disagrees`);
+        if (scenario.errorCalls && JSON.stringify(reference.calls) !== JSON.stringify(scenario.errorCalls)) throw new Error(`${name}: Node calls before failure disagree`);
+        if (name === 'cycle-tdz' && !scenario.message.test(reference.message)) throw new Error(`${name}: Node failed on a different binding`);
       } else if (reference.status !== 'ok' || JSON.stringify(reference.calls) !== JSON.stringify(scenario.calls)) {
         throw new Error(`${name}: Node execution disagrees: ${JSON.stringify(reference)}`);
       }
+      if (!scenario.linkError && !scenario.prepareOnly && JSON.stringify(reference.output) !== JSON.stringify(report.sessions[0].output)) throw new Error(`${name}: Node evaluation order disagrees`);
     }
     if (name === 'live-entrypoint') {
       const reference = command(process.execPath, ['--input-type=module', '-e',
         'const m=await import("data:text/javascript,"+encodeURIComponent(' + JSON.stringify(scenario.sources.main) + ')); const first=m.main(); let second; try {m.main(); second="returned";} catch(e){second=e.name;} console.log(JSON.stringify({first, second, binding:typeof m.main}));']);
-      result.reference = { engine: process.version, ...JSON.parse(reference) };
-      if (result.reference.first !== 1 || result.reference.second !== 'TypeError') throw new Error('live binding reference observation changed');
+      result.live_binding_reference = { engine: process.version, ...JSON.parse(reference) };
+      if (result.live_binding_reference.first !== 1 || result.live_binding_reference.second !== 'TypeError') throw new Error('live binding reference observation changed');
     }
     if (transform) {
       result.transform = { tool: `esbuild@${esbuildVersion}`, generated_code: transform.code, source_map: transform.map };

@@ -1,15 +1,49 @@
 ///|
 // THROWAWAY: prototype/module-host-contract only. Not a supported API.
-// This is the existing run_modules orchestration with its parse step removed.
-// It exposes the missing prepared-code seam without changing production paths.
-// AST storage is an experimental vehicle, not a representation decision.
-pub fn Interpreter::prototype_run_prepared_modules(
+
+///|
+fn Interpreter::prototype_binding_value(
   self : Interpreter,
+  binding : @prototype_plan.Binding,
+  records : Map[String, ModuleRunRecord],
+) -> Value {
+  match binding {
+    Local(key, name) => make_module_export_cell(name, name, records[key].env)
+    Default(key) => make_module_import_cell("default", records[key].exports)
+    Namespace(key) => self.create_module_namespace_object(records[key].exports)
+  }
+}
+
+///|
+// Sync-only entry DFS: RequestedModules source order; a back edge does not
+// execute its ancestor. No TLA/SCC promise/error-retry semantics are claimed.
+fn Interpreter::prototype_evaluate_entry(
+  self : Interpreter,
+  key : String,
+  records : Map[String, ModuleRunRecord],
+  plans : Map[String, @prototype_plan.ModulePlan],
+  visited : Map[String, Bool],
+) -> Unit raise {
+  guard !visited.contains(key) else { return }
+  visited[key] = true
+  for dependency in plans[key].dependencies {
+    self.prototype_evaluate_entry(dependency, records, plans, visited)
+  }
+  ignore(self.evaluate_module_record(records[key]))
+}
+
+///|
+// Returns live lookup, not a materialized exports snapshot. The callback owns
+// Session cells only; the shared symbolic plan contains no Realm or Value.
+pub fn Interpreter::prototype_instantiate_plan(
+  self : Interpreter,
+  entry : String,
   modules : Array[(String, Array[@ast.Stmt])],
+  plan : @prototype_plan.Plan,
   phase : Ref[String],
-) -> Map[String, Value] raise {
+) -> ((String) -> Value raise) raise {
   phase.val = "instantiate"
-  let records : Array[ModuleRunRecord] = []
+  let records : Map[String, ModuleRunRecord] = Map([])
   for (specifier, stmts) in modules {
     let record : ModuleRunRecord = {
       specifier,
@@ -17,39 +51,54 @@ pub fn Interpreter::prototype_run_prepared_modules(
       exports: Map([]),
       env: self.new_module_environment(),
     }
-    records.push(record)
+    records[specifier] = record
     self.register_module(specifier, record.exports)
   }
-  for record in records {
-    self.instantiate_module_record(record)
+  for (specifier, _) in modules {
+    // Existing local declaration/TDZ hoisting only, not graph resolution.
+    self.instantiate_module_record(records[specifier])
   }
-  let by_specifier : Map[String, ModuleRunRecord] = Map([])
-  for record in records {
-    by_specifier[record.specifier] = record
+  let plans : Map[String, @prototype_plan.ModulePlan] = Map([])
+  // Namespace construction snapshots names, so allocate every export key first.
+  for module_plan in plan.modules {
+    plans[module_plan.key] = module_plan
+    let exports = records[module_plan.key].exports
+    for (name, _) in module_plan.exports {
+      if !exports.contains(name) {
+        exports[name] = make_module_tdz_marker(name)
+      }
+    }
   }
-  let indirect_state : Map[String, Int] = Map([])
-  for record in records {
-    self.visit_module_dependencies_first(record, by_specifier, indirect_state, (
-      interp,
-      rec,
-    ) => interp.instantiate_module_indirect_exports(rec, by_specifier))
+  for module_plan in plan.modules {
+    let record = records[module_plan.key]
+    for (name, binding) in module_plan.exports {
+      // A synthetic default is initialized by evaluation in its owning map.
+      // Do not replace it with a getter pointing recursively at itself.
+      guard !(binding is Default(key) &&
+        key == module_plan.key &&
+        name == "default") else {
+        continue
+      }
+      record.exports[name] = self.prototype_binding_value(binding, records)
+    }
   }
-  for record in records {
-    self.instantiate_module_imports(record)
+  for module_plan in plan.modules {
+    for (name, binding) in module_plan.imports {
+      records[module_plan.key].env.def(
+        name,
+        self.prototype_binding_value(binding, records),
+        ConstBinding,
+      )
+    }
   }
   phase.val = "evaluate"
-  let evaluation_state : Map[String, Int] = Map([])
-  for record in records {
-    self.visit_module_dependencies_first(
-      record,
-      by_specifier,
-      evaluation_state,
-      (interp, rec) => ignore(interp.evaluate_module_record(rec)),
-    )
-  }
-  phase.val = "materialize"
-  match records.last() {
-    Some(record) => self.materialize_module_record(record)
-    None => Map([])
+  self.prototype_evaluate_entry(entry, records, plans, Map([]))
+  let exports = records[entry].exports
+  phase.val = "ready"
+  name => {
+    guard module_export_map_get_public(exports, name) is Some(value) else {
+      fail("missing entrypoint: " + name)
+    }
+    resolve_module_export_value(value)
   }
 }

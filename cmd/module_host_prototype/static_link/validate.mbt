@@ -51,12 +51,12 @@ fn ModuleInfo::ModuleInfo(key : String, locals : Array[String]) -> ModuleInfo {
 }
 
 ///|
-fn reject(
+fn[T] reject(
   kind : String,
   key : String,
   name : String,
   loc : @token.Loc,
-) -> Unit raise LinkError {
+) -> T raise LinkError {
   raise LinkError(
     kind~,
     module_key=key,
@@ -256,26 +256,95 @@ fn require_resolution(
 }
 
 ///|
-// Validate required named imports and every explicit indirect export, including
-// unused reexports. Do not reject an unused ambiguity in a star export set.
-// The caller has already resolved and loaded every reachable module.
-pub fn validate(
+fn exported_names(
+  graph : Map[String, ModuleInfo],
+  key : String,
+  seen : Array[String],
+) -> Array[String] {
+  guard !seen.contains(key) else { return [] }
+  seen.push(key)
+  let info = graph[key]
+  let names = info.exports.keys().to_array()
+  for source in info.stars {
+    for name in exported_names(graph, source, seen) {
+      if name != "default" && !names.contains(name) {
+        names.push(name)
+      }
+    }
+  }
+  names
+}
+
+///|
+fn resolved_binding(
+  graph : Map[String, ModuleInfo],
+  owner : String,
+  source : String,
+  name : String,
+  loc : @token.Loc,
+) -> @plan.Binding raise LinkError {
+  match resolve_export(graph, source, name, []) {
+    Found(key, Named(binding)) => @plan.Local(key, binding)
+    Found(key, Default) => @plan.Default(key)
+    Found(key, Namespace) => @plan.Namespace(key)
+    Missing => reject("missing-export", owner, name, loc)
+    Ambiguous => reject("ambiguous-export", owner, name, loc)
+  }
+}
+
+///|
+pub fn compile_plan(
   modules : Array[(String, Array[@ast.Stmt])],
-) -> Unit raise LinkError {
+) -> @plan.Plan raise LinkError {
   let graph : Map[String, ModuleInfo] = Map([])
   for (key, stmts) in modules {
     graph[key] = describe(key, stmts)
   }
-  for _, info in graph {
-    for _, (target, loc) in info.imports {
-      if target is Indirect(source, name) {
-        require_resolution(graph, info.key, source, name, loc)
+  let plans = []
+  for (key, stmts) in modules {
+    let info = graph[key]
+    let imports = []
+    for local_name, (target, loc) in info.imports {
+      match target {
+        Indirect(source, name) =>
+          imports.push(
+            (local_name, resolved_binding(graph, key, source, name, loc)),
+          )
+        Namespace(source) => imports.push((local_name, @plan.Namespace(source)))
+        Local(_) | Default =>
+          reject("invalid-import-target", key, local_name, loc)
       }
     }
     for name, (target, loc) in info.exports {
       if target is Indirect(_, _) {
-        require_resolution(graph, info.key, info.key, name, loc)
+        require_resolution(graph, key, key, name, loc)
       }
     }
+    let exports = []
+    for name in exported_names(graph, key, []) {
+      match resolve_export(graph, key, name, []) {
+        Found(source, Named(binding)) =>
+          exports.push((name, @plan.Local(source, binding)))
+        Found(source, Default) => exports.push((name, @plan.Default(source)))
+        Found(source, Namespace) =>
+          exports.push((name, @plan.Namespace(source)))
+        Missing | Ambiguous => ()
+      }
+    }
+    // RequestedModules order, not graph storage or map iteration order.
+    let dependencies = []
+    for stmt in flatten(stmts) {
+      let source = match stmt {
+        ImportDecl(_, _, _, source, _, _)
+        | ExportNamedDecl(_, _, Some(source), _, _)
+        | ExportAllDecl(_, source, _, _) => Some(source)
+        _ => None
+      }
+      if source is Some(key) && !dependencies.contains(key) {
+        dependencies.push(key)
+      }
+    }
+    plans.push(@plan.ModulePlan(key, dependencies, imports, exports))
   }
+  @plan.Plan(plans)
 }
