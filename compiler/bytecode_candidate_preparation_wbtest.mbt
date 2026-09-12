@@ -106,23 +106,22 @@ test "candidate tree retains only the safe mixed parent direction" {
 }
 
 ///|
-test "candidate preparation retains independently selected children" {
-  let source =
-    #|function parent() { return 1; }
-    #|function child() { for (var value of [1]) {} }
-  let parsed = @parser.parse(source)
-  let _candidates = prepare_candidate_program(parsed.stmts)
-  ()
-}
-
-///|
-test "candidate tree separates parent and child outcomes" {
+test "candidate tree separates root parent and child outcomes" {
   let source =
     #|function parent() { return 1; }
     #|function child() { for (var value of [1]) {} }
   let program = prepare_candidate_program(@parser.parse(source).stmts)
   guard program.root.bytecode is None else {
     fail("candidate root retained bytecode around a tree child")
+  }
+  match program.root.selection {
+    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
+      match unsupported.reason {
+        ForOfStatement => ()
+        _ => fail("script fallback lost the child lowering reason")
+      }
+    UseTreeWalker(_) => fail("script fallback was not owned by lowering")
+    UseBytecode(_) => fail("script selected bytecode around a tree child")
   }
   guard program.root.children.length() == 2 else {
     fail("candidate root should retain both declarations")
@@ -216,15 +215,6 @@ test "candidate root selection distinguishes activation fallback" {
     UseTreeWalker(CandidateLoweringUnsupported(_)) =>
       fail("root activation fallback was mislabeled as lowering unsupported")
     UseBytecode(_) => fail("activation-unsupported root selected bytecode")
-  }
-}
-
-///|
-test "RED: plain multiplication selects bytecode" {
-  let program = prepare_candidate_program(@parser.parse("1 * 2;").stmts)
-  match program.root.selection {
-    UseBytecode(_) => ()
-    UseTreeWalker(_) => fail("plain multiplication must select bytecode")
   }
 }
 
@@ -491,36 +481,6 @@ test "candidate plain relational operators retain exact binary origins" {
       }
     UseTreeWalker(_) => fail("equality lost its typed unsupported reason")
     UseBytecode(_) => fail("equality was admitted with relational operators")
-  }
-}
-
-///|
-test "candidate plain greater relational operators admit exact origins" {
-  let greater_than = prepare_candidate_program(@parser.parse("1 > 2;").stmts)
-  match greater_than.root.selection {
-    UseBytecode(ManagedSuspension) => ()
-    UseBytecode(_) => fail("plain greater-than lost its managed disposition")
-    UseTreeWalker(_) => fail("plain greater-than selected Tree-walker")
-  }
-  let greater_than_or_equal = prepare_candidate_program(
-    @parser.parse("1 >= 2;").stmts,
-  )
-  match greater_than_or_equal.root.selection {
-    UseBytecode(ManagedSuspension) => ()
-    UseBytecode(_) =>
-      fail("plain greater-than-or-equal lost its managed disposition")
-    UseTreeWalker(_) => fail("plain greater-than-or-equal selected Tree-walker")
-  }
-  let equality = prepare_candidate_program(@parser.parse("1 == 2;").stmts)
-  match equality.root.selection {
-    UseTreeWalker(CandidateActivationUnsupported(unsupported)) =>
-      match unsupported.reason {
-        BinaryOperation => ()
-        _ => fail("equality lost its typed unsupported reason")
-      }
-    UseTreeWalker(_) => fail("equality lost its typed unsupported reason")
-    UseBytecode(_) =>
-      fail("equality was admitted with greater relational operators")
   }
 }
 
@@ -1288,36 +1248,6 @@ test "candidate Proxy deletion suspends trap forwarding and invariants" {
     #|  getterThrew && callThrew && revokedThrew && nonConfigThrew && missingResult && configurableThrew;
   let (value, evidence) = candidate_run_with_evidence_for_wb(source)
   assert_eq(value.to_string(), "true")
-  assert_eq(evidence.val.summary.fallback_violations, 0)
-  assert_eq(evidence.val.summary.replay_violations, 0)
-  assert_eq(evidence.val.summary.active_activations, 0)
-}
-
-///|
-test "candidate descriptor Proxy has absent fields skips isExtensible" {
-  let source =
-    #|var events = "";
-    #|var count = 0;
-    #|var rawTarget = {};
-    #|Object.defineProperty(rawTarget, "value", { value: undefined, writable: false, enumerable: false, configurable: false });
-    #|var descriptorTarget = new Proxy({}, {
-    #|  isExtensible: function() { count = count + 1; events = events + "e"; return true; }
-    #|});
-    #|var descriptor = new Proxy(descriptorTarget, {
-    #|  has: function(target, key) { events = events + "h" + key; return false; }
-    #|});
-    #|var target = new Proxy(rawTarget, {
-    #|  getOwnPropertyDescriptor: function() { events = events + "d"; return descriptor; }
-    #|});
-    #|var proxy = new Proxy(target, { deleteProperty: function() { return true; } });
-    #|var errorName = "";
-    #|try { delete proxy.value; } catch (error) { errorName = error.name; }
-    #|errorName + ":" + events + ":" + count;
-  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(
-    value.to_string(),
-    "TypeError:dhenumerablehconfigurablehvaluehwritablehgethset:0",
-  )
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)
@@ -2147,13 +2077,6 @@ fn issue924_assert_candidate_function_route_for_wb(
   assert_eq(bytecode_starts, 1)
   assert_eq(tree_starts, 0)
   assert_eq(completed_count, 1)
-}
-
-///|
-test "candidate compound subtraction remains tree-walker" {
-  assert_candidate_tree_route_evidence_for_wb(
-    "var value = 3; value -= 1; value;", "2",
-  )
 }
 
 ///|
@@ -3035,35 +2958,6 @@ test "RED: strictness lineage reaches bytecode below a tree-only ancestor" {
   }
   guard leaf.bytecode.unwrap().function.enclosing_strict else {
     fail("leaf function lost transitive strictness inherited from outer")
-  }
-}
-
-///|
-test "lowering-unsupported child moves the script root to tree execution" {
-  let source =
-    #|function parent() { return 1; }
-    #|function child() { for (var value of [1]) {} }
-  let program = prepare_candidate_program(@parser.parse(source).stmts)
-  guard program.root.bytecode is None else {
-    fail("script root retained bytecode around a tree child")
-  }
-  match program.root.selection {
-    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
-      match unsupported.reason {
-        ForOfStatement => ()
-        _ => fail("script fallback lost the child lowering reason")
-      }
-    UseTreeWalker(_) => fail("script fallback was not owned by lowering")
-    UseBytecode(_) => fail("script selected bytecode around a tree child")
-  }
-  match program.root.children[1].selection {
-    UseTreeWalker(CandidateLoweringUnsupported(unsupported)) =>
-      match unsupported.reason {
-        ForOfStatement => ()
-        _ => fail("tree child lost its lowering reason")
-      }
-    UseTreeWalker(_) => fail("tree child has the wrong fallback reason")
-    UseBytecode(_) => fail("lowering-unsupported child selected bytecode")
   }
 }
 

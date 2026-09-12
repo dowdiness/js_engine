@@ -63,189 +63,217 @@ fn run_compiled_outcome(src : String) -> String {
 }
 
 ///|
+fn expect_run_case(
+  label : String,
+  source : String,
+  expected : String,
+) -> Unit raise Error {
+  let (_, result) = @js_engine.run(source)
+  expect_string(result, expected, label)
+}
+
+///|
 test "run facade" {
   let (output, _result) = @js_engine.run("console.log(1 + 2)")
   json_inspect(output, content=["3"])
 }
 
 ///|
-test "dead-code bare generator constructor is a syntax error" {
-  let src =
-    #|try {
-    #|  eval("if (false) { class C { *constructor() {} } }")
-    #|  false
-    #|} catch (e) {
-    #|  e instanceof SyntaxError
-    #|}
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "true", "dead-code bare generator constructor")
-}
-
-///|
-test "quoted noncomputed generator constructor is a syntax error" {
-  let src =
-    #|try {
-    #|  eval("class C { *\"constructor\"() {} }")
-    #|  false
-    #|} catch (e) {
-    #|  e instanceof SyntaxError
-    #|}
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "true", "quoted noncomputed generator constructor")
-}
-
-///|
-test "static generator constructor is callable" {
-  let src =
-    #|class C { static *constructor() { yield 1; } }
-    #|C.constructor().next().value
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "1", "static generator constructor")
-}
-
-///|
-test "computed literal constructor generator is callable" {
-  let src =
-    #|class C { *["constructor"]() { yield 1; } }
-    #|new C()["constructor"]().next().value
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "1", "computed literal constructor generator")
-}
-
-///|
-test "ordinary generator method is callable" {
-  let src =
-    #|class C { *generator() { yield 1; } }
-    #|new C().generator().next().value
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "1", "ordinary generator method")
-}
-
-///|
-test "non-simple duplicate default parameters are early errors" {
-  let (_, result) = @js_engine.run(
-    "try { eval(\"function f(a = 0, a) {}\"); false } " +
-    "catch (e) { e instanceof SyntaxError }",
+test "run classifies generator methods by constructor role" {
+  expect_run_case(
+    "bare constructor is reserved",
+    (
+      #|try {
+      #|  eval("if (false) { class C { *constructor() {} } }");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
   )
-  expect_string(result, "true", "duplicate default parameter")
-}
-
-///|
-test "non-simple duplicate destructuring parameters are early errors" {
-  let (_, result) = @js_engine.run(
-    "try { eval(\"function f({ a }, a) {}\"); false } " +
-    "catch (e) { e instanceof SyntaxError }",
+  expect_run_case(
+    "quoted constructor is reserved",
+    (
+      #|try {
+      #|  eval("class C { *\"constructor\"() {} }");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
   )
-  expect_string(result, "true", "duplicate destructuring parameter")
-}
-
-///|
-test "non-simple duplicate rest parameters are early errors" {
-  let (_, result) = @js_engine.run(
-    "try { eval(\"function f(a, ...a) {}\"); false } " +
-    "catch (e) { e instanceof SyntaxError }",
+  expect_run_case(
+    "static constructor is an ordinary method",
+    (
+      #|class C { static *constructor() { yield 1; } }
+      #|C.constructor().next().value;
+    ),
+    "1",
   )
-  expect_string(result, "true", "duplicate rest parameter")
-}
-
-///|
-test "sloppy simple duplicate parameters remain allowed" {
-  let (_, result) = @js_engine.run("function f(a, a) { return a; } f(1, 2)")
-  expect_string(result, "2", "sloppy duplicate parameters")
-}
-
-///|
-test "dead non-simple duplicate function expressions are early errors" {
-  let (_, result) = @js_engine.run(
-    "try { eval(\"if (false) { var x = function(a = 0, a) {}; }\"); false } " +
-    "catch (e) { e instanceof SyntaxError }",
+  expect_run_case(
+    "computed constructor is an ordinary method",
+    (
+      #|class C { *["constructor"]() { yield 1; } }
+      #|new C()["constructor"]().next().value;
+    ),
+    "1",
   )
-  expect_string(result, "true", "dead function expression duplicate parameter")
-}
-
-///|
-test "nested non-simple duplicate declarations are early errors" {
-  let (_, result) = @js_engine.run(
-    "try { eval(\"function outer() { function inner(a = 0, a) {} }\"); false } " +
-    "catch (e) { e instanceof SyntaxError }",
-  )
-  expect_string(
-    result, "true", "nested function declaration duplicate parameter",
+  expect_run_case(
+    "non-constructor generator method is callable",
+    (
+      #|class C { *generator() { yield 1; } }
+      #|new C().generator().next().value;
+    ),
+    "1",
   )
 }
 
 ///|
-test "Date valueOf returns the epoch value" {
-  let (_, result) = @js_engine.run("new Date(0).valueOf()")
-  expect_string(result, "0", "Date valueOf epoch")
-}
-
-///|
-test "Date.prototype.valueOf rejects its prototype receiver" {
-  let (_, result) = @js_engine.run(
-    "try { Date.prototype.valueOf(); false } " +
-    "catch (e) { e instanceof TypeError }",
+test "run enforces duplicate parameters by parameter-list shape" {
+  expect_run_case(
+    "default parameter list is non-simple",
+    (
+      #|try {
+      #|  eval("function f(a = 0, a) {}");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
   )
-  expect_string(result, "true", "Date.prototype.valueOf receiver")
-}
-
-///|
-test "Date valueOf rejects a plain object receiver" {
-  let (_, result) = @js_engine.run(
-    "try { Date.prototype.valueOf.call({}); false } " +
-    "catch (e) { e instanceof TypeError }",
+  expect_run_case(
+    "destructuring parameter list is non-simple",
+    (
+      #|try {
+      #|  eval("function f({ a }, a) {}");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
   )
-  expect_string(result, "true", "Date valueOf plain object receiver")
+  expect_run_case(
+    "rest parameter list is non-simple",
+    (
+      #|try {
+      #|  eval("function f(a, ...a) {}");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
+  )
+  expect_run_case(
+    "sloppy simple parameter list permits duplicates", "function f(a, a) { return a; } f(1, 2)",
+    "2",
+  )
+  expect_run_case(
+    "dead function expressions still receive early-error validation",
+    (
+      #|try {
+      #|  eval("if (false) { var x = function(a = 0, a) {}; }");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
+  )
+  expect_run_case(
+    "nested declarations still receive early-error validation",
+    (
+      #|try {
+      #|  eval("function outer() { function inner(a = 0, a) {} }");
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof SyntaxError;
+      #|}
+    ),
+    "true",
+  )
 }
 
 ///|
-test "invalid Date valueOf returns NaN" {
-  let (_, result) = @js_engine.run("new Date(NaN).valueOf()")
-  expect_string(result, "NaN", "invalid Date valueOf")
+test "Date valueOf exposes only Date internal slots" {
+  expect_run_case("epoch payload", "new Date(0).valueOf()", "0")
+  expect_run_case(
+    "prototype has no Date payload",
+    (
+      #|try {
+      #|  Date.prototype.valueOf();
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof TypeError;
+      #|}
+    ),
+    "true",
+  )
+  expect_run_case(
+    "plain object has no Date payload",
+    (
+      #|try {
+      #|  Date.prototype.valueOf.call({});
+      #|  false;
+      #|} catch (error) {
+      #|  error instanceof TypeError;
+      #|}
+    ),
+    "true",
+  )
+  expect_run_case(
+    "invalid payload remains NaN", "new Date(NaN).valueOf()", "NaN",
+  )
 }
 
 ///|
-test "Number primitive method lookup returns the built-in" {
-  let src = "(2).toFixed === Number.prototype.toFixed && " +
-    "(2)[\"toFixed\"] === Number.prototype.toFixed"
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "true", "Number.prototype.toFixed identity")
-}
-
-///|
-test "Number primitive toFixed call returns text" {
-  let src = "(2).toFixed(2)"
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "2.00", "toFixed call")
-}
-
-///|
-test "Number primitive method lookup honors prototype replacement" {
-  let src =
-    #|Number.prototype.toFixed = function() { return this.valueOf() + ":custom"; };
-    #|(2).toFixed() === "2:custom" && (2)["toFixed"]() === "2:custom";
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "true", "replaced Number.prototype.toFixed")
-}
-
-///|
-test "Number primitive method lookup honors prototype deletion" {
-  let src =
-    #|delete Number.prototype.toFixed;
-    #|typeof (2).toFixed === "undefined" && typeof (2)["toFixed"] === "undefined";
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "true", "deleted Number.prototype.toFixed")
-}
-
-///|
-test "Number primitive lookup getter receives primitive receiver" {
-  let src =
-    #|Object.defineProperty(Number.prototype, "toFixed", {
-    #|  get: function() { "use strict"; return this; }
-    #|});
-    #|(2).toFixed === 2 && (2)["toFixed"] === 2;
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "true", "Number.prototype.toFixed getter receiver")
+test "Number primitive methods resolve through Number prototype" {
+  expect_run_case(
+    "dot and computed lookup share the builtin",
+    (
+      #|(2).toFixed === Number.prototype.toFixed &&
+      #|  (2)["toFixed"] === Number.prototype.toFixed;
+    ),
+    "true",
+  )
+  expect_run_case("method call boxes the receiver", "(2).toFixed(2)", "2.00")
+  expect_run_case(
+    "replacement is observed",
+    (
+      #|Number.prototype.toFixed = function() {
+      #|  return this.valueOf() + ":custom";
+      #|};
+      #|(2).toFixed() === "2:custom" &&
+      #|  (2)["toFixed"]() === "2:custom";
+    ),
+    "true",
+  )
+  expect_run_case(
+    "deletion is observed",
+    (
+      #|delete Number.prototype.toFixed;
+      #|typeof (2).toFixed === "undefined" &&
+      #|  typeof (2)["toFixed"] === "undefined";
+    ),
+    "true",
+  )
+  expect_run_case(
+    "accessor receives the primitive receiver",
+    (
+      #|Object.defineProperty(Number.prototype, "toFixed", {
+      #|  get: function() {
+      #|    "use strict";
+      #|    return this;
+      #|  }
+      #|});
+      #|(2).toFixed === 2 && (2)["toFixed"] === 2;
+    ),
+    "true",
+  )
 }
 
 ///|
@@ -294,51 +322,6 @@ test "Engine default retains earlier functions across later evals" {
 }
 
 ///|
-test "run fibonacci" {
-  let src =
-    #|function fib(n) {
-    #|  if (n <= 1) { return n; }
-    #|  return fib(n - 1) + fib(n - 2);
-    #|}
-    #|console.log(fib(10));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["55"])
-}
-
-///|
-test "run facade direct-return linear call chain at depth 256" {
-  let src =
-    #|function inner(value) { return value; }
-    #|function outer(ignored, value) { return value; }
-    #|function f(n) {
-    #|  if (n === 0) return "done";
-    #|  return outer("ignored", inner(f(n - 1)));
-    #|}
-    #|f(256);
-  expect_string(
-    run_outcome(src),
-    "value:done",
-    "direct-return linear call chain",
-  )
-}
-
-///|
-test "run facade direct-return one-stage result pipeline at depth 256" {
-  let src =
-    #|function id(value) { return value; }
-    #|function f(n) {
-    #|  if (n === 0) return "done";
-    #|  return id(f(n - 1));
-    #|}
-    #|f(256);
-  expect_string(
-    run_outcome(src),
-    "value:done",
-    "direct-return one-stage result pipeline",
-  )
-}
-
-///|
 test "run_compiled facade closure factory" {
   let src =
     #|function makeCounter(start) {
@@ -364,68 +347,65 @@ test "run_compiled facade closure factory" {
 }
 
 ///|
-test "computed constructor creates an instance with the supplied arguments" {
-  let src =
-    #|var constructors = {
-    #|  Box: function(left, right) { this.total = left + right; }
-    #|};
-    #|var key = "Box";
-    #|var box = new constructors[key](20, 22);
-    #|box.total === 42 && box instanceof constructors.Box;
-  let (_output, result) = @js_engine.run(src)
-  expect_string(result, "true", "computed constructor result")
-}
-
-///|
-test "computed constructor supports mixed bracket and dot chains" {
-  let src =
-    #|var ns = { inner: { Box: function(x) { this.x = x; } } };
-    #|new ns["inner"].Box(7).x;
-  let (_output, result) = @js_engine.run(src)
-  expect_string(result, "7", "mixed computed and dotted constructor result")
-}
-
-///|
-test "destructuring declaration list preserves following var initializer order" {
-  let src = "var [a] = [1], b = a + 1; b"
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "2", "var declaration list ordering")
-}
-
-///|
-test "destructuring declaration list supports consecutive object patterns" {
-  let src = "let {a} = {a: 1}, {b} = {b: 2}; a + b"
-  let (_, result) = @js_engine.run(src)
-  expect_string(result, "3", "both object patterns bind values")
-}
-
-///|
-test "destructuring declaration list keeps bindings visible afterward" {
-  let src = "const {a} = {a: 1}, [b] = [2]; a + b"
-  let (_, result) = @js_engine.run(src)
-  expect_string(
-    result, "3", "both bindings remain visible after the declaration",
+test "computed constructor syntax preserves its reference and suffixes" {
+  expect_run_case(
+    "arguments and constructor identity",
+    (
+      #|var constructors = {
+      #|  Box: function(left, right) { this.total = left + right; }
+      #|};
+      #|var key = "Box";
+      #|var box = new constructors[key](20, 22);
+      #|box.total === 42 && box instanceof constructors.Box;
+    ),
+    "true",
+  )
+  expect_run_case(
+    "mixed bracket and dot chain",
+    (
+      #|var ns = { inner: { Box: function(x) { this.x = x; } } };
+      #|new ns["inner"].Box(7).x;
+    ),
+    "7",
+  )
+  expect_run_case(
+    "omitted argument list",
+    (
+      #|var key = "Box";
+      #|var constructors = { Box: function() { this.x = 9; } };
+      #|var box = new constructors[key];
+      #|box.x;
+    ),
+    "9",
+  )
+  expect_run_case(
+    "call suffix uses the constructed result",
+    (
+      #|var constructors = {
+      #|  Factory: function() {
+      #|    return function() { return 13; };
+      #|  }
+      #|};
+      #|new constructors["Factory"]()();
+    ),
+    "13",
   )
 }
 
 ///|
-test "computed constructor allows omitted argument-list parentheses" {
-  let src =
-    #|var key = "Box";
-    #|var constructors = { Box: function() { this.x = 9; } };
-    #|var box = new constructors[key];
-    #|box.x;
-  let (_output, result) = @js_engine.run(src)
-  expect_string(result, "9", "omitted computed constructor arguments")
-}
-
-///|
-test "computed constructor applies a call suffix to the returned callable" {
-  let src =
-    #|var constructors = { Factory: function() { return function() { return 13; }; } };
-    #|new constructors["Factory"]()();
-  let (_output, result) = @js_engine.run(src)
-  expect_string(result, "13", "computed constructor call suffix")
+test "declaration-list destructuring preserves binding order and scope" {
+  expect_run_case(
+    "later initializer sees the earlier binding", "var [a] = [1], b = a + 1; b",
+    "2",
+  )
+  expect_run_case(
+    "consecutive object patterns bind independently", "let {a} = {a: 1}, {b} = {b: 2}; a + b",
+    "3",
+  )
+  expect_run_case(
+    "mixed patterns remain visible after the declaration", "const {a} = {a: 1}, [b] = [2]; a + b",
+    "3",
+  )
 }
 
 ///|
@@ -985,16 +965,6 @@ test "setTimeout with extra arguments" {
 }
 
 ///|
-test "clearTimeout cancels timer" {
-  let src =
-    #|var id = setTimeout(() => console.log("cancelled"), 0);
-    #|clearTimeout(id);
-    #|setTimeout(() => console.log("ran"), 0);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["ran"])
-}
-
-///|
 test "setTimeout returns numeric ID" {
   let src =
     #|var id1 = setTimeout(() => {}, 0);
@@ -1027,29 +997,6 @@ test "setTimeout with Promise inside" {
   let (output, _) = @js_engine.run(src)
   // Microtasks from timer callback drain before next timer
   json_inspect(output, content=["sync", "timer", "microtask in timer"])
-}
-
-///|
-test "setInterval basic" {
-  let src =
-    #|var count = 0;
-    #|var id = setInterval(() => {
-    #|  count++;
-    #|  console.log("tick " + count);
-    #|  if (count >= 3) { clearInterval(id); }
-    #|}, 100);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["tick 1", "tick 2", "tick 3"])
-}
-
-///|
-test "setTimeout equal delays preserve insertion order" {
-  let src =
-    #|setTimeout(() => console.log("first"), 0);
-    #|setTimeout(() => console.log("second"), 0);
-    #|setTimeout(() => console.log("third"), 0);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["first", "second", "third"])
 }
 
 ///|
@@ -2526,510 +2473,6 @@ test "ES module: anonymous export default class" {
 }
 
 // ============================================================
-// Proxy tests
-// ============================================================
-
-///|
-test "Proxy basic get trap" {
-  let src =
-    #|const target = { name: "world" };
-    #|const handler = {
-    #|  get(target, prop, receiver) {
-    #|    return prop === "name" ? "hello " + target[prop] : target[prop];
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|console.log(proxy.name);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["hello world"])
-}
-
-///|
-test "Proxy basic set trap" {
-  let src =
-    #|const target = {};
-    #|const handler = {
-    #|  set(target, prop, value, receiver) {
-    #|    target[prop] = value * 2;
-    #|    return true;
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|proxy.x = 5;
-    #|console.log(target.x);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["10"])
-}
-
-///|
-test "Proxy has trap" {
-  let src =
-    #|const target = { a: 1 };
-    #|const handler = {
-    #|  has(target, prop) {
-    #|    return prop === "b" ? true : prop in target;
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|console.log("a" in proxy);
-    #|console.log("b" in proxy);
-    #|console.log("c" in proxy);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true", "true", "false"])
-}
-
-///|
-test "Proxy deleteProperty trap" {
-  let src =
-    #|const target = { a: 1, b: 2 };
-    #|const deleted = [];
-    #|const handler = {
-    #|  deleteProperty(target, prop) {
-    #|    deleted.push(prop);
-    #|    delete target[prop];
-    #|    return true;
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|delete proxy.a;
-    #|console.log(deleted.join(","));
-    #|console.log(target.a);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["a", "undefined"])
-}
-
-///|
-test "Proxy apply trap" {
-  let src =
-    #|function sum(a, b) { return a + b; }
-    #|const handler = {
-    #|  apply(target, thisArg, argsList) {
-    #|    return target.apply(thisArg, argsList) * 10;
-    #|  }
-    #|};
-    #|const proxy = new Proxy(sum, handler);
-    #|console.log(proxy(1, 2));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["30"])
-}
-
-///|
-test "Proxy construct trap" {
-  let src =
-    #|function Point(x, y) { this.x = x; this.y = y; }
-    #|const handler = {
-    #|  construct(target, args, newTarget) {
-    #|    const obj = new target(...args);
-    #|    obj.created = true;
-    #|    return obj;
-    #|  }
-    #|};
-    #|const ProxyPoint = new Proxy(Point, handler);
-    #|const p = new ProxyPoint(1, 2);
-    #|console.log(p.x + "," + p.y + "," + p.created);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["1,2,true"])
-}
-
-///|
-test "Proxy no trap - delegates to target" {
-  let src =
-    #|const target = { x: 42 };
-    #|const proxy = new Proxy(target, {});
-    #|console.log(proxy.x);
-    #|proxy.y = 99;
-    #|console.log(target.y);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42", "99"])
-}
-
-///|
-test "Proxy.revocable" {
-  let src =
-    #|const target = { value: 100 };
-    #|const { proxy, revoke } = Proxy.revocable(target, {
-    #|  get(target, prop) {
-    #|    return target[prop];
-    #|  }
-    #|});
-    #|console.log(proxy.value);
-    #|revoke();
-    #|try {
-    #|  proxy.value;
-    #|} catch(e) {
-    #|  console.log(e.message);
-    #|}
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=[
-    "100", "Cannot perform 'get' on a proxy that has been revoked",
-  ])
-}
-
-///|
-test "Proxy typeof is object" {
-  let src =
-    #|const proxy = new Proxy({}, {});
-    #|console.log(typeof proxy);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["object"])
-}
-
-///|
-test "Proxy constructor requires new" {
-  let src =
-    #|try {
-    #|  Proxy({}, {});
-    #|} catch(e) {
-    #|  console.log(e instanceof TypeError);
-    #|}
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-test "Proxy get with computed property" {
-  let src =
-    #|const target = { a: 1, b: 2 };
-    #|const handler = {
-    #|  get(target, prop) {
-    #|    return target[prop] + 100;
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|const key = "b";
-    #|console.log(proxy[key]);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["102"])
-}
-
-///|
-test "Proxy set with computed property" {
-  let src =
-    #|const target = {};
-    #|const handler = {
-    #|  set(target, prop, value) {
-    #|    target[prop] = value + "_modified";
-    #|    return true;
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|const key = "foo";
-    #|proxy[key] = "bar";
-    #|console.log(target.foo);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["bar_modified"])
-}
-
-// ============================================================
-// Reflect tests
-// ============================================================
-
-///|
-test "Reflect.get" {
-  let src =
-    #|const obj = { x: 42 };
-    #|console.log(Reflect.get(obj, "x"));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42"])
-}
-
-///|
-test "Reflect.set" {
-  let src =
-    #|const obj = {};
-    #|Reflect.set(obj, "x", 42);
-    #|console.log(obj.x);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42"])
-}
-
-///|
-test "Reflect.has" {
-  let src =
-    #|const obj = { a: 1 };
-    #|console.log(Reflect.has(obj, "a"));
-    #|console.log(Reflect.has(obj, "b"));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true", "false"])
-}
-
-///|
-test "Reflect.deleteProperty" {
-  let src =
-    #|const obj = { a: 1, b: 2 };
-    #|console.log(Reflect.deleteProperty(obj, "a"));
-    #|console.log(obj.a);
-    #|console.log(obj.b);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true", "undefined", "2"])
-}
-
-///|
-test "Reflect.ownKeys" {
-  let src =
-    #|const obj = { a: 1, b: 2, c: 3 };
-    #|const keys = Reflect.ownKeys(obj);
-    #|console.log(keys.join(","));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["a,b,c"])
-}
-
-///|
-test "Reflect.apply" {
-  let src =
-    #|function greet(name) { return "Hello, " + name; }
-    #|console.log(Reflect.apply(greet, undefined, ["World"]));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["Hello, World"])
-}
-
-///|
-test "Reflect.construct" {
-  let src =
-    #|function Point(x, y) { this.x = x; this.y = y; }
-    #|const p = Reflect.construct(Point, [3, 4]);
-    #|console.log(p.x + "," + p.y);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["3,4"])
-}
-
-///|
-test "Reflect.getPrototypeOf" {
-  let src =
-    #|const obj = {};
-    #|console.log(Reflect.getPrototypeOf(obj) === Object.prototype);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-test "Reflect.isExtensible" {
-  let src =
-    #|const obj = {};
-    #|console.log(Reflect.isExtensible(obj));
-    #|Object.preventExtensions(obj);
-    #|console.log(Reflect.isExtensible(obj));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true", "false"])
-}
-
-///|
-test "Reflect.preventExtensions" {
-  let src =
-    #|const obj = {};
-    #|Reflect.preventExtensions(obj);
-    #|console.log(Object.isExtensible(obj));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["false"])
-}
-
-///|
-test "Reflect.defineProperty" {
-  let src =
-    #|const obj = {};
-    #|Reflect.defineProperty(obj, "x", { value: 42, writable: true, enumerable: true, configurable: true });
-    #|console.log(obj.x);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42"])
-}
-
-///|
-test "Reflect property key abrupt completion precedes missing later args" {
-  let src =
-    #|function MyError() { this.name = "MyError"; }
-    #|MyError.prototype = Object.create(Error.prototype);
-    #|var key = {
-    #|  toString: function() {
-    #|    throw new MyError();
-    #|  }
-    #|};
-    #|try {
-    #|  Reflect.defineProperty({}, key);
-    #|} catch (e) {
-    #|  console.log(e.name);
-    #|}
-    #|try {
-    #|  Reflect.set({}, key);
-    #|} catch (e) {
-    #|  console.log(e.name);
-    #|}
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["MyError", "MyError"])
-}
-
-///|
-test "Reflect.setPrototypeOf" {
-  let src =
-    #|const obj = {};
-    #|const proto = { greet() { return "hello"; } };
-    #|Reflect.setPrototypeOf(obj, proto);
-    #|console.log(obj.greet());
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["hello"])
-}
-
-///|
-test "Proxy and Reflect together - logging proxy" {
-  let src =
-    #|const target = { x: 1, y: 2, z: 3 };
-    #|const log = [];
-    #|const handler = {
-    #|  get(target, prop, receiver) {
-    #|    log.push("get:" + prop);
-    #|    return Reflect.get(target, prop, receiver);
-    #|  },
-    #|  set(target, prop, value, receiver) {
-    #|    log.push("set:" + prop + "=" + value);
-    #|    return Reflect.set(target, prop, value, receiver);
-    #|  }
-    #|};
-    #|const proxy = new Proxy(target, handler);
-    #|proxy.x;
-    #|proxy.y = 20;
-    #|console.log(log.join(", "));
-    #|console.log(target.y);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["get:x, set:y=20", "20"])
-}
-
-///|
-test "Proxy identity - strict equality" {
-  let src =
-    #|const target = {};
-    #|const p1 = new Proxy(target, {});
-    #|const p2 = new Proxy(target, {});
-    #|console.log(p1 === p1);
-    #|console.log(p1 === p2);
-    #|console.log(p1 === target);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true", "false", "false"])
-}
-
-///|
-test "Reflect.getOwnPropertyDescriptor" {
-  let src =
-    #|const obj = {};
-    #|Object.defineProperty(obj, "x", { value: 42, writable: false, enumerable: true, configurable: false });
-    #|const desc = Reflect.getOwnPropertyDescriptor(obj, "x");
-    #|console.log(desc.value);
-    #|console.log(desc.writable);
-    #|console.log(desc.enumerable);
-    #|console.log(desc.configurable);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42", "false", "true", "false"])
-}
-
-///|
-test "Reflect.construct with newTarget" {
-  let src =
-    #|function Base(x) { this.x = x; }
-    #|function Other() {}
-    #|Other.prototype.tag = "other";
-    #|const obj = Reflect.construct(Base, [42], Other);
-    #|console.log(obj.x);
-    #|console.log(obj.tag);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42", "other"])
-}
-
-///|
-test "Reflect.getOwnPropertyDescriptor accessor" {
-  let src =
-    #|const obj = {};
-    #|Object.defineProperty(obj, "x", {
-    #|  get() { return 42; },
-    #|  enumerable: true,
-    #|  configurable: true
-    #|});
-    #|const desc = Reflect.getOwnPropertyDescriptor(obj, "x");
-    #|console.log(typeof desc.get);
-    #|console.log(desc.enumerable);
-    #|console.log(desc.configurable);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["function", "true", "true"])
-}
-
-///|
-test "Reflect.set returns false for non-writable" {
-  let src =
-    #|const obj = {};
-    #|Object.defineProperty(obj, "x", { value: 1, writable: false, configurable: false });
-    #|console.log(Reflect.set(obj, "x", 2));
-    #|console.log(obj.x);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["false", "1"])
-}
-
-///|
-test "Reflect.get with Symbol key" {
-  let src =
-    #|const sym = Symbol("test");
-    #|const obj = {};
-    #|obj[sym] = "hello";
-    #|console.log(Reflect.get(obj, sym));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["hello"])
-}
-
-///|
-test "JSON.stringify with Proxy" {
-  let src =
-    #|const target = { a: 1, b: 2 };
-    #|const proxy = new Proxy(target, {});
-    #|console.log(JSON.stringify(proxy));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"a\":1,\"b\":2}"])
-}
-
-///|
-test "Object.assign with Proxy source" {
-  let src =
-    #|const target = {};
-    #|const source = new Proxy({ x: 10, y: 20 }, {});
-    #|Object.assign(target, source);
-    #|console.log(target.x);
-    #|console.log(target.y);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["10", "20"])
-}
-
-///|
-test "Object.defineProperty on Proxy target" {
-  let src =
-    #|const target = {};
-    #|const proxy = new Proxy(target, {});
-    #|Object.defineProperty(proxy, "x", { value: 42, writable: false, enumerable: true, configurable: false });
-    #|console.log(target.x);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42"])
-}
-
-///|
-test "Object.getOwnPropertyDescriptor on Proxy" {
-  let src =
-    #|const target = { x: 42 };
-    #|const proxy = new Proxy(target, {});
-    #|const desc = Object.getOwnPropertyDescriptor(proxy, "x");
-    #|console.log(desc.value);
-    #|console.log(desc.writable);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["42", "true"])
-}
-
-///|
-test "apply trap rejects non-callable target" {
-  let src =
-    #|try {
-    #|  const proxy = new Proxy({}, { apply() { return 42; } });
-    #|  proxy();
-    #|} catch (e) {
-    #|  console.log(e.message);
-    #|}
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["proxy target is not a function"])
-}
-
-// ============================================================
 // Stage B.1 — [[Set]] dispatcher: receiver threading + landing rule
 // ============================================================
 
@@ -3389,303 +2832,275 @@ test "run_modules: legacy octal escape in module body rejected" {
 }
 
 ///|
-test "Set.forEach visits re-added value when callback deletes and re-adds last element" {
-  // Issue #357: delete+add on the last (or only) element must land the re-added
-  // value at a new index so the forEach cursor reaches it. The guard prevents
-  // infinite looping: per §24.2.3.12, unconditional delete+add inside forEach
-  // grows the list forever since numEntries is re-evaluated after each callback.
-  let src =
-    #|const s = new Set([1]);
-    #|const seen = [];
-    #|let deleted = false;
-    #|s.forEach(v => {
-    #|  seen.push(v);
-    #|  if (v === 1 && !deleted) { deleted = true; s.delete(1); s.add(1); }
-    #|});
-    #|console.log(JSON.stringify(seen));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[1,1]"])
-}
-
-///|
-test "Set.forEach delete+re-add of non-last element still visits once" {
-  // Regression guard: deleting a non-last element and re-adding it puts it at
-  // the end of the iteration order. The guard prevents infinite looping (same
-  // reason as the test above — unconditional delete+add grows the list forever).
-  let src =
-    #|const s = new Set([1, 2]);
-    #|const seen = [];
-    #|let deleted = false;
-    #|s.forEach(v => {
-    #|  seen.push(v);
-    #|  if (v === 1 && !deleted) { deleted = true; s.delete(1); s.add(1); }
-    #|});
-    #|console.log(JSON.stringify(seen));
-  let (output, _) = @js_engine.run(src)
-  // 1 is re-added after 2, so order is: visit 1, visit 2, visit re-added 1
-  json_inspect(output, content=["[1,2,1]"])
-}
-
-///|
-test "Set.size reflects tombstoned entries during forEach" {
-  // During iteration, deleted entries must not count toward size.
-  let src =
-    #|const s = new Set([1, 2, 3]);
-    #|const sizes = [];
-    #|s.forEach(v => {
-    #|  if (v === 1) s.delete(2);
-    #|  sizes.push(s.size);
-    #|});
-    #|console.log(JSON.stringify(sizes));
-  let (output, _) = @js_engine.run(src)
-  // After deleting 2 during visit of 1: size=2; visit 3: size=2; (2 never visited)
-  json_inspect(output, content=["[2,2]"])
-}
-
-///|
-test "Set.has returns false for tombstoned entry during forEach" {
-  // A tombstoned (deleted-during-iteration) entry must not be seen by has().
-  let src =
-    #|const s = new Set([1, 2]);
-    #|let hasAfterDelete;
-    #|s.forEach(v => {
-    #|  if (v === 1) { s.delete(2); hasAfterDelete = s.has(2); }
-    #|});
-    #|console.log(hasAfterDelete);
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["false"])
-}
-
-///|
-test "Set.forEach visits value added after clear() inside callback" {
-  // P2: clear() during forEach must tombstone current slots rather than
-  // compacting. Without this, add(x) after clear() lands at index 0 and
-  // the unconditional i+=1 cursor skips it.
-  let src =
-    #|const s = new Set([1]);
-    #|const seen = [];
-    #|s.forEach(v => {
-    #|  seen.push(v);
-    #|  if (v === 1) { s.clear(); s.add(2); }
-    #|});
-    #|console.log(JSON.stringify(seen));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[1,2]"])
-}
-
-///|
-test "Set spread hides tombstoned entries during forEach" {
-  // P2: make_set_values_iterator reads data.values directly; tombstoned
-  // slots must be skipped so [...s] inside a forEach callback does not
-  // expose deleted values.
-  let src =
-    #|const s = new Set([1, 2, 3]);
-    #|let spread;
-    #|s.forEach(v => {
-    #|  if (v === 1) { s.delete(2); spread = [...s]; }
-    #|});
-    #|console.log(JSON.stringify(spread));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[1,3]"])
-}
-
-///|
-test "Set.entries() hides tombstoned entries during forEach" {
-  // make_set_entries_iterator next() skips tombstoned slots so that
-  // entries() iterated inside a forEach callback omits deleted entries.
-  let src =
-    #|const s = new Set([1, 2, 3]);
-    #|let collected;
-    #|s.forEach(v => {
-    #|  if (v === 1) { s.delete(2); collected = [...s.entries()].map(e => e[0]); }
-    #|});
-    #|console.log(JSON.stringify(collected));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[1,3]"])
+test "Set iteration exposes only live entries" {
+  expect_run_case(
+    "re-added last entry moves behind the cursor",
+    (
+      #|const set = new Set([1]);
+      #|const seen = [];
+      #|let mutated = false;
+      #|set.forEach(value => {
+      #|  seen.push(value);
+      #|  if (!mutated) {
+      #|    mutated = true;
+      #|    set.delete(value);
+      #|    set.add(value);
+      #|  }
+      #|});
+      #|JSON.stringify(seen);
+    ),
+    "[1,1]",
+  )
+  expect_run_case(
+    "re-added non-last entry moves to the end",
+    (
+      #|const set = new Set([1, 2]);
+      #|const seen = [];
+      #|let mutated = false;
+      #|set.forEach(value => {
+      #|  seen.push(value);
+      #|  if (value === 1 && !mutated) {
+      #|    mutated = true;
+      #|    set.delete(1);
+      #|    set.add(1);
+      #|  }
+      #|});
+      #|JSON.stringify(seen);
+    ),
+    "[1,2,1]",
+  )
+  expect_run_case(
+    "size excludes deleted entries",
+    (
+      #|const set = new Set([1, 2, 3]);
+      #|const sizes = [];
+      #|set.forEach(value => {
+      #|  if (value === 1) set.delete(2);
+      #|  sizes.push(set.size);
+      #|});
+      #|JSON.stringify(sizes);
+    ),
+    "[2,2]",
+  )
+  expect_run_case(
+    "has excludes deleted entries",
+    (
+      #|const set = new Set([1, 2]);
+      #|let present;
+      #|set.forEach(value => {
+      #|  if (value === 1) {
+      #|    set.delete(2);
+      #|    present = set.has(2);
+      #|  }
+      #|});
+      #|present;
+    ),
+    "false",
+  )
+  expect_run_case(
+    "entries appended after clear remain ahead of the cursor",
+    (
+      #|const set = new Set([1]);
+      #|const seen = [];
+      #|set.forEach(value => {
+      #|  seen.push(value);
+      #|  if (value === 1) {
+      #|    set.clear();
+      #|    set.add(2);
+      #|  }
+      #|});
+      #|JSON.stringify(seen);
+    ),
+    "[1,2]",
+  )
+  expect_run_case(
+    "spread excludes deleted entries",
+    (
+      #|const set = new Set([1, 2, 3]);
+      #|let spread;
+      #|set.forEach(value => {
+      #|  if (value === 1) {
+      #|    set.delete(2);
+      #|    spread = [...set];
+      #|  }
+      #|});
+      #|JSON.stringify(spread);
+    ),
+    "[1,3]",
+  )
+  expect_run_case(
+    "entries excludes deleted entries",
+    (
+      #|const set = new Set([1, 2, 3]);
+      #|let entries;
+      #|set.forEach(value => {
+      #|  if (value === 1) {
+      #|    set.delete(2);
+      #|    entries = [...set.entries()].map(entry => entry[0]);
+      #|  }
+      #|});
+      #|JSON.stringify(entries);
+    ),
+    "[1,3]",
+  )
 }
 
 // ============================================================
-// JSON.stringify semantic operations (Plan 002)
+// JSON.stringify observable-operation invariants
 // ============================================================
 
 ///|
-test "JSON.stringify array invokes enumerable index getter" {
-  let src =
-    #|const a = [0];
-    #|Object.defineProperty(a, "0", {
-    #|  enumerable: true,
-    #|  get() { return 1; }
-    #|});
-    #|console.log(JSON.stringify(a));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[1]"])
-}
-
-///|
-test "JSON.stringify array propagates throwing getter" {
-  let src =
-    #|const a = [0];
-    #|Object.defineProperty(a, "0", {
-    #|  enumerable: true,
-    #|  get() { throw new Error("abrupt"); }
-    #|});
-    #|try {
-    #|  JSON.stringify(a);
-    #|  console.log("no throw");
-    #|} catch (e) {
-    #|  console.log(e.message);
-    #|}
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["abrupt"])
-}
-
-///|
-test "JSON.stringify array uses proxy get traps" {
-  let src =
-    #|const target = [1, 2];
-    #|const proxy = new Proxy(target, {
-    #|  get(t, k) { return k === "0" ? 99 : t[k]; }
-    #|});
-    #|console.log(JSON.stringify(proxy));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[99,2]"])
-}
-
-///|
-test "JSON.stringify array serializes holes as null" {
-  let src =
-    #|const a = [1, , 3];
-    #|console.log(JSON.stringify(a));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["[1,null,3]"])
-}
-
-///|
-test "JSON.stringify array detects cycles" {
-  let src =
-    #|const a = [1];
-    #|a.push(a);
-    #|try {
-    #|  JSON.stringify(a);
-    #|  console.log("no throw");
-    #|} catch (e) {
-    #|  console.log(e.message);
-    #|}
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["Converting circular structure to JSON"])
-}
-
-///|
-test "JSON.stringify object invokes enumerable getter" {
-  let src =
-    #|const o = {};
-    #|Object.defineProperty(o, "x", {
-    #|  enumerable: true,
-    #|  get() { return 1; }
-    #|});
-    #|console.log(JSON.stringify(o));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"x\":1}"])
-}
-
-///|
-test "JSON.stringify object snapshots keys before getter side effects" {
-  let src =
-    #|const o = { a: 1 };
-    #|Object.defineProperty(o, "b", {
-    #|  enumerable: true,
-    #|  get() { delete o.a; return 2; }
-    #|});
-    #|console.log(JSON.stringify(o));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"a\":1,\"b\":2}"])
-}
-
-///|
-test "JSON.stringify Map with enumerable expando" {
-  let src =
-    #|const m = new Map();
-    #|m.x = 1;
-    #|console.log(JSON.stringify(m));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"x\":1}"])
-}
-
-///|
-test "JSON.stringify Set with enumerable expando" {
-  let src =
-    #|const s = new Set();
-    #|s.x = 1;
-    #|console.log(JSON.stringify(s));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"x\":1}"])
-}
-
-///|
-test "JSON.stringify Promise with enumerable expando" {
-  let src =
-    #|const p = Promise.resolve(1);
-    #|p.x = 1;
-    #|console.log(JSON.stringify(p));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"x\":1}"])
-}
-
-///|
-test "JSON.stringify object uses proxy ownKeys trap" {
-  let src =
-    #|const target = { a: 1 };
-    #|const proxy = new Proxy(target, {
-    #|  ownKeys() { return ["b"]; },
-    #|  getOwnPropertyDescriptor(k) {
-    #|    return { enumerable: true, configurable: true, value: 2 };
-    #|  },
-    #|  get(t, k) { return k === "b" ? 2 : t[k]; }
-    #|});
-    #|console.log(JSON.stringify(proxy));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"b\":2}"])
-}
-
-///|
-test "JSON.stringify calls toJSON before replacer" {
-  let src =
-    #|const order = [];
-    #|const o = {
-    #|  toJSON() { order.push("toJSON"); return { v: 1 }; },
-    #|  v: 0
-    #|};
-    #|const replacer = (key, val) => { order.push("replacer"); return val; };
-    #|JSON.stringify(o, replacer);
-    #|console.log(order[0] === "toJSON" && order[1] === "replacer");
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-test "JSON.stringify replacer array uses Get for elements" {
-  let src =
-    #|const target = { a: 1, b: 2, c: 3 };
-    #|const replacer = new Proxy(["b", "a"], {
-    #|  get(t, k) {
-    #|    if (k === "length") return 2;
-    #|    if (k === "0") return "c";
-    #|    if (k === "1") return "a";
-    #|    return t[k];
-    #|  }
-    #|});
-    #|console.log(JSON.stringify(target, replacer));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"c\":3,\"a\":1}"])
-}
-
-///|
-test "JSON.stringify omits callable values" {
-  let src =
-    #|const o = { f: function() {}, x: 1 };
-    #|console.log(JSON.stringify(o));
-  let (output, _) = @js_engine.run(src)
-  json_inspect(output, content=["{\"x\":1}"])
+test "JSON.stringify observes ordinary property operations" {
+  expect_run_case(
+    "array index getter",
+    (
+      #|const array = [0];
+      #|Object.defineProperty(array, "0", {
+      #|  enumerable: true,
+      #|  get() { return 1; }
+      #|});
+      #|JSON.stringify(array);
+    ),
+    "[1]",
+  )
+  expect_run_case(
+    "abrupt array index getter",
+    (
+      #|const array = [0];
+      #|Object.defineProperty(array, "0", {
+      #|  enumerable: true,
+      #|  get() { throw new Error("abrupt"); }
+      #|});
+      #|try {
+      #|  JSON.stringify(array);
+      #|  "completed";
+      #|} catch (error) {
+      #|  error.message;
+      #|}
+    ),
+    "abrupt",
+  )
+  expect_run_case(
+    "array Proxy get",
+    (
+      #|const proxy = new Proxy([1, 2], {
+      #|  get(target, key) {
+      #|    return key === "0" ? 99 : target[key];
+      #|  }
+      #|});
+      #|JSON.stringify(proxy);
+    ),
+    "[99,2]",
+  )
+  expect_run_case("array hole", "JSON.stringify([1, , 3]);", "[1,null,3]")
+  expect_run_case(
+    "array cycle",
+    (
+      #|const array = [1];
+      #|array.push(array);
+      #|try {
+      #|  JSON.stringify(array);
+      #|  "completed";
+      #|} catch (error) {
+      #|  error.message;
+      #|}
+    ),
+    "Converting circular structure to JSON",
+  )
+  expect_run_case(
+    "object enumerable getter",
+    (
+      #|const object = {};
+      #|Object.defineProperty(object, "x", {
+      #|  enumerable: true,
+      #|  get() { return 1; }
+      #|});
+      #|JSON.stringify(object);
+    ),
+    "{\"x\":1}",
+  )
+  expect_run_case(
+    "keys are captured before values are read",
+    (
+      #|const object = { a: 1 };
+      #|Object.defineProperty(object, "b", {
+      #|  enumerable: true,
+      #|  get() {
+      #|    delete object.a;
+      #|    return 2;
+      #|  }
+      #|});
+      #|JSON.stringify(object);
+    ),
+    "{\"a\":1,\"b\":2}",
+  )
+  expect_run_case(
+    "Map enumerable expando", "const value = new Map(); value.x = 1; JSON.stringify(value);",
+    "{\"x\":1}",
+  )
+  expect_run_case(
+    "Set enumerable expando", "const value = new Set(); value.x = 1; JSON.stringify(value);",
+    "{\"x\":1}",
+  )
+  expect_run_case(
+    "Promise enumerable expando", "const value = Promise.resolve(1); value.x = 1; JSON.stringify(value);",
+    "{\"x\":1}",
+  )
+  expect_run_case(
+    "Proxy ownKeys and descriptors",
+    (
+      #|const proxy = new Proxy({ a: 1 }, {
+      #|  ownKeys() { return ["b"]; },
+      #|  getOwnPropertyDescriptor() {
+      #|    return {
+      #|      enumerable: true,
+      #|      configurable: true,
+      #|      value: 2
+      #|    };
+      #|  },
+      #|  get(target, key) {
+      #|    return key === "b" ? 2 : target[key];
+      #|  }
+      #|});
+      #|JSON.stringify(proxy);
+    ),
+    "{\"b\":2}",
+  )
+  expect_run_case(
+    "toJSON precedes replacer",
+    (
+      #|const order = [];
+      #|const value = {
+      #|  toJSON() {
+      #|    order.push("toJSON");
+      #|    return { v: 1 };
+      #|  }
+      #|};
+      #|const replacer = (key, item) => {
+      #|  order.push("replacer");
+      #|  return item;
+      #|};
+      #|JSON.stringify(value, replacer);
+      #|order[0] === "toJSON" && order[1] === "replacer";
+    ),
+    "true",
+  )
+  expect_run_case(
+    "replacer array uses Get",
+    (
+      #|const target = { a: 1, b: 2, c: 3 };
+      #|const replacer = new Proxy(["b", "a"], {
+      #|  get(target, key) {
+      #|    if (key === "length") return 2;
+      #|    if (key === "0") return "c";
+      #|    if (key === "1") return "a";
+      #|    return target[key];
+      #|  }
+      #|});
+      #|JSON.stringify(target, replacer);
+    ),
+    "{\"c\":3,\"a\":1}",
+  )
 }
 
 ///|

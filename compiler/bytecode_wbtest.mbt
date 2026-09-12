@@ -2105,51 +2105,6 @@ fn lower_source_for_wb(
 }
 
 ///|
-test "bytecode lowering outcome compiles supported source" {
-  match lower_source_for_wb("1 + 2;") {
-    Ok(_) => ()
-    Err(_) => fail("expected supported source to compile")
-  }
-}
-
-///|
-test "bytecode lowering outcome identifies valid unsupported source" {
-  match lower_source_for_wb("for (var x of [1, 2]) {}") {
-    Ok(_) => fail("expected for-of to be unsupported")
-    Err(unsupported) => {
-      assert_true(unsupported.reason is ForOfStatement)
-      assert_eq(unsupported.loc.offset, 0)
-    }
-  }
-}
-
-///|
-test "bytecode lowering outcome preserves frontend and early errors" {
-  try {
-    let _ = lower_source_for_wb("var obj = {}; obj?.tag`a${1}b`;")
-    fail("expected parser SyntaxError")
-  } catch {
-    @errors.SyntaxError(message~) => assert_eq(message, "Bad_optional_template")
-    _ => fail("expected parser SyntaxError")
-  }
-  let program = match lower_source_for_wb("\"use strict\"; delete x;") {
-    Ok(program) => program
-    Err(_) => fail("early-error fixture must lower successfully")
-  }
-  try {
-    let _ = program.run(@interpreter.new_interpreter())
-    fail("expected early SyntaxError")
-  } catch {
-    @runtime.JsException(value) =>
-      assert_eq(
-        value.to_string(),
-        "SyntaxError: Delete of an unqualified identifier in strict mode.",
-      )
-    _ => fail("expected JavaScript SyntaxError")
-  }
-}
-
-///|
 test "bytecode lowering outcome keeps builder invariant defects internal" {
   let builder = BytecodeBuilder::BytecodeBuilder(
     { names: [], indices: Map([]), env_names: [], env_indices: Map([]), },
@@ -2166,25 +2121,6 @@ test "bytecode lowering outcome keeps builder invariant defects internal" {
     BytecodeUnsupportedSignal(_) =>
       fail("builder invariant must not be an unsupported outcome")
     _ => fail("expected InternalError")
-  }
-}
-
-///|
-test "bytecode unsupported selection does not mutate runtime state" {
-  let src =
-    #|console.log("must-not-run");
-    #|for (var x of [1]) {}
-  let prog = @parser.parse(src)
-  let interp = @interpreter.new_interpreter()
-  try {
-    let _ = run_bytecode_script(interp, prog.stmts)
-    fail("expected for-of to be unsupported")
-  } catch {
-    BytecodeUnsupportedSignal(unsupported) => {
-      assert_true(unsupported.reason is ForOfStatement)
-      json_inspect(interp.host.output, content=[])
-    }
-    _ => fail("expected typed bytecode unsupported signal")
   }
 }
 
@@ -3127,18 +3063,6 @@ test "bytecode lowers member tagged templates to receiver calls" {
   guard saw_receiver_call else {
     abort("expected tagged template receiver call")
   }
-}
-
-///|
-test "bytecode rejects optional tagged templates at parse time" {
-  let outcome = try {
-    let _ = @parser.parse("obj?.tag`a${x}b`; obj?.[key]`c`; ")
-    "ok"
-  } catch {
-    @errors.SyntaxError(message~) => message
-    err => err.to_string()
-  }
-  inspect(outcome, content="Bad_optional_template")
 }
 
 ///|

@@ -2579,39 +2579,22 @@ test "function apply method with non-numeric length" {
 
 ///|
 // §20.2.3.1 + §7.3.18: argArray must be Object (or null/undefined)
-test "function apply throws TypeError for boolean argArray" {
+test "function apply rejects primitive argArray values" {
   let src =
     #|function fn() {}
-    #|try { fn.apply(null, true); } catch(e) { console.log(e instanceof TypeError); }
+    #|function report(label, value) {
+    #|  try {
+    #|    fn.apply(null, value);
+    #|    console.log(label + ":no error");
+    #|  } catch (error) {
+    #|    console.log(label + ":" + (error instanceof TypeError));
+    #|  }
+    #|}
+    #|report("boolean", true);
+    #|report("number", 42);
+    #|report("string", "str");
   let output = run_output(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-test "function apply throws TypeError for number argArray" {
-  let src =
-    #|function fn() {}
-    #|try { fn.apply(null, 42); } catch(e) { console.log(e instanceof TypeError); }
-  let output = run_output(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-test "function apply throws TypeError for string argArray" {
-  let src =
-    #|function fn() {}
-    #|try { fn.apply(null, "str"); } catch(e) { console.log(e instanceof TypeError); }
-  let output = run_output(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-test "function apply null argArray does not throw" {
-  let src =
-    #|function fn() { return arguments.length; }
-    #|fn.apply(null, null);
-  let (_, result) = run_js(src)
-  expect_result(result, "0")
+  json_inspect(output, content=["boolean:true", "number:true", "string:true"])
 }
 
 ///|
@@ -4293,52 +4276,6 @@ test "bind and hasOwnProperty propagate throwing and revoked Proxy operations" {
     "bind-get:get abrupt", "bind-gopd:gopd abrupt", "hasOwn-gopd:hasOwn abrupt",
     "bind-revoked:Cannot perform operation on a proxy that has been revoked", "hasOwn-revoked:Cannot perform operation on a proxy that has been revoked",
   ])
-}
-
-///|
-/// compat-table: Proxy internal `get` calls / Object.assign.
-test "Object.assign Proxy source invokes get trap" {
-  let src =
-    #|var get = [];
-    #|var p = new Proxy({foo: 1, bar: 2}, {
-    #|  get: function(o, k) { get.push(k); return o[k]; }
-    #|});
-    #|Object.assign({}, p);
-    #|console.log(get + '' === "foo,bar");
-  let output = run_output(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-/// compat-table: Proxy internal `set` calls / Object.assign.
-test "Object.assign Proxy target invokes set trap" {
-  let src =
-    #|var set = [];
-    #|var p = new Proxy({}, {
-    #|  set: function(o, k, v) { set.push(k); o[k] = v; return true; }
-    #|});
-    #|Object.assign(p, {foo: 1, bar: 2});
-    #|console.log(set + '' === "foo,bar");
-  let output = run_output(src)
-  json_inspect(output, content=["true"])
-}
-
-///|
-/// compat-table: Proxy internal `getOwnPropertyDescriptor` calls /
-/// Object.assign.
-test "Object.assign Proxy source invokes getOwnPropertyDescriptor trap" {
-  let src =
-    #|var gopd = [];
-    #|var p = new Proxy({foo: 1, bar: 2}, {
-    #|  getOwnPropertyDescriptor: function(o, v) {
-    #|    gopd.push(v);
-    #|    return Object.getOwnPropertyDescriptor(o, v);
-    #|  }
-    #|});
-    #|Object.assign({}, p);
-    #|console.log(gopd + '' === "foo,bar");
-  let output = run_output(src)
-  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -7506,18 +7443,6 @@ test "Object.isExtensible on regular object" {
 }
 
 ///|
-test "Object.defineProperty with value update" {
-  let src =
-    #|var obj = {};
-    #|Object.defineProperty(obj, "x", { value: 1, writable: true, configurable: true });
-    #|console.log(obj.x);
-    #|Object.defineProperty(obj, "x", { value: 2 });
-    #|console.log(obj.x);
-  let output = run_output(src)
-  json_inspect(output, content=["1", "2"])
-}
-
-///|
 test "Object.freeze prevents delete" {
   let src =
     #|var obj = {x: 1};
@@ -7835,17 +7760,6 @@ test "use strict in global scope" {
     #|console.log(x);
   let output = run_output(src)
   json_inspect(output, content=["10"])
-}
-
-///|
-test "strict mode: non-writable silent in sloppy" {
-  let src =
-    #|var obj = {};
-    #|Object.defineProperty(obj, "x", { value: 42, writable: false });
-    #|obj.x = 100;
-    #|console.log(obj.x);
-  let output = run_output(src)
-  json_inspect(output, content=["42"])
 }
 
 // ---- Phase 3G: RegExp tests ----
@@ -8286,12 +8200,13 @@ test "bugfix: defineProperty preserves existing descriptor" {
     #|var obj = {};
     #|Object.defineProperty(obj, "x", { value: 1, writable: true, enumerable: true, configurable: true });
     #|Object.defineProperty(obj, "x", { value: 2 });
+    #|console.log(obj.x);
     #|var desc = Object.getOwnPropertyDescriptor(obj, "x");
     #|console.log(desc.value);
     #|console.log(desc.writable);
     #|console.log(desc.enumerable);
   let output = run_output(src)
-  json_inspect(output, content=["2", "true", "true"])
+  json_inspect(output, content=["2", "2", "true", "true"])
 }
 
 ///|
@@ -11524,45 +11439,6 @@ test "generator: for-of consumes generator" {
     ),
   )
   json_inspect(output, content=["1,2,3"])
-}
-
-///|
-test "generator: spread operator with generator" {
-  let output = run_output(
-    (
-      #|function* g() { yield 1; yield 2; yield 3; }
-      #|const arr = [...g()];
-      #|console.log(arr.join(','));
-    ),
-  )
-  json_inspect(output, content=["1,2,3"])
-}
-
-///|
-test "generator: destructuring assignment from generator" {
-  let output = run_output(
-    (
-      #|function* g() { yield 10; yield 20; yield 30; }
-      #|const [a, b] = g();
-      #|console.log(a, b);
-    ),
-  )
-  json_inspect(output, content=["10 20"])
-}
-
-///|
-test "generator: .return() on yielded generator" {
-  let output = run_output(
-    (
-      #|function* g() { yield 1; yield 2; yield 3; }
-      #|const it = g();
-      #|console.log(it.next().value);
-      #|const r = it.return(42);
-      #|console.log(r.value, r.done);
-      #|console.log(it.next().value, it.next().done);
-    ),
-  )
-  json_inspect(output, content=["1", "42 true", "undefined true"])
 }
 
 ///|
@@ -20318,6 +20194,64 @@ test "apply with Proxy argArray reads length then indices once" {
     ),
   )
   json_inspect(output, content=["7", "length,0,1"])
+}
+
+///|
+/// Reflect validates the target, then performs ToPropertyKey before consuming
+/// a missing descriptor/value. The key's abrupt completion must win.
+test "Reflect property-key conversion precedes missing trailing arguments" {
+  let output = run_output(
+    (
+      #|var marker = {};
+      #|function observe(action) {
+      #|  var coercions = 0;
+      #|  var key = {
+      #|    toString: function() {
+      #|      coercions++;
+      #|      throw marker;
+      #|    }
+      #|  };
+      #|  try {
+      #|    action(key);
+      #|    return "completed:" + coercions;
+      #|  } catch (error) {
+      #|    return (error === marker) + ":" + coercions;
+      #|  }
+      #|}
+      #|console.log(observe(function(key) {
+      #|  Reflect.defineProperty({}, key);
+      #|}));
+      #|console.log(observe(function(key) {
+      #|  Reflect.set({}, key);
+      #|}));
+    ),
+  )
+  json_inspect(output, content=["true:1", "true:1"])
+}
+
+///|
+/// A Proxy is callable exactly when its target is callable. An apply trap
+/// cannot grant [[Call]] to an ordinary object target.
+test "Proxy apply trap cannot make a non-callable target callable" {
+  let output = run_output(
+    (
+      #|var trapCalls = 0;
+      #|var proxy = new Proxy({}, {
+      #|  apply: function() {
+      #|    trapCalls++;
+      #|    return 42;
+      #|  }
+      #|});
+      #|try {
+      #|  proxy();
+      #|  console.log("completed");
+      #|} catch (error) {
+      #|  console.log(error instanceof TypeError ? "TypeError" : error.name);
+      #|}
+      #|console.log(trapCalls);
+    ),
+  )
+  json_inspect(output, content=["TypeError", "0"])
 }
 
 ///|

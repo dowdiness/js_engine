@@ -159,36 +159,6 @@ test "issue 931 candidate retains one with Proxy Reference" {
 }
 
 ///|
-test "issue 931 candidate does not re-resolve after conversion mutation" {
-  let source =
-    #|var events = [];
-    #|var phase = 0;
-    #|var outer = { value: 100 };
-    #|var target = {};
-    #|var changing = { valueOf: function() { phase = 1; events.push("convert"); return 3; } };
-    #|target.value = changing;
-    #|var scope = new Proxy(target, {
-    #|  has: function(t, key) { events.push("has:" + key + ":" + phase); return phase === 0 && Reflect.has(t, key); },
-    #|  get: function(t, key, receiver) { events.push(key === Symbol.unscopables ? "unscopables" : "get:" + key); return Reflect.get(t, key, receiver); },
-    #|  set: function(t, key, value, receiver) { events.push("set:" + key + ":" + value); return Reflect.set(t, key, value, receiver); }
-    #|});
-    #|var update;
-    #|with (scope) { update = function() { return value++; }; }
-    #|events = [];
-    #|var old = update();
-    #|old + ":" + target.value + ":" + outer.value + ":" + events.join(",");
-  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(
-    value.to_string(),
-    "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,has:value:1,set:value:4",
-  )
-  assert_true(evidence.val.summary.bytecode_starts > 0)
-  assert_eq(evidence.val.summary.fallback_violations, 0)
-  assert_eq(evidence.val.summary.replay_violations, 0)
-  assert_eq(evidence.val.summary.active_activations, 0)
-}
-
-///|
 test "issue 931 default and candidate retain the conversion-selected reference" {
   let source =
     #|var events = [];
@@ -219,27 +189,6 @@ test "issue 931 default and candidate retain the conversion-selected reference" 
     "3:4:100:has:value:0,unscopables,has:value:0,get:value,convert,has:value:1,set:value:4",
   )
   assert_eq(candidate_value.to_string(), default_value.to_string())
-  assert_eq(evidence.val.summary.fallback_violations, 0)
-  assert_eq(evidence.val.summary.replay_violations, 0)
-  assert_eq(evidence.val.summary.active_activations, 0)
-}
-
-///|
-test "issue 931 candidate retains conversion effects when PutValue throws" {
-  let source =
-    #|var events = [];
-    #|var target = { value: { valueOf: function() { events.push("convert"); return 3; } } };
-    #|var scope = new Proxy(target, {
-    #|  has: function(t, key) { return Reflect.has(t, key); },
-    #|  get: function(t, key, receiver) { return Reflect.get(t, key, receiver); },
-    #|  set: function(t, key, value, receiver) { events.push("set:" + value); throw "write failed"; }
-    #|});
-    #|var update;
-    #|with (scope) { update = function() { return value++; }; }
-    #|try { update(); } catch (error) { events.push(error); }
-    #|events.join(",") + ":" + (typeof target.value);
-  let (value, evidence) = candidate_run_with_evidence_for_wb(source)
-  assert_eq(value.to_string(), "convert,set:4,write failed:object")
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
@@ -269,6 +218,7 @@ test "issue 931 default and candidate preserve abrupt PutValue parity" {
   )
   assert_eq(default_value.to_string(), "convert,set:4,write failed:object")
   assert_eq(candidate_value.to_string(), default_value.to_string())
+  assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
   assert_eq(evidence.val.summary.replay_violations, 0)
   assert_eq(evidence.val.summary.active_activations, 0)

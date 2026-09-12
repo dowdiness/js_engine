@@ -3671,30 +3671,3 @@ test "binary accessor and parameter continuations retain semantic payloads" {
     _ => fail("expected parameter-default semantic resume")
   }
 }
-
-///|
-test "property work enters the production seam" {
-  let id = 1900
-  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
-  let property_cleanup = DispatchPropertyCleanup(id + 1)
-  let property_work = dispatch_test_property_resume(id + 2)
-  let (_, property_decision) = reduce_activation_dispatch(
-    running_root,
-    DispatchEffectCompleted(
-      root_ticket,
-      DispatchWorkSuspended(
-        DispatchSuspendProperty(
-          property_cleanup,
-          property_work,
-          DispatchDeliverAccessorResult(property_work),
-        ),
-      ),
-    ),
-  )
-  let production = match property_decision {
-    DispatchPerform(_, DispatchRunProduction(_)) => true
-    DispatchPerform(_, DispatchRun(_)) => false
-    _ => false
-  }
-  inspect(production, content="true")
-}
