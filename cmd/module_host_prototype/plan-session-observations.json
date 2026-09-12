@@ -21,9 +21,17 @@
     "commands": [
       "moon info",
       "moon fmt",
-      "moon check --deny-warn"
+      "moon check --deny-warn",
+      "make architecture-boundary-audit",
+      "make external-consumer-test TARGET=native"
     ],
-    "interactive": "make module-host-prototype: selected 27 cycle-effects, observed d,b,c,main in both Sessions, quit with exit 0"
+    "interactive": "make module-host-prototype: selected 27 cycle-effects, observed d,b,c,main in both Sessions, quit with exit 0",
+    "boundary_audit": "41 audit tests passed; real repository audit passed with 108 classified imports and 3 explicit debts; semantic representation self-test and audit passed",
+    "external_consumer_native": "181 tests passed; native check passed",
+    "ci_followup": {
+      "failed_job": "https://github.com/dowdiness/js_engine/actions/runs/34695112604/job/103557153451",
+      "cause": "New runtime-to-symbolic-plan import was not classified in architecture inventory. Added one exact prototype debt with retirement before production cutover; no wildcard or production-boundary adoption."
+    }
   },
   "source_sha256": {
     "internal/module_host_prototype_plan/plan.mbt": "2292e03a9f2715c95a274206f9bb2f1ca5b9b998a094fe95eb71bd985a15c0c9",
@@ -36,7 +44,8 @@
     "interpreter/runtime/module_host_prototype.mbt": "78266bd19db90ae8386d45bf69f2faaa53e189c12e54eb80b673b7ac93d8504b",
     "interpreter/runtime/moon.pkg": "03b714ec9af4d63f270025f152b5770a9aadce90e3dcace302cc7a721bcbac65",
     "scripts/module_host_prototype.cjs": "e848dc430245a10fac5f2aad2b319ce1b75d9bbd3a33d0a700412365af2991dd",
-    "scripts/module_host_reference.mjs": "1ec0d788205f543a5aa5b701cead9728f8dac559f2923a6261186560e6c66e7b"
+    "scripts/module_host_reference.mjs": "1ec0d788205f543a5aa5b701cead9728f8dac559f2923a6261186560e6c66e7b",
+    "scripts/architecture_boundary_rules.json": "3dc6eb0bd0bfbfd31f2feeb719f30f1d9bfce6c9104e0da0ff89453dab5517aa"
   },
   "observations": [
     {
