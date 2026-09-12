@@ -102,10 +102,9 @@ const scenarios = {
     gap: 'Parser rejects the input and retains identity, but this syntax-error path returns no structured source span.',
   },
   'missing-export': {
-    question: 'Is parse plus graph collection enough to promise statically valid Program construction?',
+    question: 'Does realm-free validation reject a missing export before Session creation?',
     sources: { main: 'import { missing } from "dep"; console.log(missing);', dep: 'export const present=1;' },
-    errorPhase: 'instantiate', message: /missing|export/i,
-    gap: 'Preparation succeeds, but missing export is rejected only during realm-dependent instantiation.',
+    preparationError: 'static-link', linkError: 'missing-export',
   },
   reexports: {
     question: 'Are named and star reexports included in reachable dependency discovery?',
@@ -135,6 +134,114 @@ const scenarios = {
     output: [], calls: ['1', '1'],
     gap: 'The materialized export snapshot keeps the old function: second call should re-read the live binding and reject 0.',
   },
+  'ambiguous-required': {
+    question: 'Does a required ambiguous star export fail without creating a Realm?',
+    sources: {
+      main: 'import { value } from "barrel"; console.log(value);',
+      barrel: 'export * from "left"; export * from "right";',
+      left: 'export const value=1;', right: 'export const value=2;',
+    },
+    preparationError: 'static-link', linkError: 'ambiguous-export',
+  },
+  'ambiguous-unused': {
+    question: 'Is an unused ambiguity allowed, rather than rejecting the entire star export set?',
+    sources: {
+      main: 'import "barrel"; export function main(){return 42;}',
+      barrel: 'export * from "left"; export * from "right";',
+      left: 'export const value=1;', right: 'export const value=2;',
+    },
+    output: [], calls: ['42', '42'],
+  },
+  'diamond-same-binding': {
+    question: 'Do named and imported-then-exported paths to one binding avoid false ambiguity?',
+    sources: {
+      main: 'import { value } from "barrel"; export function main(){return value;}',
+      barrel: 'export * from "left"; export * from "right";',
+      left: 'export { original as value } from "dep";',
+      right: 'import { original as local } from "dep"; export { local as value };',
+      dep: 'export const original=42;',
+    },
+    output: [], calls: ['42', '42'],
+  },
+  'same-value-distinct-bindings': {
+    question: 'Are distinct local bindings ambiguous even when their Module and runtime values match?',
+    sources: {
+      main: 'import { value } from "barrel"; console.log(value);',
+      barrel: 'export * from "left"; export * from "right";',
+      left: 'export { x as value } from "dep";',
+      right: 'export { y as value } from "dep";',
+      dep: 'export const x=42, y=42;',
+    },
+    preparationError: 'static-link', linkError: 'ambiguous-export',
+  },
+  'explicit-shadows-stars': {
+    question: 'Does an explicit local export take precedence over competing star exports?',
+    sources: {
+      main: 'import { value } from "barrel"; export function main(){return value;}',
+      barrel: 'export * from "left"; export * from "right"; export const value=42;',
+      left: 'export const value=1;', right: 'export const value=2;',
+    },
+    output: [], calls: ['42', '42'],
+  },
+  'missing-unused-reexport': {
+    question: 'Is an invalid explicit reexport rejected even if nobody requests that name?',
+    sources: {
+      main: 'import "barrel"; console.log("must not run");',
+      barrel: 'export { missing } from "dep";', dep: 'export const present=1;',
+    },
+    preparationError: 'static-link', linkError: 'missing-export',
+  },
+  'explicit-invalid-no-fallback': {
+    question: 'Can a star export incorrectly repair an invalid explicit reexport?',
+    sources: {
+      main: 'import { value } from "barrel"; console.log(value);',
+      barrel: 'export { value } from "absent"; export * from "good";',
+      absent: 'export const other=0;', good: 'export const value=42;',
+    },
+    preparationError: 'static-link', linkError: 'missing-export',
+  },
+  'star-excludes-default': {
+    question: 'Is default excluded from a bare star reexport?',
+    sources: {
+      main: 'import value from "barrel"; console.log(value);',
+      barrel: 'export * from "dep";', dep: 'export default 42;',
+    },
+    preparationError: 'static-link', linkError: 'missing-export',
+  },
+  'reexport-cycle-without-origin': {
+    question: 'Does a circular reexport with no defining binding terminate and fail?',
+    sources: {
+      main: 'import { value } from "b"; console.log(value);',
+      b: 'export { value } from "c";', c: 'export { value } from "b";',
+    },
+    preparationError: 'static-link', linkError: 'missing-export',
+  },
+  'star-cycle-with-origin': {
+    question: 'Can a cyclic star graph resolve a real defining binding?',
+    sources: {
+      main: 'import { value } from "a"; export function main(){return value;}',
+      a: 'export * from "b";', b: 'export * from "a"; export const value=42;',
+    },
+    output: [], calls: ['42', '42'],
+  },
+  'namespace-reexport': {
+    question: 'Can namespace reexports resolve symbolically, without allocating namespace objects?',
+    sources: {
+      main: 'import { ns } from "barrel"; export function main(){return ns.value;}',
+      barrel: 'export * as ns from "dep";', dep: 'export const value=42;',
+    },
+    output: [], calls: ['42', '42'],
+  },
+  'prepare-without-effects': {
+    question: 'Can preparation succeed for a module whose evaluation logs and then always throws?',
+    sources: { main: 'console.log("evaluation marker"); throw new Error("evaluation only"); export const value=42;' },
+    prepareOnly: true,
+  },
+  'evaluate-side-effects': {
+    question: 'Does the same prepared source produce its marker and exception only when evaluated?',
+    sources: { main: 'console.log("evaluation marker"); throw new Error("evaluation only"); export const value=42;' },
+    errorPhase: 'evaluate', message: /JsException/, errorOutput: ['evaluation marker'],
+  },
 };
 
 function verify(name, scenario, report) {
@@ -145,16 +252,23 @@ function verify(name, scenario, report) {
     requireFact(report.preparation === 'error', 'expected preparation failure');
     requireFact(report.diagnostic.phase === scenario.preparationError, 'wrong preparation phase');
     if (scenario.preparationError === 'parse') requireFact(report.diagnostic.location === null, 'parse-span gap changed; reassess the finding');
+    requireFact(!Object.hasOwn(report, 'sessions'), 'preparation failure must not start Sessions');
+    if (scenario.linkError) requireFact(report.diagnostic.kind === scenario.linkError, 'wrong static-link error');
     return;
   }
   requireFact(report.preparation === 'ok', 'preparation did not complete');
   requireFact(report.host_sources_after_release === 0, 'source host not released');
+  if (scenario.prepareOnly) {
+    requireFact(report.execution === 'not-started' && !Object.hasOwn(report, 'sessions'), 'prepare-only executed the module');
+    return;
+  }
   requireFact(report.host_calls_during_sessions === 0, 'execution accessed host');
   requireFact(report.sessions.length === 2, 'both sessions required');
   for (const session of report.sessions) {
     if (scenario.errorPhase) {
       requireFact(session.status === 'error' && session.phase === scenario.errorPhase, 'wrong execution failure phase');
       requireFact(scenario.message.test(session.message), 'wrong error category');
+      if (scenario.errorOutput) requireFact(JSON.stringify(session.output) === JSON.stringify(scenario.errorOutput), 'evaluation marker missing');
     } else {
       requireFact(session.status === 'ok', 'execution failed');
       requireFact(JSON.stringify(session.calls) === JSON.stringify(scenario.calls), 'wrong call values');
@@ -184,10 +298,28 @@ function run(name) {
       sources.main = transform.code;
     }
     const input = path.join(scratch, 'input.json');
-    writeFileSync(input, JSON.stringify({ entry: 'main', sources, aliases: scenario.aliases || {}, call: scenario.preparationError || scenario.errorPhase === 'instantiate' || scenario.errorPhase === 'evaluate' ? '' : 'main', calls: 2 }));
+    writeFileSync(input, JSON.stringify({ entry: 'main', sources, aliases: scenario.aliases || {}, call: scenario.preparationError || scenario.prepareOnly || scenario.errorPhase === 'instantiate' || scenario.errorPhase === 'evaluate' ? '' : 'main', calls: 2, prepare_only: !!scenario.prepareOnly }));
     const report = JSON.parse(command('moon', ['run', '--target', 'native', 'cmd/module_host_prototype', '--', input]));
     verify(name, scenario, report);
     const result = { scenario: name, question: scenario.question, verdict: scenario.gap ? 'design-gap-observed' : 'supported-for-this-fixture', finding: scenario.gap || null, report };
+    if (scenario.linkError || scenario.prepareOnly || [
+      'cycle', 'cycle-tdz', 'reexports', 'ambiguous-unused', 'diamond-same-binding',
+      'explicit-shadows-stars', 'star-cycle-with-origin', 'namespace-reexport', 'evaluate-side-effects',
+    ].includes(name)) {
+      const reference = JSON.parse(command(process.execPath, [
+        '--experimental-vm-modules', 'scripts/module_host_reference.mjs', input,
+      ]));
+      result.reference = reference;
+      if (scenario.linkError) {
+        if (reference.phase !== 'link' || reference.error !== 'SyntaxError' || reference.output.length !== 0) throw new Error(`${name}: Node linking disagrees: ${JSON.stringify(reference)}`);
+      } else if (scenario.prepareOnly) {
+        if (reference.status !== 'linked' || reference.output.length !== 0) throw new Error(`${name}: Node preparation-only disagrees`);
+      } else if (scenario.errorPhase) {
+        if (reference.phase !== scenario.errorPhase || reference.status !== 'error') throw new Error(`${name}: Node failure phase disagrees`);
+      } else if (reference.status !== 'ok' || JSON.stringify(reference.calls) !== JSON.stringify(scenario.calls)) {
+        throw new Error(`${name}: Node execution disagrees: ${JSON.stringify(reference)}`);
+      }
+    }
     if (name === 'live-entrypoint') {
       const reference = command(process.execPath, ['--input-type=module', '-e',
         'const m=await import("data:text/javascript,"+encodeURIComponent(' + JSON.stringify(scenario.sources.main) + ')); const first=m.main(); let second; try {m.main(); second="returned";} catch(e){second=e.name;} console.log(JSON.stringify({first, second, binding:typeof m.main}));']);
@@ -226,7 +358,7 @@ async function main() {
   if (args.length) throw new Error('Usage: node scripts/module_host_prototype.cjs [--all | --scenario NAME]');
   const terminal = createInterface({ input: process.stdin, output: process.stdout });
   const names = Object.keys(scenarios);
-  let state = 'No scenario run. Each action prepares once, releases Host, then starts two independent Sessions.';
+  let state = 'No scenario run. Each action validates a graph; execution cases release Host and interleave two Sessions. Preparation-only never starts a Session.';
   try {
     while (true) {
       console.clear();
@@ -243,6 +375,7 @@ async function main() {
         `Scenario: ${name}`, result.question,
         `Verdict: ${result.verdict}`, `Finding: ${result.finding || 'none for this fixture'}`,
         `Preparation: ${report.preparation}; parse calls: ${report.parse_calls}`,
+        `Execution: ${report.execution || (report.sessions ? 'started after validation' : 'not reached')}`,
         `Modules: ${JSON.stringify(report.modules || [])}`,
         `Host after release: ${report.host_sources_after_release ?? 'not reached'}; later calls: ${report.host_calls_during_sessions ?? 'not reached'}`,
         `Host events: ${JSON.stringify(report.host_events)}`,

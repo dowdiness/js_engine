@@ -16,6 +16,7 @@ struct PrototypeInput {
   aliases : Map[String, String]
   call : String
   calls : Int
+  prepare_only : Bool
 } derive(FromJson)
 
 ///|
@@ -142,6 +143,19 @@ fn prepare(
     })
     modules.push((key, stmts))
   }
+  @static_link.validate(modules) catch {
+    @static_link.LinkError(kind~, module_key~, export_name~, line~, column~) => {
+      diagnostic.val = {
+        "phase": "static-link",
+        "kind": kind,
+        "identity": module_key,
+        "export_name": export_name,
+        "line": line,
+        "column": column,
+      }
+      fail(kind + ": " + module_key + " / " + export_name)
+    }
+  }
   // Existing evaluator returns the last record's exports; entry selection is
   // explicit here, rather than requiring the caller to sort its source set.
   let entry_module = modules.remove(0)
@@ -236,6 +250,16 @@ fn probe(input : PrototypeInput) -> Json {
       // log for observation, not a loader closure in PrototypeProgram.
       host.sources.clear()
       host.aliases.clear()
+      guard !input.prepare_only else {
+        return {
+          "preparation": "ok",
+          "modules": keys,
+          "parse_calls": parses.val,
+          "host_sources_after_release": host.sources.length(),
+          "host_events": host.events,
+          "execution": "not-started",
+        }
+      }
       let events_before = host.events.length()
       let first_session = start(program, input.call)
       let first = first_session(input.calls)
