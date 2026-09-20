@@ -1,0 +1,136 @@
+{
+  "kind": "throwaway-opaque-value-handle-api-experiment",
+  "base_commit": "bda8e590edfd6acbb5faa1cbf9cd9f2d01d35e4b",
+  "command": "make -s value-handle-prototype ARGS=--all",
+  "target": "native",
+  "toolchain": "moon 0.1.20260904 (94521db 2026-09-04) ~/.moon/bin/moon\nmoonc v0.10.12+1634b282e (2026-09-07) ~/.moon/bin/moonc\nmoonrun 0.1.20260904 (94521db 2026-09-04) ~/.moon/bin/moonrun\n\nFeature flags enabled: rr_moon_mod,rr_moon_pkg",
+  "method": "Temporary root-package extension wraps real Runtime values and reuses private ExecutionSession.run_hosted_turn, diagnostics, Host failure recording and lifecycle. No alternate evaluator/state machine. This is not implementable as a standalone adapter using only current public Session APIs.",
+  "verified": [
+    "10 executable scenarios with behavioral assertions",
+    "moon check --deny-warn",
+    "moon info",
+    "moon fmt",
+    "PTY menu: scenario 8 shows 0 vs 10 across different turn boundaries; quit exit 0"
+  ],
+  "decisions_supported": [
+    "Strict expect_number performs no JS coercion; coerce_number may execute JS and throw",
+    "call_method must combine property lookup and invocation in one Hosted Turn",
+    "Retained object/function values preserve identity; live property lookup is a distinct operation",
+    "Existing Session lifecycle/checkpoint machinery can own value operations",
+    "Host argument type rejection can become JS TypeError without faulting Session; unexpected Host failure remains faulting even if JS catches it"
+  ],
+  "policies_exercised_not_finalized": [
+    "Handles strongly retain their owner; no GC/reclamation measurement",
+    "Pure inspection is allowed in Host callbacks but rejected after close/fault",
+    "Cross-owner arguments/receivers are rejected before JS execution",
+    "Same-session JS reentry rejected as busy; Host may catch that refusal"
+  ],
+  "limits": [
+    "Prototype only; no production API adopted",
+    "No async Promise result bridge, binary bridge, module API or arbitrary value transfer",
+    "Host callback fixtures receive an Array and handle only their stated arity; generalized argument validation is not implemented",
+    "No interruption/budget integration or cross-thread guarantee",
+    "No full diagnostic source-location propagation for new value operations",
+    "No full cross-target or conformance claim"
+  ],
+  "source_sha256": {
+    "value_handle_prototype.mbt": "36155edaffced8961a90e99f5509f2831938b8aab7b0c2fefc72dce7d20ee5c3",
+    "cmd/value_handle_prototype/main.mbt": "422ed5b98c25d7f7bb10e695f9da0cc63b7142254bf55d4a14a81f003979c041",
+    "cmd/value_handle_prototype/moon.pkg": "68d6e06054ed649271a201d3882babcaf051ee1df5524e3fc55ca7dcce071192",
+    "scripts/value_handle_prototype.cjs": "1572752a69f71ae5227cd029a8e324a43b38035afa0c48c96f43c277f9ea21fa",
+    "hosting.mbt": "153495e22e647175c70cb2a3d817adce14afe215554828f8fe9b9b843f261db8",
+    "engine_diagnostic.mbt": "b3b28f9ae7faf292da58851278c21f5d9f48c1b0ea940c42650dc85a51dcf38d"
+  },
+  "observations": [
+    {
+      "scenario": "retained-host-object",
+      "observation": {
+        "values": [
+          2,
+          4,
+          6
+        ],
+        "replacement": 101,
+        "host_calls": 3,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "strict-versus-coerce",
+      "observation": {
+        "strict_error": "expected-number",
+        "strict_side_effects": 0,
+        "coerced": 42,
+        "coercion_side_effects": 1,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "host-type-error",
+      "observation": {
+        "js_caught_type_error": true,
+        "subsequent_value": 7,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "host-failure",
+      "observation": {
+        "error": "host-failure",
+        "subsequent": "faulted",
+        "state": "faulted",
+        "other_session": "available"
+      }
+    },
+    {
+      "scenario": "closed-handles",
+      "observation": {
+        "inspection": "closed",
+        "call": "closed",
+        "state": "closed"
+      }
+    },
+    {
+      "scenario": "foreign-handles",
+      "observation": {
+        "argument_error": "foreign-value",
+        "getter_ran_before_rejection": false,
+        "receiver_rejected": true,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "reentry",
+      "observation": {
+        "nested": "busy",
+        "outer_result": 7,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "method-turn-order",
+      "observation": {
+        "atomic_get_and_call": 0,
+        "after_checkpoint": 10,
+        "separate_get_then_call": 10,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "saved-function",
+      "observation": {
+        "live_property": 2,
+        "saved_function": 1,
+        "state": "available"
+      }
+    },
+    {
+      "scenario": "coercion-exception",
+      "observation": {
+        "error": "javascript-exception",
+        "state": "available",
+        "subsequent_value": 9
+      }
+    }
+  ]
+}

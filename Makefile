@@ -532,3 +532,8 @@ unicode-tables-mbt: subprocess-helpers-mbt-test
 clean:
 	moon clean
 	rm -f test262-results.json test262-analysis.json test262-analysis.moonbit-shadow.json compat-table-results.json compat-table-summary.md
+
+# Throwaway embedding handle experiment; never part of production validation.
+.PHONY: value-handle-prototype
+value-handle-prototype:
+	node scripts/value_handle_prototype.cjs $(ARGS)

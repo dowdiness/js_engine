@@ -1,0 +1,6 @@
+import {
+  "dowdiness/js_engine" @js,
+  "moonbitlang/core/env",
+}
+
+pkgtype(kind: "executable")

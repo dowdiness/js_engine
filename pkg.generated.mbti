@@ -53,6 +53,14 @@ pub fn ExecutionSessionError::output(Self, &Logger) -> Unit
 pub fn ExecutionSessionError::to_string(Self) -> String
 pub impl Show for ExecutionSessionError
 
+pub suberror ProbeOwnerError {
+  ForeignValue
+}
+
+pub suberror ProbeTypeError {
+  ExpectedNumber
+}
+
 pub(all) suberror SessionCreationError {
   BindingForAbsentCapability(String)
   MissingBindingForCapability(String)
@@ -143,6 +151,25 @@ pub(all) enum PendingJobs {
   Present
   Unknown
 }
+
+pub struct ProbeRuntime {
+  // private fields
+}
+pub fn ProbeRuntime::ProbeRuntime(functions? : Map[String, (Self, Array[ProbeValue]) -> ProbeValue raise]) -> Self raise
+pub fn ProbeRuntime::close(Self) -> Unit raise
+pub fn ProbeRuntime::evaluate(Self, String) -> Unit raise
+pub fn ProbeRuntime::global(Self, String) -> ProbeValue raise
+pub fn ProbeRuntime::number(Self, Double) -> ProbeValue raise
+pub fn ProbeRuntime::state(Self) -> String
+
+pub struct ProbeValue {
+  // private fields
+}
+pub fn ProbeValue::call_method(Self, String, Array[Self]) -> Self raise
+pub fn ProbeValue::call_with_this(Self, Self, Array[Self]) -> Self raise
+pub fn ProbeValue::coerce_number(Self) -> Double raise
+pub fn ProbeValue::expect_number(Self) -> Double raise
+pub fn ProbeValue::get(Self, String) -> Self raise
 
 pub(all) enum RetainedEffects {
   None
