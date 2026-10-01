@@ -222,15 +222,6 @@ test "bytecode rejects var destructuring declaration defaults until pattern expr
 }
 
 ///|
-test "bytecode rejects for lexical initializers until loop scoping is implemented" {
-  let src =
-    #|for (let i = 0; i < 1; i = i + 1) {
-    #|}
-    #|i;
-  assert_bytecode_unsupported(src, ForLexicalInitializer)
-}
-
-///|
 test "bytecode rejects control-flow function declarations until block semantics are implemented" {
   let src =
     #|if (true) {
