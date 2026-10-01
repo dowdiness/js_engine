@@ -2,10 +2,12 @@
 
 - Original inventory date: 2026-09-22
 - Prototype baseline: `5c87fea9fc5905f9446a851529ed9d760c5862d3`
-- Implementation base: freshly fetched `origin/main`, `a7f4121a9042759019d17467f8412515942cca81`
-- Branch: `fix/hosted-admission-r1`
-- Worktree: `.worktrees/hosted-admission-r1`
-- Status: **R1 implemented and verified in the working tree. R2–R5 remain.** This does not authorize implementing those units, publishing, or integrating into main.
+- R1 implementation base: freshly fetched `origin/main`, `a7f4121a9042759019d17467f8412515942cca81`
+- R1 integration: [PR #1060](https://github.com/dowdiness/js_engine/pull/1060), main commit `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`; required CI passed before merge.
+- R2 implementation base: `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`
+- Branch: `fix/hosted-checkpoint-r2`
+- Worktree: `.worktrees/hosted-checkpoint-r2`
+- Status: **R1 merged; R2 implemented and verified locally; R3–R5 remain.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
 - Authority: The *Exception and Nested Execution Contract* agreed on 2026-09-20. Its original text is preserved in the appendix.
 
 ## Purpose and Boundaries
@@ -109,6 +111,20 @@ depth-1 sibling completion after yield/guest throw, nested resume termination at
 depth 1, and generator → Host → guest reentry success at depth 2. Temporary
 generator executables were removed.
 
+## Resolved in R2
+
+| ID | Implemented behavior | Executed evidence |
+|---|---|---|
+| M1 | `evaluate`, public `get`, `call`, and `call_property` use one shared completion boundary inside the same Hosted execution-control scope. Normal completion and ordinary guest throws receive one outer checkpoint phase. Nested HostCall, direct global inspection, strict extraction, parse failure, admission rejection, and terminal body completion do not start that phase | Five BB `R2` tests on native/js/wasm-gc exercise all three public Value entries, body/checkpoint outcome combinations, FIFO including newly queued jobs, nested continuation, checkpoint HostCall reentry without recursive drain, retained jobs across pure inspection/parse/rejection, and body/checkpoint interruption |
+
+Before the completion fix, `R2 public guest operations checkpoint normal and guest
+throw outcomes` observed only `body`, not the queued `job-1`, `job-2`, `job-3`.
+Afterward, all six normal/throw × public-entry cases produce the expected FIFO
+trace. Ordinary language errors reuse the runtime's catchable-error conversion;
+unexpected callback failures and latched control termination are never converted
+into guest errors or allowed to checkpoint. Structured provenance and concrete
+public raising types remain R3 work.
+
 ## Not Implemented
 
 This classification identifies a remaining contract gap, not necessarily the absence of the
@@ -116,8 +132,7 @@ entire feature.
 
 | ID | Missing contract behavior | Current source evidence | Work unit |
 |---|---|---|---|
-| M1 | Public `get` / `call` / `call_property` operations that execute JS must also run an outer checkpoint after the body | In the [facade](../hosted_execution_probe.mbt), checkpoint handling exists only inside `evaluate`; public Value operations use only `public_turn` | R2 |
-| M4 | Give public operations concrete raising types and prevent raw runtime/Session errors from escaping the public boundary | `HostedProbeError` exists, but public operations use bare `raise`. `public_turn` rethrows nonterminal errors unchanged; `close` exposes Session errors directly. Guest throws from `get/call` bypass the classification boundary used by `evaluate` | R3 |
+| M4 | Give public operations concrete raising types and prevent raw runtime/Session errors from escaping the public boundary | Public operations still use bare `raise`; `public_turn` rethrows nonterminal non-guest errors unchanged and `close` exposes Session errors directly. R2 now classifies guest completion consistently across JS-capable public entries, but does not settle the concrete public raising interface | R3 |
 | M5 | Retain structured parse/guest diagnostics, body/nested/checkpoint provenance, and safe secondary diagnostics on terminal outcomes | `HostedProbeError` retains values but not structured provenance. Parsing stringifies errors; callback terminal precedence discards later errors; checkpoint termination does not retain an earlier guest value. Preserving the primary cause in K3 is distinct from retaining secondary information | R3 |
 | M6 | Connect the selected typed adapters to Hosted Turn/HostCall, reporting argument mismatches as JS TypeError before entering the user's MoonBit function | `research_host1/2/function1` in `embedding_research.mbt` at prototype baseline `5c87fea9` use `ProbeRuntime/ProbeValue`. Those adapters are not part of this migration. Raising a strict-extraction error directly from a Hosted callback currently classifies it as Host Failure | R4 |
 
@@ -133,13 +148,13 @@ percentage are not goals.
 
 | ID | Fixed verification scope | Existing evidence and remaining gap | Work unit |
 |---|---|---|---|
-| V1 | Outer JS continues after Host→JS returns; nested return does not drain jobs, and checkpoint runs only after outer completion | `inner_call/inner_get` contain no checkpoint. The R1 property-call trace verifies nested ordering with a pending job, but does not establish every entry point or outer-JS continuation scenario | R2→R5 |
+| V1 | Outer JS continues after Host→JS returns; nested return does not drain jobs, and checkpoint runs only after outer completion | R2 public-entry tests establish checkpoints after body completion; `R2 nested returns never recursively checkpoint including checkpoint Host calls` establishes outer continuation and no recursive drain, including Host reentry during checkpoint. R5 will consolidate this evidence with the original A–J scenarios | R2→R5 |
 | V2 | Nested calls and checkpoint share steps already spent by the body; reentry and unwinding do not replenish them. Simultaneously applicable limits follow interruption→depth→steps priority | [with_hosted_execution_policy](../interpreter/runtime/execution_policy.mbt) shares a carrier. BB:43 asserts only that low-budget recursion terminates; it could pass even with a fresh budget. Exact sharing and competing-limit precedence remain unproven | R5 |
-| V3 | A self-extending Promise job chain terminates under the same budget. Host callbacks during checkpoint receive valid HostCall authority, and nested calls do not recursively checkpoint | [run_microtasks_observed](../interpreter/runtime/promise_core.mbt) observes before dispatch. There is no Hosted execution evidence for scenario F | R5 |
-| V4 | Remaining normal/guest-throw/terminal body-and-checkpoint combinations; FIFO including newly queued jobs; no retry of the failed job; retention of unselected jobs and resumption in the next eligible Turn; no dispatch after terminal failure | K6 covers only the dual-guest-throw combination. The runtime queue implementation alone does not prove every combination | R2/R3→R5 |
+| V3 | A self-extending Promise job chain terminates under the same budget. Host callbacks during checkpoint receive valid HostCall authority, and nested calls do not recursively checkpoint | R2 verifies current HostCall authority and nested non-drain during checkpoint. Self-extending Promise-chain termination under a shared finite budget remains unverified | R5 |
+| V4 | Remaining normal/guest-throw/terminal body-and-checkpoint combinations; FIFO including newly queued jobs; no retry of the failed job; retention of unselected jobs and resumption in the next eligible Turn; no dispatch after terminal failure | R2 verifies normal/guest body × normal/guest checkpoint, interruption in body/checkpoint, FIFO/new jobs, no automatic retry, and later eligible resumption. Structured secondary diagnostics and the remaining Host Failure/control combinations remain R3/R5 work | R2/R3→R5 |
 | V5 | HostCall expires on guest throw, Host Failure, and terminal unwind, and cannot revive in later Turns. Owner rejection precedes side effects in getter/call/property-call paths. Receiver/callee realm state restores on normal and exceptional exits. Every JS-capable public entry point rejects Running as Busy | K5/K7 and R1 cover some authority and ownership paths, including property-call receiver/argument rejection. Exceptional expiry, realm restoration, and the complete public Busy matrix remain unverified | R1→R5 |
 | V6 | Close while Running is Busy without cancelling or faulting the session. Closed/Faulted admission is rejected. Explicit interruption is observed at admission, Host return, reentry/job dispatch, and other required boundaries. Invalid policy is rejected before admission, and bounded-policy rejection of unobserved native progress is classified as terminal | R1 verifies Closed/Faulted pure-extraction rejection. `close` delegates to [ExecutionSession.close](../hosting.mbt), but Busy close and the remaining interruption/configuration admission cases are not established by these tests | R1/R3→R5 |
-| V7 | With jobs already pending, parse failure, pure extraction, and admission/conversion rejection do not drain jobs or unnecessarily fault the session. Strict extraction does not run getters/valueOf/toString | R1 verifies pending-job ordering for handled property-call rejection, live pure extraction, and strict conversion rejection, plus no job dispatch during Faulted extraction. Parse failure with retained jobs and the remaining entry-point combinations still require evidence | R1/R2→R5 |
+| V7 | With jobs already pending, parse failure, pure extraction, and admission/conversion rejection do not drain jobs or unnecessarily fault the session. Strict extraction does not run getters/valueOf/toString | R1 verifies strict extraction and handled foreign-argument rejection. R2 verifies retained jobs across parse failure, strict/direct-global inspection, and public foreign-argument rejection, then drains them on a later eligible getter turn. R4/R5 cover typed-adapter mismatch and final assessment | R1/R2→R5 |
 
 ## Out of Scope
 
@@ -177,8 +192,9 @@ present it as a separate proposal.
 
 ### R1 — Admission, Ownership, and Value Lifetime
 
-Status: **DONE in this working tree**, including the separately identified prerequisite
-migration. See "Resolved in R1" and the executed evidence below.
+Status: **MERGED** in [PR #1060](https://github.com/dowdiness/js_engine/pull/1060),
+main commit `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`, including the prerequisite
+migration. Terra review findings were resolved/adjudicated, and required CI passed.
 
 - Covers: M2, M3, and the admission portions of V5/V6/V7.
 - Primary files: `hosted_execution_probe.mbt` and its BB/WB tests.
@@ -187,6 +203,8 @@ migration. See "Resolved in R1" and the executed evidence below.
 - Do not invent a new precedence rule for simultaneous Busy/Expired/Foreign conditions or break existing rules.
 
 ### R2 — Public Turn Completion and Checkpoint
+
+Status: **Implemented and verified locally; independent review and PR CI pending.**
 
 - Covers: M1, V1, and the checkpoint portions of V4/V7.
 - Primary files: `hosted_execution_probe.mbt` and its BB/WB tests.
@@ -220,18 +238,21 @@ migration. See "Resolved in R1" and the executed evidence below.
 
 Dependencies: establish admission behavior with R1 first. Integrate R2 and R3 sequentially because
 they modify the same facade completion boundary. R4 uses the resulting failure classification.
-R5 test design can accompany each unit, but final assessment follows R1–R4. This fixes the
-remaining-work boundary; detailed design and implementation of each unit require a separate task.
+R5 test design can accompany each unit, but final assessment follows R1–R4. The user
+authorized autonomous execution through R5; each unit remains a separate isolated
+PR, with independent review and successful required CI before the next dependent unit.
 
 ## Verification Commands and Current Evidence
 
-Run from the worktree root. The focused commands below passed after the R1 review fixes.
+Run from the worktree root. The focused commands below passed after the R1 and R2 changes.
 
 ```sh
 moon test --target native hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt
 moon test --target js hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt
 moon test --target wasm-gc hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt
 ```
+
+### R1 integration evidence
 
 Each target passed BB **18/18** and WB **7/7**, **25 tests per target**. The imported
 17-test baseline passed before the original four R1 regressions were added. Those
@@ -280,6 +301,33 @@ typed executable-AST boundaries, opaque destructuring plans, and continuation
 ownership, including their self-tests. Aggregate commands hit execution deadlines;
 completed components were retained and the remaining targets were run separately.
 Temporary smoke and audit fixture files were removed.
+
+### R2 local evidence
+
+The five added R2 BB tests passed on native, js, and wasm-gc. Focused suites passed
+BB **23/23** and WB **7/7**, **30 tests per target**. Full suites passed:
+
+| Target | Passed / Executed |
+|---|---:|
+| native | 4,537 / 4,537 |
+| js | 4,405 / 4,405 |
+| wasm-gc | 4,403 / 4,403 |
+
+`moon info`, `moon fmt`, `moon fmt --check`, and `moon check --target all --deny-warn`
+passed. Facade/runtime `.mbti` checksums were unchanged by R2.
+
+A temporary `cmd/hosted_r2_smoke` executable ran using `moon run --target native`,
+`--target js`, and `--target wasm-gc`; all three runs asserted and printed:
+
+```text
+public-call: nested,host-return,outer,job-1,job-2,job-3
+public-properties: getter,getter-job,method,method-job
+throws: primary=7, secondary=42, retained-after-eligible-turn, state=available
+R2 smoke passed
+```
+
+The executable was removed. Independent review and hosted CI remain required
+before R2 integration; these local results do not prove the outstanding R3–R5 items.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end

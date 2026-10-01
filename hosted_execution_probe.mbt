@@ -256,11 +256,18 @@ fn HostedProbe::inner_get(
 fn[T] HostedProbe::public_turn(
   self : HostedProbe,
   action : () -> T raise Error,
+  checkpoint? : Bool = false,
 ) -> T raise {
   self.require_available()
   self.session.state = Running
   let result : Result[T, Error] = Ok(
-    self.session.engine.interp.with_hosted_execution_policy(self.policy, action),
+    self.session.engine.interp.with_hosted_execution_policy(self.policy, () => {
+      if checkpoint {
+        self.complete_public_body(action)
+      } else {
+        action()
+      }
+    }),
   ) catch {
     error => Err(error)
   }
@@ -290,6 +297,52 @@ fn[T] HostedProbe::public_turn(
 }
 
 ///|
+fn HostedProbe::retain_guest_failure(
+  self : HostedProbe,
+  error : Error,
+) -> HostedValue raise Error {
+  // A latched terminal wins before any guest Error allocation or checkpoint.
+  self.session.engine.interp.check_hosted_execution()
+  guard @runtime.is_js_catchable_error(error) else { raise error }
+  HostedValue::HostedValue(
+    self,
+    @runtime.js_error_to_value_with_env(
+      error,
+      Some(self.session.engine.interp.global),
+    ),
+  )
+}
+
+///|
+fn[T] HostedProbe::complete_public_body(
+  self : HostedProbe,
+  action : () -> T raise Error,
+) -> T raise Error {
+  let primary : Result[T, HostedValue] = Ok(action()) catch {
+    error => Err(self.retain_guest_failure(error))
+  }
+  self.session.engine.interp.check_hosted_execution()
+  let checkpoint : Result[Unit, HostedValue] = Ok(
+    self.session.engine.interp.run_microtasks(),
+  ) catch {
+    error => Err(self.retain_guest_failure(error))
+  }
+  match checkpoint {
+    Ok(_) =>
+      match primary {
+        Ok(value) => value
+        Err(value) => raise HostedGuestThrow(value)
+      }
+    Err(secondary) =>
+      match primary {
+        Ok(_) => raise HostedGuestThrow(secondary)
+        Err(first) =>
+          raise HostedGuestThrowWithSecondary(primary=first, secondary~)
+      }
+  }
+}
+
+///|
 pub fn HostedProbe::global(
   self : HostedProbe,
   name : String,
@@ -308,50 +361,20 @@ pub fn HostedProbe::evaluate(
   let program = @parser.parse(source) catch {
     error => raise HostedParse(error.to_string())
   }
-  let outcome : Result[HostedValue, HostedValue] = self.public_turn(() => {
-    self.session.engine.interp.check_hosted_execution()
-    let body : Result[@runtime.Value, Error] = Ok(
-      if @engine_candidate_mode.candidate_mode_enabled() {
+  self.public_turn(
+    () => {
+      let value = if @engine_candidate_mode.candidate_mode_enabled() {
         @compiler.run_candidate_program(
           self.session.engine.interp,
           program.stmts,
         )
       } else {
         self.session.engine.interp.run(program.stmts)
-      },
-    ) catch {
-      error => Err(error)
-    }
-    let primary = match body {
-      Ok(value) => Ok(HostedValue::HostedValue(self, value))
-      Err(@runtime.JsException(value)) =>
-        Err(HostedValue::HostedValue(self, value))
-      Err(error) => raise error
-    }
-    self.session.engine.interp.check_hosted_execution()
-    let checkpoint : Result[Unit, Error] = Ok(
-      self.session.engine.interp.run_microtasks(),
-    ) catch {
-      error => Err(error)
-    }
-    match checkpoint {
-      Ok(_) => primary
-      Err(@runtime.JsException(value)) =>
-        match primary {
-          Ok(_) => Err(HostedValue::HostedValue(self, value))
-          Err(first) =>
-            raise HostedGuestThrowWithSecondary(
-              primary=first,
-              secondary=HostedValue::HostedValue(self, value),
-            )
-        }
-      Err(error) => raise error
-    }
-  })
-  match outcome {
-    Ok(value) => value
-    Err(value) => raise HostedGuestThrow(value)
-  }
+      }
+      HostedValue::HostedValue(self, value)
+    },
+    checkpoint=true,
+  )
 }
 
 ///|
@@ -423,14 +446,17 @@ pub fn HostedValue::expect_string(
 
 ///|
 pub fn HostedValue::get(self : HostedValue, name : String) -> HostedValue raise {
-  self.owner.public_turn(() => {
-    let value = self.owner.session.engine.interp.get_property(
-      self.value,
-      name,
-      @token.Loc::default(),
-    )
-    HostedValue::HostedValue(self.owner, value)
-  })
+  self.owner.public_turn(
+    () => {
+      let value = self.owner.session.engine.interp.get_property(
+        self.value,
+        name,
+        @token.Loc::default(),
+      )
+      HostedValue::HostedValue(self.owner, value)
+    },
+    checkpoint=true,
+  )
 }
 
 ///|
@@ -438,18 +464,21 @@ pub fn HostedValue::call(
   self : HostedValue,
   args : Array[HostedValue],
 ) -> HostedValue raise {
-  self.owner.public_turn(() => {
-    for arg in args {
-      self.owner.require_owner(arg)
-    }
-    let value = self.owner.session.engine.interp.call_value(
-      self.value,
-      @runtime.Undefined,
-      args.map(arg => arg.value),
-      @token.Loc::default(),
-    )
-    HostedValue::HostedValue(self.owner, value)
-  })
+  self.owner.public_turn(
+    () => {
+      for arg in args {
+        self.owner.require_owner(arg)
+      }
+      let value = self.owner.session.engine.interp.call_value(
+        self.value,
+        @runtime.Undefined,
+        args.map(arg => arg.value),
+        @token.Loc::default(),
+      )
+      HostedValue::HostedValue(self.owner, value)
+    },
+    checkpoint=true,
+  )
 }
 
 ///|
@@ -458,27 +487,30 @@ pub fn HostedValue::call_property(
   name : String,
   args : Array[HostedValue],
 ) -> HostedValue raise {
-  self.owner.public_turn(() => {
-    for arg in args {
-      self.owner.require_owner(arg)
-    }
-    let callee = self.owner.session.engine.interp.get_property(
-      self.value,
-      name,
-      @token.Loc::default(),
-    )
-    // A getter can reenter Host code and replace elements of the argument array.
-    for arg in args {
-      self.owner.require_owner(arg)
-    }
-    let value = self.owner.session.engine.interp.call_value(
-      callee,
-      self.value,
-      args.map(arg => arg.value),
-      @token.Loc::default(),
-    )
-    HostedValue::HostedValue(self.owner, value)
-  })
+  self.owner.public_turn(
+    () => {
+      for arg in args {
+        self.owner.require_owner(arg)
+      }
+      let callee = self.owner.session.engine.interp.get_property(
+        self.value,
+        name,
+        @token.Loc::default(),
+      )
+      // A getter can reenter Host code and replace elements of the argument array.
+      for arg in args {
+        self.owner.require_owner(arg)
+      }
+      let value = self.owner.session.engine.interp.call_value(
+        callee,
+        self.value,
+        args.map(arg => arg.value),
+        @token.Loc::default(),
+      )
+      HostedValue::HostedValue(self.owner, value)
+    },
+    checkpoint=true,
+  )
 }
 
 ///|
