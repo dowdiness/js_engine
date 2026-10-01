@@ -7,7 +7,7 @@
 - R2 implementation base: `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`
 - R2 integration: [PR #1062](https://github.com/dowdiness/js_engine/pull/1062), main commit `e28dc678916daabfbe58adc5b056651251ced1cb`; independent Terra review and required CI passed before merge.
 - R3 implementation base: `e28dc678916daabfbe58adc5b056651251ced1cb`
-- R3 implementation commit: `f2c06f2b59b7e95f1ec69e485dfd2005c174e16a`
+- R3 initial implementation commit: `f2c06f2b59b7e95f1ec69e485dfd2005c174e16a`; final admission correction follows independent review.
 - Branch: `fix/hosted-diagnostics-r3`
 - Worktree: `.worktrees/hosted-diagnostics-r3`
 - Status: **R1/R2 merged; R3 locally verified on all three targets; independent review and CI pending. R4/R5 remain.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
@@ -383,13 +383,13 @@ R3 smoke passed
 
 The executable was removed. For each target, the focused command
 `moon test --target <target> hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt`
-passed **42/42** after the disposal clarification; `moon test --target <target>` passed:
+passed **43/43** after the admission correction; `moon test --target <target>` passed:
 
 | Target | Passed / Executed |
 |---|---:|
-| native | 4,549 / 4,549 |
-| js | 4,417 / 4,417 |
-| wasm-gc | 4,415 / 4,415 |
+| native | 4,550 / 4,550 |
+| js | 4,418 / 4,418 |
+| wasm-gc | 4,416 / 4,416 |
 
 `moon info`, `moon fmt`, `moon fmt --check`, and
 `moon check --target all --deny-warn` passed. Generated interface changes are
@@ -413,8 +413,28 @@ R3 disposal smoke passed
 ```
 
 The disposal executable was removed. No implementation behavior changed during
-this clarification. The final suites and all-target warning/interface/format checks
-passed with the counts above. Independent re-review and integration remain pending.
+the disposal clarification.
+
+Attempt 2 provenance review passed. Category review then found that malformed
+source bypassed unavailable-session admission: parsing happened before the state
+gate. The parent accepted this finding. The new BB regression failed before the
+fix (a Running callback's unexpected parse error escaped as Host Failure); adding
+the existing state gate before parsing gives Busy/Closed/Faulted before any parse
+work. Available parse failure remains non-admitting and does not checkpoint.
+
+`R3 malformed source cannot bypass unavailable admission` passed on all three
+targets. A temporary `cmd/hosted_r3_admission_smoke` ran on native/js/wasm-gc,
+asserting the same public scenario and printing:
+
+```text
+malformed source: Busy/Closed/Faulted before parsing; handled Busy leaves Available; jobs run only at outer checkpoint
+R3 admission smoke passed
+```
+
+The admission executable was removed. Final clean focused/full suites and
+all-target warning/interface/format checks passed with the counts above.
+Attempt 3 independent review and integration remain pending; no further
+correction cycle is authorized for R3 if valid findings remain.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end

@@ -1137,3 +1137,63 @@ test "R3 Faulted cleanup closes without reopening admission or dispatching jobs"
   assert_true(expired)
   assert_eq(jobs.val, 0)
 }
+
+///|
+test "R3 malformed source cannot bypass unavailable admission" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let jobs = Ref(0)
+  probe.register("mark", (_call, args) => {
+    jobs.val += 1
+    args[0]
+  })
+  probe.register("rejectMalformed", (_call, args) => {
+    let busy = try {
+      ignore(probe.evaluate("var ="))
+      false
+    } catch {
+      HostedProbeError::HostedSessionBusy => true
+      error => raise error
+    }
+    assert_true(busy)
+    assert_eq(probe.state(), "running")
+    assert_eq(jobs.val, 0)
+    args[0]
+  })
+  assert_eq(
+    probe
+    .evaluate("queueMicrotask(() => mark(1)); rejectMalformed(7)")
+    .expect_number(),
+    7.0,
+  )
+  assert_eq(jobs.val, 1)
+  assert_eq(probe.state(), "available")
+  probe.close()
+  let closed = try {
+    ignore(probe.evaluate("var ="))
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    error => raise error
+  }
+  assert_true(closed)
+  assert_eq(probe.state(), "closed")
+  let faulted = HostedProbe(hosted_policy(100000L, 64L))
+  faulted.register("explode", (_call, _args) => fail("unmapped Host failure"))
+  let host_failure = try {
+    ignore(faulted.evaluate("explode()"))
+    false
+  } catch {
+    HostedProbeError::HostedHostFailure(_) => true
+    error => raise error
+  }
+  assert_true(host_failure)
+  let denied = try {
+    ignore(faulted.evaluate("var ="))
+    false
+  } catch {
+    HostedProbeError::HostedSessionFaulted => true
+    error => raise error
+  }
+  assert_true(denied)
+  assert_eq(faulted.state(), "faulted")
+}

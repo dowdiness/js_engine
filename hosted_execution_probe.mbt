@@ -918,6 +918,7 @@ pub fn HostedProbe::evaluate(
   self : HostedProbe,
   source : String,
 ) -> HostedValue raise HostedProbeError {
+  self.require_available()
   let program = match @parser.parse_diagnostic(source) {
     Ok(program) => program
     Err(failure) =>
