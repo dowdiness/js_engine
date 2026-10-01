@@ -26,7 +26,7 @@ test "configured hosted depth bypasses guest catch finally and checkpoint" {
     ignore(probe.evaluate(source))
     false
   } catch {
-    HostedTerminal(cause) => {
+    HostedTerminal(cause, _, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("stack-depth-limit"),
@@ -140,31 +140,26 @@ test "host catching nested failure cannot resume guest execution or clear termin
   probe.register("explode", (_call, _args) => fail("original host failure"))
   probe.register("recover", (call, args) => {
     let _ = call.call(args[0], []) catch {
-      error => {
-        seen.val = @runtime.hosted_execution_failure_cause(error)
+      HostedHostFailure(cause, _, _) => {
+        seen.val = Some(cause)
         args[0]
       }
+      error => raise error
     }
     guard seen.val is Some(primary) else { return args[0] }
     blocked.val = try {
       call.record_effect()
       false
     } catch {
-      error =>
-        match @runtime.hosted_execution_failure_cause(error) {
-          Some(cause) => physical_equal(cause, primary)
-          None => false
-        }
+      HostedHostFailure(cause, _, _) => physical_equal(cause, primary)
+      _ => false
     }
     reentry_blocked.val = try {
       ignore(call.call(args[1], []))
       false
     } catch {
-      error =>
-        match @runtime.hosted_execution_failure_cause(error) {
-          Some(cause) => physical_equal(cause, primary)
-          None => false
-        }
+      HostedHostFailure(cause, _, _) => physical_equal(cause, primary)
+      _ => false
     }
     args[0]
   })
@@ -212,7 +207,15 @@ test "host cleanup failure cannot replace earlier control termination" {
     ignore(probe.evaluate("cleanup()"))
     false
   } catch {
-    HostedTerminal(HostedExpectedNumber) => true
+    HostedTerminal(HostedExpectedNumber, diagnostic, secondary) => {
+      assert_eq(diagnostic.phase_code(), "body")
+      match secondary {
+        Some([cleanup]) =>
+          assert_eq(cleanup.failure_kind_code(), "host-failure")
+        _ => fail("expected the cleanup failure as secondary data")
+      }
+      true
+    }
     error => raise error
   }
   assert_true(stopped)
@@ -238,8 +241,13 @@ test "nested host failure stays primary over later host cleanup failure" {
     ignore(probe.evaluate("cleanup(() => explode())"))
     false
   } catch {
-    HostedHostFailure(detail) => {
-      assert_eq(detail, original.to_string())
+    HostedHostFailure(cause, _, secondary) => {
+      assert_true(physical_equal(cause, original))
+      match secondary {
+        Some([cleanup]) =>
+          assert_eq(cleanup.failure_kind_code(), "host-failure")
+        _ => fail("expected the cleanup failure as secondary data")
+      }
       true
     }
     error => raise error
@@ -270,9 +278,227 @@ test "intentional and rethrown guest values retain identity and availability" {
     ignore(probe.evaluate("rethrow(() => { throw token; })"))
     false
   } catch {
-    HostedGuestThrow(thrown) => @runtime.strict_equal(thrown.value, token.value)
+    HostedGuestThrow(thrown, diagnostic) => {
+      assert_eq(diagnostic.phase_code(), "nested")
+      @runtime.strict_equal(thrown.value, token.value)
+    }
     error => raise error
   }
   assert_true(same)
   assert_eq(probe.evaluate("token.secret").expect_number(), 42.0)
+}
+
+///|
+test "R3 nested guest provenance survives suspended declarations and dynamic scope" {
+  for
+    source in [
+      "function* declared() { yield 1; } rethrow(() => { throw token; })", "with ({}) { rethrow(() => { throw token; }); }",
+    ] {
+    let probe = host_failure_probe()
+    probe.register("rethrow", (call, args) => call.call(args[0], []))
+    let token = probe.evaluate("var token = { secret: 42 }; token")
+    let same = try {
+      ignore(probe.evaluate(source))
+      false
+    } catch {
+      HostedGuestThrow(thrown, diagnostic) => {
+        assert_eq(diagnostic.phase_code(), "nested")
+        @runtime.strict_equal(thrown.value, token.value)
+      }
+      error => raise error
+    }
+    assert_true(same)
+    assert_eq(probe.state(), "available")
+    assert_eq(probe.evaluate("token.secret").expect_number(), 42.0)
+  }
+}
+
+///|
+fn tagged_hosted_function(
+  probe : HostedProbe,
+  identity : String,
+  source : String,
+) -> HostedValue raise Error {
+  let callee = probe.evaluate(source)
+  let realm = probe.session.engine.interp.realm_state
+  @runtime.with_source_identity(realm, Some(identity), () => {
+    ignore(@runtime.stamp_function_realm(callee.value, realm_state=Some(realm)))
+  })
+  callee
+}
+
+///|
+test "R3 guest phases retain trusted function origins through nested and checkpoint execution" {
+  for phase in ["body", "nested", "checkpoint", "checkpoint-nested"] {
+    let probe = host_failure_probe()
+    let token = probe.evaluate("var token = {}; token")
+    let origin = "origin-" + phase + ".js"
+    let callee = tagged_hosted_function(
+      probe, origin, "(function() { throw token; })",
+    )
+    probe.register("invoke", (call, args) => call.call(args[0], []))
+    probe.register("saved", (_call, _args) => callee)
+    let outer = probe.evaluate("(function(fn) { return invoke(fn); })")
+    let job = probe.evaluate("(function() { invoke(saved()); })")
+    probe.register("job", (_call, _args) => job)
+    let same = try {
+      match phase {
+        "body" => ignore(callee.call([]))
+        "nested" => ignore(outer.call([callee]))
+        "checkpoint" => ignore(probe.evaluate("queueMicrotask(saved())"))
+        _ => ignore(probe.evaluate("queueMicrotask(job())"))
+      }
+      false
+    } catch {
+      HostedGuestThrow(thrown, diagnostic) => {
+        assert_eq(diagnostic.phase_code(), phase)
+        assert_eq(diagnostic.source_identity(), Some(origin))
+        assert_eq(
+          diagnostic.operation_code(),
+          if phase == "body" || phase == "nested" {
+            "call"
+          } else {
+            "evaluate"
+          },
+        )
+        @runtime.strict_equal(thrown.value, token.value)
+      }
+      error => raise error
+    }
+    assert_true(same)
+    assert_eq(probe.state(), "available")
+    assert_eq(probe.evaluate("42").expect_number(), 42.0)
+  }
+}
+
+///|
+test "R3 a fresh throw of the same value does not inherit a caught nested origin" {
+  let probe = host_failure_probe()
+  let token = probe.evaluate("var token = {}; token")
+  let saved : Ref[EngineDiagnostic?] = Ref(None)
+  probe.register("invoke", (call, args) => {
+    call.call(args[0], []) catch {
+      HostedGuestThrow(_, diagnostic) as error => {
+        saved.val = Some(diagnostic)
+        raise error
+      }
+      error => raise error
+    }
+  })
+  let inner = tagged_hosted_function(
+    probe, "inner-A.js", "(function() { throw token; })",
+  )
+  let outer = tagged_hosted_function(
+    probe, "outer-B.js", "(function(fn) { try { invoke(fn); } catch (e) {} throw token; })",
+  )
+  let current : EngineDiagnostic? = try {
+    ignore(outer.call([inner]))
+    None
+  } catch {
+    HostedGuestThrow(thrown, diagnostic) => {
+      assert_true(@runtime.strict_equal(thrown.value, token.value))
+      Some(diagnostic)
+    }
+    error => raise error
+  }
+  let current = current.unwrap()
+  let retained = saved.val.unwrap()
+  assert_eq(current.phase_code(), "body")
+  assert_eq(current.source_identity(), Some("outer-B.js"))
+  assert_eq(retained.phase_code(), "nested")
+  assert_eq(retained.source_identity(), Some("inner-A.js"))
+  let later = tagged_hosted_function(
+    probe, "later-C.js", "(function() { throw 7; })",
+  )
+  let caught = try {
+    ignore(later.call([]))
+    false
+  } catch {
+    HostedGuestThrow(value, diagnostic) => {
+      assert_eq(value.expect_number(), 7.0)
+      assert_eq(diagnostic.source_identity(), Some("later-C.js"))
+      true
+    }
+    error => raise error
+  }
+  assert_true(caught)
+  assert_eq(current.source_identity(), Some("outer-B.js"))
+  assert_eq(retained.source_identity(), Some("inner-A.js"))
+  assert_eq(probe.state(), "available")
+}
+
+///|
+test "R3 intentional Host throw gains trusted source without replacing its nested phase" {
+  let probe = host_failure_probe()
+  probe.register("throwToken", (call, args) => {
+    call.throw_value(args[0])
+    args[0]
+  })
+  let token = probe.evaluate("var token = {}; token")
+  let callee = tagged_hosted_function(
+    probe, "intentional.js", "(function() { throwToken(token); })",
+  )
+  let same = try {
+    ignore(callee.call([]))
+    false
+  } catch {
+    HostedGuestThrow(thrown, diagnostic) => {
+      assert_eq(diagnostic.phase_code(), "nested")
+      assert_eq(diagnostic.source_identity(), Some("intentional.js"))
+      @runtime.strict_equal(thrown.value, token.value)
+    }
+    error => raise error
+  }
+  assert_true(same)
+  assert_eq(probe.state(), "available")
+}
+
+///|
+test "R3 terminal origin and retained nested snapshot survive later cleanup information" {
+  let probe = host_failure_probe()
+  let primary : Error = HostedExpectedNumber
+  let retained : Ref[HostedProbeError?] = Ref(None)
+  probe.register("stop", (call, args) => {
+    call.terminate(primary)
+    args[0]
+  })
+  probe.register("cleanup", (call, args) => {
+    ignore(call.call(args[0], [])) catch {
+      HostedTerminal(_, _, _) as error => retained.val = Some(error)
+      error => raise error
+    }
+    raise @errors.InternalError(message="later Host cleanup")
+  })
+  let inner = tagged_hosted_function(
+    probe, "terminal-inner.js", "(function() { stop(0); })",
+  )
+  let outer = tagged_hosted_function(
+    probe, "cleanup-outer.js", "(function(fn) { cleanup(fn); })",
+  )
+  let failed = try {
+    ignore(outer.call([inner]))
+    false
+  } catch {
+    HostedTerminal(cause, diagnostic, secondary) => {
+      assert_true(physical_equal(cause, primary))
+      assert_eq(diagnostic.phase_code(), "nested")
+      assert_eq(diagnostic.source_identity(), Some("terminal-inner.js"))
+      match secondary {
+        Some([cleanup]) =>
+          assert_eq(cleanup.failure_kind_code(), "host-failure")
+        _ => fail("expected later cleanup as safe secondary data")
+      }
+      true
+    }
+    error => raise error
+  }
+  assert_true(failed)
+  match retained.val {
+    Some(HostedTerminal(cause, diagnostic, None)) => {
+      assert_true(physical_equal(cause, primary))
+      assert_eq(diagnostic.source_identity(), Some("terminal-inner.js"))
+    }
+    _ => fail("the retained nested error changed after cleanup")
+  }
+  assert_eq(probe.state(), "faulted")
 }

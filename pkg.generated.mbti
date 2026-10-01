@@ -54,11 +54,11 @@ pub fn ExecutionSessionError::to_string(Self) -> String
 pub impl Show for ExecutionSessionError
 
 pub(all) suberror HostedProbeError {
-  HostedParse(String)
-  HostedGuestThrow(HostedValue)
-  HostedGuestThrowWithSecondary(primary~ : HostedValue, secondary~ : HostedValue)
-  HostedTerminal(Error)
-  HostedHostFailure(String)
+  HostedParse(EngineDiagnostic)
+  HostedGuestThrow(HostedValue, EngineDiagnostic)
+  HostedGuestThrowWithSecondary(primary~ : HostedValue, secondary~ : HostedValue, primary_diagnostic~ : EngineDiagnostic, secondary_diagnostic~ : EngineDiagnostic)
+  HostedTerminal(Error, EngineDiagnostic, Array[EngineDiagnostic]?)
+  HostedHostFailure(Error, EngineDiagnostic, Array[EngineDiagnostic]?)
   HostedForeignValue
   HostedExpiredHostCall
   HostedSessionBusy
@@ -151,37 +151,37 @@ pub fn HostEnvironment::create_session(Self, bindings? : SessionBindings) -> Exe
 pub struct HostedCall {
   // private fields
 }
-pub fn HostedCall::call(Self, HostedValue, Array[HostedValue]) -> HostedValue raise
-pub fn HostedCall::call_property(Self, HostedValue, String, Array[HostedValue]) -> HostedValue raise
-pub fn HostedCall::get(Self, HostedValue, String) -> HostedValue raise
-pub fn HostedCall::record_effect(Self) -> Unit raise
-pub fn HostedCall::terminate(Self, Error) -> Unit raise
-pub fn HostedCall::throw_value(Self, HostedValue) -> Unit raise
+pub fn HostedCall::call(Self, HostedValue, Array[HostedValue]) -> HostedValue raise HostedProbeError
+pub fn HostedCall::call_property(Self, HostedValue, String, Array[HostedValue]) -> HostedValue raise HostedProbeError
+pub fn HostedCall::get(Self, HostedValue, String) -> HostedValue raise HostedProbeError
+pub fn HostedCall::record_effect(Self) -> Unit raise HostedProbeError
+pub fn HostedCall::terminate(Self, Error) -> Unit raise HostedProbeError
+pub fn HostedCall::throw_value(Self, HostedValue) -> Unit raise HostedProbeError
 
 pub struct HostedProbe {
   // private fields
 }
-pub fn HostedProbe::HostedProbe(@runtime.ExecutionPolicy) -> Self raise
-pub fn HostedProbe::bool(Self, Bool) -> HostedValue raise
-pub fn HostedProbe::close(Self) -> Unit raise
+pub fn HostedProbe::HostedProbe(@runtime.ExecutionPolicy) -> Self raise HostedProbeError
+pub fn HostedProbe::bool(Self, Bool) -> HostedValue raise HostedProbeError
+pub fn HostedProbe::close(Self) -> Unit raise HostedProbeError
 pub fn HostedProbe::effect_count(Self) -> Int
-pub fn HostedProbe::evaluate(Self, String) -> HostedValue raise
-pub fn HostedProbe::global(Self, String) -> HostedValue raise
-pub fn HostedProbe::number(Self, Double) -> HostedValue raise
-pub fn HostedProbe::register(Self, String, (HostedCall, Array[HostedValue]) -> HostedValue raise) -> Unit raise
+pub fn HostedProbe::evaluate(Self, String) -> HostedValue raise HostedProbeError
+pub fn HostedProbe::global(Self, String) -> HostedValue raise HostedProbeError
+pub fn HostedProbe::number(Self, Double) -> HostedValue raise HostedProbeError
+pub fn HostedProbe::register(Self, String, (HostedCall, Array[HostedValue]) -> HostedValue raise) -> Unit raise HostedProbeError
 pub fn HostedProbe::state(Self) -> String
-pub fn HostedProbe::string(Self, String) -> HostedValue raise
+pub fn HostedProbe::string(Self, String) -> HostedValue raise HostedProbeError
 pub fn HostedProbe::terminal_cause(Self) -> Error?
 
 pub struct HostedValue {
   // private fields
 }
-pub fn HostedValue::call(Self, Array[Self]) -> Self raise
-pub fn HostedValue::call_property(Self, String, Array[Self]) -> Self raise
+pub fn HostedValue::call(Self, Array[Self]) -> Self raise HostedProbeError
+pub fn HostedValue::call_property(Self, String, Array[Self]) -> Self raise HostedProbeError
 pub fn HostedValue::expect_bool(Self) -> Bool raise HostedProbeError
 pub fn HostedValue::expect_number(Self) -> Double raise HostedProbeError
 pub fn HostedValue::expect_string(Self) -> String raise HostedProbeError
-pub fn HostedValue::get(Self, String) -> Self raise
+pub fn HostedValue::get(Self, String) -> Self raise HostedProbeError
 
 pub struct LoadedScript {
   identity : String

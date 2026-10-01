@@ -5,9 +5,11 @@
 - R1 implementation base: freshly fetched `origin/main`, `a7f4121a9042759019d17467f8412515942cca81`
 - R1 integration: [PR #1060](https://github.com/dowdiness/js_engine/pull/1060), main commit `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`; required CI passed before merge.
 - R2 implementation base: `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`
-- Branch: `fix/hosted-checkpoint-r2`
-- Worktree: `.worktrees/hosted-checkpoint-r2`
-- Status: **R1 merged; R2 implemented and verified locally; R3–R5 remain.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
+- R2 integration: [PR #1062](https://github.com/dowdiness/js_engine/pull/1062), main commit `e28dc678916daabfbe58adc5b056651251ced1cb`; independent Terra review and required CI passed before merge.
+- R3 implementation base: `e28dc678916daabfbe58adc5b056651251ced1cb`
+- Branch: `fix/hosted-diagnostics-r3`
+- Worktree: `.worktrees/hosted-diagnostics-r3`
+- Status: **R1/R2 merged; R3 locally verified on all three targets; independent review and CI pending. R4/R5 remain.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
 - Authority: The *Exception and Nested Execution Contract* agreed on 2026-09-20. Its original text is preserved in the appendix.
 
 ## Purpose and Boundaries
@@ -122,8 +124,32 @@ throw outcomes` observed only `body`, not the queued `job-1`, `job-2`, `job-3`.
 Afterward, all six normal/throw × public-entry cases produce the expected FIFO
 trace. Ordinary language errors reuse the runtime's catchable-error conversion;
 unexpected callback failures and latched control termination are never converted
-into guest errors or allowed to checkpoint. Structured provenance and concrete
-public raising types remain R3 work.
+into guest errors or allowed to checkpoint. R3 adds the structured provenance and
+concrete public raising types described below.
+
+## Implemented in R3
+
+| ID | Implemented behavior | Executed evidence |
+|---|---|---|
+| M4 | Every fallible Hosted facade operation and constructor raises `HostedProbeError`; callback parameters still admit application errors at the classification seam. Close maps Busy/Closed/Faulted categories instead of exposing Session errors | Generated facade interface; BB `R3 Busy close uses the facade category without cancelling the active turn`; public executable smoke exercises evaluate/get/call/property-call errors and Busy/repeated close |
+| M5 | Parse and guest outcomes retain immutable `EngineDiagnostic` data alongside actual guest values. Terminal/Host Failure outcomes retain the first cause and optional data-only secondary diagnostics; Host Failure retains the original application error without invoking its formatter | BB `R3` cases cover parser positions/snapshot independence, formatter/getter exclusion, thrown Proxy identity, earlier guest failure followed by checkpoint Host Failure/control termination. WB cases cover nested carrier preservation, trusted body/nested/checkpoint/checkpoint-nested origins, fresh throws of caught values, intentional Host throws, and immutable terminal snapshots |
+
+Source identity is retained when supplied by trusted function metadata. Bare script
+throws and parser failures do not acquire an invented source identity. A later
+trusted unwind may fill a missing identity without replacing a known origin or
+mutating a diagnostic already retained by a Host. Reuse matches the actual error
+carrier, not the thrown value: a fresh throw of the same value has fresh provenance.
+
+The three selected script execution envelopes now preserve existing guest exception
+carriers; ordinary engine errors still use the established guest conversion. This
+avoids losing a nested diagnostic association during script normalization. It does
+not promise public physical identity of wrapper objects or change the legacy
+compiled-script compatibility adapter.
+
+The runtime remains the sole termination latch. Facade failure fields retain
+diagnostics only, and are cleared after a public outcome. Secondary arrays are
+copied when a nested error can be retained before later Host cleanup. Terminal
+outcomes do not retain usable guest handles as secondary information.
 
 ## Not Implemented
 
@@ -132,11 +158,9 @@ entire feature.
 
 | ID | Missing contract behavior | Current source evidence | Work unit |
 |---|---|---|---|
-| M4 | Give public operations concrete raising types and prevent raw runtime/Session errors from escaping the public boundary | Public operations still use bare `raise`; `public_turn` rethrows nonterminal non-guest errors unchanged and `close` exposes Session errors directly. R2 now classifies guest completion consistently across JS-capable public entries, but does not settle the concrete public raising interface | R3 |
-| M5 | Retain structured parse/guest diagnostics, body/nested/checkpoint provenance, and safe secondary diagnostics on terminal outcomes | `HostedProbeError` retains values but not structured provenance. Parsing stringifies errors; callback terminal precedence discards later errors; checkpoint termination does not retain an earlier guest value. Preserving the primary cause in K3 is distinct from retaining secondary information | R3 |
 | M6 | Connect the selected typed adapters to Hosted Turn/HostCall, reporting argument mismatches as JS TypeError before entering the user's MoonBit function | `research_host1/2/function1` in `embedding_research.mbt` at prototype baseline `5c87fea9` use `ProbeRuntime/ProbeValue`. Those adapters are not part of this migration. Raising a strict-extraction error directly from a Hosted callback currently classifies it as Host Failure | R4 |
 
-The resolved M3 and remaining M4–M6 are not additional convenience features. They are
+The resolved M3–M5 and remaining M6 are not additional convenience features. They are
 required by the appendix's §2 public types, diagnostics, and typed adapters; §3 value
 lifetime; and §4/§6 secondary information and provenance.
 
@@ -326,8 +350,50 @@ throws: primary=7, secondary=42, retained-after-eligible-turn, state=available
 R2 smoke passed
 ```
 
-The executable was removed. Independent review and hosted CI remain required
-before R2 integration; these local results do not prove the outstanding R3–R5 items.
+The executable was removed. Independent Terra review passed for both completion/
+precedence and queue/reentry/exclusion slices. Reviewers recovered from unavailable
+LSP using compiler semantic navigation. Required CI passed on reviewed head
+`e1aaf1cc3fc99bd590485eb81c84b02a8893b0b8`; PR #1062 was squash-merged as
+`e28dc678916daabfbe58adc5b056651251ced1cb`. Deployment and CodeRabbit's automatic
+OSS review were skipped, not passed. R2 results do not prove R3–R5.
+
+### R3 local verification record
+
+Before the Busy-close fix, the facade exposed a Session Busy error. Before structured
+parse reporting, the payload was a string with no location API. Before safe Host
+capture, the formatter sentinel ran once and entered a donor's guest getter.
+Before carrier preservation, uncaught nested rethrows reported `body` instead of
+`nested`. Before source enrichment, an intentional Host throw retained its nested
+phase but lost the trusted `intentional.js` origin. Each regression passed after
+its corresponding correction.
+
+A temporary `cmd/hosted_r3_smoke` executable ran with `moon run --target native`,
+`--target js`, and `--target wasm-gc`. All three runs asserted and printed:
+
+```text
+parse: evaluate/parse, line=2 column=5 offset=5, state=available
+guest: evaluate/get/call/call-property preserve identity; nested phase retained
+checkpoint: primary=7/body, secondary=42/checkpoint, state=available
+close: Busy does not cancel; repeated close is HostedSessionClosed
+Host failure: original cause retained, formatter=0, prior guest/body retained, state=faulted
+control: execution-limit/checkpoint, prior guest/body retained, state=faulted
+R3 smoke passed
+```
+
+The executable was removed. For each target, the focused command
+`moon test --target <target> hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt`
+passed **41/41**; `moon test --target <target>` passed:
+
+| Target | Passed / Executed |
+|---|---:|
+| native | 4,548 / 4,548 |
+| js | 4,416 / 4,416 |
+| wasm-gc | 4,414 / 4,414 |
+
+`moon info`, `moon fmt`, `moon fmt --check`, and
+`moon check --target all --deny-warn` passed. Generated interface changes are
+confined to the intended Hosted error payloads and concrete raising types.
+Independent review and integration results remain pending.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end
