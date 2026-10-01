@@ -17,6 +17,12 @@ priv suberror ExecutionControlError {
 }
 
 ///|
+/// Terminal outcomes in strict hosted execution are opaque to JavaScript.
+priv suberror HostedExecutionTerminal {
+  HostedExecutionTerminal(Error)
+}
+
+///|
 #warnings("-unused_constructor")
 priv enum ExecutionControlConfigurationParameter {
   StepBudget
@@ -203,17 +209,20 @@ fn ExecutionInterruptionRequest::is_requested(
 }
 
 ///|
-priv struct ExecutionControl {
-  mut state : ExecutionControlState
-  interruption : ExecutionInterruptionRequest
+/// Internal shared carrier for one execution operation.
+pub(all) struct ExecutionControl {
+  priv mut state : ExecutionControlState
+  priv interruption : ExecutionInterruptionRequest
+  priv strict_hosted : Bool
+  priv mut terminal_cause : Error?
 }
 
 ///|
-#warnings("-unused_value")
 fn ExecutionControl::ExecutionControl(
   remaining_steps~ : Int64,
   maximum_active_depth~ : Int64,
   interruption~ : ExecutionInterruptionRequest,
+  strict_hosted? : Bool = false,
 ) -> ExecutionControl raise ExecutionControlConfigurationError {
   let configuration = ExecutionControlConfiguration(
     remaining_steps~,
@@ -226,6 +235,8 @@ fn ExecutionControl::ExecutionControl(
       active_depth: 0L,
     },
     interruption,
+    strict_hosted,
+    terminal_cause: None,
   }
 }
 
@@ -273,27 +284,24 @@ fn execution_control_observer(control : ExecutionControl) -> Value {
         args,
       ) raise {
         match args {
-          [String_(operation)] if operation == EXECUTION_CONTROL_ACTIVATION =>
-            match control.observe_activation() {
-              Ok(_) => Undefined
-              Err(failure) => raise ExecutionControlError(failure)
-            }
+          [String_(operation)] if operation == EXECUTION_CONTROL_ACTIVATION => {
+            control.observe_hosted(EXECUTION_CONTROL_ACTIVATION)
+            Undefined
+          }
           [String_(operation)] if operation == EXECUTION_CONTROL_RELEASE =>
             match control.release_activation() {
               Ok(_) => Undefined
               Err(failure) => raise ExecutionControlError(failure)
             }
           [String_(operation)] if operation ==
-            EXECUTION_CONTROL_UNOBSERVED_NATIVE_PROGRESS =>
-            match control.reject_unobserved_native_progress() {
-              Ok(_) => Undefined
-              Err(failure) => raise ExecutionControlError(failure)
-            }
-          _ =>
-            match control.observe_step() {
-              Ok(_) => Undefined
-              Err(failure) => raise ExecutionControlError(failure)
-            }
+            EXECUTION_CONTROL_UNOBSERVED_NATIVE_PROGRESS => {
+            control.observe_hosted(EXECUTION_CONTROL_UNOBSERVED_NATIVE_PROGRESS)
+            Undefined
+          }
+          _ => {
+            control.observe_hosted("")
+            Undefined
+          }
         }
       }),
     ),
@@ -301,6 +309,53 @@ fn execution_control_observer(control : ExecutionControl) -> Value {
     Map([]),
     true,
   )
+}
+
+///|
+fn ExecutionControl::latch_terminal(
+  self : ExecutionControl,
+  cause : Error,
+) -> Error {
+  match self.terminal_cause {
+    Some(existing) => existing
+    None => {
+      self.terminal_cause = Some(cause)
+      cause
+    }
+  }
+}
+
+///|
+fn ExecutionControl::check_terminal(
+  self : ExecutionControl,
+) -> Unit raise Error {
+  match self.terminal_cause {
+    Some(cause) => raise HostedExecutionTerminal(cause)
+    None => ()
+  }
+}
+
+///|
+fn ExecutionControl::observe_hosted(
+  self : ExecutionControl,
+  operation : String,
+) -> Unit raise Error {
+  self.check_terminal()
+  let result : Result[Unit, ExecutionControlFailure] = match operation {
+    "activation" => self.observe_activation()
+    "unobserved-native-progress" => self.reject_unobserved_native_progress()
+    _ => self.observe_step()
+  }
+  match result {
+    Ok(_) => ()
+    Err(failure) =>
+      if self.strict_hosted {
+        let cause : Error = ExecutionControlError(failure)
+        raise HostedExecutionTerminal(self.latch_terminal(cause))
+      } else {
+        raise ExecutionControlError(failure)
+      }
+  }
 }
 
 ///|

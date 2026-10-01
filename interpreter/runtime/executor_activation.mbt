@@ -3984,6 +3984,13 @@ fn Interpreter::run_executor_function(
   this_value : Value,
   args : Array[Value],
 ) -> Value raise Error {
+  // Direct calls from the legacy evaluator or Host do not pass through
+  // start_executor_activation, unlike coordinator-owned child calls.
+  let observe_hosted = self.hosted_execution_control is Some(_)
+  if observe_hosted {
+    self.observe_execution_activation()
+  }
+  errdefer (if observe_hosted { self.release_execution_activation() })
   let saved_in_default = self.in_nonarrow_param_default_eval
   self.in_nonarrow_param_default_eval = false
   let result : Value = {
@@ -4025,6 +4032,9 @@ fn Interpreter::run_executor_function(
     }
   }
   self.in_nonarrow_param_default_eval = saved_in_default
+  if observe_hosted {
+    self.release_execution_activation()
+  }
   result
 }
 

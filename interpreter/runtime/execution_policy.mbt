@@ -128,11 +128,13 @@ pub fn stack_depth_limit_message() -> String {
 ///|
 fn ExecutionPolicy::to_execution_control(
   self : ExecutionPolicy,
+  strict_hosted? : Bool = false,
 ) -> ExecutionControl raise Error {
   ExecutionControl(
     remaining_steps=self.step_budget_,
     maximum_active_depth=self.stack_depth_limit_,
     interruption=self.interruption_.request_,
+    strict_hosted~,
   )
 }
 
@@ -160,4 +162,77 @@ pub fn[T] Interpreter::with_execution_policy(
 ) -> T raise Error {
   let control = policy.to_execution_control()
   self.with_execution_control(control, action)
+}
+
+///|
+/// Check sticky terminal state and interruption without consuming a step.
+pub fn Interpreter::check_hosted_execution(
+  self : Interpreter,
+) -> Unit raise Error {
+  match self.hosted_execution_control {
+    Some(control) => {
+      control.check_terminal()
+      if control.interruption.is_requested() {
+        let cause : Error = ExecutionControlError(Interrupted)
+        raise HostedExecutionTerminal(control.latch_terminal(cause))
+      }
+    }
+    None => ()
+  }
+}
+
+///|
+/// Latch the first host termination cause and raise its opaque carrier.
+pub fn Interpreter::terminate_hosted_execution(
+  self : Interpreter,
+  cause : Error,
+) -> Unit raise Error {
+  match self.hosted_execution_control {
+    Some(control) =>
+      raise HostedExecutionTerminal(control.latch_terminal(cause))
+    None => raise HostedExecutionTerminal(cause)
+  }
+}
+
+///|
+/// Recover the original cause from a known hosted terminal carrier.
+pub fn hosted_execution_failure_cause(error : Error) -> Error? {
+  match error {
+    HostedExecutionTerminal(cause) => Some(cause)
+    _ => None
+  }
+}
+
+///|
+/// Run one strict hosted turn with a single shared control carrier.
+pub fn[T] Interpreter::with_hosted_execution_policy(
+  self : Interpreter,
+  policy : ExecutionPolicy,
+  action : () -> T raise Error,
+) -> T raise Error {
+  match self.hosted_execution_control {
+    Some(_) => {
+      self.check_hosted_execution()
+      let result = action()
+      self.check_hosted_execution()
+      result
+    }
+    None => {
+      let control = policy.to_execution_control(strict_hosted=true)
+      let previous = self.hosted_execution_control
+      self.hosted_execution_control = Some(control)
+      errdefer {
+        self.hosted_execution_control = previous
+        ()
+      }
+      let result = self.with_execution_control(control, () => {
+        self.check_hosted_execution()
+        let result = action()
+        self.check_hosted_execution()
+        result
+      })
+      self.hosted_execution_control = previous
+      result
+    }
+  }
 }
