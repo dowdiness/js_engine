@@ -76,7 +76,7 @@ fn setup_math_builtins(
   ) raise {
     let base = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
     let exp = arg_to_number_or(interp, args, 1, 0.0 / 0.0)
-    Value::Number(@math.pow(base, exp))
+    Value::Number(@runtime.number_exponentiate(base, exp))
   })
   math_props["min"] = @runtime.make_interp_static_func(name="min", length=2, fn(
     interp,

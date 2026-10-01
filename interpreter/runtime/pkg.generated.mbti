@@ -407,6 +407,8 @@ pub fn module_namespace_set_prototype_result(ObjectData, Value) -> Bool?
 
 pub fn new_promise_data() -> PromiseData
 
+pub fn number_exponentiate(Double, Double) -> Double
+
 pub fn object_entries(Interpreter, Value) -> Value raise
 
 pub fn object_get_prototype_of(Interpreter, Value) -> Value raise

@@ -2548,8 +2548,8 @@ pub fn eval_binary_op(
     (EqEq, l, r) => Bool(loose_equal(l, r, interp~))
     (NotEq, l, r) => Bool(!loose_equal(l, r, interp~))
     // Exponentiation
-    (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
-    (Exp, l, r) => Number(@math.pow(n(l), n(r)))
+    (Exp, Number(a), Number(b)) => Number(number_exponentiate(a, b))
+    (Exp, l, r) => Number(number_exponentiate(n(l), n(r)))
     // Add fallback: ToPrimitive, then check for strings
     (Add, l, r) => {
       // ToPrimitive with hint "default" per spec (+ operator uses no
