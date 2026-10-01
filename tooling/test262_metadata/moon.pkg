@@ -4,7 +4,6 @@ import {
   "dowdiness/js_engine/tooling/path_utils",
   "moonbitlang/core/json",
   "moonbitlang/core/set",
-  "moonbitlang/core/string",
 }
 
 supported_targets = "+native"

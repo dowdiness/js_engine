@@ -82,7 +82,7 @@ fn run_expr_with_ctx(
   ctx : @runtime.ExecContext,
   env : @runtime.Environment,
 ) -> Value raise Error {
-  let compiled = compile_expr_to_closure(parse_expr(src))
+  let compiled = @compiler.compile_expr_to_closure(parse_expr(src))
   compiled(interp, ctx, env)
 }
 
@@ -90,7 +90,7 @@ fn run_expr_with_ctx(
 fn run_program(src : String) -> Value raise Error {
   let prog = @parser.parse(src)
   let interp = @interpreter.new_interpreter()
-  let compiled = compile_program_to_closure(prog.stmts)
+  let compiled = @compiler.compile_program_to_closure(prog.stmts)
   compiled(interp, default_ctx(), interp.global)
 }
 
@@ -98,7 +98,7 @@ fn run_program(src : String) -> Value raise Error {
 fn run_script(src : String) -> Value raise Error {
   let prog = @parser.parse(src)
   let interp = @interpreter.new_interpreter()
-  let compiled = compile_script_to_closure(prog.stmts)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
   compiled(interp)
 }
 
@@ -213,7 +213,7 @@ test "closure conversion direct function expressions use provided interpreter pr
 test "closure conversion preserves callee realm for foreign compiled functions" {
   let foreign_interp = @interpreter.new_interpreter()
   let prog = @parser.parse("function outer() { return function inner() {}; }")
-  let compiled = compile_script_to_closure(prog.stmts)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
   let _ = compiled(foreign_interp)
   let outer = foreign_interp.global.get("outer")
   let local_interp = @interpreter.new_interpreter()
@@ -750,7 +750,7 @@ test "closure conversion script wrapper installs current interpreter" {
   }
   interp.global.def("obj", obj, BindingKind::VarBinding)
   let prog = @parser.parse("obj + 1;")
-  let compiled = compile_script_to_closure(prog.stmts)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
   expect_value(compiled(interp), "42", "script wrapper interpreter install")
 }
 

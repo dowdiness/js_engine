@@ -1896,7 +1896,7 @@ pub fn PreparedExecutorActivation::environment(
 pub fn PreparedExecutorActivation::arguments(
   self : PreparedExecutorActivation,
 ) -> ArrayView[Value] {
-  self.args.view()
+  self.args.exact_view()
 }
 
 ///|

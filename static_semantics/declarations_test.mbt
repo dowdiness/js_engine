@@ -1,7 +1,7 @@
 ///|
 test "collect_var_declared_names: var declaration" {
   let prog = @parser.parse("var x;")
-  let names = collect_var_declared_names(prog.stmts)
+  let names = @static_semantics.collect_var_declared_names(prog.stmts)
   inspect(names.contains("x"), content="true")
   inspect(names.length(), content="1")
 }
@@ -9,34 +9,40 @@ test "collect_var_declared_names: var declaration" {
 ///|
 test "collect_var_declared_names: let and const are not collected" {
   let prog = @parser.parse("let x; const y = 1;")
-  inspect(collect_var_declared_names(prog.stmts).length(), content="0")
+  inspect(
+    @static_semantics.collect_var_declared_names(prog.stmts).length(),
+    content="0",
+  )
 }
 
 ///|
 test "collect_var_declared_names: function decl at top level" {
   let prog = @parser.parse("function f() {}")
-  let names = collect_var_declared_names(prog.stmts)
+  let names = @static_semantics.collect_var_declared_names(prog.stmts)
   inspect(names.contains("f"), content="true")
 }
 
 ///|
 test "collect_var_declared_names: function decl excluded when include_funcs=false" {
   let prog = @parser.parse("function f() {}")
-  let names = collect_var_declared_names(prog.stmts, include_funcs=false)
+  let names = @static_semantics.collect_var_declared_names(
+    prog.stmts,
+    include_funcs=false,
+  )
   inspect(names.length(), content="0")
 }
 
 ///|
 test "collect_var_declared_names: var in for-of loop" {
   let prog = @parser.parse("for (var x of arr) {}")
-  let names = collect_var_declared_names(prog.stmts)
+  let names = @static_semantics.collect_var_declared_names(prog.stmts)
   inspect(names.contains("x"), content="true")
 }
 
 ///|
 test "collect_var_declared_names: var inside try-catch" {
   let prog = @parser.parse("try { var x; } catch (e) { var y; }")
-  let names = collect_var_declared_names(prog.stmts)
+  let names = @static_semantics.collect_var_declared_names(prog.stmts)
   inspect(names.contains("x"), content="true")
   inspect(names.contains("y"), content="true")
 }
@@ -44,7 +50,7 @@ test "collect_var_declared_names: var inside try-catch" {
 ///|
 test "collect_var_declared_names: function decl inside if is block-scoped (§B.3.4)" {
   let prog = @parser.parse("if (true) function f() {}")
-  let names = collect_var_declared_names(prog.stmts)
+  let names = @static_semantics.collect_var_declared_names(prog.stmts)
   // §B.3.4: if (...) function f() {} treats f as a lexical binding of the
   // implicit block around the then-branch, not a var-declared name. The
   // IfStmt arm in collect_var_declared_names forces in_block=true, which
@@ -81,7 +87,7 @@ test "collect_var_declared_names: deep statement containers preserve source orde
   descending_half.rev_each(name => expected.push(name))
   expected.push("center")
   ascending_half.each(name => expected.push(name))
-  assert_eq(collect_var_declared_names([nested]), expected)
+  assert_eq(@static_semantics.collect_var_declared_names([nested]), expected)
 }
 
 ///|
@@ -111,7 +117,7 @@ test "collect_var_declared_names: mixed statement shapes preserve order and boun
     _ => abort("expected leading variable declaration")
   }
   let direct_ast = @ast.Stmt::StmtList(parsed.stmts, loc)
-  json_inspect(collect_var_declared_names([direct_ast]), content=[
+  json_inspect(@static_semantics.collect_var_declared_names([direct_ast]), content=[
     "top", "block_name", "if_then", "if_else", "for_init", "for_body", "case_first",
     "case_second", "try_name", "catch_name", "finally_name", "with_name", "label_name",
     "labeled_fn", "exported_name", "destructured_left", "destructured_right", "boundary_fn",
@@ -137,9 +143,14 @@ test "bound names: deep patterns preserve source order and ignore expressions" {
   for _ in 0..<512 {
     deep = @ast.Pattern::DefaultPat(deep, embedded_expr)
   }
-  json_inspect(bound_names(deep), content=["x"])
-  json_inspect(bound_names(@ast.Pattern::AssignTarget(embedded_expr)), content=[])
-  json_inspect(bound_names(object), content=["first", "second", "rest"])
+  json_inspect(@static_semantics.bound_names(deep), content=["x"])
+  json_inspect(
+    @static_semantics.bound_names(@ast.Pattern::AssignTarget(embedded_expr)),
+    content=[],
+  )
+  json_inspect(@static_semantics.bound_names(object), content=[
+    "first", "second", "rest",
+  ])
   let array = @ast.Pattern::ArrayPat(
     [
       Some(@ast.Pattern::IdentPat("element_first")),
@@ -156,7 +167,7 @@ test "bound names: deep patterns preserve source order and ignore expressions" {
     ],
     Some(@ast.Pattern::IdentPat("array_rest")),
   )
-  json_inspect(bound_names(array), content=[
+  json_inspect(@static_semantics.bound_names(array), content=[
     "element_first", "nested_first", "nested_second", "array_rest",
   ])
 }

@@ -3,7 +3,7 @@ using @runtime {type Value}
 
 ///|
 fn run_js(source : String) -> (Array[String], Value) raise Error {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let prog = @parser.parse(source)
   let result = interp.run(prog.stmts)
   (interp.host.output, result)
@@ -45,7 +45,7 @@ fn run_throws(source : String) -> String {
 
 ///|
 fn run_output_annex_b(source : String) -> Array[String] raise Error {
-  let interp = new_interpreter(annex_b=true)
+  let interp = @interpreter.new_interpreter(annex_b=true)
   let prog = @parser.parse(source)
   let _ = interp.run(prog.stmts)
   interp.host.output
@@ -56,7 +56,7 @@ fn run_output_annex_b(source : String) -> Array[String] raise Error {
 /// (`.then` / `.catch` / `.finally`) observe their final state before the
 /// test inspects `output`.
 fn run_output_async(source : String) -> Array[String] raise Error {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let prog = @parser.parse(source)
   let _ = interp.run(prog.stmts)
   interp.run_microtasks()
@@ -65,7 +65,7 @@ fn run_output_async(source : String) -> Array[String] raise Error {
 
 ///|
 fn run_output_timers(source : String) -> Array[String] raise Error {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let prog = @parser.parse(source)
   let _ = interp.run(prog.stmts)
   interp.run_timers()
@@ -74,7 +74,7 @@ fn run_output_timers(source : String) -> Array[String] raise Error {
 
 ///|
 test "realm_state symbols share legacy interpreter symbols compatibility field" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let sym = interp.realm_state.symbols.new_symbol(Some("stage1"))
   match interp.symbols.get_symbol_by_id(sym.id) {
     Some(found) =>
@@ -13064,7 +13064,7 @@ test "borrowed Object.getOwnPropertyDescriptor allocates descriptor in callee re
 
 ///|
 test "direct call_value keeps active realm for returned function prototypes" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let prog = @parser.parse("function outer() { return function inner() {}; }")
   let _ = interp.run(prog.stmts)
   let outer = interp.global.get("outer")
@@ -13095,7 +13095,7 @@ test "direct call_value keeps active realm for returned function prototypes" {
 
 ///|
 test "direct construct_value keeps active realm for constructor-created functions" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let prog = @parser.parse("function C() { this.f = function made() {}; }")
   let _ = interp.run(prog.stmts)
   let ctor = interp.global.get("C")
@@ -13124,7 +13124,7 @@ test "direct construct_value keeps active realm for constructor-created function
 
 ///|
 test "host factory helpers bind to target environment realm after setup" {
-  let first = new_interpreter()
+  let first = @interpreter.new_interpreter()
   let first_function_proto = first.global.get("[[FunctionPrototype]]")
   let first_host = @runtime.make_native_func(name="firstHost", fn(_args) {
     Value::Undefined
@@ -13147,7 +13147,7 @@ test "host factory helpers bind to target environment realm after setup" {
     "host factory realm after nested createRealm", installed_after_create_realm,
     first_function_proto,
   )
-  let second = new_interpreter()
+  let second = @interpreter.new_interpreter()
   let second_function_proto = second.global.get("[[FunctionPrototype]]")
   let first_after_second = @runtime.make_native_func(name="firstAfterSecond", fn(
     _args,
@@ -13179,7 +13179,7 @@ test "host factory helpers bind to target environment realm after setup" {
 
 ///|
 test "direct get_property uses interpreter realm for lazy array methods" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let function_proto = interp.global.get("[[FunctionPrototype]]")
   let array_method = interp.get_property(
     @runtime.make_array([Value::Number(1.0)]),
@@ -15318,8 +15318,8 @@ test "test262: ArrayBuffer constructor basic" {
 
 ///|
 test "ArrayBuffer backing store is isolated across interpreters" {
-  let interp_a = new_interpreter()
-  let interp_b = new_interpreter()
+  let interp_a = @interpreter.new_interpreter()
+  let interp_b = @interpreter.new_interpreter()
   let prog_a = @parser.parse(
     (
       #|var view = new Uint8Array(1);
@@ -23783,7 +23783,7 @@ test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
     ),
   ]
   for literal in invalid_literals {
-    let interp = new_interpreter()
+    let interp = @interpreter.new_interpreter()
     let observed = try {
       let source = (
           #|console.log('started');
@@ -24510,7 +24510,7 @@ test "for-await-of basic with sync iterable" {
 
 ///|
 test "host slot is invisible to Object.keys for-in and JSON.stringify" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   // Ordinary property that must remain visible and unchanged beside the host slot.
   let prog = @parser.parse(
     (
