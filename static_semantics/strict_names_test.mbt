@@ -1,7 +1,7 @@
 ///|
 test "validate_strict_binding_name: eval rejected" {
   let result = try {
-    validate_strict_binding_name("eval")
+    @static_semantics.validate_strict_binding_name("eval")
     "ok"
   } catch {
     _ => "error"
@@ -12,7 +12,7 @@ test "validate_strict_binding_name: eval rejected" {
 ///|
 test "validate_strict_binding_name: arguments rejected" {
   let result = try {
-    validate_strict_binding_name("arguments")
+    @static_semantics.validate_strict_binding_name("arguments")
     "ok"
   } catch {
     _ => "error"
@@ -23,7 +23,7 @@ test "validate_strict_binding_name: arguments rejected" {
 ///|
 test "validate_strict_binding_name: reserved word rejected" {
   let result = try {
-    validate_strict_binding_name("yield")
+    @static_semantics.validate_strict_binding_name("yield")
     "ok"
   } catch {
     _ => "error"
@@ -34,7 +34,7 @@ test "validate_strict_binding_name: reserved word rejected" {
 ///|
 test "validate_strict_binding_name: normal name accepted" {
   let result = try {
-    validate_strict_binding_name("x")
+    @static_semantics.validate_strict_binding_name("x")
     "ok"
   } catch {
     _ => "error"
@@ -45,7 +45,7 @@ test "validate_strict_binding_name: normal name accepted" {
 ///|
 test "validate_strict_identifier_reference: reserved word rejected in strict" {
   let result = try {
-    validate_strict_identifier_reference(true, "static")
+    @static_semantics.validate_strict_identifier_reference(true, "static")
     "ok"
   } catch {
     _ => "error"
@@ -56,7 +56,7 @@ test "validate_strict_identifier_reference: reserved word rejected in strict" {
 ///|
 test "validate_strict_identifier_reference: reserved word allowed in sloppy" {
   let result = try {
-    validate_strict_identifier_reference(false, "static")
+    @static_semantics.validate_strict_identifier_reference(false, "static")
     "ok"
   } catch {
     _ => "error"
@@ -67,7 +67,7 @@ test "validate_strict_identifier_reference: reserved word allowed in sloppy" {
 ///|
 test "validate_strict_assignment_target_name: eval rejected in strict" {
   let result = try {
-    validate_strict_assignment_target_name(true, "eval")
+    @static_semantics.validate_strict_assignment_target_name(true, "eval")
     "ok"
   } catch {
     _ => "error"
@@ -78,7 +78,7 @@ test "validate_strict_assignment_target_name: eval rejected in strict" {
 ///|
 test "validate_strict_assignment_target_name: eval allowed in sloppy" {
   let result = try {
-    validate_strict_assignment_target_name(false, "eval")
+    @static_semantics.validate_strict_assignment_target_name(false, "eval")
     "ok"
   } catch {
     _ => "error"

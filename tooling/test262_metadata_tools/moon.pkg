@@ -4,7 +4,6 @@ import {
   "dowdiness/js_engine/tooling/test262_utils" @utils,
   "moonbitlang/core/json",
   "moonbitlang/core/set",
-  "moonbitlang/core/string",
   "moonbitlang/x/fs",
   "dowdiness/js_engine/tooling/path_utils",
 }

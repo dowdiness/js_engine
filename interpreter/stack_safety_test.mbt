@@ -405,7 +405,7 @@ test "execution stack safety: five left-associated numeric and map calls compose
 
 ///|
 test "numeric and map composition cleanup permits a second run" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let first = interp.run(@parser.parse(NUMERIC_MAP_COMPOSITION_SOURCE).stmts)
   let second = interp.run(@parser.parse(NUMERIC_MAP_COMPOSITION_SOURCE).stmts)
   match (first, second) {
@@ -422,7 +422,7 @@ test "numeric and map composition cleanup permits a second run" {
 
 ///|
 test "array map cleanup permits a second run on the same Interpreter" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let first = interp.run(@parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts)
   let second = interp.run(
     @parser.parse(ARRAY_MAP_MEMBER_RECURSION_SOURCE).stmts,
@@ -441,7 +441,7 @@ test "array map cleanup permits a second run on the same Interpreter" {
 
 ///|
 test "array map direct cleanup permits a second run on the same Interpreter" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let first = interp.run(@parser.parse(ARRAY_MAP_DIRECT_RECURSION_SOURCE).stmts)
   let second = interp.run(
     @parser.parse(ARRAY_MAP_DIRECT_RECURSION_SOURCE).stmts,
@@ -460,7 +460,7 @@ test "array map direct cleanup permits a second run on the same Interpreter" {
 
 ///|
 test "array map forwarding cleanup permits a second run on the same Interpreter" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let first = interp.run(
     @parser.parse(ARRAY_MAP_FORWARDING_RECURSION_SOURCE).stmts,
   )
@@ -481,7 +481,7 @@ test "array map forwarding cleanup permits a second run on the same Interpreter"
 
 ///|
 test "array map replacement stays legacy across same Interpreter runs" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let replacement = @parser.parse(
       "Array.prototype.map=function(){return [7];};",
     ).stmts
@@ -878,7 +878,7 @@ test "ordinary constructor return replacement stays exact" {
 
 ///|
 test "ordinary constructor throw releases activation state" {
-  let interp = Interpreter::new()
+  let interp = @interpreter.Interpreter::new()
   let source = "function Boom(n){this.value=n;if(n>0){this.child=new Boom(n-1);}" +
     "throw n;}new Boom(2).value;"
   // The recursive base activation throws its own exact parameter value.
@@ -1131,7 +1131,7 @@ test "execution stack safety: mutual recursion at depth 256" {
 
 ///|
 test "execution stack safety: public call_value self recursion at depth 256" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let program = @parser.parse(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}",
   )
@@ -1150,7 +1150,7 @@ test "execution stack safety: public call_value self recursion at depth 256" {
 
 ///|
 test "execution stack safety: public call_value preserves stamped source provenance" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let program = @parser.parse(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}",
   )
@@ -1171,7 +1171,7 @@ test "execution stack safety: public call_value preserves stamped source provena
 
 ///|
 test "execution stack safety: public call_value mutual recursion at depth 256" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let program = @parser.parse(
     "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
     "function g(n){if(n===0)return 0;return 1+f(n-1);}",
@@ -1191,7 +1191,7 @@ test "execution stack safety: public call_value mutual recursion at depth 256" {
 
 ///|
 test "execution stack safety: public call_value preserves mutual source provenance" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let entry = @parser.parse("function f(n){if(n===0)return 0;return 1+g(n-1);}")
   @runtime.with_source_identity(interp.realm_state, Some("entry.js"), () => {
     ignore(interp.run(entry.stmts))

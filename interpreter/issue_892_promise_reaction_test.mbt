@@ -3,7 +3,7 @@
 // same runtime-owned Promise reaction job. This test pins the stable side of
 // the entry gate before draining the selected generic microtask.
 test "issue 892 stable reaction queue uses a managed callable" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let source =
     #|var seen = "";
     #|Promise.resolve(1).then(function(value) { seen = String(value); });
@@ -25,7 +25,7 @@ test "issue 892 stable reaction queue uses a managed callable" {
 
 ///|
 test "issue 892 stable thenable job waits behind the current script" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let source =
     #|var log = "";
     #|var thenable = { then: function(resolve) { log = log + "t"; resolve(); } };
@@ -46,7 +46,7 @@ test "issue 892 stable thenable job waits behind the current script" {
 
 ///|
 test "issue 892 stable thenable job preserves sibling FIFO" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let source =
     #|var log = "";
     #|var thenable = { then: function(resolve) { log = log + "t"; resolve(); } };
@@ -63,7 +63,7 @@ test "issue 892 stable thenable job preserves sibling FIFO" {
 
 ///|
 test "issue 892 stable thenable job creates resolving functions in the then realm" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let source =
     #|var r = $262.createRealm();
     #|var foreignFunctionProto = r.evalScript("Function.prototype");
@@ -84,7 +84,7 @@ test "issue 892 stable thenable job creates resolving functions in the then real
 
 ///|
 test "issue 892 stable thenable job follows proxy and revoked realm rules" {
-  let interp = new_interpreter()
+  let interp = @interpreter.new_interpreter()
   let source =
     #|var r = $262.createRealm();
     #|var foreignFunctionProto = r.evalScript("Function.prototype");

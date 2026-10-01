@@ -38,21 +38,20 @@ fn valid_manifest_text() -> String {
 
 ///|
 fn manifest_is_rejected(input : String) -> Bool {
-  let result : Result[ReleaseCandidateManifest, ReleaseContractError] = Ok(
-    parse_manifest(input),
-  ) catch {
-    error => Err(error)
-  }
+  let result : Result[
+    @release_contract.ReleaseCandidateManifest,
+    @release_contract.ReleaseContractError,
+  ] = Ok(@release_contract.parse_manifest(input)) catch { error => Err(error) }
   match result {
-    Err(ReleaseContractError::InvalidManifest(_)) => true
+    Err(@release_contract.ReleaseContractError::InvalidManifest(_)) => true
     Ok(_) => false
   }
 }
 
 ///|
 test "release candidate manifest round trips without losing evidence" {
-  let manifest = parse_manifest(valid_manifest_text())
-  let actual = @json.parse(render_manifest(manifest))
+  let manifest = @release_contract.parse_manifest(valid_manifest_text())
+  let actual = @json.parse(@release_contract.render_manifest(manifest))
   assert_eq(actual, @json.parse(valid_manifest_text()))
 }
 
@@ -174,8 +173,8 @@ test "release candidate manifest rejects unknown nested evidence" {
 
 ///|
 test "release validation reports every observed mismatch" {
-  let expected = parse_manifest(valid_manifest_text())
-  let observed = parse_manifest(
+  let expected = @release_contract.parse_manifest(valid_manifest_text())
+  let observed = @release_contract.parse_manifest(
     valid_manifest_text()
     .replace(old="\"version\": \"0.8.0\"", new="\"version\": \"0.8.1\"")
     .replace(
@@ -183,7 +182,7 @@ test "release validation reports every observed mismatch" {
       new="\"content_sha256\": \"sha256:4444444444444444444444444444444444444444444444444444444444444444\"",
     ),
   )
-  let validation = validate_candidate(expected, observed)
+  let validation = @release_contract.validate_candidate(expected, observed)
   assert_false(validation.allowed())
   let diagnostics = validation.diagnostics()
   json_inspect(diagnostics.map(diagnostic => diagnostic.code()), content=[
