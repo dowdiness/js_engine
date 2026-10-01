@@ -358,6 +358,8 @@ fn bytecode_instruction_transfer(
       Fallthrough(bytecode_stack_effect(2, -1))
     UpdateProperty(_, _, _, _, _) => Fallthrough(bytecode_stack_effect(1, 0))
     UpdateComputed(_, _, _, _) => Fallthrough(bytecode_stack_effect(2, -1))
+    EnterHandler(LexicalScope(_), _, _) =>
+      Fallthrough(bytecode_stack_effect(0, 0))
     EnterHandler(_, target, _) => BranchTo(target, bytecode_stack_effect(0, 0))
     LeaveHandler(target) | ResumeCompletion(target) =>
       JumpTo(target, bytecode_stack_effect(0, 0))
@@ -2238,7 +2240,11 @@ fn verify_bytecode_exception_regions(
   for index, instruction in code {
     match instruction {
       EnterHandler(kind, target, end) => {
-        guard index + 1 < target && target < end && end <= code.length() else {
+        let valid_end = match kind {
+          LexicalScope(_) => target == end
+          _ => target < end
+        }
+        guard index + 1 < target && valid_end && end <= code.length() else {
           raise @errors.InternalError(message="invalid try region bounds")
         }
         for (parent, _, parent_target, parent_end) in regions {
@@ -2258,6 +2264,7 @@ fn verify_bytecode_exception_regions(
           raise @errors.InternalError(message="try has no normal exit")
         }
         match (kind, code[end - 1]) {
+          (LexicalScope(_), LeaveHandler(exit)) if exit == end => ()
           (CatchHandler(_), LeaveHandler(_)) => ()
           (FinallyHandler, ResumeCompletion(exit)) if exit == end => ()
           _ => raise @errors.InternalError(message="handler has no fixed exit")
@@ -2271,6 +2278,17 @@ fn verify_bytecode_exception_regions(
   for index, instruction in code {
     match instruction {
       LeaveHandler(exit) => {
+        // Scope identity is the region's enter instruction, not its depth.
+        // No completion may enter an inactive sibling or nested scope.
+        for (enter, _, target, end) in regions {
+          let phase = bytecode_region_phase(index, enter, target, end)
+          let next_phase = bytecode_region_phase(exit, enter, target, end)
+          guard next_phase == phase || next_phase == 0 else {
+            raise @errors.InternalError(
+              message="transfer enters a handler region",
+            )
+          }
+        }
         let mut valid = false
         let mut is_boundary = false
         for (enter, kind, target, end) in regions {
@@ -2296,11 +2314,6 @@ fn verify_bytecode_exception_regions(
           for (enter, _, target, end) in regions {
             let phase = bytecode_region_phase(index, enter, target, end)
             let next_phase = bytecode_region_phase(exit, enter, target, end)
-            guard next_phase == phase || next_phase == 0 else {
-              raise @errors.InternalError(
-                message="transfer enters a handler region",
-              )
-            }
             if phase != 0 && next_phase == 0 {
               valid = true
             }
