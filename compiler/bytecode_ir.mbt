@@ -375,6 +375,9 @@ priv struct BytecodeInstructionContract {
 priv enum BytecodeHandlerKind {
   CatchHandler(String?)
   FinallyHandler
+  // A scope has only a protected region (target == end). Its completion
+  // restores the parent environment without intercepting return or throw.
+  LexicalScope(Array[BytecodeLexicalBinding])
 }
 
 ///|

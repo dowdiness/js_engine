@@ -741,7 +741,7 @@ fn BytecodeFrame::run_instructions(
     let instr = code[frame.ip]
     frame.ip += 1
     match instr {
-      EnterHandler(kind, target, end) =>
+      EnterHandler(kind, target, end) => {
         frame.handlers.push(
           BytecodeHandler(
             kind,
@@ -756,6 +756,21 @@ fn BytecodeFrame::run_instructions(
             frame.optional_chain_short_circuited,
           ),
         )
+        match kind {
+          LexicalScope(bindings) => {
+            let scope = Environment::new(parent=Some(env))
+            for binding in bindings {
+              let kind = match binding.kind {
+                BytecodeLet => @runtime.LetBinding
+                BytecodeConst => @runtime.ConstBinding
+              }
+              scope.def_tdz(binding.name, kind)
+            }
+            frame.env = scope
+          }
+          _ => ()
+        }
+      }
       LeaveHandler(target) =>
         match
           frame.transfer_completion(

@@ -1,4 +1,5 @@
 ///|
+#warnings("-unused_value")
 priv enum BytecodeUnsupportedReason {
   AsyncArrowFunction
   AsyncFunctionDeclaration
@@ -6,7 +7,6 @@ priv enum BytecodeUnsupportedReason {
   AsyncGeneratorDeclaration
   AsyncGeneratorExpression
   BlockFunctionDeclaration
-  BlockLexicalDeclaration
   ClassConstructor
   ClassDeclaration
   ClassExpression
@@ -43,7 +43,7 @@ priv enum BytecodeUnsupportedReason {
   UpdateTarget
   WebCompatCallAssign
   WithStatement
-}
+} derive(Eq)
 
 ///|
 priv struct BytecodeUnsupported {
@@ -113,7 +113,6 @@ fn BytecodeUnsupportedReason::display_text(
     AsyncGeneratorDeclaration => "async generator declaration"
     AsyncGeneratorExpression => "async generator expression"
     BlockFunctionDeclaration => "block function declaration"
-    BlockLexicalDeclaration => "block lexical declaration"
     ClassConstructor => "class constructor"
     ClassDeclaration => "class declaration"
     ClassExpression => "class expression"
@@ -2493,10 +2492,6 @@ fn BytecodeBuilder::compile_stmt_body(
     }
     Block(stmts, _) => {
       bytecode_reject_if_present(
-        BlockLexicalDeclaration,
-        first_decl_in(stmts, stmt_is_lexical_decl),
-      )
-      bytecode_reject_if_present(
         BlockFunctionDeclaration,
         first_decl_in(stmts, stmt_is_function_decl),
       )
@@ -2504,9 +2499,42 @@ fn BytecodeBuilder::compile_stmt_body(
         DestructuringDeclarationContext,
         first_decl_in(stmts, stmt_is_destructure_decl),
       )
+      let bindings = prepare_lexical_bindings(stmts)
+      let shadowed = bindings.map(binding => {
+        let name = binding.name
+        (name, self.local_indices.get(name), self.env_slot_indices.get(name))
+      })
+      for (name, _, _) in shadowed {
+        self.local_indices.remove(name)
+        self.env_slot_indices.remove(name)
+      }
+      let scope_enter = if bindings.is_empty() {
+        None
+      } else {
+        Some(self.emit(EnterHandler(LexicalScope(bindings), -1, -1)))
+      }
       self.emit_undefined_completion()
       for child in stmts {
         self.compile_stmt(child, declaration_updates_completion=false)
+      }
+      match scope_enter {
+        Some(enter) => {
+          let exit = self.emit(LeaveHandler(-1))
+          let end = self.code.length()
+          self.patch(enter, EnterHandler(LexicalScope(bindings), end, end))
+          self.patch(exit, LeaveHandler(end))
+        }
+        None => ()
+      }
+      for (name, local_slot, captured) in shadowed {
+        match local_slot {
+          Some(slot) => self.local_indices[name] = slot
+          None => ()
+        }
+        match captured {
+          Some(slot) => self.env_slot_indices[name] = slot
+          None => ()
+        }
       }
     }
     IfStmt(cond, then_branch, else_branch, _) => {

@@ -3,56 +3,7 @@ fn bytecode_unsupported_reason_matches(
   actual : BytecodeUnsupportedReason,
   expected : BytecodeUnsupportedReason,
 ) -> Bool {
-  match expected {
-    AsyncArrowFunction => actual is AsyncArrowFunction
-    AsyncFunctionDeclaration => actual is AsyncFunctionDeclaration
-    AsyncFunctionExpression => actual is AsyncFunctionExpression
-    AsyncGeneratorDeclaration => actual is AsyncGeneratorDeclaration
-    AsyncGeneratorExpression => actual is AsyncGeneratorExpression
-    BlockFunctionDeclaration => actual is BlockFunctionDeclaration
-    BlockLexicalDeclaration => actual is BlockLexicalDeclaration
-    ClassConstructor => actual is ClassConstructor
-    ClassDeclaration => actual is ClassDeclaration
-    ClassExpression => actual is ClassExpression
-    CompoundAssignmentTarget => actual is CompoundAssignmentTarget
-    ControlFlowFunctionDeclaration => actual is ControlFlowFunctionDeclaration
-    DefaultParameter => actual is DefaultParameter
-    DeleteNonPropertyOperator => actual is DeleteNonPropertyOperator
-    DestructuringDeclarationContext => actual is DestructuringDeclarationContext
-    DestructuringDeclarationKind => actual is DestructuringDeclarationKind
-    DestructuringParameter => actual is DestructuringParameter
-    DestructuringPatternComputedKey => actual is DestructuringPatternComputedKey
-    DestructuringPatternDefault => actual is DestructuringPatternDefault
-    DestructuringPatternMemberTarget =>
-      actual is DestructuringPatternMemberTarget
-    ExportDeclaration => actual is ExportDeclaration
-    ForInAssignmentTarget => actual is ForInAssignmentTarget
-    ForInLexicalDeclaration => actual is ForInLexicalDeclaration
-    ForInVarDeclaration => actual is ForInVarDeclaration
-    ForLexicalInitializer => actual is ForLexicalInitializer
-    ForOfStatement => actual is ForOfStatement
-    GeneratorDeclaration => actual is GeneratorDeclaration
-    GeneratorExpression => actual is GeneratorExpression
-    ImportDeclaration => actual is ImportDeclaration
-    NamedFunctionExpression => actual is NamedFunctionExpression
-    ObjectLiteralAsyncGeneratorMethodProperty =>
-      actual is ObjectLiteralAsyncGeneratorMethodProperty
-    ObjectLiteralAsyncMethodProperty =>
-      actual is ObjectLiteralAsyncMethodProperty
-    ObjectLiteralDataPropertySuper => actual is ObjectLiteralDataPropertySuper
-    ObjectLiteralGeneratorMethodProperty =>
-      actual is ObjectLiteralGeneratorMethodProperty
-    ObjectLiteralProtoMethodProperty =>
-      actual is ObjectLiteralProtoMethodProperty
-    PrivateClassElement => actual is PrivateClassElement
-    SuperCall => actual is SuperCall
-    SuperAssignment => actual is SuperAssignment
-    SwitchLexicalDeclaration => actual is SwitchLexicalDeclaration
-    TryCatchStatement => actual is TryCatchStatement
-    UpdateTarget => actual is UpdateTarget
-    WebCompatCallAssign => actual is WebCompatCallAssign
-    WithStatement => actual is WithStatement
-  }
+  actual == expected
 }
 
 ///|
@@ -268,17 +219,6 @@ test "bytecode rejects var destructuring declaration defaults until pattern expr
     #|var [x = 1] = [undefined];
     #|x;
   assert_bytecode_unsupported(src, DestructuringPatternDefault)
-}
-
-///|
-test "bytecode rejects block lexical declarations until block envs are implemented" {
-  let src =
-    #|var x = 1;
-    #|{
-    #|  let x = 2;
-    #|}
-    #|x;
-  assert_bytecode_unsupported(src, BlockLexicalDeclaration)
 }
 
 ///|
