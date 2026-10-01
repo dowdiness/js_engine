@@ -585,13 +585,23 @@ test "hosted synchronous generator depth releases on yield and guest unwind" {
     42.0,
   )
   assert_eq(probe.state(), "available")
-  let delegated = HostedProbe(hosted_policy(100000L, 1L))
-  expect_hosted_depth_failure(() => {
+  for depth in [1L, 2L] {
+    let delegated = HostedProbe(hosted_policy(100000L, depth))
+    // Precreate both instances: only delegated body resumption can exceed depth.
     ignore(
       delegated.evaluate(
-        "(function* outer(){ yield* (function* inner(){ yield 42; })(); })().next()",
+        "var inner = (function*(){ yield 1; yield 42; })(); var outer = (function*(){ yield* inner; })();",
       ),
     )
-  })
-  assert_eq(delegated.state(), "faulted")
+    if depth == 1L {
+      expect_hosted_depth_failure(() => {
+        ignore(delegated.evaluate("outer.next()"))
+      })
+      assert_eq(delegated.state(), "faulted")
+    } else {
+      assert_eq(delegated.evaluate("outer.next().value").expect_number(), 1.0)
+      assert_eq(delegated.evaluate("outer.next().value").expect_number(), 42.0)
+      assert_eq(delegated.state(), "available")
+    }
+  }
 }
