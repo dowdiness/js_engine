@@ -1089,3 +1089,51 @@ test "R3 checkpoint control termination retains an earlier guest diagnostic" {
   assert_true(failed)
   assert_eq(probe.state(), "faulted")
 }
+
+///|
+test "R3 Faulted cleanup closes without reopening admission or dispatching jobs" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let retained = probe.number(7)
+  let jobs = Ref(0)
+  probe.register("mark", (_call, args) => {
+    jobs.val += 1
+    args[0]
+  })
+  probe.register("explode", (_call, _args) => fail("unexpected Host failure"))
+  let faulted = try {
+    ignore(probe.evaluate("queueMicrotask(() => mark(1)); explode()"))
+    false
+  } catch {
+    HostedProbeError::HostedHostFailure(_) => true
+    error => raise error
+  }
+  assert_true(faulted)
+  assert_eq(probe.state(), "faulted")
+  let denied = try {
+    ignore(probe.evaluate("42"))
+    false
+  } catch {
+    HostedProbeError::HostedSessionFaulted => true
+    error => raise error
+  }
+  assert_true(denied)
+  probe.close()
+  assert_eq(probe.state(), "closed")
+  let closed = try {
+    ignore(probe.evaluate("42"))
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    error => raise error
+  }
+  let expired = try {
+    ignore(retained.expect_number())
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    error => raise error
+  }
+  assert_true(closed)
+  assert_true(expired)
+  assert_eq(jobs.val, 0)
+}

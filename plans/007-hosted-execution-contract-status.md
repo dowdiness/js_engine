@@ -7,6 +7,7 @@
 - R2 implementation base: `985dd1b8c30f4de2585bbe3ad3d7d1315d70f5be`
 - R2 integration: [PR #1062](https://github.com/dowdiness/js_engine/pull/1062), main commit `e28dc678916daabfbe58adc5b056651251ced1cb`; independent Terra review and required CI passed before merge.
 - R3 implementation base: `e28dc678916daabfbe58adc5b056651251ced1cb`
+- R3 implementation commit: `f2c06f2b59b7e95f1ec69e485dfd2005c174e16a`
 - Branch: `fix/hosted-diagnostics-r3`
 - Worktree: `.worktrees/hosted-diagnostics-r3`
 - Status: **R1/R2 merged; R3 locally verified on all three targets; independent review and CI pending. R4/R5 remain.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
@@ -131,7 +132,7 @@ concrete public raising types described below.
 
 | ID | Implemented behavior | Executed evidence |
 |---|---|---|
-| M4 | Every fallible Hosted facade operation and constructor raises `HostedProbeError`; callback parameters still admit application errors at the classification seam. Close maps Busy/Closed/Faulted categories instead of exposing Session errors | Generated facade interface; BB `R3 Busy close uses the facade category without cancelling the active turn`; public executable smoke exercises evaluate/get/call/property-call errors and Busy/repeated close |
+| M4 | Every fallible Hosted facade operation and constructor raises `HostedProbeError`; callback parameters still admit application errors at the classification seam. Busy/Closed close errors are facade categories. Guest admission rejects Faulted; disposal preserves the existing Faulted→Closed transition without restoring execution | Generated facade interface; BB `R3 Busy close uses the facade category without cancelling the active turn` and `R3 Faulted cleanup closes without reopening admission or dispatching jobs`; public executable smokes exercise evaluate/get/call/property-call errors and lifecycle rejection |
 | M5 | Parse and guest outcomes retain immutable `EngineDiagnostic` data alongside actual guest values. Terminal/Host Failure outcomes retain the first cause and optional data-only secondary diagnostics; Host Failure retains the original application error without invoking its formatter | BB `R3` cases cover parser positions/snapshot independence, formatter/getter exclusion, thrown Proxy identity, earlier guest failure followed by checkpoint Host Failure/control termination. WB cases cover nested carrier preservation, trusted body/nested/checkpoint/checkpoint-nested origins, fresh throws of caught values, intentional Host throws, and immutable terminal snapshots |
 
 Source identity is retained when supplied by trusted function metadata. Bare script
@@ -382,18 +383,38 @@ R3 smoke passed
 
 The executable was removed. For each target, the focused command
 `moon test --target <target> hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt`
-passed **41/41**; `moon test --target <target>` passed:
+passed **42/42** after the disposal clarification; `moon test --target <target>` passed:
 
 | Target | Passed / Executed |
 |---|---:|
-| native | 4,548 / 4,548 |
-| js | 4,416 / 4,416 |
-| wasm-gc | 4,414 / 4,414 |
+| native | 4,549 / 4,549 |
+| js | 4,417 / 4,417 |
+| wasm-gc | 4,415 / 4,415 |
 
 `moon info`, `moon fmt`, `moon fmt --check`, and
 `moon check --target all --deny-warn` passed. Generated interface changes are
 confined to the intended Hosted error payloads and concrete raising types.
-Independent review and integration results remain pending.
+Independent provenance/terminal-retention review passed on the implementation
+commit. Category review requested rejecting Faulted `close`; the parent rejected
+that source change: the pre-existing disposal operation closes Faulted sessions,
+whereas the frozen contract rejects subsequent guest admission and permits no
+recovery. The M4 record above previously conflated these operations and is corrected.
+The original agreed appendix is unchanged.
+
+The added disposal regression passed on native/js/wasm-gc: guest admission is
+Faulted before close, disposal moves to Closed, later guest admission and retained
+value extraction are Closed, and no retained job dispatches. A temporary
+`cmd/hosted_r3_disposal_smoke` also ran with `moon run --target native`,
+`--target js`, and `--target wasm-gc`; each asserted and printed:
+
+```text
+Faulted admission rejected; disposal=Closed; later admission/value rejected; jobs=0
+R3 disposal smoke passed
+```
+
+The disposal executable was removed. No implementation behavior changed during
+this clarification. The final suites and all-target warning/interface/format checks
+passed with the counts above. Independent re-review and integration remain pending.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end
