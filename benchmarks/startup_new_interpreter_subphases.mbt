@@ -140,6 +140,7 @@ fn make_startup_interpreter_core() -> StartupInterpreterCore {
     in_nonarrow_param_default_eval: false,
     param_default_eval_var_conflicts: None,
     active_function_materializer: None,
+    hosted_execution_control: None,
   }
   global.interpreter_context = Some(interp)
   { interp, global, output, global_this, realm_state, }

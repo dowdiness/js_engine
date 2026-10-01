@@ -6,6 +6,10 @@ below unless dependencies say otherwise. Each executor must read the assigned
 plan fully before starting, honor every STOP condition, and update the plan's
 row when done.
 
+Plan 007 records the separately agreed Hosted execution contract. Its R1 worktree
+starts at freshly fetched `origin/main` (`a7f4121a`); required prototype code was
+migrated before the admission/lifetime fix. R2–R5 remain separate work.
+
 ## Execution order and status
 
 | Plan | Title | Priority | Effort | Depends on | Status | Verified |
@@ -16,6 +20,7 @@ row when done.
 | [004](004-enforce-architecture-audit-ci.md) | Enforce the full architecture audit in CI | P1 | S | 002 | DONE | `c050d09` (2026-07-26) |
 | [005](005-unify-command-tokenizer.md) | Unify native tooling command tokenization | P2 | S–M | — | DONE | `c050d09` (2026-07-26) |
 | [006](006-centralize-ast-containment-walks.md) | Centralize AST containment traversal mechanics | P2 | M–L | 001 | DONE | `c050d09` (2026-07-26) |
+| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | IN PROGRESS — R1 done | Working tree: R1 regressions and executable smoke pass on native/js/wasm-gc |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line reason) | `REJECTED` (with a one-line rationale).
 
@@ -40,7 +45,8 @@ reconciliation corrected.
 Current-HEAD spot checks passed: `moon check`; focused parser, JSON, tokenizer,
 AST traversal, and generator regressions; skip-metadata and active-doc policy
 validation; `actionlint -color`; `make architecture-audit`; and full `moon test`
-(2423/2423). There are no plans currently executable from this backlog.
+(2423/2423). At that reconciliation, no plan remained executable in the original
+001–006 backlog.
 
 ## Repository-wide execution gates
 

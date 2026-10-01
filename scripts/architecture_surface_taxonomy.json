@@ -690,6 +690,168 @@
       "symbol": "run_compiled",
       "category": "advanced_internal",
       "reason": "closure-conversion entry point; may be removed when closure legacy retires"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbeError",
+      "category": "experimental_public",
+      "reason": "experimental hosted execution contract probe error"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall",
+      "category": "experimental_public",
+      "reason": "experimental callback-frame capability probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall::get",
+      "category": "experimental_public",
+      "reason": "experimental callback-frame property access probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall::call",
+      "category": "experimental_public",
+      "reason": "experimental callback-frame call probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall::call_property",
+      "category": "experimental_public",
+      "reason": "experimental callback-frame method call probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall::record_effect",
+      "category": "experimental_public",
+      "reason": "experimental callback-frame effect probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall::throw_value",
+      "category": "experimental_public",
+      "reason": "experimental guest-throw identity probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedCall::terminate",
+      "category": "experimental_public",
+      "reason": "experimental terminal propagation probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe",
+      "category": "experimental_public",
+      "reason": "experimental stateful hosted execution probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::HostedProbe",
+      "category": "experimental_public",
+      "reason": "experimental hosted execution probe constructor"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::bool",
+      "category": "experimental_public",
+      "reason": "experimental hosted value constructor probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::close",
+      "category": "experimental_public",
+      "reason": "experimental hosted session lifecycle probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::effect_count",
+      "category": "experimental_public",
+      "reason": "experimental hosted effect observation probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::evaluate",
+      "category": "experimental_public",
+      "reason": "experimental hosted execution probe entry point"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::global",
+      "category": "experimental_public",
+      "reason": "experimental hosted global value probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::number",
+      "category": "experimental_public",
+      "reason": "experimental hosted value constructor probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::register",
+      "category": "experimental_public",
+      "reason": "experimental host callback registration probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::state",
+      "category": "experimental_public",
+      "reason": "experimental hosted session state probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::string",
+      "category": "experimental_public",
+      "reason": "experimental hosted value constructor probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedProbe::terminal_cause",
+      "category": "experimental_public",
+      "reason": "experimental terminal cause observation probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue",
+      "category": "experimental_public",
+      "reason": "experimental retained hosted value handle"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue::call",
+      "category": "experimental_public",
+      "reason": "experimental retained value call probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue::call_property",
+      "category": "experimental_public",
+      "reason": "experimental retained value method call probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue::expect_bool",
+      "category": "experimental_public",
+      "reason": "experimental retained value inspection probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue::expect_number",
+      "category": "experimental_public",
+      "reason": "experimental retained value inspection probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue::expect_string",
+      "category": "experimental_public",
+      "reason": "experimental retained value inspection probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "HostedValue::get",
+      "category": "experimental_public",
+      "reason": "experimental retained value property probe"
     }
   ]
 }

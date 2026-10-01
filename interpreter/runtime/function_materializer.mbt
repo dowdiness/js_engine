@@ -229,6 +229,28 @@ pub fn[T] Interpreter::run_materialized_function(
   materializer : FunctionMaterializer?,
   thunk : () -> T raise Error,
 ) -> T raise Error {
+  // Executor activations own their observation separately and do not enter
+  // this tree-function shell. Keep its activation live across Host reentry.
+  let observe_hosted = self.hosted_execution_control is Some(_)
+  if observe_hosted {
+    self.observe_execution_activation()
+  }
+  errdefer (if observe_hosted { self.release_execution_activation() })
+  let result = self.run_materializer_lifecycle(materializer, thunk)
+  if observe_hosted {
+    self.release_execution_activation()
+  }
+  result
+}
+
+///|
+// Roots and functions share materializer lifecycle hooks, but only function
+// activations consume Hosted call depth.
+fn[T] Interpreter::run_materializer_lifecycle(
+  self : Interpreter,
+  materializer : FunctionMaterializer?,
+  thunk : () -> T raise Error,
+) -> T raise Error {
   let active = materializer.map(capability => (capability.begin)())
   let hooks : FunctionExecutionHooks? = match active {
     Some(capability) => capability.hooks
@@ -290,7 +312,7 @@ pub fn Interpreter::run_with_function_materializer(
 ) -> Value raise Error {
   let strict = @static_semantics.has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None, }
-  self.run_materialized_function(Some(materializer), fn() raise {
+  self.run_materializer_lifecycle(Some(materializer), fn() raise {
     with_cleared_active_callee_realm(self.realm_state, () => {
       self.prepare_root_program_execution(stmts, self.global, strict)
       let mut last : Value = Undefined
