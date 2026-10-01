@@ -6,9 +6,10 @@ below unless dependencies say otherwise. Each executor must read the assigned
 plan fully before starting, honor every STOP condition, and update the plan's
 row when done.
 
-Plan 007 records the separately agreed Hosted execution contract. Its R1 worktree
-starts at freshly fetched `origin/main` (`a7f4121a`); required prototype code was
-migrated before the admission/lifetime fix. R2–R5 remain separate work.
+Plan 007 records the separately agreed Hosted execution contract. R1 and its
+required prototype migration merged in [PR #1060](https://github.com/dowdiness/js_engine/pull/1060)
+after independent review and required CI. R2 is locally verified in its own
+worktree; R3–R5 follow as isolated, sequentially gated units.
 
 ## Execution order and status
 
@@ -20,7 +21,7 @@ migrated before the admission/lifetime fix. R2–R5 remain separate work.
 | [004](004-enforce-architecture-audit-ci.md) | Enforce the full architecture audit in CI | P1 | S | 002 | DONE | `c050d09` (2026-07-26) |
 | [005](005-unify-command-tokenizer.md) | Unify native tooling command tokenization | P2 | S–M | — | DONE | `c050d09` (2026-07-26) |
 | [006](006-centralize-ast-containment-walks.md) | Centralize AST containment traversal mechanics | P2 | M–L | 001 | DONE | `c050d09` (2026-07-26) |
-| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | IN PROGRESS — R1 done | Working tree: R1 regressions and executable smoke pass on native/js/wasm-gc |
+| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | IN PROGRESS — R1 merged; R2 locally verified | R1: `985dd1b8`; R2 working tree: 30 Hosted tests per target and executable smoke pass on native/js/wasm-gc; R2 review/CI pending |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line reason) | `REJECTED` (with a one-line rationale).
 

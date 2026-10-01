@@ -605,3 +605,242 @@ test "hosted synchronous generator depth releases on yield and guest unwind" {
     }
   }
 }
+
+///|
+test "R2 public guest operations checkpoint normal and guest throw outcomes" {
+  for entry in ["get", "call", "property"] {
+    for throws in [false, true] {
+      let probe = HostedProbe(hosted_policy(100000L, 64L))
+      let events : Array[String] = []
+      probe.register("mark", (call, args) => {
+        assert_eq(probe.state(), "running")
+        call.record_effect()
+        events.push(args[0].expect_string())
+        args[0]
+      })
+      let finish = if throws {
+        "throw 7;"
+      } else if entry == "property" {
+        "return this.base;"
+      } else {
+        "return 42;"
+      }
+      let body = "mark('body'); queueMicrotask(() => { mark('job-1'); queueMicrotask(() => mark('job-3')); }); queueMicrotask(() => mark('job-2')); " +
+        finish
+      let source = match entry {
+        "get" => "({ get x() { " + body + " } })"
+        "call" => "(function() { " + body + " })"
+        _ => "({ base: 42, method() { " + body + " } })"
+      }
+      let target = probe.evaluate(source)
+      let outcome = try {
+        let result = match entry {
+          "get" => target.get("x")
+          "call" => target.call([])
+          _ => target.call_property("method", [])
+        }
+        assert_eq(result.expect_number(), 42.0)
+        "normal"
+      } catch {
+        HostedProbeError::HostedGuestThrow(value) => {
+          assert_eq(value.expect_number(), 7.0)
+          "guest"
+        }
+        error => raise error
+      }
+      assert_eq(outcome, if throws { "guest" } else { "normal" })
+      json_inspect(events, content=["body", "job-1", "job-2", "job-3"])
+      assert_eq(probe.effect_count(), 4)
+      assert_eq(probe.state(), "available")
+    }
+  }
+}
+
+///|
+test "R2 public completion preserves throws and retains unselected jobs" {
+  for entry in ["get", "call", "property"] {
+    for body_throws in [false, true] {
+      let probe = HostedProbe(hosted_policy(100000L, 64L))
+      let events : Array[String] = []
+      probe.register("mark", (_call, args) => {
+        events.push(args[0].expect_string())
+        args[0]
+      })
+      let finish = if body_throws { "throw 7;" } else { "return 1;" }
+      let body = "mark('body'); queueMicrotask(() => { mark('failing'); throw 42; }); queueMicrotask(() => mark('retained')); " +
+        finish
+      let source = match entry {
+        "get" => "({ get x() { " + body + " } })"
+        "call" => "(function() { " + body + " })"
+        _ => "({ method() { " + body + " } })"
+      }
+      let target = probe.evaluate(source)
+      let outcome = try {
+        ignore(
+          match entry {
+            "get" => target.get("x")
+            "call" => target.call([])
+            _ => target.call_property("method", [])
+          },
+        )
+        "accepted"
+      } catch {
+        HostedProbeError::HostedGuestThrow(value) => {
+          assert_eq(value.expect_number(), 42.0)
+          "checkpoint"
+        }
+        HostedProbeError::HostedGuestThrowWithSecondary(primary~, secondary~) => {
+          assert_eq(primary.expect_number(), 7.0)
+          assert_eq(secondary.expect_number(), 42.0)
+          "both"
+        }
+        error => raise error
+      }
+      assert_eq(outcome, if body_throws { "both" } else { "checkpoint" })
+      json_inspect(events, content=["body", "failing"])
+      assert_eq(probe.state(), "available")
+      assert_eq(probe.evaluate("1").expect_number(), 1.0)
+      json_inspect(events, content=["body", "failing", "retained"])
+    }
+  }
+}
+
+///|
+test "R2 nested returns never recursively checkpoint including checkpoint Host calls" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let events : Array[String] = []
+  probe.register("mark", (_call, args) => {
+    events.push(args[0].expect_string())
+    args[0]
+  })
+  probe.register("invoke", (call, args) => {
+    let value = call.call(args[0], [])
+    json_inspect(events, content=["nested"])
+    events.push("host-return")
+    value
+  })
+  probe.register("checkpointInvoke", (call, args) => {
+    let value = call.call(args[0], [])
+    json_inspect(events, content=[
+      "nested", "host-return", "outer", "job", "checkpoint-nested",
+    ])
+    call.record_effect()
+    events.push("checkpoint-return")
+    value
+  })
+  let outer = probe.evaluate(
+    "(function(callback) { invoke(callback); mark('outer'); return 42; })",
+  )
+  let callback = probe.evaluate(
+    "(function() { mark('nested'); queueMicrotask(() => { mark('job'); checkpointInvoke(() => { mark('checkpoint-nested'); queueMicrotask(() => mark('new-job')); }); }); return 7; })",
+  )
+  assert_eq(outer.call([callback]).expect_number(), 42.0)
+  json_inspect(events, content=[
+    "nested", "host-return", "outer", "job", "checkpoint-nested", "checkpoint-return",
+    "new-job",
+  ])
+  assert_eq(probe.effect_count(), 1)
+  assert_eq(probe.state(), "available")
+}
+
+///|
+test "R2 retained jobs wait through pure inspection parse failure and rejection" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let events : Array[String] = []
+  probe.register("mark", (_call, args) => {
+    events.push(args[0].expect_string())
+    args[0]
+  })
+  let target = probe.evaluate(
+    "({ get x() { mark('getter'); return 42; }, method(x) { mark('callee'); return x; } })",
+  )
+  let value = probe.number(7)
+  let queued_failure = try {
+    ignore(
+      probe.evaluate(
+        "queueMicrotask(() => { throw 1; }); queueMicrotask(() => mark('retained'));",
+      ),
+    )
+    false
+  } catch {
+    HostedProbeError::HostedGuestThrow(thrown) => {
+      assert_eq(thrown.expect_number(), 1.0)
+      true
+    }
+    error => raise error
+  }
+  assert_true(queued_failure)
+  assert_eq(value.expect_number(), 7.0)
+  ignore(probe.global("Math"))
+  let parse_failed = try {
+    ignore(probe.evaluate("var ="))
+    false
+  } catch {
+    HostedProbeError::HostedParse(_) => true
+    error => raise error
+  }
+  assert_true(parse_failed)
+  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let foreign = donor.number(1)
+  let rejected = try {
+    ignore(target.call_property("method", [foreign]))
+    false
+  } catch {
+    HostedProbeError::HostedForeignValue => true
+    error => raise error
+  }
+  assert_true(rejected)
+  json_inspect(events, content=[])
+  assert_eq(probe.state(), "available")
+  assert_eq(target.get("x").expect_number(), 42.0)
+  json_inspect(events, content=["getter", "retained"])
+}
+
+///|
+test "R2 terminal body skips checkpoint and terminal checkpoint overrides guest throw" {
+  for phase in ["body", "checkpoint"] {
+    for body_throws in [false, true] {
+      let interruption = @runtime.InterruptionHandle()
+      let policy = @runtime.ExecutionPolicy::new(100000L, 64L, interruption).unwrap()
+      let probe = HostedProbe(policy)
+      let events : Array[String] = []
+      probe.register("mark", (_call, args) => {
+        events.push(args[0].expect_string())
+        args[0]
+      })
+      probe.register("stop", (_call, args) => {
+        interruption.request()
+        args[0]
+      })
+      let finish = if body_throws { "throw 7;" } else { "return 42;" }
+      let body = if phase == "body" {
+        "mark('body'); queueMicrotask(() => mark('queued')); stop(1); mark('unreachable'); " +
+        finish
+      } else {
+        "mark('body'); queueMicrotask(() => { mark('checkpoint'); stop(1); mark('unreachable'); }); queueMicrotask(() => mark('queued')); " +
+        finish
+      }
+      let target = probe.evaluate("(function() { " + body + " })")
+      let terminated = try {
+        ignore(target.call([]))
+        false
+      } catch {
+        HostedProbeError::HostedTerminal(cause) => {
+          assert_eq(
+            @runtime.execution_control_failure_code(cause),
+            Some("interrupted"),
+          )
+          true
+        }
+        error => raise error
+      }
+      assert_true(terminated)
+      if phase == "body" {
+        json_inspect(events, content=["body"])
+      } else {
+        json_inspect(events, content=["body", "checkpoint"])
+      }
+      assert_eq(probe.state(), "faulted")
+    }
+  }
+}
