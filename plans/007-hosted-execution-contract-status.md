@@ -97,8 +97,11 @@ Independent Terra review of prerequisite commit `c45e7fb7` found synchronous
 generator calls and resumes missing Hosted depth observation. Before correction,
 `(function*(){ yield 1 })().next()` succeeded at depth 0 on all three targets.
 The synchronous parameter-initialization and body-resume boundaries now acquire
-and release depth, including yield, delegation, and exceptional unwind. Async
-activation ownership and legacy non-Hosted execution are unchanged.
+and release depth, including yield, delegation, and exceptional unwind. This
+generator correction skips async instances; the prerequisite's existing initial
+async-call activation wrapper is unchanged by it. The initial guest invocation
+still consumes depth, including at limit 0. Async suspension/resumption guarantees
+remain out of scope. Legacy non-Hosted execution is unchanged.
 
 Two generator regressions failed before the correction and pass afterward.
 Executable smoke on native, js, and wasm-gc confirmed depth-0 termination,
