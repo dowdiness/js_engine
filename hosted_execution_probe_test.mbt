@@ -35,7 +35,7 @@ test "hosted terminal remains terminal after host catches it" {
   }
   match result {
     Some(HostedProbeError::HostedTerminal(_)) => ()
-    Some(error) => fail("expected HostedTerminal, got " + error.to_string())
+    Some(_) => fail("expected HostedTerminal")
     None => fail("interruption was swallowed")
   }
   assert_eq(probe.state(), "faulted")
@@ -54,7 +54,7 @@ test "hosted nested JavaScript shares finite execution budget" {
   }
   match result {
     Some(HostedProbeError::HostedTerminal(_)) => ()
-    Some(error) => fail("expected nested terminal, got " + error.to_string())
+    Some(_) => fail("expected nested terminal")
     None => fail("nested recursive execution returned")
   }
   assert_eq(probe.state(), "faulted")
@@ -86,7 +86,7 @@ test "ancestor host call is rejected before nested getter" {
   }
   match result {
     Some(HostedProbeError::HostedHostFailure(_)) => ()
-    Some(error) => fail("expected HostFailure, got " + error.to_string())
+    Some(_) => fail("expected HostFailure")
     None => fail("ancestor token unexpectedly authorized getter")
   }
   assert_eq(probe.effect_count(), 0)
@@ -107,11 +107,20 @@ test "body guest throw remains primary over checkpoint guest throw" {
     error => Some(error)
   }
   match result {
-    Some(HostedProbeError::HostedGuestThrowWithSecondary(primary~, secondary~)) => {
+    Some(
+      HostedProbeError::HostedGuestThrowWithSecondary(
+        primary~,
+        secondary~,
+        primary_diagnostic~,
+        secondary_diagnostic~
+      )
+    ) => {
+      assert_eq(primary_diagnostic.phase_code(), "body")
+      assert_eq(secondary_diagnostic.phase_code(), "checkpoint")
       assert_eq(primary.get("kind").expect_string(), "body")
       assert_eq(secondary.get("kind").expect_string(), "job")
     }
-    Some(error) => fail("expected dual guest throw, got " + error.to_string())
+    Some(_) => fail("expected dual guest throw")
     None => fail("guest throw unexpectedly returned")
   }
   assert_eq(probe.state(), "available")
@@ -142,8 +151,7 @@ test "host callback authority restores and expires" {
   }
   match expired {
     Some(HostedProbeError::HostedExpiredHostCall) => ()
-    Some(error) =>
-      fail("expected expired callback authority, got " + error.to_string())
+    Some(_) => fail("expected expired callback authority")
     None => fail("callback authority survived callback return")
   }
   probe.register("busy", (_call, args) => {
@@ -155,8 +163,7 @@ test "host callback authority restores and expires" {
     }
     match nested {
       Some(HostedProbeError::HostedSessionBusy) => args[0]
-      Some(error) =>
-        fail("expected busy entry rejection, got " + error.to_string())
+      Some(_) => fail("expected busy entry rejection")
       None => fail("public entry reentered while callback was running")
     }
   })
@@ -175,7 +182,7 @@ test "hosted configured depth terminates nested calls independently of steps" {
     )
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause) => {
+    HostedProbeError::HostedTerminal(cause, _, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("stack-depth-limit"),
@@ -202,7 +209,7 @@ fn expect_hosted_depth_failure(action : () -> Unit raise Error) -> Unit raise {
     action()
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause) => {
+    HostedProbeError::HostedTerminal(cause, _, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("stack-depth-limit"),
@@ -249,7 +256,11 @@ test "hosted guest throw releases depth and restores parent authority" {
       ignore(call.call(args[0], []))
       false
     } catch {
-      @runtime.JsException(@runtime.Number(7.0)) => true
+      HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+        assert_eq(value.expect_number(), 7.0)
+        assert_eq(diagnostic.phase_code(), "nested")
+        true
+      }
       error => raise error
     }
     assert_true(caught)
@@ -285,28 +296,28 @@ test "host caught depth termination stays primary and blocks further effects" {
       ignore(call.call(args[0], []))
       false
     } catch {
-      error => {
-        let cause = @runtime.hosted_execution_failure_cause(error).unwrap()
+      HostedProbeError::HostedTerminal(cause, _, _) => {
         assert_eq(
           @runtime.execution_control_failure_code(cause),
           Some("stack-depth-limit"),
         )
         true
       }
+      error => raise error
     }
     assert_true(caught)
     let blocked = try {
       call.record_effect()
       false
     } catch {
-      error => {
-        let cause = @runtime.hosted_execution_failure_cause(error).unwrap()
+      HostedProbeError::HostedTerminal(cause, _, _) => {
         assert_eq(
           @runtime.execution_control_failure_code(cause),
           Some("stack-depth-limit"),
         )
         true
       }
+      error => raise error
     }
     assert_true(blocked)
     args[0]
@@ -642,7 +653,8 @@ test "R2 public guest operations checkpoint normal and guest throw outcomes" {
         assert_eq(result.expect_number(), 42.0)
         "normal"
       } catch {
-        HostedProbeError::HostedGuestThrow(value) => {
+        HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+          assert_eq(diagnostic.phase_code(), "body")
           assert_eq(value.expect_number(), 7.0)
           "guest"
         }
@@ -685,11 +697,19 @@ test "R2 public completion preserves throws and retains unselected jobs" {
         )
         "accepted"
       } catch {
-        HostedProbeError::HostedGuestThrow(value) => {
+        HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+          assert_eq(diagnostic.phase_code(), "checkpoint")
           assert_eq(value.expect_number(), 42.0)
           "checkpoint"
         }
-        HostedProbeError::HostedGuestThrowWithSecondary(primary~, secondary~) => {
+        HostedProbeError::HostedGuestThrowWithSecondary(
+          primary~,
+          secondary~,
+          primary_diagnostic~,
+          secondary_diagnostic~
+        ) => {
+          assert_eq(primary_diagnostic.phase_code(), "body")
+          assert_eq(secondary_diagnostic.phase_code(), "checkpoint")
           assert_eq(primary.expect_number(), 7.0)
           assert_eq(secondary.expect_number(), 42.0)
           "both"
@@ -763,7 +783,7 @@ test "R2 retained jobs wait through pure inspection parse failure and rejection"
     )
     false
   } catch {
-    HostedProbeError::HostedGuestThrow(thrown) => {
+    HostedProbeError::HostedGuestThrow(thrown, _) => {
       assert_eq(thrown.expect_number(), 1.0)
       true
     }
@@ -825,7 +845,7 @@ test "R2 terminal body skips checkpoint and terminal checkpoint overrides guest 
         ignore(target.call([]))
         false
       } catch {
-        HostedProbeError::HostedTerminal(cause) => {
+        HostedProbeError::HostedTerminal(cause, _, _) => {
           assert_eq(
             @runtime.execution_control_failure_code(cause),
             Some("interrupted"),
@@ -843,4 +863,337 @@ test "R2 terminal body skips checkpoint and terminal checkpoint overrides guest 
       assert_eq(probe.state(), "faulted")
     }
   }
+}
+
+///|
+test "R3 Busy close uses the facade category without cancelling the active turn" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let busy = Ref(false)
+  probe.register("closeBusy", (_call, args) => {
+    busy.val = try {
+      probe.close()
+      false
+    } catch {
+      HostedProbeError::HostedSessionBusy => true
+      _ => false
+    }
+    assert_eq(probe.state(), "running")
+    args[0]
+  })
+  assert_eq(probe.evaluate("closeBusy(40) + 2").expect_number(), 42.0)
+  assert_true(busy.val, msg="Session Busy escaped the Hosted facade category")
+  assert_eq(probe.state(), "available")
+  probe.close()
+  let closed = try {
+    probe.close()
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    _ => false
+  }
+  assert_true(closed)
+  assert_eq(probe.state(), "closed")
+}
+
+///|
+test "R3 parse diagnostics retain source positions independently of later failures" {
+  let probe = HostedProbe(hosted_policy(0L, 0L))
+  let first = try {
+    ignore(probe.evaluate("\nvar ="))
+    fail("expected parse failure")
+  } catch {
+    HostedProbeError::HostedParse(diagnostic) => diagnostic
+    error => raise error
+  }
+  assert_eq(first.failure_kind_code(), "parse-error")
+  assert_eq(first.operation_code(), "evaluate")
+  assert_eq(first.phase_code(), "parse")
+  assert_true(first.engine_integrity() is @js_engine.EngineIntegrity::Reusable)
+  assert_true(first.retained_effects() is @js_engine.RetainedEffects::None)
+  guard first.source_location() is Some(location) else {
+    fail("expected parser source location")
+  }
+  assert_eq(location.start().line(), 2)
+  assert_eq(location.start().column(), 5)
+  assert_eq(location.start().offset(), 5)
+  let second = try {
+    ignore(probe.evaluate("\n\nvar ="))
+    fail("expected second parse failure")
+  } catch {
+    HostedProbeError::HostedParse(diagnostic) => diagnostic
+    error => raise error
+  }
+  guard second.source_location() is Some(later) else {
+    fail("expected second parser source location")
+  }
+  assert_eq(later.start().line(), 3)
+  assert_eq(later.start().offset(), 6)
+  assert_eq(location.start().line(), 2)
+  assert_eq(location.start().offset(), 5)
+  assert_eq(probe.state(), "available")
+}
+
+///|
+priv suberror HostedFormattingProbeError {
+  HostedFormattingProbeError(() -> Unit)
+}
+
+///|
+impl Show for HostedFormattingProbeError with fn output(self, logger) {
+  let HostedFormattingProbeError(render) = self
+  render()
+  logger.write_string("Host diagnostic formatting probe")
+}
+
+///|
+test "R3 Host diagnostic capture never invokes a formatter that executes guest getters" {
+  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let getters = Ref(0)
+  donor.register("getterRan", (_call, args) => {
+    getters.val += 1
+    args[0]
+  })
+  let object = donor.evaluate(
+    "({ get x() { getterRan(1); return 'rendered'; } })",
+  )
+  let formatted = Ref(0)
+  let original : Error = HostedFormattingProbeError(() => {
+    formatted.val += 1
+    ignore(object.get("x")) catch {
+      _ => ()
+    }
+  })
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  probe.register("explode", (_call, _args) => raise original)
+  let failed = try {
+    ignore(probe.evaluate("explode()"))
+    false
+  } catch {
+    HostedProbeError::HostedHostFailure(cause, diagnostic, _) => {
+      assert_true(physical_equal(cause, original))
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Discard,
+      )
+      true
+    }
+    error => raise error
+  }
+  assert_true(failed)
+  assert_eq(formatted.val, 0)
+  assert_eq(getters.val, 0)
+  assert_eq(probe.state(), "faulted")
+  assert_eq(donor.state(), "available")
+}
+
+///|
+test "R3 guest diagnostic capture does not read thrown Proxy properties" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let thrown = try {
+    ignore(
+      probe.evaluate(
+        "var reads = 0; var token = new Proxy({}, { get: function() { reads++; throw 99; } }); throw token",
+      ),
+    )
+    None
+  } catch {
+    HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+      assert_eq(diagnostic.phase_code(), "body")
+      assert_eq(diagnostic.failure_kind_code(), "javascript-exception")
+      Some(value)
+    }
+    error => raise error
+  }
+  let token = thrown.unwrap()
+  probe.register("throwSame", (call, _args) => {
+    call.throw_value(token)
+    token
+  })
+  assert_true(
+    probe
+    .evaluate(
+      "var same = false; try { throwSame(); } catch (e) { same = e === token; } same",
+    )
+    .expect_bool(),
+  )
+  assert_eq(probe.evaluate("reads").expect_number(), 0.0)
+  assert_eq(probe.state(), "available")
+}
+
+///|
+test "R3 checkpoint Host failure retains earlier guest failure as safe secondary data" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let formatted = Ref(0)
+  let original : Error = HostedFormattingProbeError(() => formatted.val += 1)
+  probe.register("failHost", (_call, _args) => raise original)
+  let failed = try {
+    ignore(
+      probe.evaluate(
+        "queueMicrotask(() => failHost()); throw { get toString() { throw 99; } }",
+      ),
+    )
+    false
+  } catch {
+    HostedProbeError::HostedHostFailure(cause, diagnostic, secondary) => {
+      assert_true(physical_equal(cause, original))
+      assert_eq(diagnostic.phase_code(), "checkpoint")
+      assert_eq(diagnostic.operation_code(), "evaluate")
+      match secondary {
+        Some([prior]) => {
+          assert_eq(prior.failure_kind_code(), "javascript-exception")
+          assert_eq(prior.phase_code(), "body")
+          assert_eq(prior.operation_code(), "evaluate")
+        }
+        _ =>
+          fail("expected only the earlier guest failure as safe secondary data")
+      }
+      true
+    }
+    error => raise error
+  }
+  assert_true(failed)
+  assert_eq(formatted.val, 0)
+  assert_eq(probe.state(), "faulted")
+}
+
+///|
+test "R3 checkpoint control termination retains an earlier guest diagnostic" {
+  let probe = HostedProbe(hosted_policy(32L, 64L))
+  let failed = try {
+    ignore(
+      probe.evaluate(
+        "queueMicrotask(() => { while (true) {} }); throw { get toString() { throw 99; } }",
+      ),
+    )
+    false
+  } catch {
+    HostedProbeError::HostedTerminal(cause, diagnostic, secondary) => {
+      assert_eq(
+        @runtime.execution_control_failure_code(cause),
+        Some("execution-limit"),
+      )
+      assert_eq(diagnostic.phase_code(), "checkpoint")
+      match secondary {
+        Some([prior]) => {
+          assert_eq(prior.failure_kind_code(), "javascript-exception")
+          assert_eq(prior.phase_code(), "body")
+        }
+        _ =>
+          fail(
+            "expected the earlier guest diagnostic after control termination",
+          )
+      }
+      true
+    }
+    error => raise error
+  }
+  assert_true(failed)
+  assert_eq(probe.state(), "faulted")
+}
+
+///|
+test "R3 Faulted cleanup closes without reopening admission or dispatching jobs" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let retained = probe.number(7)
+  let jobs = Ref(0)
+  probe.register("mark", (_call, args) => {
+    jobs.val += 1
+    args[0]
+  })
+  probe.register("explode", (_call, _args) => fail("unexpected Host failure"))
+  let faulted = try {
+    ignore(probe.evaluate("queueMicrotask(() => mark(1)); explode()"))
+    false
+  } catch {
+    HostedProbeError::HostedHostFailure(_) => true
+    error => raise error
+  }
+  assert_true(faulted)
+  assert_eq(probe.state(), "faulted")
+  let denied = try {
+    ignore(probe.evaluate("42"))
+    false
+  } catch {
+    HostedProbeError::HostedSessionFaulted => true
+    error => raise error
+  }
+  assert_true(denied)
+  probe.close()
+  assert_eq(probe.state(), "closed")
+  let closed = try {
+    ignore(probe.evaluate("42"))
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    error => raise error
+  }
+  let expired = try {
+    ignore(retained.expect_number())
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    error => raise error
+  }
+  assert_true(closed)
+  assert_true(expired)
+  assert_eq(jobs.val, 0)
+}
+
+///|
+test "R3 malformed source cannot bypass unavailable admission" {
+  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let jobs = Ref(0)
+  probe.register("mark", (_call, args) => {
+    jobs.val += 1
+    args[0]
+  })
+  probe.register("rejectMalformed", (_call, args) => {
+    let busy = try {
+      ignore(probe.evaluate("var ="))
+      false
+    } catch {
+      HostedProbeError::HostedSessionBusy => true
+      error => raise error
+    }
+    assert_true(busy)
+    assert_eq(probe.state(), "running")
+    assert_eq(jobs.val, 0)
+    args[0]
+  })
+  assert_eq(
+    probe
+    .evaluate("queueMicrotask(() => mark(1)); rejectMalformed(7)")
+    .expect_number(),
+    7.0,
+  )
+  assert_eq(jobs.val, 1)
+  assert_eq(probe.state(), "available")
+  probe.close()
+  let closed = try {
+    ignore(probe.evaluate("var ="))
+    false
+  } catch {
+    HostedProbeError::HostedSessionClosed => true
+    error => raise error
+  }
+  assert_true(closed)
+  assert_eq(probe.state(), "closed")
+  let faulted = HostedProbe(hosted_policy(100000L, 64L))
+  faulted.register("explode", (_call, _args) => fail("unmapped Host failure"))
+  let host_failure = try {
+    ignore(faulted.evaluate("explode()"))
+    false
+  } catch {
+    HostedProbeError::HostedHostFailure(_) => true
+    error => raise error
+  }
+  assert_true(host_failure)
+  let denied = try {
+    ignore(faulted.evaluate("var ="))
+    false
+  } catch {
+    HostedProbeError::HostedSessionFaulted => true
+    error => raise error
+  }
+  assert_true(denied)
+  assert_eq(faulted.state(), "faulted")
 }

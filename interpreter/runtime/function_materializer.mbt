@@ -329,6 +329,7 @@ pub fn Interpreter::run_with_function_materializer(
       last
     })
   }) catch {
+    JsException(_) as exception => raise exception
     error =>
       if is_js_catchable_error(error) {
         let translated = JsException(

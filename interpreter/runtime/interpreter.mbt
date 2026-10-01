@@ -813,6 +813,7 @@ pub fn Interpreter::run(
       }
       result
     } catch {
+      JsException(_) as exception => raise exception
       e =>
         if is_js_catchable_error(e) {
           let translated = JsException(

@@ -183,6 +183,8 @@ pub fn Interpreter::run_prepared_compiled_script(
     })
     result
   } catch {
+    // Preserve the existing carrier and its nested diagnostic association.
+    JsException(_) as exception => raise exception
     e =>
       if is_js_catchable_error(e) {
         let translated = JsException(
