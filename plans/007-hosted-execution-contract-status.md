@@ -28,7 +28,7 @@ the shared terminal carrier and policy hooks, direct activation depth observatio
 and the benchmark's interpreter initializer. Latest-main executor changes are preserved.
 Generated interfaces and explicit experimental-public surface classifications accompany
 the import. R1 admission/lifetime changes add five BB tests. The review follow-up
-also corrects prerequisite runtime depth accounting and adds one BB regression.
+also corrects prerequisite runtime depth accounting and adds three BB regressions.
 
 The older `ProbeRuntime` / `ProbeValue`, `embedding_research.mbt`, experimental CLIs,
 and recorded research output were **not** imported. They remain available in the prototype
@@ -75,7 +75,7 @@ different execution paths.
 
 Before the fix, the property-call trace contained an extra `getter` before `rejected`,
 and all six Closed/Faulted primitive extractions returned `accepted`. After the fix,
-all five R1 tests, the depth regression, and the 17 imported regressions pass on native, js, and wasm-gc.
+all five R1 tests, three runtime-depth regressions, and the 17 imported regressions pass on native, js, and wasm-gc.
 This resolves M2/M3 and the exercised portions of V5/V6/V7, not those groups in full.
 
 ### Review corrections
@@ -92,6 +92,19 @@ hooks without entering the function-depth wrapper. Both forms succeed at depth 1
 terminate with `stack-depth-limit` at depth 0. Merely creating a named function at
 the script root succeeds at depth 0; calling it does not. Existing Host-reentry,
 sibling-call, and guest-throw depth regressions remain passing.
+
+Independent Terra review of prerequisite commit `c45e7fb7` found synchronous
+generator calls and resumes missing Hosted depth observation. Before correction,
+`(function*(){ yield 1 })().next()` succeeded at depth 0 on all three targets.
+The synchronous parameter-initialization and body-resume boundaries now acquire
+and release depth, including yield, delegation, and exceptional unwind. Async
+activation ownership and legacy non-Hosted execution are unchanged.
+
+Two generator regressions failed before the correction and pass afterward.
+Executable smoke on native, js, and wasm-gc confirmed depth-0 termination,
+depth-1 sibling completion after yield/guest throw, nested resume termination at
+depth 1, and generator → Host → guest reentry success at depth 2. Temporary
+generator executables were removed.
 
 ## Not Implemented
 
@@ -217,9 +230,9 @@ moon test --target js hosted_execution_probe_test.mbt hosted_execution_probe_wbt
 moon test --target wasm-gc hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt
 ```
 
-Each target passed BB **16/16** and WB **7/7**, **23 tests per target**. The imported
+Each target passed BB **18/18** and WB **7/7**, **25 tests per target**. The imported
 17-test baseline passed before the original four R1 regressions were added. Those
-regressions reproduced M2/M3; the two review regressions also failed before their
+regressions reproduced M2/M3; all four review regressions also failed before their
 respective fixes and now pass.
 
 For the initial R1 implementation, a temporary `cmd/hosted_r1_smoke` executable was run with `moon run --target native`,
@@ -245,15 +258,16 @@ IIFEs, and named-function IIFEs all returned 42 at depth 1 and 2, and all termin
 with `stack-depth-limit` at depth 0. A materialized script root that only creates a
 named function remained Available at depth 0. The executable was removed after verification.
 
-Full project suites passed after both review fixes:
+Full project suites passed after all four review regressions and the generator correction:
 
 | Target | Passed / Executed |
 |---|---:|
-| native | 4,530 / 4,530 |
-| js | 4,398 / 4,398 |
-| wasm-gc | 4,396 / 4,396 |
+| native | 4,532 / 4,532 |
+| js | 4,400 / 4,400 |
+| wasm-gc | 4,398 / 4,398 |
 
-`moon info`, `moon fmt`, and `moon check --deny-warn` passed after the review fixes.
+`moon info`, `moon fmt`, `moon fmt --check`, and `moon check --target all --deny-warn`
+passed after the review fixes.
 Regeneration left the facade and runtime `.mbti` files unchanged, verified by SHA-256.
 
 For the initial R1 implementation, all `architecture-audit` component checks passed:

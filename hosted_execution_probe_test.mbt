@@ -548,3 +548,50 @@ test "hosted evaluate counts function depth without counting script roots" {
   expect_hosted_depth_failure(() => ignore(function.call([])))
   assert_eq(root_only.state(), "faulted")
 }
+
+///|
+test "hosted synchronous generators consume depth on call and resume" {
+  for
+    source in ["(function*(){ yield 1 })()", "(function*(x = 1){ yield x })()"] {
+    let limited = HostedProbe(hosted_policy(100000L, 0L))
+    expect_hosted_depth_failure(() => ignore(limited.evaluate(source)))
+    assert_eq(limited.state(), "faulted")
+  }
+  let limited = HostedProbe(hosted_policy(100000L, 1L))
+  ignore(limited.evaluate("var g = (function*(){ yield 42 })();"))
+  expect_hosted_depth_failure(() => {
+    ignore(limited.evaluate("(function outer(){ return g.next(); })()"))
+  })
+  assert_eq(limited.state(), "faulted")
+}
+
+///|
+test "hosted synchronous generator depth releases on yield and guest unwind" {
+  let probe = HostedProbe(hosted_policy(100000L, 1L))
+  assert_eq(
+    probe
+    .evaluate(
+      "var g = (function*(){ yield 1; yield 42; })(); g.next(); g.next().value",
+    )
+    .expect_number(),
+    42.0,
+  )
+  assert_eq(
+    probe
+    .evaluate(
+      "var h = (function*(){ yield 1; throw 7; })(); h.next(); try { h.next(); } catch(e) {} (function*(){ return 42; })().next().value",
+    )
+    .expect_number(),
+    42.0,
+  )
+  assert_eq(probe.state(), "available")
+  let delegated = HostedProbe(hosted_policy(100000L, 1L))
+  expect_hosted_depth_failure(() => {
+    ignore(
+      delegated.evaluate(
+        "(function* outer(){ yield* (function* inner(){ yield 42; })(); })().next()",
+      ),
+    )
+  })
+  assert_eq(delegated.state(), "faulted")
+}

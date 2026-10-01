@@ -781,6 +781,13 @@ fn create_generator_instance(
   callee? : Value = Undefined,
   is_async? : Bool = false,
 ) -> Value raise Error {
+  // Sync parameter initialization is an active guest function call. Async
+  // families have separate activation ownership and remain outside this path.
+  let observe_hosted = !is_async && interp.hosted_execution_control is Some(_)
+  if observe_hosted {
+    interp.observe_execution_activation()
+  }
+  errdefer (if observe_hosted { interp.release_execution_activation() })
   // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
   // NOT when .next() is called. This means parameter binding errors throw immediately.
   // Use the stored strict flag instead of re-scanning the body.
@@ -1086,6 +1093,9 @@ fn create_generator_instance(
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   interp.param_default_eval_var_conflicts = saved_param_default_conflicts
+  if observe_hosted {
+    interp.release_execution_activation()
+  }
   gen_result
 }
 
@@ -1119,7 +1129,18 @@ fn generator_resume(
         message="Method next/throw/return called on incompatible receiver",
       )
   }
-  match gen.state {
+  // A suspended sync generator reacquires depth only while guest execution
+  // runs; yield, completion, and exceptional unwind all release it.
+  let resumes_body = gen.state is SuspendedYield ||
+    (gen.state is SuspendedStart && resume_kind is Next(_))
+  let observe_hosted = !gen.is_async &&
+    resumes_body &&
+    interp.hosted_execution_control is Some(_)
+  if observe_hosted {
+    interp.observe_execution_activation()
+  }
+  errdefer (if observe_hosted { interp.release_execution_activation() })
+  let result = match gen.state {
     Executing => raise @errors.TypeError(message="Generator is already running")
     Completed =>
       match resume_kind {
@@ -1174,6 +1195,10 @@ fn generator_resume(
         }
       }
   }
+  if observe_hosted {
+    interp.release_execution_activation()
+  }
+  result
 }
 
 ///|
