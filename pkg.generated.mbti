@@ -11,6 +11,12 @@ pub fn has_pending_microtasks(@runtime.Interpreter) -> Bool
 
 pub fn has_pending_timers(@runtime.Interpreter) -> Bool
 
+pub fn research_function1(HostedValue) -> (Double) -> Double raise HostedProbeError
+
+pub fn research_host1((Double) -> Double raise) -> (HostedCall, Array[HostedValue]) -> HostedValue raise
+
+pub fn research_host2((Double, Double) -> Double raise) -> (HostedCall, Array[HostedValue]) -> HostedValue raise
+
 pub fn run(String, annex_b? : Bool) -> (Array[String], String) raise
 
 pub fn run_compiled(String, annex_b? : Bool) -> (Array[String], String) raise

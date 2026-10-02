@@ -1185,10 +1185,10 @@ pub fn HostedProbe::string(
 }
 
 ///|
-pub fn HostedCall::throw_value(
+fn HostedCall::guest_failure(
   self : HostedCall,
   value : HostedValue,
-) -> Unit raise HostedProbeError {
+) -> HostedProbeError raise HostedProbeError {
   self.frame.owner.begin_nested(self.frame)
   self.frame.owner.require_owner(value)
   let owner = self.frame.owner
@@ -1196,7 +1196,7 @@ pub fn HostedCall::throw_value(
     @runtime.String_(text) => text
     _ => "JavaScript exception"
   }
-  raise HostedGuestThrow(
+  HostedGuestThrow(
     value,
     owner.runtime_diagnostic(
       "javascript-exception",
@@ -1206,6 +1206,14 @@ pub fn HostedCall::throw_value(
       phase=owner.nested_failure_phase(),
     ),
   )
+}
+
+///|
+pub fn HostedCall::throw_value(
+  self : HostedCall,
+  value : HostedValue,
+) -> Unit raise HostedProbeError {
+  raise self.guest_failure(value)
 }
 
 ///|
