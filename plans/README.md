@@ -10,7 +10,7 @@ Plan 007 records the separately agreed Hosted execution contract. R1 and its
 required prototype migration merged in [PR #1060](https://github.com/dowdiness/js_engine/pull/1060)
 after independent review and required CI. R2 merged in
 [PR #1062](https://github.com/dowdiness/js_engine/pull/1062) after the same gates.
-R3 merged in [PR #1063](https://github.com/dowdiness/js_engine/pull/1063) after the same gates. R4 is locally verified; R5 follows its isolated, sequentially gated integration.
+R3 merged in [PR #1063](https://github.com/dowdiness/js_engine/pull/1063) and R4 in [PR #1064](https://github.com/dowdiness/js_engine/pull/1064), after the same gates. R5 verifies V1–V7 locally on all three targets; its independent review and CI/integration remain pending.
 
 ## Execution order and status
 
@@ -22,7 +22,7 @@ R3 merged in [PR #1063](https://github.com/dowdiness/js_engine/pull/1063) after 
 | [004](004-enforce-architecture-audit-ci.md) | Enforce the full architecture audit in CI | P1 | S | 002 | DONE | `c050d09` (2026-07-26) |
 | [005](005-unify-command-tokenizer.md) | Unify native tooling command tokenization | P2 | S–M | — | DONE | `c050d09` (2026-07-26) |
 | [006](006-centralize-ast-containment-walks.md) | Centralize AST containment traversal mechanics | P2 | M–L | 001 | DONE | `c050d09` (2026-07-26) |
-| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | IN PROGRESS — R1–R3 merged; R4 locally verified | R1: `985dd1b8`; R2: `e28dc678`; R3: `770d9990`; R4: 50 Hosted/adapter tests per target, full suites and public adapter executable smoke pass on native/js/wasm-gc; boundary/taxonomy audit passes; R4 review/CI pending |
+| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | IN PROGRESS — R1–R4 merged; R5 contract evidence locally verified | R1: `985dd1b8`; R2: `e28dc678`; R3: `770d9990`; R4: `9276cf05`; R5 regressions: `5551bf76`; exact accounting, Promise termination, exceptional authority/realm restoration, Busy/owner/interruption/policy/native-progress cases and actual public smoke pass on native/js/wasm-gc; R5 review/CI pending |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line reason) | `REJECTED` (with a one-line rationale).
 
