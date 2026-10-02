@@ -15,6 +15,7 @@
 - R4 integration: [PR #1064](https://github.com/dowdiness/js_engine/pull/1064), main commit `9276cf056cc2a0f59504153a12c982040f06f563`; both Terra reviews and required CI passed before merge.
 - R5 assessment base: `9276cf056cc2a0f59504153a12c982040f06f563`
 - R5 regression implementation: `5551bf76c125300f0a817c7961f708c4653aed3e`
+- R5 V5/§3 strengthened parent-realm/source oracle: `aff1b08f5755cf09a556abd4828157f34ac5cfc4`
 - Branch: `fix/hosted-verification-r5`
 - Worktree: `.worktrees/hosted-verification-r5`
 - Status: **M1–M6 implementation and V1–V7 local acceptance complete on native/js/wasm-gc; R1–R4 merged.** The final independent review, required CI, and R5 merge record is [PR #1065](https://github.com/dowdiness/js_engine/pull/1065). Local acceptance does not itself assert integration. The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit.
@@ -190,6 +191,11 @@ conditions rather than adding duplicate cases.
 | V6 | Busy close is non-cancelling; Closed/Faulted guest admission rejects. Interruption is observed at admission, Host return, reentry, checkpoint, and commit before further effects/success. Invalid portable policy limits cannot construct an admissible policy. Unobserved native progress reports a noncatchable typed terminal, with catch/finally/jobs suppressed | R1/R3 `985dd1b8`/`770d9990`; R5 `5551bf76` boundary oracles. H: R3 close/disposal/malformed-admission cases, `R5 interruption gates admission Host return and reentry`, `R5 interruption at commit cannot publish a successful outcome`, `R5 public policy validation rejects invalid portable limits`, `R5 unobserved native progress is a noncatchable terminal`; E: interruption boundaries and actual `JSON.parse` guard fault before further effects |
 | V7 | Pending jobs survive parse failure, pure extraction/direct inspection, and handled admission/conversion rejection without drain or unnecessary fault. Strict extraction and selected adapter conversion do not execute getters/valueOf/toString/Proxy traps; typed argument mismatch is catchable and the turn remains Available | R1/R2/R4 `985dd1b8`/`e28dc678`/`9276cf05`. H: R1 lifecycle/strict-conversion cases, `R2 retained jobs wait through pure inspection parse failure and rejection`, seven R4 adapter cases; all three targets pass unchanged |
 
+V5's realm/source restoration oracle was strengthened in `aff1b08f`: H compares
+all eleven slots against a distinct, known parent realm and requires trusted
+source identity `parent-hosted.js` before nested entry. Both restore after all
+twelve get/call/property × normal/guest/Host/terminal combinations.
+
 H, C, and E are the exact all-target commands below. These are project
 regressions and executable observations, not Test262 conformance figures.
 
@@ -220,7 +226,7 @@ identify the integrated implementation; `5551bf76` adds the missing R5 oracles.
 |---|---|---|
 | §1: one session/turn/realm; body+nested+checkpoint; no rollback | `985dd1b8`, `e28dc678`; oracle `5551bf76` | H+C, E: single carrier across phases; body effects retained when checkpoint fails; twelve overlapping admissions reject; outer continuation and job order preserved |
 | §2: distinguishable failures, explicit mapping, strict adapters, safe diagnostics | `770d9990`, `9276cf05` | H, E: actual guest tokens/TypeErrors, original Host causes, typed terminal/admission/parse categories, no coercion or formatter-triggered guest execution |
-| §3: current-frame synchronous authority, owners, receiver/callee realm, expiry, Busy close | `985dd1b8`, `770d9990`, `9276cf05`; oracle `5551bf76` | H, E: ancestor/foreign/expired authority rejects before effects; parent resumes; receiver and eleven realm slots restore on every exit; saved closures and close reject Running without cancelling |
+| §3: current-frame synchronous authority, owners, receiver/callee realm, expiry, Busy close | `985dd1b8`, `770d9990`, `9276cf05`; oracles `5551bf76`, `aff1b08f` | H, E: ancestor/foreign/expired authority rejects before effects; parent resumes; receiver and eleven known parent realm slots plus nonempty trusted source identity restore on every exit; saved closures and close reject Running without cancelling |
 | §4: shared steps/depth, cooperative interruption, sticky first terminal | `985dd1b8`, `770d9990`; oracle `5551bf76` | H+C, E: exact 10→6→0 accounting without refund/replacement; depth releases 2→1→0; interruption→depth→steps at competing observation points; admission/reentry/Host-return/job/commit gates block later effects |
 | §5: one eligible FIFO checkpoint; no retry; retained jobs; ordinary Promise rejection | `e28dc678`; oracle `5551bf76` | H, E: FIFO/new jobs, failing-job removal, retained-job later resumption, non-drain exclusions, valid checkpoint HostCall, bounded self-extending Promise chain, non-escaping ordinary rejection |
 | §6: terminal wins; safe secondaries; body guest primary; settle before return | `e28dc678`, `770d9990`; oracle `5551bf76` | H, E: all normal/guest body/checkpoint combinations; Host/control terminal outcomes override success/prior guest failure, preserve safe prior diagnostics, and suppress later guest/jobs |
@@ -274,7 +280,9 @@ migration. Terra review findings were resolved/adjudicated, and required CI pass
 
 ### R2 — Public Turn Completion and Checkpoint
 
-Status: **Implemented and verified locally; independent review and PR CI pending.**
+Status: **MERGED** in [PR #1062](https://github.com/dowdiness/js_engine/pull/1062),
+main commit `e28dc678916daabfbe58adc5b056651251ced1cb`; both Terra reviews and
+required CI passed before merge.
 
 - Covers: M1, V1, and the checkpoint portions of V4/V7.
 - Primary files: `hosted_execution_probe.mbt` and its BB/WB tests.
@@ -568,6 +576,14 @@ lazy prototype lookup, and primitive property access deliberately clears callee
 overrides; those were not valid oracles for this existing call-realm boundary.
 They were replaced by the realm-stamped function observation, not by production
 changes or a new cross-realm language-conformance guarantee.
+
+Attempt 2 authority review identified that the source-restoration comparison
+did not establish a nonempty parent source identity. Its separate claim that
+the parent realm was empty was incorrect: the registered Host callback was
+already realm-stamped. The correction makes both preconditions explicit using
+a third realm and trusted parent source metadata. The nonempty-source assertion
+failed before fixture stamping; the complete strengthened oracle passed on
+native/js/wasm-gc afterward. No production behavior or public interface changed.
 
 All three E runs asserted and printed:
 
