@@ -56,13 +56,11 @@ execution, and existing unsupported instruction admission remain separate work.
 No performance improvement is claimed.
 
 The local Test262 regression subset uses revision `2b2ecead6e82` and selects
-156 files directly under `language/statements/for`, `let/syntax`, and
+files directly under `language/statements/for`, `let/syntax`, and
 `const/syntax`. The baseline is main at `a7f4121a9042759019d17467f8412515942cca81`;
 both engines use release JS builds and the native authoritative runner. Every
 per-file outcome is unchanged. This subset checks the current public execution
 path; the route assertions above separately establish the new bytecode coverage.
 
-| Mode | Passed / Executed, before and after | Passed / Discovered, before and after | Skipped | Existing failures | New regressions |
-| --- | --- | --- | --- | --- | --- |
-| strict | 136 / 143 | 136 / 147 | 4 | 7 | 0 |
-| non-strict | 143 / 151 | 143 / 151 | 0 | 8 | 0 |
+This local comparison is a regression check, not a conformance report.
+Authoritative conformance figures come from the Test262 CI artifacts.

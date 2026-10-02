@@ -23,63 +23,204 @@ test "bytecode lexical for headers preserve initialization and completion semant
   for
     (name, body, expected) in [
       (
-        "initializer condition body and update closures", "var initial,body=[],test=[],step=[]; for(let i=0,get=()=>i; (test.push(()=>i),i<3); (step.push(()=>i),i++)) { initial=get; body.push(()=>i); } return [initial(),body.map(f=>f()),step.map(f=>f()),test.map(f=>f())];",
+        "initializer condition body and update closures",
+        (
+          #|var initial, body = [], test = [], step = [];
+          #|for (let i = 0, get = () => i;
+          #|     (test.push(() => i), i < 3);
+          #|     (step.push(() => i), i++)) {
+          #|  initial = get;
+          #|  body.push(() => i);
+          #|}
+          #|return [initial(), body.map(f => f()), step.map(f => f()), test.map(f => f())];
+        ),
         "[0,[0,1,2],[1,2,3],[0,1,2,3]]",
       ),
       (
-        "body writes stay in the captured iteration", "var saved=[]; for(let i=0;i<4;i++) { saved.push(()=>i); i++; } return saved.map(f=>f());",
+        "body writes stay in the captured iteration",
+        (
+          #|var saved = [];
+          #|for (let i = 0; i < 4; i++) {
+          #|  saved.push(() => i);
+          #|  i++;
+          #|}
+          #|return saved.map(f => f());
+        ),
         "[1,3]",
       ),
       (
-        "multiple ordered bindings", "var saved=[]; for(let i=0,j=i+10;i<3;i++,j=j+10) saved.push(()=>[i,j]); return saved.map(f=>f());",
+        "multiple ordered bindings",
+        (
+          #|var saved = [];
+          #|for (let i = 0, j = i + 10; i < 3; i++, j = j + 10)
+          #|  saved.push(() => [i, j]);
+          #|return saved.map(f => f());
+        ),
         "[[0,10],[1,20],[2,30]]",
       ),
       (
-        "const stays immutable", "var more=true,saved,seen=[]; for(const i=1;more;more=false) { saved=()=>i; seen.push(i); try { i=2; } catch(e) { seen.push(e.name); } } seen.push(saved()); return seen;",
+        "const stays immutable",
+        (
+          #|var more = true, saved, seen = [];
+          #|for (const i = 1; more; more = false) {
+          #|  saved = () => i;
+          #|  seen.push(i);
+          #|  try {
+          #|    i = 2;
+          #|  } catch (e) {
+          #|    seen.push(e.name);
+          #|  }
+          #|}
+          #|seen.push(saved());
+          #|return seen;
+        ),
         "[1,\"TypeError\",1]",
       ),
       (
-        "initializer TDZ restores outer binding", "let i=7; var seen; try { for(let i=i;;) {} } catch(e) { seen=e.name; } return [i,seen];",
+        "initializer TDZ restores outer binding",
+        (
+          #|let i = 7;
+          #|var seen;
+          #|try {
+          #|  for (let i = i;;) {}
+          #|} catch (e) {
+          #|  seen = e.name;
+          #|}
+          #|return [i, seen];
+        ),
         "[7,\"ReferenceError\"]",
       ),
       (
-        "zero iterations restore shadowed activation binding", "let i=7; var seen; for(let i=(seen=2);false;) {} return [i,seen];",
+        "zero iterations restore shadowed activation binding",
+        (
+          #|let i = 7;
+          #|var seen;
+          #|for (let i = (seen = 2); false;) {}
+          #|return [i, seen];
+        ),
         "[7,2]",
       ),
       (
-        "finally replaces break with continue", "let i=7; var saved=[]; outer: for(let i=0;i<3;i++) { try { break outer; } finally { saved.push(()=>i); continue outer; } } return [i,saved.map(f=>f())];",
+        "finally replaces break with continue",
+        (
+          #|let i = 7;
+          #|var saved = [];
+          #|outer: for (let i = 0; i < 3; i++) {
+          #|  try {
+          #|    break outer;
+          #|  } finally {
+          #|    saved.push(() => i);
+          #|    continue outer;
+          #|  }
+          #|}
+          #|return [i, saved.map(f => f())];
+        ),
         "[7,[0,1,2]]",
       ),
       (
-        "finally replaces return with break", "let i=7; var saved; outer: for(let i=2;;i++) { try { return 9; } finally { saved=()=>i; break outer; } } return [i,saved()];",
+        "finally replaces return with break",
+        (
+          #|let i = 7;
+          #|var saved;
+          #|outer: for (let i = 2;; i++) {
+          #|  try {
+          #|    return 9;
+          #|  } finally {
+          #|    saved = () => i;
+          #|    break outer;
+          #|  }
+          #|}
+          #|return [i, saved()];
+        ),
         "[7,2]",
       ),
       (
-        "nested labeled continue unwinds inner scope", "let i=7; var saved=[]; outer: for(let i=0;i<2;i++) { for(let j=0;j<2;j++) { saved.push(()=>[i,j]); continue outer; } } return [i,saved.map(f=>f())];",
+        "nested labeled continue unwinds inner scope",
+        (
+          #|let i = 7;
+          #|var saved = [];
+          #|outer: for (let i = 0; i < 2; i++) {
+          #|  for (let j = 0; j < 2; j++) {
+          #|    saved.push(() => [i, j]);
+          #|    continue outer;
+          #|  }
+          #|}
+          #|return [i, saved.map(f => f())];
+        ),
         "[7,[[0,0],[1,0]]]",
       ),
       (
-        "condition throw restores outer binding", "let i=7; var seen; var boom=()=>{throw 4;}; try { for(let i=0;boom();i++) {} } catch(e) { seen=e; } return [i,seen];",
+        "condition throw restores outer binding",
+        (
+          #|let i = 7;
+          #|var seen;
+          #|var boom = () => { throw 4; };
+          #|try {
+          #|  for (let i = 0; boom(); i++) {}
+          #|} catch (e) {
+          #|  seen = e;
+          #|}
+          #|return [i, seen];
+        ),
         "[7,4]",
       ),
       (
-        "update throw preserves escaped closure", "let i=7; var saved,seen; var boom=()=>{throw 4;}; try { for(let i=0;i<1;boom()) { saved=()=>i; } } catch(e) { seen=e; } return [i,seen,saved()];",
+        "update throw preserves escaped closure",
+        (
+          #|let i = 7;
+          #|var saved, seen;
+          #|var boom = () => { throw 4; };
+          #|try {
+          #|  for (let i = 0; i < 1; boom()) {
+          #|    saved = () => i;
+          #|  }
+          #|} catch (e) {
+          #|  seen = e;
+          #|}
+          #|return [i, seen, saved()];
+        ),
         "[7,4,0]",
       ),
       (
-        "missing condition and update still creates cells", "var saved=[]; for(let i=0;;) { saved.push(()=>i); i++; if(i===3) break; } return saved.map(f=>f());",
+        "missing condition and update still creates cells",
+        (
+          #|var saved = [];
+          #|for (let i = 0;;) {
+          #|  saved.push(() => i);
+          #|  i++;
+          #|  if (i === 3) break;
+          #|}
+          #|return saved.map(f => f());
+        ),
         "[1,2,3]",
       ),
       (
-        "body lexical shadowing", "var saved=[]; for(let i=0;i<2;i++) { let i=9; saved.push(()=>i); } return saved.map(f=>f());",
+        "body lexical shadowing",
+        (
+          #|var saved = [];
+          #|for (let i = 0; i < 2; i++) {
+          #|  let i = 9;
+          #|  saved.push(() => i);
+          #|}
+          #|return saved.map(f => f());
+        ),
         "[9,9]",
       ),
       (
-        "captured activation slots are restored", "var read=()=>outer,saved=[]; for(let outer=0;outer<2;outer++) saved.push(()=>outer); return [outer,read(),saved.map(f=>f())];",
+        "captured activation slots are restored",
+        (
+          #|var read = () => outer, saved = [];
+          #|for (let outer = 0; outer < 2; outer++) saved.push(() => outer);
+          #|return [outer, read(), saved.map(f => f())];
+        ),
         "[7,7,[0,1]]",
       ),
       (
-        "parameters are restored after loop", "for(let outer=0;outer<2;outer++) {} return outer;",
+        "parameters are restored after loop",
+        (
+          #|for (let outer = 0; outer < 2; outer++) {}
+          #|return outer;
+        ),
         "7",
       ),
     ] {
