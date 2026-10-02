@@ -22,7 +22,7 @@ R3 merged in [PR #1063](https://github.com/dowdiness/js_engine/pull/1063) and R4
 | [004](004-enforce-architecture-audit-ci.md) | Enforce the full architecture audit in CI | P1 | S | 002 | DONE | `c050d09` (2026-07-26) |
 | [005](005-unify-command-tokenizer.md) | Unify native tooling command tokenization | P2 | S–M | — | DONE | `c050d09` (2026-07-26) |
 | [006](006-centralize-ast-containment-walks.md) | Centralize AST containment traversal mechanics | P2 | M–L | 001 | DONE | `c050d09` (2026-07-26) |
-| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | DONE — implementation and local contract acceptance; final integration record: [PR #1065](https://github.com/dowdiness/js_engine/pull/1065) | R1: `985dd1b8`; R2: `e28dc678`; R3: `770d9990`; R4: `9276cf05`; R5 regressions: `5551bf76`; 123 focused tests per target; full native4570/js4438/wasm-gc4436; actual public smoke and warning/interface/format checks passed; review/CI/merge evidence in PR #1065 |
+| [007](007-hosted-execution-contract-status.md) | Complete the Hosted execution contract | P1 | — | R1 → R2/R3 → R4 → R5 | DONE — implementation and local contract acceptance; final integration record: [PR #1065](https://github.com/dowdiness/js_engine/pull/1065) | R1: `985dd1b8`; R2: `e28dc678`; R3: `770d9990`; R4: `9276cf05`; R5 regressions: `041e0608`; V5 realm/source oracle: `608e9ec5`; 123 focused tests per target; full native4573/js4441/wasm-gc4439; actual public smoke and warning/interface/format checks passed; review/CI/merge evidence in PR #1065 |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line reason) | `REJECTED` (with a one-line rationale).
 
