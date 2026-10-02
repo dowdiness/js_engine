@@ -48,6 +48,32 @@ fn destructuring_mark_used_key(
 }
 
 ///|
+/// Acquire the synchronous iterator record shared by binding and assignment
+/// patterns. GetIterator checks the method with the runtime callability
+/// predicate, calls it with the original iterable receiver, then resolves
+/// `next` exactly once without checking its callability yet.
+fn Interpreter::get_destructuring_iterator(
+  self : Interpreter,
+  value : Value,
+  loc : @token.Loc,
+) -> (Value, Value) raise Error {
+  let iterator_sym = self.realm_state.well_known_symbols.iterator
+  let iterator_method = self.get_computed_property(
+    value,
+    Symbol(iterator_sym),
+    loc,
+  )
+  if !is_callable(iterator_method) {
+    raise @errors.TypeError(
+      message=value.to_string() + " is not iterable (cannot destructure)",
+    )
+  }
+  let iterator = self.call_value(iterator_method, value, [], loc)
+  let next_method = self.get_iterator_next_method(iterator, loc)
+  (iterator, next_method)
+}
+
+///|
 /// Copy the own enumerable properties that are not excluded by an object
 /// binding or assignment pattern. The source and exclusion sets are read-only;
 /// the returned object is assembled privately until every observable read has
@@ -158,31 +184,11 @@ fn Interpreter::bind_pattern(
           }
         _ => ()
       }
-      let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
-      let iterator_method_dstr = self.get_computed_property(
-        value,
-        Symbol(iterator_sym_dstr),
-        loc_dstr,
-      )
-      let iterator : Value = match iterator_method_dstr {
-        Object(data) =>
-          match data.callable {
-            Some(_) =>
-              self.call_value(iterator_method_dstr, value, [], loc_dstr)
-            None =>
-              raise @errors.TypeError(
-                message=value.to_string() +
-                  " is not iterable (cannot destructure)",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message=value.to_string() + " is not iterable (cannot destructure)",
-          )
-      }
       // Per spec §7.4.1 GetIterator: next method lookup is part of iterator record
       // construction; its getter is observable even for empty patterns.
-      let next_method = self.get_iterator_next_method(iterator, loc_dstr)
+      let (iterator, next_method) = self.get_destructuring_iterator(
+        value, loc_dstr,
+      )
       // Per spec: ArrayBindingPattern : [ ] still requires GetIterator + IteratorClose
       if elements.length() == 0 && rest is None {
         self.iterator_close(iterator, loc_dstr)
@@ -378,31 +384,11 @@ fn Interpreter::assign_pattern(
           }
         _ => ()
       }
-      let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
-      let iterator_method_dstr = self.get_computed_property(
-        value,
-        Symbol(iterator_sym_dstr),
-        loc_dstr,
-      )
-      let iterator_a : Value = match iterator_method_dstr {
-        Object(data) =>
-          match data.callable {
-            Some(_) =>
-              self.call_value(iterator_method_dstr, value, [], loc_dstr)
-            None =>
-              raise @errors.TypeError(
-                message=value.to_string() +
-                  " is not iterable (cannot destructure)",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message=value.to_string() + " is not iterable (cannot destructure)",
-          )
-      }
       // Per spec §7.4.1 GetIterator: next method lookup is part of iterator record
       // construction; its getter is observable even for empty patterns.
-      let next_method_a = self.get_iterator_next_method(iterator_a, loc_dstr)
+      let (iterator_a, next_method_a) = self.get_destructuring_iterator(
+        value, loc_dstr,
+      )
       // Per spec: ArrayAssignmentPattern : [ ] still requires GetIterator + IteratorClose
       if elements.length() == 0 && rest is None {
         self.iterator_close(iterator_a, loc_dstr)
