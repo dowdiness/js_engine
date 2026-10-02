@@ -45,6 +45,23 @@ test "R5 nested receiver and callee realms restore on every unwind" {
       let donor = host_failure_probe()
       let realm = probe.session.engine.interp.realm_state
       let donor_realm = donor.session.engine.interp.realm_state
+      let parent = host_failure_probe()
+      let parent_realm = parent.session.engine.interp.realm_state
+      let expected_parent = @runtime.FunctionRealmProtos(
+        function_proto=parent_realm.function_prototype.val,
+        object_proto=parent_realm.object_prototype.val,
+        string_proto=parent_realm.string_prototype.val,
+        number_proto=parent_realm.number_prototype.val,
+        boolean_proto=parent_realm.boolean_prototype.val,
+        symbol_proto=parent_realm.symbol_prototype.val,
+        array_proto=parent_realm.array_prototype.val,
+        map_proto=parent_realm.map_prototype.val,
+        set_proto=parent_realm.set_prototype.val,
+        promise_proto=parent_realm.promise_prototype.val,
+        constructor_prototype_registry=Some(
+          parent_realm.constructor_prototype_registry,
+        ),
+      )
       let target = probe.evaluate(
         "var realmTarget = { get x() { return realmExit(function() {}); }, method() { if (this !== realmTarget) throw 'wrong receiver'; return realmExit(function() {}); } }; realmTarget",
       )
@@ -83,6 +100,9 @@ test "R5 nested receiver and callee realms restore on every unwind" {
       probe.register("invokeRealm", (call, _args) => {
         let before = realm.active_overrides.val
         let before_source = realm.active_source_identity.val
+        assert_true(before is Some(_))
+        assert_eq(before_source, Some("parent-hosted.js"))
+        assert_hosted_realm_restored(Some(expected_parent), before)
         let result : Result[HostedValue, Error] = Ok(
           match entry {
             "get" => call.get(target, "x")
@@ -100,6 +120,15 @@ test "R5 nested receiver and callee realms restore on every unwind" {
           Ok(value) => value
           Err(error) => raise error
         }
+      })
+      let invocation = probe.global("invokeRealm")
+      @runtime.with_source_identity(parent_realm, Some("parent-hosted.js"), () => {
+        ignore(
+          @runtime.stamp_function_realm(
+            invocation.value,
+            realm_state=Some(parent_realm),
+          ),
+        )
       })
       let observed = try {
         ignore(probe.evaluate("invokeRealm()"))
