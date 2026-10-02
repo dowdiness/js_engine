@@ -852,6 +852,24 @@
       "symbol": "HostedValue::get",
       "category": "experimental_public",
       "reason": "experimental retained value property probe"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "research_host1",
+      "category": "experimental_public",
+      "reason": "selected strict Double unary Hosted callback adapter"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "research_host2",
+      "category": "experimental_public",
+      "reason": "selected strict Double binary Hosted callback adapter"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "research_function1",
+      "category": "experimental_public",
+      "reason": "selected strict Double unary retained Hosted function adapter"
     }
   ]
 }

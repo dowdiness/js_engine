@@ -7,6 +7,45 @@ stable root facade described in [EMBEDDING.md](EMBEDDING.md).
 Code is the source of truth. If this document and the API disagree, trust the
 code and open a docs fix.
 
+## Experimental Hosted numeric adapters
+
+The root package exposes `research_host1`, `research_host2`, and
+`research_function1` for the experimental `HostedProbe` path. They support
+strict `Double` conversion only: unary/binary Host callbacks and a unary
+retained JS function. These are not stable facade APIs.
+
+```moonbit
+// dowdiness/js_engine → @js_engine
+// dowdiness/js_engine/interpreter/runtime → @runtime
+fn hosted_numbers() -> Double raise {
+  let policy = match @runtime.ExecutionPolicy::new(
+    100000L, 64L, @runtime.InterruptionHandle(),
+  ) {
+    Ok(policy) => policy
+    Err(error) => fail(error.message())
+  }
+  let probe = @js_engine.HostedProbe(policy)
+  probe.register("double", @js_engine.research_host1(n => n * 2))
+  probe.register("sum", @js_engine.research_host2((a, b) => a + b))
+  ignore(probe.evaluate("double(21) + sum(20, 22)"))
+  let saved = @js_engine.research_function1(probe.evaluate("(n) => n + 1"))
+  saved(41) // 42
+}
+```
+
+Missing/non-number Host arguments throw an actual, JS-catchable TypeError
+before entering the user's MoonBit function. Conversion does not invoke
+`valueOf`, `toString`, getters, or Proxy traps; extra arguments are ignored.
+Guest rebinding of `TypeError` does not replace the mapped error's intrinsic
+prototype. User-function errors are **not** automatically mapped: an unmapped
+error remains a Host Failure and faults the probe.
+
+`research_function1` retains the original function and owner, not its global
+name. Each call uses the ordinary public Hosted turn/checkpoint boundary and
+strictly checks the result. Calling it while the owner is Running rejects
+`HostedSessionBusy`; it does not implicitly use HostCall reentry. Use an active
+`HostedCall` explicitly when nested guest execution is intended.
+
 ## Quick path (recommended)
 
 Create a fully wired interpreter, inject host values on the global environment,

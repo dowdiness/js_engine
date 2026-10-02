@@ -8,9 +8,12 @@
 - R2 integration: [PR #1062](https://github.com/dowdiness/js_engine/pull/1062), main commit `e28dc678916daabfbe58adc5b056651251ced1cb`; independent Terra review and required CI passed before merge.
 - R3 implementation base: `e28dc678916daabfbe58adc5b056651251ced1cb`
 - R3 initial implementation commit: `f2c06f2b59b7e95f1ec69e485dfd2005c174e16a`; final admission correction follows independent review.
-- Branch: `fix/hosted-diagnostics-r3`
-- Worktree: `.worktrees/hosted-diagnostics-r3`
-- Status: **R1/R2 merged; R3 locally verified on all three targets; independent review and CI pending. R4/R5 remain.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
+- R3 final reviewed head: `ec4e712cf176967e46842c2dd90dabc3cc976493`
+- R3 integration: [PR #1063](https://github.com/dowdiness/js_engine/pull/1063), main commit `770d99902fe428398f24a1010db66f9c83a4c86c`; both final Terra reviews and required CI passed before merge.
+- R4 implementation base: `770d99902fe428398f24a1010db66f9c83a4c86c`
+- Branch: `fix/hosted-adapters-r4`
+- Worktree: `.worktrees/hosted-adapters-r4`
+- Status: **R1–R3 merged; R4 locally verified on all three targets; independent review and CI pending. R5 remains.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
 - Authority: The *Exception and Nested Execution Contract* agreed on 2026-09-20. Its original text is preserved in the appendix.
 
 ## Purpose and Boundaries
@@ -128,7 +131,7 @@ unexpected callback failures and latched control termination are never converted
 into guest errors or allowed to checkpoint. R3 adds the structured provenance and
 concrete public raising types described below.
 
-## Implemented in R3
+## Resolved in R3
 
 | ID | Implemented behavior | Executed evidence |
 |---|---|---|
@@ -152,18 +155,20 @@ diagnostics only, and are cleared after a public outcome. Secondary arrays are
 copied when a nested error can be retained before later Host cleanup. Terminal
 outcomes do not retain usable guest handles as secondary information.
 
-## Not Implemented
+## Implemented in R4
 
-This classification identifies a remaining contract gap, not necessarily the absence of the
-entire feature.
+| ID | Implemented behavior | Executed evidence |
+|---|---|---|
+| M6 | The selected `research_host1/2/function1` adapters use Hosted values/authority with concrete `Double` signatures. Missing/non-number Host arguments become actual, catchable intrinsic JS TypeErrors before user MoonBit code; unmapped user errors remain Host Failures. Retained closures use the public turn boundary and reject Running as Busy | Seven BB `R4` cases on native/js/wasm-gc cover valid unary/binary/extra arguments, strict mismatch/no coercion, uncaught TypeError, guest constructor rebinding, original Host cause/no guest cleanup, retention/Busy, strict result mismatch, and direct adapter owner/frame checks; public executable smoke covers the same consumer paths |
 
-| ID | Missing contract behavior | Current source evidence | Work unit |
-|---|---|---|---|
-| M6 | Connect the selected typed adapters to Hosted Turn/HostCall, reporting argument mismatches as JS TypeError before entering the user's MoonBit function | `research_host1/2/function1` in `embedding_research.mbt` at prototype baseline `5c87fea9` use `ProbeRuntime/ProbeValue`. Those adapters are not part of this migration. Raising a strict-extraction error directly from a Hosted callback currently classifies it as Host Failure | R4 |
-
-The resolved M3–M5 and remaining M6 are not additional convenience features. They are
-required by the appendix's §2 public types, diagnostics, and typed adapters; §3 value
-lifetime; and §4/§6 secondary information and provenance.
+The adapters retain the prototype names without introducing codec families or
+arities. Private generic codec scaffolding is removed; only `Double` is supported.
+The three functions are explicitly classified as experimental-public surfaces.
+Strict extraction, numeric value creation, function retention, and the existing
+guest-throw/outer-checkpoint boundaries are reused. The mapped error uses the
+trusted intrinsic prototype registry rather than a mutable guest constructor.
+The older `ProbeRuntime` behavior and unrelated prototype experiments are not
+migrated or changed. M1–M6 are implemented locally; R5 still assesses V1–V7.
 
 ## Unverified
 
@@ -433,8 +438,56 @@ R3 admission smoke passed
 
 The admission executable was removed. Final clean focused/full suites and
 all-target warning/interface/format checks passed with the counts above.
-Attempt 3 independent review and integration remain pending; no further
-correction cycle is authorized for R3 if valid findings remain.
+Attempt 3 independent category/lifecycle and provenance/terminal-retention reviews
+both passed on `ec4e712cf176967e46842c2dd90dabc3cc976493`. Required
+`release_metadata`, `stack-safety-required`, and `test262-required` checks were
+terminal SUCCESS on that exact head. PR #1063 was squash-merged as
+`770d99902fe428398f24a1010db66f9c83a4c86c`. Deployment and CodeRabbit's
+automatic OSS review were skipped, not passed. R3 results do not prove R4/R5.
+
+### R4 local verification record
+
+The first Hosted port compiled but two numeric mismatch tests returned Host
+Failure instead of guest TypeError. The other three initial tests passed.
+Explicit adapter mapping fixed the mismatch cases. A further regression failed
+after guest `TypeError` rebinding; attaching the trusted intrinsic prototype
+fixed it without calling a guest constructor. All seven tests passed afterward
+on native/js/wasm-gc.
+
+A temporary `cmd/hosted_r4_smoke` imported and exercised the actual public
+adapters using `moon run --target native`, `--target js`, and `--target wasm-gc`.
+Each run asserted and printed:
+
+```text
+numeric: unary/binary/extra=42; rejected=9 actual TypeErrors; entered=3; coercions=0; state=available
+mismatch: uncaught retains actual TypeError; guest constructor rebinding does not replace intrinsic identity
+retained: original closure survives rebinding; Running=Busy without guest entry; later call=41; touches=2
+strict result: ExpectedNumber; coercions=0; state=available
+adapter authority: foreign owner and expired frame reject before user code
+unmapped user error: original Host Failure; guest catch/finally=0; state=faulted
+R4 smoke passed
+```
+
+The executable was removed. Focused Hosted + adapter suites passed **50/50**
+per target (including seven adapter BB cases). Full suites passed:
+
+| Target | Passed / Executed |
+|---|---:|
+| native | 4,557 / 4,557 |
+| js | 4,425 / 4,425 |
+| wasm-gc | 4,423 / 4,423 |
+
+Commands were `moon test --target <target> hosted_execution_probe_test.mbt
+hosted_execution_probe_wbtest.mbt embedding_research_test.mbt` and
+`moon test --target <target>` for each target. `moon info`, `moon fmt`,
+`moon fmt --check`, and `moon check --target all --deny-warn` passed.
+Generated interfaces add only the three selected `Double` adapter functions;
+existing Hosted signatures are unchanged. `make architecture-boundary-audit`
+passed: 41 audit tests, import/representation/surface-taxonomy checks, the
+generic/pure result-pipeline check, and semantic representation checks.
+
+R4 independent review and integration remain pending; these results do not
+complete the separate R5 assessment.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end
