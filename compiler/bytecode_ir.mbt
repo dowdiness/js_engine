@@ -1061,6 +1061,9 @@ priv struct BytecodeFunction {
   // prepared executor activation reuses the closure environment directly.
   needs_own_env : Bool
   local_names : Array[String]
+  // Local slots include private lowering temporaries in addition to source
+  // bindings. The frame capacity is separate from source metadata.
+  local_slot_count : Int
   // O(1) slot lookup — same data as local_names but indexed; computed once at
   // lower time so BytecodeFrame avoids O(N) linear scans.
   local_indices : Map[String, Int]
@@ -1098,6 +1101,7 @@ fn BytecodeFunction::BytecodeFunction(
   needs_arguments_object~ : Bool,
   needs_own_env~ : Bool,
   local_names~ : Array[String],
+  local_slot_count? : Int? = None,
   local_indices~ : Map[String, Int],
   env_slot_names~ : Array[String],
   env_var_hoist_names~ : Array[String],
@@ -1131,6 +1135,10 @@ fn BytecodeFunction::BytecodeFunction(
     needs_arguments_object,
     needs_own_env,
     local_names,
+    local_slot_count: match local_slot_count {
+      Some(count) => count
+      None => local_names.length()
+    },
     local_indices,
     env_slot_names,
     env_var_hoist_names,
@@ -1197,6 +1205,7 @@ priv struct BytecodeBuilder {
   enclosing_strict : Bool
   local_names : Array[String]
   local_indices : Map[String, Int]
+  mut local_slot_count : Int
   env_slot_names : Array[String]
   env_slot_indices : Map[String, Int]
   template_cache_key_prefix : String
@@ -1423,6 +1432,7 @@ fn BytecodeBuilder::BytecodeBuilder(
     enclosing_strict,
     local_names: plan.names,
     local_indices: plan.indices,
+    local_slot_count: plan.names.length(),
     env_slot_names: plan.env_names,
     env_slot_indices: plan.env_indices,
     template_cache_key_prefix,
@@ -1545,6 +1555,13 @@ fn BytecodeBuilder::local_slot(self : BytecodeBuilder, name : String) -> Int? {
 ///|
 fn BytecodeBuilder::env_slot(self : BytecodeBuilder, name : String) -> Int? {
   self.env_slot_indices.get(name)
+}
+
+///|
+fn BytecodeBuilder::allocate_local_slot(self : BytecodeBuilder) -> Int {
+  let slot = self.local_slot_count
+  self.local_slot_count += 1
+  slot
 }
 
 ///|

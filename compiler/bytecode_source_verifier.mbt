@@ -109,6 +109,7 @@ priv suberror BytecodeVerifierDefect {
   BytecodeObservationCoverageDefect(BytecodeObservationCoverageDefect)
   BytecodeControlFlowDefect(BytecodeControlFlowTargetDefect)
   BytecodeIndexedOperandDefect(BytecodeIndexedOperandTargetDefect)
+  BytecodeLocalSlotCapacityDefect(BytecodeLocalSlotCapacityDefect)
   BytecodeShapeOperandDefect(BytecodeShapeOperandTargetDefect)
   BytecodeFrameShapeDefect(BytecodeFrameShapeDefect)
 }
@@ -122,6 +123,14 @@ priv struct BytecodeShapeOperandTargetDefect {
   expected_lower_bound : Int
   exclusive_upper_bound : Int?
   actual_operand : Int
+}
+
+///|
+#warnings("-unused_field")
+priv struct BytecodeLocalSlotCapacityDefect {
+  function_path : Array[Int]
+  minimum_source_local_capacity : Int
+  actual_capacity : Int
 }
 
 ///|
@@ -1873,6 +1882,19 @@ fn bytecode_indexed_operand_defect(
 }
 
 ///|
+fn bytecode_local_slot_capacity_defect(
+  function_path : Array[Int],
+  minimum_source_local_capacity : Int,
+  actual_capacity : Int,
+) -> BytecodeVerifierDefect {
+  BytecodeLocalSlotCapacityDefect({
+    function_path: function_path.copy(),
+    minimum_source_local_capacity,
+    actual_capacity,
+  })
+}
+
+///|
 fn verify_bytecode_indexed_operands(
   program : BytecodeUnverifiedProgram,
 ) -> Unit raise Error {
@@ -1886,6 +1908,14 @@ fn verify_bytecode_function_indexed_operands(
   child_count? : Int? = None,
   recurse? : Bool = true,
 ) -> Unit raise Error {
+  let minimum_source_local_capacity = function.local_names.length()
+  guard function.local_slot_count >= minimum_source_local_capacity else {
+    raise bytecode_local_slot_capacity_defect(
+      function_path,
+      minimum_source_local_capacity,
+      function.local_slot_count,
+    )
+  }
   for instruction_index, instruction in function.code {
     match bytecode_indexed_operand(instruction) {
       Some((family, actual_operand)) => {
@@ -1895,7 +1925,7 @@ fn verify_bytecode_function_indexed_operands(
               Some(count) => count
               None => function.children.length()
             }
-          LocalSlot => function.local_names.length()
+          LocalSlot => function.local_slot_count
           EnvironmentSlot => function.env_slot_names.length()
         }
         guard actual_operand >= 0 && actual_operand < exclusive_upper_bound else {

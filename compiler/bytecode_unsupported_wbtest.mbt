@@ -73,14 +73,18 @@ test "bytecode rejects non-identifier non-property delete until reference semant
 }
 
 ///|
-test "bytecode rejects switch lexical and function declarations explicitly" {
-  assert_bytecode_unsupported(
-    "switch (1) { case 1: let x = 1; }",
-    SwitchLexicalDeclaration,
-  )
+test "bytecode rejects switch function declarations explicitly" {
   assert_bytecode_unsupported(
     "switch (1) { case 1: function f() { return 1; } }",
     ControlFlowFunctionDeclaration,
+  )
+  assert_bytecode_unsupported(
+    "switch (1) { case 1: class C {} }",
+    ClassDeclaration,
+  )
+  assert_bytecode_unsupported(
+    "switch (1) { case 1: let [value] = [1]; }",
+    DestructuringDeclarationContext,
   )
 }
 

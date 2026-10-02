@@ -75,6 +75,24 @@ test "post-parse stack safety: deep TDZ statement wrappers" {
 }
 
 ///|
+test "switch declaration completion classifier handles deep synthetic lists" {
+  let loc = @token.Loc::default()
+  let mut nested = @ast.Stmt::VarDecl(LetKind, "deep_let", None, loc)
+  for _ in 0..<4096 {
+    nested = @ast.Stmt::StmtList([nested], loc)
+  }
+  assert_true(is_declaration_stmt(nested))
+}
+
+///|
+test "ordinary Tree blocks preserve completion before comma declarations" {
+  for source in ["{ 'before'; var a = 1; }", "{ 'before'; var a = 1, b = 2; }"] {
+    let result = Interpreter::new().run(@parser.parse(source).stmts)
+    assert_eq(result.to_string(), "before")
+  }
+}
+
+///|
 test "Task 4C: var preflight preserves shallow order and first error" {
   let parsed = @parser.parse("var first; var second;")
   let names : Array[String] = []

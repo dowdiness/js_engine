@@ -3337,3 +3337,33 @@ test "issue 892 stable Engine custom resolve failure consumes selected job and r
     "handler", "resolve", "suffix", "reuse",
   ])
 }
+
+///|
+test "switch lexical declarations preserve outer bindings through Engine" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|function read(flag) {
+      #|  let outer = "outer";
+      #|  let result = "unset";
+      #|  switch (flag) {
+      #|    case 1:
+      #|      let outer = "inner";
+      #|      result = outer;
+      #|      break;
+      #|    default:
+      #|      result = "default";
+      #|  }
+      #|  return result + ":" + outer;
+      #|}
+    ),
+  )
+  json_inspect(
+    engine.call_json("read", [Json::number(1.0)]),
+    content="inner:outer",
+  )
+  json_inspect(
+    engine.call_json("read", [Json::number(0.0)]),
+    content="default:outer",
+  )
+}
