@@ -588,3 +588,61 @@ test "interruption takes precedence for unobserved native progress" {
   inspect(control.remaining_steps(), content="7")
   inspect(control.active_depth(), content="0")
 }
+
+///|
+test "R5 hosted nested unwind releases depth without refund or policy replacement" {
+  let interp = Interpreter::new()
+  let outer = ExecutionPolicy::new(10L, 2L, InterruptionHandle()).unwrap()
+  let replacement = ExecutionPolicy::new(0L, 0L, InterruptionHandle()).unwrap()
+  let retained : Ref[ExecutionControl?] = Ref(None)
+  let stopped = try {
+    interp.with_hosted_execution_policy(outer, () => {
+      let control = interp.hosted_execution_control.unwrap()
+      retained.val = Some(control)
+      interp.observe_execution_step()
+      interp.observe_execution_activation()
+      let guest = try {
+        interp.with_hosted_execution_policy(replacement, () => {
+          assert_true(
+            physical_equal(control, interp.hosted_execution_control.unwrap()),
+          )
+          interp.observe_execution_activation()
+          errdefer interp.release_execution_activation()
+          interp.observe_execution_step()
+          raise JsException(Number(7))
+        })
+        false
+      } catch {
+        JsException(Number(value)) => value == 7
+        error => raise error
+      }
+      assert_true(guest)
+      assert_eq(control.remaining_steps(), 6L)
+      assert_eq(control.active_depth(), 1L)
+      interp.release_execution_activation()
+      assert_eq(control.active_depth(), 0L)
+      assert_eq(control.remaining_steps(), 6L)
+      for _ in 0..<6 {
+        interp.observe_execution_step()
+      }
+      assert_eq(control.remaining_steps(), 0L)
+      interp.with_hosted_execution_policy(outer, () => {
+        assert_true(
+          physical_equal(control, interp.hosted_execution_control.unwrap()),
+        )
+        interp.observe_execution_activation()
+      })
+    })
+    false
+  } catch {
+    HostedExecutionTerminal(cause) => {
+      assert_eq(execution_control_failure_code(cause), Some("execution-limit"))
+      true
+    }
+    error => raise error
+  }
+  assert_true(stopped)
+  assert_eq(retained.val.unwrap().remaining_steps(), 0L)
+  assert_eq(retained.val.unwrap().active_depth(), 0L)
+  assert_true(interp.hosted_execution_control is None)
+}
