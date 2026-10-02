@@ -1,6 +1,6 @@
 ///|
 fn research_number_argument(
-  call : HostedCall,
+  call : HostCallbackContext,
   argument : HostedValue?,
 ) -> Double raise {
   let owner = call.frame.owner
@@ -40,9 +40,9 @@ fn research_number_argument(
 ///|
 /// Experimental unary Host adapter. Only strict Double conversion is supported.
 /// Missing/non-number arguments throw JS TypeError; user errors are not mapped.
-pub fn research_host1(
+pub fn host_number_unary(
   f : (Double) -> Double raise,
-) -> (HostedCall, Array[HostedValue]) -> HostedValue raise {
+) -> (HostCallbackContext, Array[HostedValue]) -> HostedValue raise {
   (call, args) => {
     let value = research_number_argument(call, args.get(0))
     let result = f(value)
@@ -53,9 +53,9 @@ pub fn research_host1(
 
 ///|
 /// Experimental binary Host adapter. Both strict arguments precede user code.
-pub fn research_host2(
+pub fn host_number_binary(
   f : (Double, Double) -> Double raise,
-) -> (HostedCall, Array[HostedValue]) -> HostedValue raise {
+) -> (HostCallbackContext, Array[HostedValue]) -> HostedValue raise {
   (call, args) => {
     let a = research_number_argument(call, args.get(0))
     let b = research_number_argument(call, args.get(1))
@@ -67,10 +67,10 @@ pub fn research_host2(
 
 ///|
 /// Retain a unary JS function with strict Double input/output. Calls are public
-/// Hosted turns, not HostCall reentry: Running rejects Busy before argument creation.
-pub fn research_function1(
+/// Hosted turns, not callback-context reentry: Running rejects Busy before argument creation.
+pub fn js_number_unary(
   function : HostedValue,
-) -> (Double) -> Double raise HostedProbeError {
+) -> (Double) -> Double raise HostedError {
   arg => {
     let value = function.owner.number(arg)
     function.call([value]).expect_number()

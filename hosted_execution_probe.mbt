@@ -1,7 +1,7 @@
 ///|
 /// Experimental stateful embedding facade used by the exception/reentry probes.
 /// This is intentionally small and is not a production API.
-pub struct HostedProbe {
+pub struct HostedSession {
   priv session : ExecutionSession
   priv policy : @runtime.ExecutionPolicy
   priv mut next_frame : Int
@@ -13,38 +13,40 @@ pub struct HostedProbe {
   priv mut failure_phase : String
   priv mut last_guest_failure : (Error, EngineDiagnostic)?
   priv mut terminal_diagnostic : EngineDiagnostic?
-  priv mut completion_failure : HostedProbeError?
+  priv mut completion_failure : HostedError?
   priv mut secondary_diagnostics : Array[EngineDiagnostic]?
 }
 
 ///|
 pub struct HostedValue {
-  priv owner : HostedProbe
+  priv owner : HostedSession
   priv value : @runtime.Value
 }
 
 ///|
 priv struct HostedFrame {
-  owner : HostedProbe
+  owner : HostedSession
   id : Int
   mut active : Bool
 }
 
 ///|
-pub struct HostedCall {
+pub struct HostCallbackContext {
   priv frame : HostedFrame
 }
 
 ///|
 fn HostedValue::HostedValue(
-  owner : HostedProbe,
+  owner : HostedSession,
   value : @runtime.Value,
 ) -> HostedValue {
   { owner, value, }
 }
 
 ///|
-fn HostedCall::HostedCall(frame : HostedFrame) -> HostedCall {
+fn HostCallbackContext::HostCallbackContext(
+  frame : HostedFrame,
+) -> HostCallbackContext {
   { frame, }
 }
 
@@ -56,7 +58,7 @@ priv suberror HostedCallbackFailure {
 }
 
 ///|
-pub(all) suberror HostedProbeError {
+pub(all) suberror HostedError {
   HostedParse(EngineDiagnostic)
   HostedGuestThrow(HostedValue, EngineDiagnostic)
   HostedGuestThrowWithSecondary(
@@ -78,9 +80,9 @@ pub(all) suberror HostedProbeError {
 }
 
 ///|
-pub fn HostedProbe::HostedProbe(
+pub fn HostedSession::HostedSession(
   policy : @runtime.ExecutionPolicy,
-) -> HostedProbe raise HostedProbeError {
+) -> HostedSession raise HostedError {
   let session = HostEnvironment().create_session() catch {
     error =>
       raise HostedHostFailure(
@@ -115,11 +117,11 @@ pub fn HostedProbe::HostedProbe(
 }
 
 ///|
-pub fn HostedProbe::register(
-  self : HostedProbe,
+pub fn HostedSession::define_function(
+  self : HostedSession,
   name : String,
-  callback : (HostedCall, Array[HostedValue]) -> HostedValue raise,
-) -> Unit raise HostedProbeError {
+  callback : (HostCallbackContext, Array[HostedValue]) -> HostedValue raise,
+) -> Unit raise HostedError {
   self.require_available()
   let native = @runtime.make_native_func(
     name~,
@@ -130,9 +132,9 @@ pub fn HostedProbe::register(
 }
 
 ///|
-fn HostedProbe::dispatch_callback(
-  self : HostedProbe,
-  callback : (HostedCall, Array[HostedValue]) -> HostedValue raise,
+fn HostedSession::dispatch_callback(
+  self : HostedSession,
+  callback : (HostCallbackContext, Array[HostedValue]) -> HostedValue raise,
   args : Array[@runtime.Value],
 ) -> @runtime.Value raise {
   self.session.engine.interp.check_hosted_execution()
@@ -144,7 +146,7 @@ fn HostedProbe::dispatch_callback(
   let result : Result[HostedValue, Error] = Ok(
     {
       let value = callback(
-        HostedCall::HostedCall(frame),
+        HostCallbackContext::HostCallbackContext(frame),
         args.map(value => HostedValue::HostedValue(self, value)),
       )
       self.require_owner(value)
@@ -185,7 +187,7 @@ fn HostedProbe::dispatch_callback(
           primary_diagnostic~,
           secondary_diagnostic=_
         ) => {
-          let ownership : Result[Unit, HostedProbeError] = Ok(
+          let ownership : Result[Unit, HostedError] = Ok(
             self.require_owner(secondary),
           ) catch {
             error => Err(error)
@@ -226,9 +228,9 @@ fn HostedProbe::dispatch_callback(
 }
 
 ///|
-fn HostedProbe::require_available(
-  self : HostedProbe,
-) -> Unit raise HostedProbeError {
+fn HostedSession::require_available(
+  self : HostedSession,
+) -> Unit raise HostedError {
   match self.session.state {
     Available => ()
     Running => raise HostedSessionBusy
@@ -238,7 +240,7 @@ fn HostedProbe::require_available(
 }
 
 ///|
-fn HostedProbe::require_live(self : HostedProbe) -> Unit raise HostedProbeError {
+fn HostedSession::require_live(self : HostedSession) -> Unit raise HostedError {
   match self.session.state {
     Available | Running => ()
     Closed => raise HostedSessionClosed
@@ -247,20 +249,20 @@ fn HostedProbe::require_live(self : HostedProbe) -> Unit raise HostedProbeError 
 }
 
 ///|
-fn HostedProbe::require_owner(
-  self : HostedProbe,
+fn HostedSession::require_owner(
+  self : HostedSession,
   value : HostedValue,
-) -> Unit raise HostedProbeError {
+) -> Unit raise HostedError {
   guard physical_equal(self, value.owner) else { raise HostedForeignValue }
   self.require_live()
 }
 
 ///|
-fn HostedProbe::begin_nested(
-  self : HostedProbe,
+fn HostedSession::begin_nested(
+  self : HostedSession,
   frame : HostedFrame,
   nested? : Bool = false,
-) -> Unit raise HostedProbeError {
+) -> Unit raise HostedError {
   let current_matches = match self.current_frame {
     Some(id) => id == frame.id
     None => false
@@ -273,13 +275,13 @@ fn HostedProbe::begin_nested(
 }
 
 ///|
-fn HostedProbe::inner_call(
-  self : HostedProbe,
+fn HostedSession::inner_call(
+  self : HostedSession,
   frame : HostedFrame,
   callee : HostedValue,
   receiver : HostedValue,
   args : Array[HostedValue],
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.begin_nested(frame, nested=true)
   self.require_owner(callee)
   self.require_owner(receiver)
@@ -288,7 +290,7 @@ fn HostedProbe::inner_call(
   }
   let saved = self.current_frame
   self.current_frame = None
-  let result : Result[@runtime.Value, HostedProbeError] = Ok(
+  let result : Result[@runtime.Value, HostedError] = Ok(
     self.observed_guest_action(self.nested_failure_phase(), () => {
       self.session.engine.interp.call_value(
         callee.value,
@@ -308,17 +310,17 @@ fn HostedProbe::inner_call(
 }
 
 ///|
-fn HostedProbe::inner_get(
-  self : HostedProbe,
+fn HostedSession::inner_get(
+  self : HostedSession,
   frame : HostedFrame,
   target : HostedValue,
   name : String,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.begin_nested(frame, nested=true)
   self.require_owner(target)
   let saved = self.current_frame
   self.current_frame = None
-  let result : Result[@runtime.Value, HostedProbeError] = Ok(
+  let result : Result[@runtime.Value, HostedError] = Ok(
     self.observed_guest_action(self.nested_failure_phase(), () => {
       self.session.engine.interp.get_property(
         target.value,
@@ -337,12 +339,12 @@ fn HostedProbe::inner_get(
 }
 
 ///|
-fn[T] HostedProbe::public_turn(
-  self : HostedProbe,
+fn[T] HostedSession::public_turn(
+  self : HostedSession,
   action : () -> T raise Error,
   operation~ : String,
   checkpoint? : Bool = false,
-) -> T raise HostedProbeError {
+) -> T raise HostedError {
   self.require_available()
   self.operation = operation
   self.failure_phase = "admission"
@@ -370,7 +372,7 @@ fn[T] HostedProbe::public_turn(
   ) catch {
     error => Err(error)
   }
-  let outcome : Result[T, HostedProbeError] = match result {
+  let outcome : Result[T, HostedError] = match result {
     Ok(value) => {
       self.session.state = Available
       Ok(value)
@@ -436,7 +438,7 @@ fn same_hosted_terminal_report(error : Error, terminal : Error) -> Bool {
 }
 
 ///|
-fn HostedProbe::nested_failure_phase(self : HostedProbe) -> String {
+fn HostedSession::nested_failure_phase(self : HostedSession) -> String {
   match self.failure_phase {
     "checkpoint" | "checkpoint-nested" => "checkpoint-nested"
     _ => "nested"
@@ -444,8 +446,8 @@ fn HostedProbe::nested_failure_phase(self : HostedProbe) -> String {
 }
 
 ///|
-fn HostedProbe::runtime_diagnostic(
-  self : HostedProbe,
+fn HostedSession::runtime_diagnostic(
+  self : HostedSession,
   kind : String,
   message : String,
   source_identity : String?,
@@ -469,8 +471,8 @@ fn HostedProbe::runtime_diagnostic(
 }
 
 ///|
-fn HostedProbe::guest_diagnostic(
-  self : HostedProbe,
+fn HostedSession::guest_diagnostic(
+  self : HostedSession,
   error : Error,
   source_identity : String?,
   phase? : String = self.failure_phase,
@@ -523,8 +525,8 @@ fn enrich_hosted_failure_source(
 }
 
 ///|
-fn HostedProbe::push_secondary(
-  self : HostedProbe,
+fn HostedSession::push_secondary(
+  self : HostedSession,
   diagnostic : EngineDiagnostic,
 ) -> Unit {
   match self.secondary_diagnostics {
@@ -534,8 +536,8 @@ fn HostedProbe::push_secondary(
 }
 
 ///|
-fn HostedProbe::remember_secondary_error(
-  self : HostedProbe,
+fn HostedSession::remember_secondary_error(
+  self : HostedSession,
   error : Error,
   source_identity : String?,
   host_failure? : Bool = false,
@@ -572,8 +574,8 @@ fn HostedProbe::remember_secondary_error(
 }
 
 ///|
-fn HostedProbe::seed_terminal_diagnostic(
-  self : HostedProbe,
+fn HostedSession::seed_terminal_diagnostic(
+  self : HostedSession,
   diagnostic : EngineDiagnostic,
   secondary : Array[EngineDiagnostic]?,
 ) -> Unit {
@@ -584,8 +586,8 @@ fn HostedProbe::seed_terminal_diagnostic(
 }
 
 ///|
-fn HostedProbe::take_terminal_secondaries(
-  self : HostedProbe,
+fn HostedSession::take_terminal_secondaries(
+  self : HostedSession,
 ) -> Array[EngineDiagnostic]? {
   match self.completion_failure {
     Some(HostedGuestThrow(_, diagnostic)) =>
@@ -617,13 +619,13 @@ fn HostedProbe::take_terminal_secondaries(
 }
 
 ///|
-fn HostedProbe::terminal_failure(
-  self : HostedProbe,
+fn HostedSession::terminal_failure(
+  self : HostedSession,
   cause : Error,
   source_identity : String?,
   snapshot~ : Bool,
   settled~ : Bool,
-) -> HostedProbeError {
+) -> HostedError {
   let diagnostic = match self.terminal_diagnostic {
     Some(diagnostic) =>
       if diagnostic.source_identity() is None && source_identity is Some(_) {
@@ -672,13 +674,13 @@ fn HostedProbe::terminal_failure(
 }
 
 ///|
-fn HostedProbe::latch_terminal_failure(
-  self : HostedProbe,
+fn HostedSession::latch_terminal_failure(
+  self : HostedSession,
   cause : Error,
   source_identity : String?,
   snapshot~ : Bool,
   settled~ : Bool,
-) -> HostedProbeError {
+) -> HostedError {
   let mut first = cause
   self.session.engine.interp.terminate_hosted_execution(cause) catch {
     carrier =>
@@ -691,13 +693,13 @@ fn HostedProbe::latch_terminal_failure(
 }
 
 ///|
-fn HostedProbe::classify_failure(
-  self : HostedProbe,
+fn HostedSession::classify_failure(
+  self : HostedSession,
   error : Error,
   source_identity : String?,
   snapshot? : Bool = true,
   settled? : Bool = false,
-) -> HostedProbeError {
+) -> HostedError {
   match @runtime.hosted_execution_failure_cause(error) {
     Some(cause) =>
       return self.terminal_failure(cause, source_identity, snapshot~, settled~)
@@ -742,7 +744,7 @@ fn HostedProbe::classify_failure(
         settled~,
       )
     }
-    HostedProbeError::_ as typed => typed
+    HostedError::_ as typed => typed
     _ =>
       if @runtime.is_js_catchable_error(error) {
         let diagnostic = self.guest_diagnostic(error, source_identity)
@@ -763,10 +765,10 @@ fn HostedProbe::classify_failure(
 }
 
 ///|
-fn HostedProbe::check_control(
-  self : HostedProbe,
+fn HostedSession::check_control(
+  self : HostedSession,
   phase? : String = self.failure_phase,
-) -> Unit raise HostedProbeError {
+) -> Unit raise HostedError {
   self.session.engine.interp.check_hosted_execution() catch {
     error => {
       let previous = self.failure_phase
@@ -779,12 +781,12 @@ fn HostedProbe::check_control(
 }
 
 ///|
-fn[T] HostedProbe::observed_guest_action(
-  self : HostedProbe,
+fn[T] HostedSession::observed_guest_action(
+  self : HostedSession,
   phase : String,
   action : () -> T raise Error,
   snapshot? : Bool = true,
-) -> T raise HostedProbeError {
+) -> T raise HostedError {
   let previous = self.failure_phase
   self.failure_phase = phase
   let observed = @runtime.observe_source_failure(
@@ -795,7 +797,7 @@ fn[T] HostedProbe::observed_guest_action(
       value
     },
   )
-  let outcome : Result[T, HostedProbeError] = match observed {
+  let outcome : Result[T, HostedError] = match observed {
     Ok(value) => Ok(value)
     Err(failure) =>
       Err(
@@ -814,12 +816,12 @@ fn[T] HostedProbe::observed_guest_action(
 }
 
 ///|
-fn HostedProbe::rethrow_guest_value(
-  self : HostedProbe,
+fn HostedSession::rethrow_guest_value(
+  self : HostedSession,
   value : HostedValue,
   diagnostic : EngineDiagnostic,
 ) -> Unit raise Error {
-  let ownership : Result[Unit, HostedProbeError] = Ok(self.require_owner(value)) catch {
+  let ownership : Result[Unit, HostedError] = Ok(self.require_owner(value)) catch {
     error => Err(error)
   }
   match ownership {
@@ -844,11 +846,11 @@ fn HostedProbe::rethrow_guest_value(
 }
 
 ///|
-fn[T] HostedProbe::complete_public_body(
-  self : HostedProbe,
+fn[T] HostedSession::complete_public_body(
+  self : HostedSession,
   action : () -> T raise Error,
-) -> T raise HostedProbeError {
-  let primary : Result[T, HostedProbeError] = Ok(
+) -> T raise HostedError {
+  let primary : Result[T, HostedError] = Ok(
     self.observed_guest_action("body", action, snapshot=false),
   ) catch {
     HostedGuestThrow(_, _) as failure => {
@@ -859,7 +861,7 @@ fn[T] HostedProbe::complete_public_body(
   }
   self.check_control()
   self.failure_phase = "checkpoint"
-  let checkpoint : Result[Unit, HostedProbeError] = try {
+  let checkpoint : Result[Unit, HostedError] = try {
     match self.session.engine.interp.run_microtasks_observed() {
       Ok(_) => Ok(())
       Err(failure) =>
@@ -900,10 +902,10 @@ fn[T] HostedProbe::complete_public_body(
 }
 
 ///|
-pub fn HostedProbe::global(
-  self : HostedProbe,
+pub fn HostedSession::global(
+  self : HostedSession,
   name : String,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.public_turn(
     () => {
       let value = self.session.engine.get_global_export_for_diagnostic(name)
@@ -914,10 +916,10 @@ pub fn HostedProbe::global(
 }
 
 ///|
-pub fn HostedProbe::evaluate(
-  self : HostedProbe,
+pub fn HostedSession::evaluate(
+  self : HostedSession,
   source : String,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.require_available()
   let program = match @parser.parse_diagnostic(source) {
     Ok(program) => program
@@ -954,21 +956,21 @@ pub fn HostedProbe::evaluate(
 }
 
 ///|
-pub fn HostedProbe::number(
-  self : HostedProbe,
+pub fn HostedSession::number(
+  self : HostedSession,
   value : Double,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.require_available()
   { owner: self, value: @runtime.Number(value), }
 }
 
 ///|
-pub fn HostedProbe::effect_count(self : HostedProbe) -> Int {
+pub fn HostedSession::effect_count(self : HostedSession) -> Int {
   self.effects
 }
 
 ///|
-pub fn HostedProbe::state(self : HostedProbe) -> String {
+pub fn HostedSession::state(self : HostedSession) -> String {
   match self.session.state {
     Available => "available"
     Running => "running"
@@ -978,7 +980,7 @@ pub fn HostedProbe::state(self : HostedProbe) -> String {
 }
 
 ///|
-pub fn HostedProbe::close(self : HostedProbe) -> Unit raise HostedProbeError {
+pub fn HostedSession::close(self : HostedSession) -> Unit raise HostedError {
   self.session.close() catch {
     SessionBusy => raise HostedSessionBusy
     SessionClosed => raise HostedSessionClosed
@@ -1008,7 +1010,7 @@ pub fn HostedProbe::close(self : HostedProbe) -> Unit raise HostedProbeError {
 ///|
 pub fn HostedValue::expect_number(
   self : HostedValue,
-) -> Double raise HostedProbeError {
+) -> Double raise HostedError {
   self.owner.require_live()
   match self.value {
     Number(value) => value
@@ -1017,14 +1019,12 @@ pub fn HostedValue::expect_number(
 }
 
 ///|
-pub fn HostedProbe::terminal_cause(self : HostedProbe) -> Error? {
+pub fn HostedSession::terminal_cause(self : HostedSession) -> Error? {
   self.terminal_cause
 }
 
 ///|
-pub fn HostedValue::expect_bool(
-  self : HostedValue,
-) -> Bool raise HostedProbeError {
+pub fn HostedValue::expect_bool(self : HostedValue) -> Bool raise HostedError {
   self.owner.require_live()
   match self.value {
     Bool(value) => value
@@ -1035,7 +1035,7 @@ pub fn HostedValue::expect_bool(
 ///|
 pub fn HostedValue::expect_string(
   self : HostedValue,
-) -> String raise HostedProbeError {
+) -> String raise HostedError {
   self.owner.require_live()
   match self.value {
     String_(value) => value
@@ -1047,7 +1047,7 @@ pub fn HostedValue::expect_string(
 pub fn HostedValue::get(
   self : HostedValue,
   name : String,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.owner.public_turn(
     () => {
       let value = self.owner.session.engine.interp.get_property(
@@ -1066,7 +1066,7 @@ pub fn HostedValue::get(
 pub fn HostedValue::call(
   self : HostedValue,
   args : Array[HostedValue],
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.owner.public_turn(
     () => {
       for arg in args {
@@ -1090,7 +1090,7 @@ pub fn HostedValue::call_property(
   self : HostedValue,
   name : String,
   args : Array[HostedValue],
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.owner.public_turn(
     () => {
       for arg in args {
@@ -1119,20 +1119,20 @@ pub fn HostedValue::call_property(
 }
 
 ///|
-pub fn HostedCall::get(
-  self : HostedCall,
+pub fn HostCallbackContext::get(
+  self : HostCallbackContext,
   value : HostedValue,
   name : String,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.frame.owner.inner_get(self.frame, value, name)
 }
 
 ///|
-pub fn HostedCall::call(
-  self : HostedCall,
+pub fn HostCallbackContext::call(
+  self : HostCallbackContext,
   function : HostedValue,
   args : Array[HostedValue],
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.frame.owner.inner_call(
     self.frame,
     function,
@@ -1142,12 +1142,12 @@ pub fn HostedCall::call(
 }
 
 ///|
-pub fn HostedCall::call_property(
-  self : HostedCall,
+pub fn HostCallbackContext::call_property(
+  self : HostCallbackContext,
   value : HostedValue,
   name : String,
   args : Array[HostedValue],
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.frame.owner.begin_nested(self.frame, nested=true)
   // Host arrays are mutable: check arguments before the getter and again in
   // inner_call after it returns.
@@ -1159,36 +1159,36 @@ pub fn HostedCall::call_property(
 }
 
 ///|
-pub fn HostedCall::record_effect(
-  self : HostedCall,
-) -> Unit raise HostedProbeError {
+pub fn HostCallbackContext::record_effect(
+  self : HostCallbackContext,
+) -> Unit raise HostedError {
   self.frame.owner.begin_nested(self.frame)
   self.frame.owner.effects += 1
 }
 
 ///|
-pub fn HostedProbe::bool(
-  self : HostedProbe,
+pub fn HostedSession::bool(
+  self : HostedSession,
   value : Bool,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.require_available()
   { owner: self, value: @runtime.Bool(value), }
 }
 
 ///|
-pub fn HostedProbe::string(
-  self : HostedProbe,
+pub fn HostedSession::string(
+  self : HostedSession,
   value : String,
-) -> HostedValue raise HostedProbeError {
+) -> HostedValue raise HostedError {
   self.require_available()
   { owner: self, value: @runtime.String_(value), }
 }
 
 ///|
-fn HostedCall::guest_failure(
-  self : HostedCall,
+fn HostCallbackContext::guest_failure(
+  self : HostCallbackContext,
   value : HostedValue,
-) -> HostedProbeError raise HostedProbeError {
+) -> HostedError raise HostedError {
   self.frame.owner.begin_nested(self.frame)
   self.frame.owner.require_owner(value)
   let owner = self.frame.owner
@@ -1209,18 +1209,18 @@ fn HostedCall::guest_failure(
 }
 
 ///|
-pub fn HostedCall::throw_value(
-  self : HostedCall,
+pub fn HostCallbackContext::throw_value(
+  self : HostCallbackContext,
   value : HostedValue,
-) -> Unit raise HostedProbeError {
+) -> Unit raise HostedError {
   raise self.guest_failure(value)
 }
 
 ///|
-pub fn HostedCall::terminate(
-  self : HostedCall,
+pub fn HostCallbackContext::terminate(
+  self : HostCallbackContext,
   cause : Error,
-) -> Unit raise HostedProbeError {
+) -> Unit raise HostedError {
   self.frame.owner.begin_nested(self.frame)
   raise self.frame.owner.latch_terminal_failure(
     cause,
