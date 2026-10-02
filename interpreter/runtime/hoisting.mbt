@@ -200,6 +200,69 @@ fn validate_block_statement_list_early_errors(
 }
 
 ///|
+fn validate_loop_lexical_body_conflicts(
+  lexical_names : @set.Set[String],
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  if !lexical_names.is_empty() {
+    for
+      name in @static_semantics.collect_var_declared_names(
+        [body],
+        include_funcs=false,
+      ) {
+      if lexical_names.contains(name) {
+        raise @errors.SyntaxError(
+          message="Identifier '\{name}' has already been declared",
+        )
+      }
+    }
+  }
+}
+
+///|
+fn validate_for_statement_early_errors(
+  init : @ast.Stmt?,
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  let lexical_names : @set.Set[String] = Default::default()
+  let block_function_kinds : Map[String, Int] = Map([])
+  match init {
+    Some(init_stmt) =>
+      collect_block_lexical_decl_names_from_stmt(
+        init_stmt, lexical_names, block_function_kinds,
+      )
+    None => ()
+  }
+  validate_loop_lexical_body_conflicts(lexical_names, body)
+}
+
+///|
+fn validate_for_binding_early_errors(
+  kind : @ast.VarKind?,
+  name : String,
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  let lexical_names : @set.Set[String] = Default::default()
+  if kind is (Some(LetKind) | Some(ConstKind)) {
+    lexical_names.add(name)
+  }
+  validate_loop_lexical_body_conflicts(lexical_names, body)
+}
+
+///|
+fn validate_for_pattern_early_errors(
+  kind : @ast.VarKind?,
+  pattern : @ast.Pattern,
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  let lexical_names : @set.Set[String] = Default::default()
+  if kind is (Some(LetKind) | Some(ConstKind)) {
+    collect_pattern_decl_names(pattern, lexical_names, lexical=true)
+  }
+  validate_loop_lexical_body_conflicts(lexical_names, body)
+}
+
+///|
 /// CaseBlock declarations share one lexical environment even though the AST
 /// stores each case body separately.
 fn flatten_case_block_statements(
@@ -599,6 +662,7 @@ pub fn validate_compiled_script_early_errors(
             work.push(Stmt(body, strict))
           }
           ForStmt(init, cond, update, body, _) => {
+            validate_for_statement_early_errors(init, body)
             work.push(Stmt(body, strict))
             match update {
               Some(e) => work.push(Expr(e, strict))
@@ -616,6 +680,7 @@ pub fn validate_compiled_script_early_errors(
           ForInStmt(kind, name, expr, body, _)
           | ForOfStmt(kind, name, expr, body, _)
           | AsyncForOfStmt(kind, name, expr, body, _) => {
+            validate_for_binding_early_errors(kind, name, body)
             work.push(Stmt(body, strict))
             work.push(Expr(expr, strict))
             if kind is Some(_) {
@@ -631,6 +696,7 @@ pub fn validate_compiled_script_early_errors(
           ForInStmtPat(kind, pattern, expr, body, _)
           | ForOfStmtPat(kind, pattern, expr, body, _)
           | AsyncForOfStmtPat(kind, pattern, expr, body, _) => {
+            validate_for_pattern_early_errors(kind, pattern, body)
             work.push(Stmt(body, strict))
             work.push(Expr(expr, strict))
             work.push(Pattern(pattern, strict, kind is Some(_)))
