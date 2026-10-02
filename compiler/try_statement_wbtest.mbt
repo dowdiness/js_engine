@@ -338,3 +338,22 @@ test "finally yield preserves the injected generator return" {
     #|[cleanup.value, cleanup.done, result.value, result.done].join(',');
   assert_try_result(source, "cleanup,false,returned,true")
 }
+
+///|
+test "catch pattern retains initialization cells across yield" {
+  let source =
+    #|var later = 42, read;
+    #|function* sample() {
+    #|  try { throw []; }
+    #|  catch ([first = () => later, later = (read = first, yield 'pause')]) {
+    #|    return [first(), read()];
+    #|  }
+    #|}
+    #|var iterator = sample(), trace = [iterator.next().value];
+    #|try { read(); trace.push('initialized'); }
+    #|catch (error) { trace.push(error.name); }
+    #|try { trace.push(iterator.next(7).value); }
+    #|catch (error) { trace.push(error.name); }
+    #|JSON.stringify(trace);
+  assert_try_result(source, "[\"pause\",\"ReferenceError\",[7,7]]")
+}

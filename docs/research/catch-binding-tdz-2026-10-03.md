@@ -1,7 +1,7 @@
 # Catch binding TDZ prerequisite
 
 Baseline: `905a0193b8127b3b173b314140eecb18c2c14dd2`.
-Fixed criteria: [#1071](https://github.com/dowdiness/js_engine/issues/1071).
+Original criteria: [#1071](https://github.com/dowdiness/js_engine/issues/1071).
 This is a correctness prerequisite for shared BindingInitialization under
 [#1042](https://github.com/dowdiness/js_engine/issues/1042).
 
@@ -15,8 +15,9 @@ the baseline. The required result is ReferenceError before the body.
 [CatchClauseEvaluation](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-runtime-semantics-catchclauseevaluation)
 creates every catch BoundName before BindingInitialization. The change
 predeclares all those names as uninitialized mutable cells in the existing fresh
-catch environment, then invokes the existing binding operation. The same cells
-are initialized in order and retained by escaped closures. Existing binding
+catch environment, then invokes the existing binding operation. In the original non-suspending fixtures, the same cells are initialized in
+order and retained by escaped closures. The suspended-initializer case below
+prevents extending that statement to generator resumption. Existing binding
 failure, iterator cleanup and finally handling keep their ownership.
 
 The native baseline reproduction returns `[["body","finally"],42]`; Node
@@ -47,12 +48,36 @@ Independent review caught the missing direct earlier-binding read in the
 initial positive fixture. That fixture was strengthened without adding another
 test or changing the implementation.
 
-The final focused tests pass 6/6 separately on JS, native, Wasm and WasmGC.
+Before the new blocker was found, the original focused tests passed 6/6
+separately on JS, native, Wasm and WasmGC.
 After the review adjustment, the full default suite passes 4,471/4,471 and
 the JS suite passes 4,473/4,473. Strict all-target checking, interface/format
 checks, diff checks and the full architecture audit pass; generated public
-interfaces are unchanged. Independent Terra review passes. Final PR evidence
-must record the reviewed, rebased CI head. Local test results are regression evidence, not a conformance rate.
+interfaces are unchanged. Independent Terra review passed that six-fixture head `8674f441`; the new
+concrete counterexample supersedes its merge approval. Local test results are regression evidence, not a conformance rate.
+
+## Merge blocker: catch initialization suspended by yield
+
+A closure created by an earlier catch default can escape before a later
+initializer yields. After resumption, both closures must observe the resumed
+value through the same catch environment. Node returns `[7,7]`; the baseline
+returns `[7,42]`, while the predeclaration change throws ReferenceError. The
+old escaped closure retains an environment whose later cell is never
+initialized because catch entry creates another environment during replay.
+
+A seventh minimal E2E test now requires TDZ during suspension and `[7,7]`
+after resumption. It actually fails (one test, zero passes, one failure), and
+is deliberately retained in Draft PR #1073. The saved probe and raw RED log
+are in the overnight state directory. CI success on the earlier six-test head
+must not be used as approval to merge this unfinished feature.
+
+Existing generator state owns statement-list and loop resume environments;
+catch binding initialization has no retained frame/environment owner. Adding
+a new exported generator field or redesigning this replay is outside the
+night's public-interface/design boundary. Overloading unrelated statement
+indexes or inventing environment-holder values would add accidental
+complexity. The feature remains blocked until an explicit retained binding
+initialization contract is accepted, implemented and reviewed.
 
 ## Remaining work
 
