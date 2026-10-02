@@ -24,7 +24,6 @@ priv enum BytecodeUnsupportedReason {
   ForInAssignmentTarget
   ForInLexicalDeclaration
   ForInVarDeclaration
-  ForLexicalInitializer
   ForOfStatement
   GeneratorDeclaration
   GeneratorExpression
@@ -130,7 +129,6 @@ fn BytecodeUnsupportedReason::display_text(
     ForInAssignmentTarget => "for-in assignment target"
     ForInLexicalDeclaration => "for-in lexical declaration"
     ForInVarDeclaration => "for-in var declaration"
-    ForLexicalInitializer => "for lexical initializer"
     ForOfStatement => "for-of statement"
     GeneratorDeclaration => "generator declaration"
     GeneratorExpression => "generator expression"
@@ -2421,6 +2419,51 @@ fn BytecodeBuilder::compile_for_in_expr(
 }
 
 ///|
+// Hide activation slots while lexical names resolve through the active scope.
+fn BytecodeBuilder::begin_lexical_scope(
+  self : BytecodeBuilder,
+  bindings : Array[BytecodeLexicalBinding],
+) -> (Int, Array[(String, Int?, Int?)])? {
+  guard !bindings.is_empty() else { return None }
+  let shadowed = bindings.map(binding => {
+    let name = binding.name
+    (name, self.local_indices.get(name), self.env_slot_indices.get(name))
+  })
+  for (name, _, _) in shadowed {
+    self.local_indices.remove(name)
+    self.env_slot_indices.remove(name)
+  }
+  Some((self.emit(EnterHandler(LexicalScope(bindings), -1, -1)), shadowed))
+}
+
+///|
+fn BytecodeBuilder::end_lexical_scope(
+  self : BytecodeBuilder,
+  scope : (Int, Array[(String, Int?, Int?)])?,
+) -> Unit raise Error {
+  guard scope is Some((enter, shadowed)) else { return }
+  guard self.code[enter] is EnterHandler(kind, _, _) else {
+    raise @errors.InternalError(
+      message="lexical scope entry invariant violated",
+    )
+  }
+  let exit = self.emit(LeaveHandler(-1))
+  let end = self.code.length()
+  self.patch(enter, EnterHandler(kind, end, end))
+  self.patch(exit, LeaveHandler(end))
+  for (name, local_slot, captured) in shadowed {
+    match local_slot {
+      Some(slot) => self.local_indices[name] = slot
+      None => ()
+    }
+    match captured {
+      Some(slot) => self.env_slot_indices[name] = slot
+      None => ()
+    }
+  }
+}
+
+///|
 fn BytecodeBuilder::compile_stmt(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
@@ -2499,43 +2542,12 @@ fn BytecodeBuilder::compile_stmt_body(
         DestructuringDeclarationContext,
         first_decl_in(stmts, stmt_is_destructure_decl),
       )
-      let bindings = prepare_lexical_bindings(stmts)
-      let shadowed = bindings.map(binding => {
-        let name = binding.name
-        (name, self.local_indices.get(name), self.env_slot_indices.get(name))
-      })
-      for (name, _, _) in shadowed {
-        self.local_indices.remove(name)
-        self.env_slot_indices.remove(name)
-      }
-      let scope_enter = if bindings.is_empty() {
-        None
-      } else {
-        Some(self.emit(EnterHandler(LexicalScope(bindings), -1, -1)))
-      }
+      let scope = self.begin_lexical_scope(prepare_lexical_bindings(stmts))
       self.emit_undefined_completion()
       for child in stmts {
         self.compile_stmt(child, declaration_updates_completion=false)
       }
-      match scope_enter {
-        Some(enter) => {
-          let exit = self.emit(LeaveHandler(-1))
-          let end = self.code.length()
-          self.patch(enter, EnterHandler(LexicalScope(bindings), end, end))
-          self.patch(exit, LeaveHandler(end))
-        }
-        None => ()
-      }
-      for (name, local_slot, captured) in shadowed {
-        match local_slot {
-          Some(slot) => self.local_indices[name] = slot
-          None => ()
-        }
-        match captured {
-          Some(slot) => self.env_slot_indices[name] = slot
-          None => ()
-        }
-      }
+      self.end_lexical_scope(scope)
     }
     IfStmt(cond, then_branch, else_branch, _) => {
       bytecode_reject_if_present(
@@ -2622,7 +2634,7 @@ fn BytecodeBuilder::compile_stmt_body(
       self.patch(exit_jump, JumpIfFalse(exit_pos))
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
-    ForStmt(init, cond, update, body, _) => {
+    ForStmt(init, cond, update, body, loc) => {
       bytecode_reject_if_present(
         ControlFlowFunctionDeclaration,
         first_decl_loc(body, stmt_is_function_decl),
@@ -2631,21 +2643,28 @@ fn BytecodeBuilder::compile_stmt_body(
         DestructuringDeclarationContext,
         first_decl_loc(body, stmt_is_destructure_decl),
       )
-      match init {
+      let bindings = match init {
         Some(stmt) => {
-          bytecode_reject_if_present(
-            ForLexicalInitializer,
-            first_decl_loc(stmt, stmt_is_lexical_decl),
-          )
           bytecode_reject_if_present(
             DestructuringDeclarationContext,
             first_decl_loc(stmt, stmt_is_destructure_decl),
           )
-          self.compile_for_init(stmt)
+          prepare_lexical_bindings([stmt])
         }
+        None => []
+      }
+      let scope = self.begin_lexical_scope(bindings)
+      let per_iteration = bindings.any(binding => binding.kind is BytecodeLet)
+      match init {
+        Some(stmt) => self.compile_for_init(stmt)
         None => ()
       }
       self.emit_undefined_completion()
+      if per_iteration {
+        let _ = self.emit_with_source_locations(CreatePerIterationEnvironment, [
+          (BindingAccess, loc),
+        ])
+      }
       let cond_pos = self.code.length()
       match cond {
         Some(expr) => self.compile_expr(expr)
@@ -2661,6 +2680,11 @@ fn BytecodeBuilder::compile_stmt_body(
       self.restore_pending_loop_labels(labels)
       let update_pos = self.code.length()
       self.patch_loop_jumps(loop_ctx.continue_jumps, update_pos)
+      if per_iteration {
+        let _ = self.emit_with_source_locations(CreatePerIterationEnvironment, [
+          (BindingAccess, loc),
+        ])
+      }
       match update {
         Some(expr) => {
           self.compile_expr(expr)
@@ -2672,6 +2696,7 @@ fn BytecodeBuilder::compile_stmt_body(
       let exit_pos = self.code.length()
       self.patch(exit_jump, JumpIfFalse(exit_pos))
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
+      self.end_lexical_scope(scope)
     }
     ForOfStmt(_, _, _, _, loc)
     | ForOfStmtPat(_, _, _, _, loc)

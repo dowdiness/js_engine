@@ -385,6 +385,7 @@ priv enum BytecodeInstr {
   EnterHandler(BytecodeHandlerKind, Int, Int)
   LeaveHandler(Int)
   ResumeCompletion(Int)
+  CreatePerIterationEnvironment
   ReturnThroughHandler
   ObserveStatement(SourcePointId)
   ObserveExpression(SourcePointId)
@@ -560,6 +561,8 @@ fn bytecode_instruction_contract(
     | ResumeCompletion(_)
     | ReturnThroughHandler
     | Return => bytecode_contract(false, SynchronousLeaf, [])
+    CreatePerIterationEnvironment =>
+      bytecode_contract(true, SynchronousLeaf, [BindingAccess])
     LoadThis | LoadEnvSlot(_) | StoreEnvSlot(_) =>
       bytecode_contract(true, SynchronousLeaf, [BindingAccess])
     LoadName(_) | StoreName(_) | TypeofName(_) =>

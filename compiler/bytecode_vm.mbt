@@ -771,6 +771,23 @@ fn BytecodeFrame::run_instructions(
           _ => ()
         }
       }
+      CreatePerIterationEnvironment => {
+        guard frame.handlers.last() is Some(handler) else {
+          raise @errors.InternalError(
+            message="iteration environment has no scope",
+          )
+        }
+        guard handler.kind is LexicalScope(bindings) else {
+          raise @errors.InternalError(
+            message="iteration environment has no lexical scope",
+          )
+        }
+        let scope = Environment::new(parent=Some(handler.env))
+        for binding in bindings {
+          scope.def(binding.name, env.get(binding.name), @runtime.LetBinding)
+        }
+        frame.env = scope
+      }
       LeaveHandler(target) =>
         match
           frame.transfer_completion(

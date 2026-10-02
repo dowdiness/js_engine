@@ -309,6 +309,7 @@ fn bytecode_instruction_transfer(
     | BeginOptionalChain
     | MarkOptionalChainShortCircuit
     | EndOptionalChain
+    | CreatePerIterationEnvironment
     | DeclareFunction(_, _) => Fallthrough(bytecode_stack_effect(0, 0))
     ResolveNameReference(_) =>
       Fallthrough(bytecode_binding_reference_effect(0, 0, 0, 1))
@@ -1848,6 +1849,7 @@ fn bytecode_indexed_operand(
     | EnterHandler(_, _, _)
     | LeaveHandler(_)
     | ResumeCompletion(_)
+    | CreatePerIterationEnvironment
     | Throw => None
   }
 }
@@ -2276,6 +2278,25 @@ fn verify_bytecode_exception_regions(
   }
   // Even a function with no Enter must reject stray Leave/Resume instructions.
   for index, instruction in code {
+    if instruction is CreatePerIterationEnvironment {
+      let mut active : BytecodeHandlerKind? = None
+      for (enter, kind, target, end) in regions {
+        if bytecode_region_phase(index, enter, target, end) != 0 {
+          active = Some(kind)
+        }
+      }
+      guard active is Some(LexicalScope(bindings)) else {
+        raise @errors.InternalError(
+          message="iteration environment outside a lexical scope",
+        )
+      }
+      guard !bindings.is_empty() &&
+        bindings.all(binding => binding.kind is BytecodeLet) else {
+        raise @errors.InternalError(
+          message="iteration environment requires let bindings",
+        )
+      }
+    }
     match instruction {
       LeaveHandler(exit) => {
         // Scope identity is the region's enter instruction, not its depth.
