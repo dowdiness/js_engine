@@ -48,6 +48,58 @@ fn destructuring_mark_used_key(
 }
 
 ///|
+/// Copy the own enumerable properties that are not excluded by an object
+/// binding or assignment pattern. The source and exclusion sets are read-only;
+/// the returned object is assembled privately until every observable read has
+/// completed.
+fn Interpreter::copy_object_rest_properties(
+  self : Interpreter,
+  value : Value,
+  excluded_string_keys : @set.Set[String],
+  excluded_symbol_keys : Map[Int, Bool],
+  loc : @token.Loc,
+) -> Value raise Error {
+  let rest_props : Map[String, Value] = Map([])
+  let rest_symbol_props : Map[Int, Value] = Map([])
+  for key in self.own_property_keys(value) {
+    let excluded = match key {
+      String_(name) => excluded_string_keys.contains(name)
+      Symbol(sym) => excluded_symbol_keys.contains(sym.id)
+      _ => false
+    }
+    if excluded {
+      continue
+    }
+    match self.get_own_property(value, key) {
+      Some((desc, _)) if desc.enumerable => {
+        let property_value = self.get_computed_property(value, key, loc)
+        match key {
+          String_(name) => rest_props[name] = property_value
+          Symbol(sym) => rest_symbol_props[sym.id] = property_value
+          _ => ()
+        }
+      }
+      _ => ()
+    }
+  }
+  Object({
+    bag: {
+      properties: rest_props,
+      symbol_properties: rest_symbol_props,
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
+    },
+    prototype: get_obj_proto(realm_state=Some(self.realm_state)),
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 fn Interpreter::bind_pattern(
   self : Interpreter,
   pattern : @ast.Pattern,
@@ -249,58 +301,12 @@ fn Interpreter::bind_pattern(
       }
       match rest {
         Some(rest_pat) => {
-          let rest_props : Map[String, Value] = Map([])
-          let rest_symbol_props : Map[Int, Value] = Map([])
           let loc_rest = @token.Loc::default()
-          match value {
-            Object(data) => {
-              // CopyDataProperties: copy own enumerable properties, invoking getters
-              // First collect all own enumerable string keys (from properties and descriptors)
-              let all_keys : @set.Set[String] = Default::default()
-              data.bag.properties.each(fn(k, _v) { all_keys.add(k) })
-              data.bag.descriptors.each(fn(k, _v) { all_keys.add(k) })
-              all_keys.each(fn(k) raise {
-                if !used_string_keys.contains(k) {
-                  let is_enumerable = match data.bag.descriptors.get(k) {
-                    Some(desc) => desc.enumerable
-                    None => true
-                  }
-                  if is_enumerable {
-                    // Use get_property to invoke getters
-                    rest_props[k] = self.get_property(value, k, loc_rest)
-                  }
-                }
-              })
-              // Also copy enumerable symbol properties
-              data.bag.symbol_properties.each(fn(k, v) {
-                let is_enumerable = match data.bag.symbol_descriptors.get(k) {
-                  Some(desc) => desc.enumerable
-                  None => true
-                }
-                if is_enumerable && !used_symbol_keys.contains(k) {
-                  rest_symbol_props[k] = v
-                }
-              })
-            }
-            _ => ()
-          }
           self.bind_pattern(
             rest_pat,
-            Object({
-              bag: {
-                properties: rest_props,
-                symbol_properties: rest_symbol_props,
-                descriptors: Map([]),
-                symbol_descriptors: Map([]),
-                internal_slots: Map([]),
-                host_slots: Map([]),
-              },
-              prototype: get_obj_proto(realm_state=Some(self.realm_state)),
-              callable: None,
-              class_name: "Object",
-              extensible: true,
-              arraybuffer_state: None,
-            }),
+            self.copy_object_rest_properties(
+              value, used_string_keys, used_symbol_keys, loc_rest,
+            ),
             env,
             bk,
             ctx~,
@@ -649,54 +655,13 @@ fn Interpreter::assign_pattern(
       }
       match rest {
         Some(rest_pat) => {
-          let rest_props : Map[String, Value] = Map([])
-          let rest_symbol_props : Map[Int, Value] = Map([])
           let loc_rest_a = @token.Loc::default()
-          // CopyDataProperties: [[OwnPropertyKeys]] → [[GetOwnProperty]] →
-          // [[Get]] in observable order, including String exotic indices and
-          // Proxy dispatch. The target is a fresh ordinary object, so building
-          // its owned maps locally has no observable intermediate state.
-          for key in self.own_property_keys(value) {
-            let excluded = match key {
-              String_(name) => used_string_keys.contains(name)
-              Symbol(sym) => used_symbol_keys.contains(sym.id)
-              _ => false
-            }
-            if excluded {
-              continue
-            }
-            match self.get_own_property(value, key) {
-              Some((desc, _)) if desc.enumerable => {
-                let property_value = self.get_computed_property(
-                  value, key, loc_rest_a,
-                )
-                match key {
-                  String_(name) => rest_props[name] = property_value
-                  Symbol(sym) => rest_symbol_props[sym.id] = property_value
-                  _ => ()
-                }
-              }
-              _ => ()
-            }
-          }
           self.assign_pattern(
             ctx,
             rest_pat,
-            Object({
-              bag: {
-                properties: rest_props,
-                symbol_properties: rest_symbol_props,
-                descriptors: Map([]),
-                symbol_descriptors: Map([]),
-                internal_slots: Map([]),
-                host_slots: Map([]),
-              },
-              prototype: get_obj_proto(realm_state=Some(self.realm_state)),
-              callable: None,
-              class_name: "Object",
-              extensible: true,
-              arraybuffer_state: None,
-            }),
+            self.copy_object_rest_properties(
+              value, used_string_keys, used_symbol_keys, loc_rest_a,
+            ),
             env,
           )
         }
