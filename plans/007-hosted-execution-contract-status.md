@@ -17,7 +17,7 @@
 - R5 regression implementation: `5551bf76c125300f0a817c7961f708c4653aed3e`
 - Branch: `fix/hosted-verification-r5`
 - Worktree: `.worktrees/hosted-verification-r5`
-- Status: **R1–R4 merged; V1–V7 verified locally on native/js/wasm-gc. R5 independent review and CI/integration remain gated.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
+- Status: **M1–M6 implementation and V1–V7 local acceptance complete on native/js/wasm-gc; R1–R4 merged.** The final independent review, required CI, and R5 merge record is [PR #1065](https://github.com/dowdiness/js_engine/pull/1065). Local acceptance does not itself assert integration. The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit.
 - Authority: The *Exception and Nested Execution Contract* agreed on 2026-09-20. Its original text is preserved in the appendix.
 
 ## Purpose and Boundaries
@@ -582,7 +582,9 @@ R5 smoke passed
 
 The executable package/source were removed. `moon check --target all --deny-warn`,
 `moon info`, `moon fmt`, and `moon fmt --check` passed; generated interfaces
-were unchanged. R5 independent review and CI/integration remain pending.
+were unchanged. Final independent review and CI/integration evidence is tracked
+in [PR #1065](https://github.com/dowdiness/js_engine/pull/1065); consult that record
+for the exact reviewed head, required check results, and actual merge state.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end
