@@ -11,9 +11,14 @@
 - R3 final reviewed head: `ec4e712cf176967e46842c2dd90dabc3cc976493`
 - R3 integration: [PR #1063](https://github.com/dowdiness/js_engine/pull/1063), main commit `770d99902fe428398f24a1010db66f9c83a4c86c`; both final Terra reviews and required CI passed before merge.
 - R4 implementation base: `770d99902fe428398f24a1010db66f9c83a4c86c`
-- Branch: `fix/hosted-adapters-r4`
-- Worktree: `.worktrees/hosted-adapters-r4`
-- Status: **R1–R3 merged; R4 locally verified on all three targets; independent review and CI pending. R5 remains.** The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit. Required CI success and integration gate each dependent unit.
+- R4 final reviewed head: `5351e3c313aafc987563a357e920e37dbdeaed18`
+- R4 integration: [PR #1064](https://github.com/dowdiness/js_engine/pull/1064), main commit `9276cf056cc2a0f59504153a12c982040f06f563`; both Terra reviews and required CI passed before merge.
+- R5 assessment base: `efc76eea8bd42c4066bd06e3cef11798754657fb`
+- R5 regression implementation: `041e0608ea2c1672e54aa2464d6c0cf0410eb5d1`
+- R5 V5/§3 strengthened parent-realm/source oracle: `608e9ec55c8ed8473617b71245e84c778f2db124`
+- Branch: `fix/hosted-verification-r5`
+- Worktree: `.worktrees/hosted-verification-r5`
+- Status: **M1–M6 implementation and V1–V7 local acceptance complete on native/js/wasm-gc; R1–R4 merged.** The final independent review, required CI, and R5 merge record is [PR #1065](https://github.com/dowdiness/js_engine/pull/1065). Local acceptance does not itself assert integration. The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit; R5 alone was subsequently extended to four for updated-base integration after concurrent main advancement.
 - Authority: The *Exception and Nested Execution Contract* agreed on 2026-09-20. Its original text is preserved in the appendix.
 
 ## Purpose and Boundaries
@@ -168,23 +173,64 @@ Strict extraction, numeric value creation, function retention, and the existing
 guest-throw/outer-checkpoint boundaries are reused. The mapped error uses the
 trusted intrinsic prototype registry rather than a mutable guest constructor.
 The older `ProbeRuntime` behavior and unrelated prototype experiments are not
-migrated or changed. M1–M6 are implemented locally; R5 still assesses V1–V7.
+migrated or changed. M1–M6 are integrated; R5 verifies V1–V7 below.
 
-## Unverified
+## Verified in R5
 
-Bound verification to the following **seven groups**. Add tests or executable evidence for
-the listed conditions, and fix only failures of the existing contract. Test count and coverage
-percentage are not goals.
+R5 adds only missing invariant regressions. No production changes were needed.
+The assessment runs against integrated R1–R4, preserving their existing passing
+conditions rather than adding duplicate cases.
 
-| ID | Fixed verification scope | Existing evidence and remaining gap | Work unit |
+| ID | Verified scope and observed result | Implementation and executed evidence |
+|---|---|---|
+| V1 | Outer JS continues after Host→JS returns. Nested return does not drain jobs; checkpoint starts after outer completion, including Host reentry during checkpoint | R2 `e28dc678`; H: `R2 nested returns never recursively checkpoint including checkpoint Host calls`; E: trace `nested,host-return,outer,job` |
+| V2 | Body, nested calls, and checkpoint retain the same control instance. Exact observations spend 10→6 steps across nested guest unwind; depth returns 2→1→0 without refund. A replacement zero-limit policy is ignored inside the turn; later exhaustion cannot reset the counter. Simultaneous activation limits prioritize interruption→depth→steps | R1 `985dd1b8` carrier/depth implementation; R5 `041e0608` oracles. H: `R5 body nested calls and checkpoint retain one control instance`; C: `R5 hosted nested unwind releases depth without refund or policy replacement` plus the existing interruption/depth/step precedence cases |
+| V3 | A self-extending Promise chain terminates with `execution-limit` in checkpoint under a finite outer budget; later admission is Faulted and no further jobs dispatch. Checkpoint HostCall and nested non-drain remain valid. Ordinary Promise rejection does not escape or stop later jobs | R1/R2 `985dd1b8`/`e28dc678`; R5 `041e0608` evidence. H: `R5 self-extending Promise jobs terminate within the outer budget`, `R5 ordinary Promise rejection does not escape the checkpoint`, and R2 checkpoint-reentry case; E: bounded chain terminates and ordinary rejection remains Available |
+| V4 | Normal/guest body × normal/guest checkpoint obey precedence; body and checkpoint Host/control failures are terminal. Earlier guest failures survive as safe secondary data. FIFO includes new jobs; failing jobs are not retried; unselected jobs resume only in an eligible Available turn. Terminal failure blocks later dispatch | R2/R3 `e28dc678`/`770d9990`; R5 `041e0608` normal-body/checkpoint-Host-failure case. H: R2 completion/retention/terminal tests, R3 checkpoint Host/control secondary tests, original body-terminal/cleanup tests, `R5 normal body cannot succeed after checkpoint Host failure`; E: terminal native progress runs no guest catch/finally/jobs |
+| V5 | HostCall expires on normal, guest, Host, and terminal unwind and cannot revive in later turns. Current authority/owners reject before getter/callee effects. Getter/call/property-call preserve receiver and stamped callee realm, restoring all eleven realm slots and source identity after normal/guest/Host/terminal exits. All twelve public admission paths reject Running without cancelling the turn | R1/R3/R4 `985dd1b8`/`770d9990`/`9276cf05`; R5 `041e0608` missing oracles, `608e9ec5` known parent realm/source. H: original ancestor/normal-expiry, R1 ownership/mutable-argument cases, `R5 exceptional callback authority expires and never revives`, `R5 HostCall owner rejection precedes getter and callee effects`, `R5 nested receiver and callee realms restore on every unwind`, `R5 every public admission rejects Running without guest effects`; E: expired authority stays expired in a later turn, saved typed closure is Busy then returns 42 after settlement |
+| V6 | Busy close is non-cancelling; Closed/Faulted guest admission rejects. Interruption is observed at admission, Host return, reentry, checkpoint, and commit before further effects/success. Invalid portable policy limits cannot construct an admissible policy. Unobserved native progress reports a noncatchable typed terminal, with catch/finally/jobs suppressed | R1/R3 `985dd1b8`/`770d9990`; R5 `041e0608` boundary oracles. H: R3 close/disposal/malformed-admission cases, `R5 interruption gates admission Host return and reentry`, `R5 interruption at commit cannot publish a successful outcome`, `R5 public policy validation rejects invalid portable limits`, `R5 unobserved native progress is a noncatchable terminal`; E: interruption boundaries and actual `JSON.parse` guard fault before further effects |
+| V7 | Pending jobs survive parse failure, pure extraction/direct inspection, and handled admission/conversion rejection without drain or unnecessary fault. Strict extraction and selected adapter conversion do not execute getters/valueOf/toString/Proxy traps; typed argument mismatch is catchable and the turn remains Available | R1/R2/R4 `985dd1b8`/`e28dc678`/`9276cf05`. H: R1 lifecycle/strict-conversion cases, `R2 retained jobs wait through pure inspection parse failure and rejection`, seven R4 adapter cases; all three targets pass unchanged |
+
+V5's realm/source restoration oracle was strengthened in `608e9ec5`: H compares
+all eleven slots against a distinct, known parent realm and requires trusted
+source identity `parent-hosted.js` before nested entry. Both restore after all
+twelve get/call/property × normal/guest/Host/terminal combinations.
+
+H, C, and E are the exact all-target commands below. These are project
+regressions and executable observations, not Test262 conformance figures.
+
+### Established behavior execution ledger
+
+Each row was rerun in the final H+C command on all three targets. Commit IDs
+identify the integrated implementation; `041e0608` adds the missing R5 oracles.
+
+| ID | Implementation commit | Command | Observed result |
 |---|---|---|---|
-| V1 | Outer JS continues after Host→JS returns; nested return does not drain jobs, and checkpoint runs only after outer completion | R2 public-entry tests establish checkpoints after body completion; `R2 nested returns never recursively checkpoint including checkpoint Host calls` establishes outer continuation and no recursive drain, including Host reentry during checkpoint. R5 will consolidate this evidence with the original A–J scenarios | R2→R5 |
-| V2 | Nested calls and checkpoint share steps already spent by the body; reentry and unwinding do not replenish them. Simultaneously applicable limits follow interruption→depth→steps priority | [with_hosted_execution_policy](../interpreter/runtime/execution_policy.mbt) shares a carrier. BB:43 asserts only that low-budget recursion terminates; it could pass even with a fresh budget. Exact sharing and competing-limit precedence remain unproven | R5 |
-| V3 | A self-extending Promise job chain terminates under the same budget. Host callbacks during checkpoint receive valid HostCall authority, and nested calls do not recursively checkpoint | R2 verifies current HostCall authority and nested non-drain during checkpoint. Self-extending Promise-chain termination under a shared finite budget remains unverified | R5 |
-| V4 | Remaining normal/guest-throw/terminal body-and-checkpoint combinations; FIFO including newly queued jobs; no retry of the failed job; retention of unselected jobs and resumption in the next eligible Turn; no dispatch after terminal failure | R2 verifies normal/guest body × normal/guest checkpoint, interruption in body/checkpoint, FIFO/new jobs, no automatic retry, and later eligible resumption. Structured secondary diagnostics and the remaining Host Failure/control combinations remain R3/R5 work | R2/R3→R5 |
-| V5 | HostCall expires on guest throw, Host Failure, and terminal unwind, and cannot revive in later Turns. Owner rejection precedes side effects in getter/call/property-call paths. Receiver/callee realm state restores on normal and exceptional exits. Every JS-capable public entry point rejects Running as Busy | K5/K7 and R1 cover some authority and ownership paths, including property-call receiver/argument rejection. Exceptional expiry, realm restoration, and the complete public Busy matrix remain unverified | R1→R5 |
-| V6 | Close while Running is Busy without cancelling or faulting the session. Closed/Faulted admission is rejected. Explicit interruption is observed at admission, Host return, reentry/job dispatch, and other required boundaries. Invalid policy is rejected before admission, and bounded-policy rejection of unobserved native progress is classified as terminal | R1 verifies Closed/Faulted pure-extraction rejection. `close` delegates to [ExecutionSession.close](../hosting.mbt), but Busy close and the remaining interruption/configuration admission cases are not established by these tests | R1/R3→R5 |
-| V7 | With jobs already pending, parse failure, pure extraction, and admission/conversion rejection do not drain jobs or unnecessarily fault the session. Strict extraction does not run getters/valueOf/toString | R1 verifies strict extraction and handled foreign-argument rejection. R2 verifies retained jobs across parse failure, strict/direct-global inspection, and public foreign-argument rejection, then drains them on a later eligible getter turn. R4/R5 cover typed-adapter mismatch and final assessment | R1/R2→R5 |
+| K1 | `985dd1b8`, `770d9990` | H | Intentional/rethrown guest token retains identity and availability; nested provenance survives |
+| K2 | `985dd1b8` | H | Unmapped Host/foreign-return failures fault without guest catch/finally/checkpoint |
+| K3 | `985dd1b8`, `770d9990` | H | Host catches cannot clear terminal latch; later guest work/admission rejects; first cause survives cleanup |
+| K4 | `985dd1b8` | H | Depth-only oracles at 0/1/2/16 pass with 100,000 steps; siblings/guest unwind release depth; script roots do not consume activation depth |
+| K5 | `985dd1b8` | H | Ancestor authority rejects; parent resumes; normal-return authority expires; handled public Busy leaves execution usable |
+| K6 | `e28dc678`, `770d9990` | H | Body guest throw remains primary; checkpoint guest value/phase remains secondary; Available |
+| K7 | `985dd1b8` | H | Foreign call args reject before guest effects without damaging the donor |
+| M1 | `e28dc678` | H, E | All public JS entries settle one outer checkpoint after normal/guest body completion; nested/pure/parse/rejected/terminal paths do not drain |
+| M2 | `985dd1b8` | H | Receiver/argument ownership precedes getter dispatch and is rechecked after mutable-argument getters |
+| M3 | `985dd1b8` | H | Strict number/bool/string extraction accepts live owners, rejects Closed/Faulted, and executes no coercion |
+| M4 | `770d9990` | H, E | Concrete public failure categories distinguish admission, parse, guest, Host, and control failures; Busy close is non-cancelling; Faulted disposal remains non-executing |
+| M5 | `770d9990` | H | Trusted body/nested/checkpoint provenance, actual guest identity, immutable safe terminal secondary data; no automatic guest/error formatting |
+| M6 | `9276cf05` | H, E | Numeric adapters preserve valid calls, map only strict argument mismatch to actual TypeError before user code, retain original closures, and reject Running as Busy |
+
+### Supplementary contract requirements §1–6
+
+| Requirement | Implementation commit | Executed command and observed result |
+|---|---|---|
+| §1: one session/turn/realm; body+nested+checkpoint; no rollback | `985dd1b8`, `e28dc678`; oracle `041e0608` | H+C, E: single carrier across phases; body effects retained when checkpoint fails; twelve overlapping admissions reject; outer continuation and job order preserved |
+| §2: distinguishable failures, explicit mapping, strict adapters, safe diagnostics | `770d9990`, `9276cf05` | H, E: actual guest tokens/TypeErrors, original Host causes, typed terminal/admission/parse categories, no coercion or formatter-triggered guest execution |
+| §3: current-frame synchronous authority, owners, receiver/callee realm, expiry, Busy close | `985dd1b8`, `770d9990`, `9276cf05`; oracles `041e0608`, `608e9ec5` | H, E: ancestor/foreign/expired authority rejects before effects; parent resumes; receiver and eleven known parent realm slots plus nonempty trusted source identity restore on every exit; saved closures and close reject Running without cancelling |
+| §4: shared steps/depth, cooperative interruption, sticky first terminal | `985dd1b8`, `770d9990`; oracle `041e0608` | H+C, E: exact 10→6→0 accounting without refund/replacement; depth releases 2→1→0; interruption→depth→steps at competing observation points; admission/reentry/Host-return/job/commit gates block later effects |
+| §5: one eligible FIFO checkpoint; no retry; retained jobs; ordinary Promise rejection | `e28dc678`; oracle `041e0608` | H, E: FIFO/new jobs, failing-job removal, retained-job later resumption, non-drain exclusions, valid checkpoint HostCall, bounded self-extending Promise chain, non-escaping ordinary rejection |
+| §6: terminal wins; safe secondaries; body guest primary; settle before return | `e28dc678`, `770d9990`; oracle `041e0608` | H, E: all normal/guest body/checkpoint combinations; Host/control terminal outcomes override success/prior guest failure, preserve safe prior diagnostics, and suppress later guest/jobs |
+
 
 ## Out of Scope
 
@@ -194,7 +240,7 @@ percentage are not goals.
 | X2 | Sandbox guarantees, wall-clock preemption, stopping arbitrary Host loops/blocking I/O, and recovery from OOM/abort/process crashes | Excluded by §1/§4. Distinguish cooperative interruption from Host responsibilities |
 | X3 | Rollback of JS/Host side effects that have already occurred | Not promised by §1. Effects before failure remain |
 | X4 | Rewriting the engine, general stack safety across every language path, redesigning the entire activation-observation model, or adding a separate termination state machine | This work concerns contract compliance at Hosted boundaries and reuses the existing observation model |
-| X5 | API renaming, wholesale legacy API replacement, release, main merge, push, CI-baseline changes, and performance optimization | These are separate decisions. Verification can finish under the current prototype names |
+| X5 | API renaming, wholesale legacy API replacement, release, CI-baseline changes, and performance optimization | Separate decisions. Push, focused PR creation, and eligible squash merges were subsequently authorized by the user; those integration gates are part of R1–R5 |
 | X6 | New conversion families, a general codec framework, unbounded type/arity expansion, or a new unhandled-rejection policy | The agreement covers strict conversion and explicit mapping within the selected scope. Broader custom conversions and rejection policy are separate |
 
 ## Mapping to Original Scenarios A–J
@@ -206,7 +252,7 @@ This mapping prevents partially verified compound scenarios from being marked co
 | A: Continuation after nested callback and outer checkpoint | V1 |
 | B: Identity of nested guest throws | K1 |
 | C: Intentional guest mapping and noncatchable Host Failure | K1, K2; typed argument mismatch is M6 |
-| D: Termination and Faulted state despite Host-side catching | K3; unverified job/entry-point differences are V3/V6 |
+| D: Termination and Faulted state despite Host-side catching | K3, V3, V6 |
 | E: Shared steps/depth and interruption precedence | K4, V2 |
 | F: Self-extending Promise chain | V3 |
 | G: Primary/secondary/terminal body-and-checkpoint outcomes | K6, M5, V4 |
@@ -234,7 +280,9 @@ migration. Terra review findings were resolved/adjudicated, and required CI pass
 
 ### R2 — Public Turn Completion and Checkpoint
 
-Status: **Implemented and verified locally; independent review and PR CI pending.**
+Status: **MERGED** in [PR #1062](https://github.com/dowdiness/js_engine/pull/1062),
+main commit `e28dc678916daabfbe58adc5b056651251ced1cb`; both Terra reviews and
+required CI passed before merge.
 
 - Covers: M1, V1, and the checkpoint portions of V4/V7.
 - Primary files: `hosted_execution_probe.mbt` and its BB/WB tests.
@@ -486,8 +534,82 @@ existing Hosted signatures are unchanged. `make architecture-boundary-audit`
 passed: 41 audit tests, import/representation/surface-taxonomy checks, the
 generic/pure result-pipeline check, and semantic representation checks.
 
-R4 independent review and integration remain pending; these results do not
-complete the separate R5 assessment.
+Both independent Terra reviews passed on `5351e3c3`. Required
+`release_metadata`, `stack-safety-required`, and `test262-required` checks
+succeeded on that exact head; their workflow runs were respectively
+`36946250084`, `36946250067`, and `36946250062`, all completed successfully.
+PR #1064 was squash-merged as `9276cf05`. Deployment and CodeRabbit's automatic
+OSS review were skipped, not passed.
+
+### R5 integrated execution record
+
+Attempt 3's two independent reviews and required CI passed on pre-rebase head
+`14732841`, but strict branch protection blocked integration after main advanced
+through [PR #1061](https://github.com/dowdiness/js_engine/pull/1061).
+The user explicitly authorized one fourth R5 integration/reverification cycle.
+The R5 patch was rebased onto `efc76eea`; all H/C/E commands below were rerun
+against that compiler-integrated base. The canonical R5 commit IDs above were
+refreshed after rebase; the original contract and R5 regression behavior are
+unchanged. Fourth-cycle review, required CI, and merge evidence lives in PR #1065.
+
+For each `<target>` in `native`, `js`, and `wasm-gc`:
+
+H selects Hosted integration/adapter files; C selects the runtime accounting
+and dispatch files. Their final invocation was combined exactly as follows:
+
+```sh
+# H+C
+moon test --target <target> hosted_execution_probe_test.mbt hosted_execution_probe_wbtest.mbt embedding_research_test.mbt hosted_execution_contract_test.mbt hosted_execution_contract_wbtest.mbt interpreter/runtime/execution_control_wbtest.mbt interpreter/runtime/execution_control_dispatch_wbtest.mbt
+# Full project
+moon test --target <target>
+# E: actual public embedding executable, removed after all three runs
+moon run --target <target> cmd/hosted_r5_smoke
+```
+
+All three focused runs passed **123/123**. Full project suites passed:
+
+| Target | Passed / Executed |
+|---|---:|
+| native | 4,573 / 4,573 |
+| js | 4,441 / 4,441 |
+| wasm-gc | 4,439 / 4,439 |
+
+The new cases passed before any production edit; no production edit was needed.
+Exact charging uses the explicit runtime observation model, not incidental
+compiler instruction totals. Existing high-budget depth tests remain separate
+from finite-step tests.
+
+The realm oracle observes the prototype of a function created under stamped
+callee metadata and compares every saved/restored realm slot. Dense arrays use
+lazy prototype lookup, and primitive property access deliberately clears callee
+overrides; those were not valid oracles for this existing call-realm boundary.
+They were replaced by the realm-stamped function observation, not by production
+changes or a new cross-realm language-conformance guarantee.
+
+Attempt 2 authority review identified that the source-restoration comparison
+did not establish a nonempty parent source identity. Its separate claim that
+the parent realm was empty was incorrect: the registered Host callback was
+already realm-stamped. The correction makes both preconditions explicit using
+a third realm and trusted parent source metadata. The nonempty-source assertion
+failed before fixture stamping; the complete strengthened oracle passed on
+native/js/wasm-gc afterward. No production behavior or public interface changed.
+
+All three E runs asserted and printed:
+
+```text
+continuation: nested,host-return,outer,job; ordinary Promise rejection stays Available
+Promise chain: execution-limit/checkpoint; no later dispatch; state=Faulted
+authority: guest unwind expires across later Turn; saved typed closure=Busy while Running,42 afterward
+interruption: admission/Host-return/reentry/checkpoint reject before further guest effects
+unobserved native progress: typed terminal; guest catch/finally/jobs=0
+R5 smoke passed
+```
+
+The executable package/source were removed. `moon check --target all --deny-warn`,
+`moon info`, `moon fmt`, and `moon fmt --check` passed; generated interfaces
+were unchanged. Final independent review and CI/integration evidence is tracked
+in [PR #1065](https://github.com/dowdiness/js_engine/pull/1065); consult that record
+for the exact reviewed head, required check results, and actual merge state.
 
 During implementation, follow the repository workflow: identify affected callers and argument
 types, state assumptions in no more than three lines, and establish a minimal failing end-to-end
