@@ -69,7 +69,7 @@ strictly checks the result. Calling it while the owner is Running rejects
 The Hosted path shares one cooperative step/depth policy across the body,
 authorized nested calls, and the eligible outer checkpoint. A self-extending
 Promise job chain cannot obtain a fresh budget. Interruption, Host Failure,
-and bounded native-progress rejection are terminal: the probe becomes Faulted,
+and bounded native-progress rejection are terminal: the session becomes Faulted,
 and guest catch/finally or later jobs cannot recover it. This is not a sandbox
 or preemption of arbitrary MoonBit work.
 
