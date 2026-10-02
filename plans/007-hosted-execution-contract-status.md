@@ -13,12 +13,12 @@
 - R4 implementation base: `770d99902fe428398f24a1010db66f9c83a4c86c`
 - R4 final reviewed head: `5351e3c313aafc987563a357e920e37dbdeaed18`
 - R4 integration: [PR #1064](https://github.com/dowdiness/js_engine/pull/1064), main commit `9276cf056cc2a0f59504153a12c982040f06f563`; both Terra reviews and required CI passed before merge.
-- R5 assessment base: `9276cf056cc2a0f59504153a12c982040f06f563`
-- R5 regression implementation: `5551bf76c125300f0a817c7961f708c4653aed3e`
-- R5 V5/§3 strengthened parent-realm/source oracle: `aff1b08f5755cf09a556abd4828157f34ac5cfc4`
+- R5 assessment base: `efc76eea8bd42c4066bd06e3cef11798754657fb`
+- R5 regression implementation: `041e0608ea2c1672e54aa2464d6c0cf0410eb5d1`
+- R5 V5/§3 strengthened parent-realm/source oracle: `608e9ec55c8ed8473617b71245e84c778f2db124`
 - Branch: `fix/hosted-verification-r5`
 - Worktree: `.worktrees/hosted-verification-r5`
-- Status: **M1–M6 implementation and V1–V7 local acceptance complete on native/js/wasm-gc; R1–R4 merged.** The final independent review, required CI, and R5 merge record is [PR #1065](https://github.com/dowdiness/js_engine/pull/1065). Local acceptance does not itself assert integration. The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit.
+- Status: **M1–M6 implementation and V1–V7 local acceptance complete on native/js/wasm-gc; R1–R4 merged.** The final independent review, required CI, and R5 merge record is [PR #1065](https://github.com/dowdiness/js_engine/pull/1065). Local acceptance does not itself assert integration. The user authorized autonomous implementation/review/integration through R5, with one isolated PR per unit and at most three correction cycles per unit; R5 alone was subsequently extended to four for updated-base integration after concurrent main advancement.
 - Authority: The *Exception and Nested Execution Contract* agreed on 2026-09-20. Its original text is preserved in the appendix.
 
 ## Purpose and Boundaries
@@ -184,14 +184,14 @@ conditions rather than adding duplicate cases.
 | ID | Verified scope and observed result | Implementation and executed evidence |
 |---|---|---|
 | V1 | Outer JS continues after Host→JS returns. Nested return does not drain jobs; checkpoint starts after outer completion, including Host reentry during checkpoint | R2 `e28dc678`; H: `R2 nested returns never recursively checkpoint including checkpoint Host calls`; E: trace `nested,host-return,outer,job` |
-| V2 | Body, nested calls, and checkpoint retain the same control instance. Exact observations spend 10→6 steps across nested guest unwind; depth returns 2→1→0 without refund. A replacement zero-limit policy is ignored inside the turn; later exhaustion cannot reset the counter. Simultaneous activation limits prioritize interruption→depth→steps | R1 `985dd1b8` carrier/depth implementation; R5 `5551bf76` oracles. H: `R5 body nested calls and checkpoint retain one control instance`; C: `R5 hosted nested unwind releases depth without refund or policy replacement` plus the existing interruption/depth/step precedence cases |
-| V3 | A self-extending Promise chain terminates with `execution-limit` in checkpoint under a finite outer budget; later admission is Faulted and no further jobs dispatch. Checkpoint HostCall and nested non-drain remain valid. Ordinary Promise rejection does not escape or stop later jobs | R1/R2 `985dd1b8`/`e28dc678`; R5 `5551bf76` evidence. H: `R5 self-extending Promise jobs terminate within the outer budget`, `R5 ordinary Promise rejection does not escape the checkpoint`, and R2 checkpoint-reentry case; E: bounded chain terminates and ordinary rejection remains Available |
-| V4 | Normal/guest body × normal/guest checkpoint obey precedence; body and checkpoint Host/control failures are terminal. Earlier guest failures survive as safe secondary data. FIFO includes new jobs; failing jobs are not retried; unselected jobs resume only in an eligible Available turn. Terminal failure blocks later dispatch | R2/R3 `e28dc678`/`770d9990`; R5 `5551bf76` normal-body/checkpoint-Host-failure case. H: R2 completion/retention/terminal tests, R3 checkpoint Host/control secondary tests, original body-terminal/cleanup tests, `R5 normal body cannot succeed after checkpoint Host failure`; E: terminal native progress runs no guest catch/finally/jobs |
-| V5 | HostCall expires on normal, guest, Host, and terminal unwind and cannot revive in later turns. Current authority/owners reject before getter/callee effects. Getter/call/property-call preserve receiver and stamped callee realm, restoring all eleven realm slots and source identity after normal/guest/Host/terminal exits. All twelve public admission paths reject Running without cancelling the turn | R1/R3/R4 `985dd1b8`/`770d9990`/`9276cf05`; R5 `5551bf76` missing oracles. H: original ancestor/normal-expiry, R1 ownership/mutable-argument cases, `R5 exceptional callback authority expires and never revives`, `R5 HostCall owner rejection precedes getter and callee effects`, `R5 nested receiver and callee realms restore on every unwind`, `R5 every public admission rejects Running without guest effects`; E: expired authority stays expired in a later turn, saved typed closure is Busy then returns 42 after settlement |
-| V6 | Busy close is non-cancelling; Closed/Faulted guest admission rejects. Interruption is observed at admission, Host return, reentry, checkpoint, and commit before further effects/success. Invalid portable policy limits cannot construct an admissible policy. Unobserved native progress reports a noncatchable typed terminal, with catch/finally/jobs suppressed | R1/R3 `985dd1b8`/`770d9990`; R5 `5551bf76` boundary oracles. H: R3 close/disposal/malformed-admission cases, `R5 interruption gates admission Host return and reentry`, `R5 interruption at commit cannot publish a successful outcome`, `R5 public policy validation rejects invalid portable limits`, `R5 unobserved native progress is a noncatchable terminal`; E: interruption boundaries and actual `JSON.parse` guard fault before further effects |
+| V2 | Body, nested calls, and checkpoint retain the same control instance. Exact observations spend 10→6 steps across nested guest unwind; depth returns 2→1→0 without refund. A replacement zero-limit policy is ignored inside the turn; later exhaustion cannot reset the counter. Simultaneous activation limits prioritize interruption→depth→steps | R1 `985dd1b8` carrier/depth implementation; R5 `041e0608` oracles. H: `R5 body nested calls and checkpoint retain one control instance`; C: `R5 hosted nested unwind releases depth without refund or policy replacement` plus the existing interruption/depth/step precedence cases |
+| V3 | A self-extending Promise chain terminates with `execution-limit` in checkpoint under a finite outer budget; later admission is Faulted and no further jobs dispatch. Checkpoint HostCall and nested non-drain remain valid. Ordinary Promise rejection does not escape or stop later jobs | R1/R2 `985dd1b8`/`e28dc678`; R5 `041e0608` evidence. H: `R5 self-extending Promise jobs terminate within the outer budget`, `R5 ordinary Promise rejection does not escape the checkpoint`, and R2 checkpoint-reentry case; E: bounded chain terminates and ordinary rejection remains Available |
+| V4 | Normal/guest body × normal/guest checkpoint obey precedence; body and checkpoint Host/control failures are terminal. Earlier guest failures survive as safe secondary data. FIFO includes new jobs; failing jobs are not retried; unselected jobs resume only in an eligible Available turn. Terminal failure blocks later dispatch | R2/R3 `e28dc678`/`770d9990`; R5 `041e0608` normal-body/checkpoint-Host-failure case. H: R2 completion/retention/terminal tests, R3 checkpoint Host/control secondary tests, original body-terminal/cleanup tests, `R5 normal body cannot succeed after checkpoint Host failure`; E: terminal native progress runs no guest catch/finally/jobs |
+| V5 | HostCall expires on normal, guest, Host, and terminal unwind and cannot revive in later turns. Current authority/owners reject before getter/callee effects. Getter/call/property-call preserve receiver and stamped callee realm, restoring all eleven realm slots and source identity after normal/guest/Host/terminal exits. All twelve public admission paths reject Running without cancelling the turn | R1/R3/R4 `985dd1b8`/`770d9990`/`9276cf05`; R5 `041e0608` missing oracles, `608e9ec5` known parent realm/source. H: original ancestor/normal-expiry, R1 ownership/mutable-argument cases, `R5 exceptional callback authority expires and never revives`, `R5 HostCall owner rejection precedes getter and callee effects`, `R5 nested receiver and callee realms restore on every unwind`, `R5 every public admission rejects Running without guest effects`; E: expired authority stays expired in a later turn, saved typed closure is Busy then returns 42 after settlement |
+| V6 | Busy close is non-cancelling; Closed/Faulted guest admission rejects. Interruption is observed at admission, Host return, reentry, checkpoint, and commit before further effects/success. Invalid portable policy limits cannot construct an admissible policy. Unobserved native progress reports a noncatchable typed terminal, with catch/finally/jobs suppressed | R1/R3 `985dd1b8`/`770d9990`; R5 `041e0608` boundary oracles. H: R3 close/disposal/malformed-admission cases, `R5 interruption gates admission Host return and reentry`, `R5 interruption at commit cannot publish a successful outcome`, `R5 public policy validation rejects invalid portable limits`, `R5 unobserved native progress is a noncatchable terminal`; E: interruption boundaries and actual `JSON.parse` guard fault before further effects |
 | V7 | Pending jobs survive parse failure, pure extraction/direct inspection, and handled admission/conversion rejection without drain or unnecessary fault. Strict extraction and selected adapter conversion do not execute getters/valueOf/toString/Proxy traps; typed argument mismatch is catchable and the turn remains Available | R1/R2/R4 `985dd1b8`/`e28dc678`/`9276cf05`. H: R1 lifecycle/strict-conversion cases, `R2 retained jobs wait through pure inspection parse failure and rejection`, seven R4 adapter cases; all three targets pass unchanged |
 
-V5's realm/source restoration oracle was strengthened in `aff1b08f`: H compares
+V5's realm/source restoration oracle was strengthened in `608e9ec5`: H compares
 all eleven slots against a distinct, known parent realm and requires trusted
 source identity `parent-hosted.js` before nested entry. Both restore after all
 twelve get/call/property × normal/guest/Host/terminal combinations.
@@ -202,7 +202,7 @@ regressions and executable observations, not Test262 conformance figures.
 ### Established behavior execution ledger
 
 Each row was rerun in the final H+C command on all three targets. Commit IDs
-identify the integrated implementation; `5551bf76` adds the missing R5 oracles.
+identify the integrated implementation; `041e0608` adds the missing R5 oracles.
 
 | ID | Implementation commit | Command | Observed result |
 |---|---|---|---|
@@ -224,12 +224,12 @@ identify the integrated implementation; `5551bf76` adds the missing R5 oracles.
 
 | Requirement | Implementation commit | Executed command and observed result |
 |---|---|---|
-| §1: one session/turn/realm; body+nested+checkpoint; no rollback | `985dd1b8`, `e28dc678`; oracle `5551bf76` | H+C, E: single carrier across phases; body effects retained when checkpoint fails; twelve overlapping admissions reject; outer continuation and job order preserved |
+| §1: one session/turn/realm; body+nested+checkpoint; no rollback | `985dd1b8`, `e28dc678`; oracle `041e0608` | H+C, E: single carrier across phases; body effects retained when checkpoint fails; twelve overlapping admissions reject; outer continuation and job order preserved |
 | §2: distinguishable failures, explicit mapping, strict adapters, safe diagnostics | `770d9990`, `9276cf05` | H, E: actual guest tokens/TypeErrors, original Host causes, typed terminal/admission/parse categories, no coercion or formatter-triggered guest execution |
-| §3: current-frame synchronous authority, owners, receiver/callee realm, expiry, Busy close | `985dd1b8`, `770d9990`, `9276cf05`; oracles `5551bf76`, `aff1b08f` | H, E: ancestor/foreign/expired authority rejects before effects; parent resumes; receiver and eleven known parent realm slots plus nonempty trusted source identity restore on every exit; saved closures and close reject Running without cancelling |
-| §4: shared steps/depth, cooperative interruption, sticky first terminal | `985dd1b8`, `770d9990`; oracle `5551bf76` | H+C, E: exact 10→6→0 accounting without refund/replacement; depth releases 2→1→0; interruption→depth→steps at competing observation points; admission/reentry/Host-return/job/commit gates block later effects |
-| §5: one eligible FIFO checkpoint; no retry; retained jobs; ordinary Promise rejection | `e28dc678`; oracle `5551bf76` | H, E: FIFO/new jobs, failing-job removal, retained-job later resumption, non-drain exclusions, valid checkpoint HostCall, bounded self-extending Promise chain, non-escaping ordinary rejection |
-| §6: terminal wins; safe secondaries; body guest primary; settle before return | `e28dc678`, `770d9990`; oracle `5551bf76` | H, E: all normal/guest body/checkpoint combinations; Host/control terminal outcomes override success/prior guest failure, preserve safe prior diagnostics, and suppress later guest/jobs |
+| §3: current-frame synchronous authority, owners, receiver/callee realm, expiry, Busy close | `985dd1b8`, `770d9990`, `9276cf05`; oracles `041e0608`, `608e9ec5` | H, E: ancestor/foreign/expired authority rejects before effects; parent resumes; receiver and eleven known parent realm slots plus nonempty trusted source identity restore on every exit; saved closures and close reject Running without cancelling |
+| §4: shared steps/depth, cooperative interruption, sticky first terminal | `985dd1b8`, `770d9990`; oracle `041e0608` | H+C, E: exact 10→6→0 accounting without refund/replacement; depth releases 2→1→0; interruption→depth→steps at competing observation points; admission/reentry/Host-return/job/commit gates block later effects |
+| §5: one eligible FIFO checkpoint; no retry; retained jobs; ordinary Promise rejection | `e28dc678`; oracle `041e0608` | H, E: FIFO/new jobs, failing-job removal, retained-job later resumption, non-drain exclusions, valid checkpoint HostCall, bounded self-extending Promise chain, non-escaping ordinary rejection |
+| §6: terminal wins; safe secondaries; body guest primary; settle before return | `e28dc678`, `770d9990`; oracle `041e0608` | H, E: all normal/guest body/checkpoint combinations; Host/control terminal outcomes override success/prior guest failure, preserve safe prior diagnostics, and suppress later guest/jobs |
 
 
 ## Out of Scope
@@ -543,6 +543,15 @@ OSS review were skipped, not passed.
 
 ### R5 integrated execution record
 
+Attempt 3's two independent reviews and required CI passed on pre-rebase head
+`14732841`, but strict branch protection blocked integration after main advanced
+through [PR #1061](https://github.com/dowdiness/js_engine/pull/1061).
+The user explicitly authorized one fourth R5 integration/reverification cycle.
+The R5 patch was rebased onto `efc76eea`; all H/C/E commands below were rerun
+against that compiler-integrated base. The canonical R5 commit IDs above were
+refreshed after rebase; the original contract and R5 regression behavior are
+unchanged. Fourth-cycle review, required CI, and merge evidence lives in PR #1065.
+
 For each `<target>` in `native`, `js`, and `wasm-gc`:
 
 H selects Hosted integration/adapter files; C selects the runtime accounting
@@ -561,9 +570,9 @@ All three focused runs passed **123/123**. Full project suites passed:
 
 | Target | Passed / Executed |
 |---|---:|
-| native | 4,570 / 4,570 |
-| js | 4,438 / 4,438 |
-| wasm-gc | 4,436 / 4,436 |
+| native | 4,573 / 4,573 |
+| js | 4,441 / 4,441 |
+| wasm-gc | 4,439 / 4,439 |
 
 The new cases passed before any production edit; no production edit was needed.
 Exact charging uses the explicit runtime observation model, not incidental
