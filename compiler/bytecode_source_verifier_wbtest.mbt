@@ -174,6 +174,7 @@ fn bytecode_function_with_source_unit_for_wb(
     needs_arguments_object=function.needs_arguments_object,
     needs_own_env=function.needs_own_env,
     local_names=function.local_names,
+    local_slot_count=Some(function.local_slot_count),
     local_indices=function.local_indices,
     env_slot_names=function.env_slot_names,
     env_var_hoist_names=function.env_var_hoist_names,
@@ -181,6 +182,44 @@ fn bytecode_function_with_source_unit_for_wb(
     code=function.code,
     source_point_owner=function.source_point_owner,
     source_unit~,
+    source_points=function.source_points,
+    instruction_sources=function.instruction_sources,
+    observation_contexts=function.observation_contexts,
+    observation_edge_contexts=function.observation_edge_contexts,
+    observation_authority=Some(function.observation_authority),
+    children=function.children,
+    header_provenance=function.header_provenance,
+  )
+}
+
+///|
+fn bytecode_function_with_local_slot_capacity_for_wb(
+  function : BytecodeFunction,
+  local_slot_count : Int,
+) -> BytecodeFunction {
+  BytecodeFunction(
+    name=function.name,
+    signature_name=function.signature_name,
+    enclosing_strict=function.enclosing_strict,
+    params=function.params,
+    rest_param=function.rest_param,
+    source_text=function.source_text,
+    source_identity=Some(function.source_identity),
+    activation_kind=function.activation_kind,
+    preparation=function.preparation,
+    body_has_use_strict=function.body_has_use_strict,
+    call_self_name=function.call_self_name,
+    needs_arguments_object=function.needs_arguments_object,
+    needs_own_env=function.needs_own_env,
+    local_names=function.local_names,
+    local_slot_count=Some(local_slot_count),
+    local_indices=function.local_indices,
+    env_slot_names=function.env_slot_names,
+    env_var_hoist_names=function.env_var_hoist_names,
+    template_cache_key_prefix=function.template_cache_key_prefix,
+    code=function.code,
+    source_point_owner=function.source_point_owner,
+    source_unit=function.source_unit,
     source_points=function.source_points,
     instruction_sources=function.instruction_sources,
     observation_contexts=function.observation_contexts,
@@ -251,6 +290,7 @@ fn bytecode_function_with_source_point_owner_for_wb(
     needs_arguments_object=function.needs_arguments_object,
     needs_own_env=function.needs_own_env,
     local_names=function.local_names,
+    local_slot_count=Some(function.local_slot_count),
     local_indices=function.local_indices,
     env_slot_names=function.env_slot_names,
     env_var_hoist_names=function.env_var_hoist_names,
@@ -1043,8 +1083,11 @@ test "indexed operand verifier rejects every zero-length owning table" {
   for _ in 0..<local_name_count {
     let _ = local_function.local_names.pop()
   }
+  local_program.main.children[0] = bytecode_function_with_local_slot_capacity_for_wb(
+    local_function, 0,
+  )
   let local_index = mutate_first_indexed_operand_for_wb(
-    local_function,
+    local_program.main.children[0],
     LocalSlot,
     0,
   )
@@ -2527,5 +2570,59 @@ test "observation coverage controls retain normal lowering" {
     let _ = finalize_bytecode_program(program) catch {
       _ => fail("observation coverage rejected control: " + source)
     }
+  }
+}
+
+///|
+test "local slot verifier separates source names from lowering capacity" {
+  let program = unverified_source_program_for_wb(
+    "function f(flag) { switch (flag) { case 1: let value = 1; break; } } f(1);",
+  )
+  guard program.main.children.length() == 1 else {
+    abort("expected one nested function")
+  }
+  let function = program.main.children[0]
+  assert_true(function.local_slot_count > function.local_names.length())
+  verify_bytecode_function_indexed_operands(function, [], recurse=false)
+
+  let malformed = bytecode_function_with_local_slot_capacity_for_wb(
+    function,
+    function.local_names.length() - 1,
+  )
+  try {
+    verify_bytecode_function_indexed_operands(malformed, [], recurse=false)
+    fail("expected source-local capacity defect")
+  } catch {
+    BytecodeLocalSlotCapacityDefect(defect) => {
+      assert_eq(defect.function_path, [])
+      assert_eq(
+        defect.minimum_source_local_capacity,
+        function.local_names.length(),
+      )
+      assert_eq(defect.actual_capacity, function.local_names.length() - 1)
+    }
+    _ => fail("expected source-local capacity defect")
+  }
+
+  let instruction_index = mutate_first_indexed_operand_for_wb(
+    function,
+    LocalSlot,
+    function.local_slot_count,
+  )
+  try {
+    verify_bytecode_function_indexed_operands(function, [], recurse=false)
+    fail("expected capacity-bounded local operand defect")
+  } catch {
+    BytecodeIndexedOperandDefect(defect) => {
+      assert_eq(defect.function_path, [])
+      assert_eq(defect.instruction_index, instruction_index)
+      match defect.family {
+        LocalSlot => ()
+        _ => fail("expected local-slot family")
+      }
+      assert_eq(defect.exclusive_upper_bound, function.local_slot_count)
+      assert_eq(defect.actual_operand, function.local_slot_count)
+    }
+    _ => fail("expected capacity-bounded local operand defect")
   }
 }

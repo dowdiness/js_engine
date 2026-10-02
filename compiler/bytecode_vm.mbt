@@ -56,7 +56,7 @@ fn BytecodeFrame::BytecodeFrame(
   direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let func_def = verified_func_def.function
-  let locals = Array::make(func_def.local_names.length(), Value::Undefined)
+  let locals = Array::make(func_def.local_slot_count, Value::Undefined)
   match direct_args {
     Some(args) =>
       // Fast path: iterate params forward so last occurrence wins (duplicate params).
@@ -106,7 +106,7 @@ fn BytecodeFrame::candidate(
   direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let func_def = execution.bytecode.function
-  let locals = Array::make(func_def.local_names.length(), Value::Undefined)
+  let locals = Array::make(func_def.local_slot_count, Value::Undefined)
   match direct_args {
     Some(args) =>
       for j, param in func_def.params {

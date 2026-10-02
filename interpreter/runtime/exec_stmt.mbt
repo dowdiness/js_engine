@@ -635,7 +635,7 @@ fn Interpreter::exec_stmt(
       for i = start; i < cases.length(); i = i + 1 {
         for stmt in cases[i].body {
           match self.exec_stmt(ctx, stmt, switch_env) {
-            Normal(v) => completion = v
+            Normal(v) => if !is_declaration_stmt(stmt) { completion = v }
             BreakSignal(v, None) => {
               // UpdateEmpty: use break's carried value if non-empty, otherwise accumulated
               let cv = match v {
@@ -2434,24 +2434,33 @@ pub fn collect_for_in_keys(
 
 ///|
 fn is_declaration_stmt(stmt : @ast.Stmt) -> Bool {
-  match stmt {
-    VarDecl(_, _, _, _)
-    | DestructureDecl(_, _, _, _)
-    | FuncDecl(_, _, _, _, _)
-    | FuncDeclExt(_, _, _, _, _, _)
-    | GeneratorDecl(_, _, _, _, _)
-    | GeneratorDeclExt(_, _, _, _, _, _)
-    | AsyncFuncDecl(_, _, _, _, _)
-    | AsyncFuncDeclExt(_, _, _, _, _, _)
-    | AsyncGeneratorDecl(_, _, _, _, _)
-    | AsyncGeneratorDeclExt(_, _, _, _, _, _)
-    | ClassDecl(_, _, _, _, _)
-    | ImportDecl(_, _, _, _, _, _)
-    | ExportNamedDecl(_, _, _, _, _)
-    | ExportDefaultDecl(_, _)
-    | ExportAllDecl(_, _, _, _) => true
-    _ => false
+  let work : Array[@ast.Stmt] = [stmt]
+  while work.length() > 0 {
+    let current = work.pop().unwrap()
+    match current {
+      VarDecl(_, _, _, _)
+      | DestructureDecl(_, _, _, _)
+      | FuncDecl(_, _, _, _, _)
+      | FuncDeclExt(_, _, _, _, _, _)
+      | GeneratorDecl(_, _, _, _, _)
+      | GeneratorDeclExt(_, _, _, _, _, _)
+      | AsyncFuncDecl(_, _, _, _, _)
+      | AsyncFuncDeclExt(_, _, _, _, _, _)
+      | AsyncGeneratorDecl(_, _, _, _, _)
+      | AsyncGeneratorDeclExt(_, _, _, _, _, _)
+      | ClassDecl(_, _, _, _, _)
+      | ImportDecl(_, _, _, _, _, _)
+      | ExportNamedDecl(_, _, _, _, _)
+      | ExportDefaultDecl(_, _)
+      | ExportAllDecl(_, _, _, _) => ()
+      StmtList(stmts, _) =>
+        for child in stmts {
+          work.push(child)
+        }
+      _ => return false
+    }
   }
+  true
 }
 
 ///|

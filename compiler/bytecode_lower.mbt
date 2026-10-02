@@ -37,7 +37,6 @@ priv enum BytecodeUnsupportedReason {
   PrivateClassElement
   SuperCall
   SuperAssignment
-  SwitchLexicalDeclaration
   TryCatchStatement
   UpdateTarget
   WebCompatCallAssign
@@ -145,7 +144,6 @@ fn BytecodeUnsupportedReason::display_text(
     PrivateClassElement => "private class element"
     SuperCall => "super call"
     SuperAssignment => "super assignment"
-    SwitchLexicalDeclaration => "switch lexical declaration"
     TryCatchStatement => "try/catch statement"
     UpdateTarget => "update target"
     WebCompatCallAssign => "call expression as assignment target"
@@ -349,29 +347,6 @@ fn bytecode_is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
     | ArrowFunc(_, _, _, _)
     | ArrowFuncExt(_, _, _, _, _) => true
     Grouping(inner, _) => bytecode_is_anonymous_function_definition(inner)
-    _ => false
-  }
-}
-
-///|
-fn stmt_is_lexical_decl(stmt : @ast.Stmt) -> Bool {
-  match stmt {
-    VarDecl(LetKind, _, _, _)
-    | VarDecl(ConstKind, _, _, _)
-    | DestructureDecl(LetKind, _, _, _)
-    | DestructureDecl(ConstKind, _, _, _)
-    | ForInStmt(Some(LetKind), _, _, _, _)
-    | ForInStmt(Some(ConstKind), _, _, _, _)
-    | ForInStmtPat(Some(LetKind), _, _, _, _)
-    | ForInStmtPat(Some(ConstKind), _, _, _, _)
-    | ForOfStmt(Some(LetKind), _, _, _, _)
-    | ForOfStmt(Some(ConstKind), _, _, _, _)
-    | ForOfStmtPat(Some(LetKind), _, _, _, _)
-    | ForOfStmtPat(Some(ConstKind), _, _, _, _)
-    | AsyncForOfStmt(Some(LetKind), _, _, _, _)
-    | AsyncForOfStmt(Some(ConstKind), _, _, _, _)
-    | AsyncForOfStmtPat(Some(LetKind), _, _, _, _)
-    | AsyncForOfStmtPat(Some(ConstKind), _, _, _, _) => true
     _ => false
   }
 }
@@ -1881,6 +1856,7 @@ fn compile_bytecode_function(
       preparation.lexical_bindings.is_empty() &&
       !bytecode_body_contains_destructure_assign(body)),
     local_names=builder.local_names,
+    local_slot_count=Some(builder.local_slot_count),
     local_indices=builder.local_indices,
     env_slot_names=builder.env_slot_names,
     env_var_hoist_names~,
@@ -2201,10 +2177,6 @@ fn BytecodeBuilder::compile_switch(
   cases : Array[@ast.SwitchCase],
 ) -> Unit raise Error {
   bytecode_reject_if_present(
-    SwitchLexicalDeclaration,
-    first_decl_in_cases(cases, stmt_is_lexical_decl),
-  )
-  bytecode_reject_if_present(
     ControlFlowFunctionDeclaration,
     first_decl_in_cases(cases, stmt_is_function_decl),
   )
@@ -2212,8 +2184,36 @@ fn BytecodeBuilder::compile_switch(
     DestructuringDeclarationContext,
     first_decl_in_cases(cases, stmt_is_destructure_decl),
   )
+  let lexical_bindings : Array[BytecodeLexicalBinding] = []
+  for case in cases {
+    for binding in prepare_lexical_bindings(case.body) {
+      lexical_bindings.push(binding)
+    }
+  }
+  let temporary = if lexical_bindings.is_empty() {
+    None
+  } else {
+    Some(self.allocate_local_slot())
+  }
   self.emit_undefined_completion()
   self.compile_expr(discriminant)
+  match temporary {
+    Some(slot) => {
+      let _ = self.emit(StoreLocal(slot))
+      let _ = self.emit(Pop)
+    }
+    None => ()
+  }
+  let scope = self.begin_lexical_scope(lexical_bindings)
+  match temporary {
+    Some(slot) => {
+      let _ = self.emit(LoadLocal(slot))
+      let _ = self.emit(LoadConst(Value::Undefined))
+      let _ = self.emit(StoreLocal(slot))
+      let _ = self.emit(Pop)
+    }
+    None => ()
+  }
   let case_jumps = Array::make(cases.length(), -1)
   let mut default_idx = -1
   for i, case in cases {
@@ -2240,11 +2240,12 @@ fn BytecodeBuilder::compile_switch(
   for i, case in cases {
     case_starts[i] = self.code.length()
     for child in case.body {
-      self.compile_stmt(child)
+      self.compile_stmt(child, declaration_updates_completion=false)
     }
   }
   let switch_ctx = self.pop_switch_context()
   let exit_pos = self.code.length()
+  self.end_lexical_scope(scope)
   for i, jump in case_jumps {
     if jump >= 0 {
       self.patch(jump, Jump(case_starts[i]))
@@ -2528,7 +2529,9 @@ fn BytecodeBuilder::compile_stmt_body(
         DestructuringDeclarationContext,
         first_decl_in(stmts, stmt_is_destructure_decl),
       )
-      self.emit_undefined_completion()
+      if declaration_updates_completion {
+        self.emit_undefined_completion()
+      }
       for child in stmts {
         self.compile_stmt(child, declaration_updates_completion=false)
       }
