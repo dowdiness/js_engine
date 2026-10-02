@@ -387,6 +387,14 @@
   "allowlisted_import_debt": [
     {
       "from": "interpreter/runtime",
+      "to": "internal/module_host_prototype_plan",
+      "scope": "prod",
+      "owner": "module-host-contract throwaway prototype (#1057)",
+      "retire_by_stage": "discard prototype before production Program/Session cutover",
+      "reason": "experimental bridge consumes realm-free symbolic bindings; this dependency is not an adopted production boundary"
+    },
+    {
+      "from": "interpreter/runtime",
       "to": "parser",
       "scope": "prod",
       "owner": "static-semantics extraction",

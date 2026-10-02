@@ -1,0 +1,30 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/internal/module_host_prototype_plan"
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) enum Binding {
+  Local(String, String)
+  Default(String)
+  Namespace(String)
+} derive(ToJson)
+
+pub struct ModulePlan {
+  key : String
+  dependencies : Array[String]
+  imports : Array[(String, Binding)]
+  exports : Array[(String, Binding)]
+} derive(ToJson)
+pub fn ModulePlan::ModulePlan(String, Array[String], Array[(String, Binding)], Array[(String, Binding)]) -> Self
+
+pub struct Plan {
+  modules : Array[ModulePlan]
+} derive(ToJson)
+pub fn Plan::Plan(Array[ModulePlan]) -> Self
+
+// Type aliases
+
+// Traits

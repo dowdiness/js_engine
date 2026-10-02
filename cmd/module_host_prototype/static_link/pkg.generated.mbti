@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/cmd/module_host_prototype/static_link"
+
+import {
+  "dowdiness/js_engine/ast",
+  "dowdiness/js_engine/internal/module_host_prototype_plan",
+}
+
+// Values
+pub fn compile_plan(Array[(String, Array[@ast.Stmt])]) -> @module_host_prototype_plan.Plan raise LinkError
+
+// Errors
+pub suberror LinkError {
+  LinkError(kind~ : String, module_key~ : String, export_name~ : String, line~ : Int, column~ : Int)
+}
+
+// Types and methods
+
+// Type aliases
+
+// Traits
