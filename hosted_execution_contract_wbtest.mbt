@@ -3,7 +3,7 @@ test "R5 body nested calls and checkpoint retain one control instance" {
   let probe = host_failure_probe()
   let original : Ref[@runtime.ExecutionControl?] = Ref(None)
   let events : Array[String] = []
-  probe.register("observeCarrier", (_call, args) => {
+  probe.define_function("observeCarrier", (_call, args) => {
     let current = probe.session.engine.interp.hosted_execution_control.unwrap()
     match original.val {
       None => original.val = Some(current)
@@ -12,7 +12,7 @@ test "R5 body nested calls and checkpoint retain one control instance" {
     events.push(args[0].expect_string())
     args[0]
   })
-  probe.register("invokeCarrier", (call, args) => {
+  probe.define_function("invokeCarrier", (call, args) => {
     let current = probe.session.engine.interp.hosted_execution_control.unwrap()
     assert_true(physical_equal(original.val.unwrap(), current))
     let result = call.call(args[0], [])
@@ -82,7 +82,7 @@ test "R5 nested receiver and callee realms restore on every unwind" {
       let restored = Ref(false)
       let intrinsic_in_callee : Ref[@runtime.Value?] = Ref(None)
       // The argument is computed before entering the Host callback's realm.
-      probe.register("realmExit", (call, args) => {
+      probe.define_function("realmExit", (call, args) => {
         intrinsic_in_callee.val = Some(
           @runtime.object_get_prototype_of(
             probe.session.engine.interp,
@@ -97,7 +97,7 @@ test "R5 nested receiver and callee realms restore on every unwind" {
         }
         args[0]
       })
-      probe.register("invokeRealm", (call, _args) => {
+      probe.define_function("invokeRealm", (call, _args) => {
         let before = realm.active_overrides.val
         let before_source = realm.active_source_identity.val
         assert_true(before is Some(_))
@@ -170,7 +170,7 @@ test "R5 nested receiver and callee realms restore on every unwind" {
 ///|
 test "R5 interruption at commit cannot publish a successful outcome" {
   let interruption = @runtime.InterruptionHandle()
-  let probe = HostedProbe(
+  let probe = HostedSession(
     @runtime.ExecutionPolicy::new(100000L, 64L, interruption).unwrap(),
   )
   let stopped = try {

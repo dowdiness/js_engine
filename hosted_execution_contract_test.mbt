@@ -1,8 +1,8 @@
 ///|
 test "R5 self-extending Promise jobs terminate within the outer budget" {
-  let probe = HostedProbe(hosted_policy(512L, 64L))
+  let probe = HostedSession(hosted_policy(512L, 64L))
   let entered = Ref(0)
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     entered.val += 1
     args[0]
   })
@@ -14,7 +14,7 @@ test "R5 self-extending Promise jobs terminate within the outer budget" {
     )
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause, diagnostic, _) => {
+    HostedError::HostedTerminal(cause, diagnostic, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("execution-limit"),
@@ -31,7 +31,7 @@ test "R5 self-extending Promise jobs terminate within the outer budget" {
     ignore(probe.evaluate("mark(99)"))
     false
   } catch {
-    HostedProbeError::HostedSessionFaulted => true
+    HostedError::HostedSessionFaulted => true
     error => raise error
   }
   assert_true(denied)
@@ -41,9 +41,9 @@ test "R5 self-extending Promise jobs terminate within the outer budget" {
 
 ///|
 test "R5 ordinary Promise rejection does not escape the checkpoint" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let events : Array[Double] = []
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     events.push(args[0].expect_number())
     args[0]
   })
@@ -63,17 +63,17 @@ test "R5 ordinary Promise rejection does not escape the checkpoint" {
 test "R5 exceptional callback authority expires and never revives" {
   for mode in ["guest", "host", "terminal"] {
     let interruption = @runtime.InterruptionHandle()
-    let probe = HostedProbe(
+    let probe = HostedSession(
       @runtime.ExecutionPolicy::new(100000L, 64L, interruption).unwrap(),
     )
-    let saved : Ref[HostedCall?] = Ref(None)
+    let saved : Ref[HostCallbackContext?] = Ref(None)
     let entered = Ref(0)
-    probe.register("mark", (_call, args) => {
+    probe.define_function("mark", (_call, args) => {
       entered.val += 1
       args[0]
     })
     let callback = probe.evaluate("(function() { mark(1); return 42; })")
-    probe.register("captureUnwind", (call, args) => {
+    probe.define_function("captureUnwind", (call, args) => {
       saved.val = Some(call)
       match mode {
         "guest" => call.throw_value(args[0])
@@ -86,12 +86,12 @@ test "R5 exceptional callback authority expires and never revives" {
       ignore(probe.evaluate("captureUnwind(7)"))
       "normal"
     } catch {
-      HostedProbeError::HostedGuestThrow(value, _) => {
+      HostedError::HostedGuestThrow(value, _) => {
         assert_eq(value.expect_number(), 7.0)
         "guest"
       }
-      HostedProbeError::HostedHostFailure(_) => "host"
-      HostedProbeError::HostedTerminal(cause, _, _) => {
+      HostedError::HostedHostFailure(_) => "host"
+      HostedError::HostedTerminal(cause, _, _) => {
         assert_eq(
           @runtime.execution_control_failure_code(cause),
           Some("interrupted"),
@@ -105,18 +105,18 @@ test "R5 exceptional callback authority expires and never revives" {
       ignore(saved.val.unwrap().call(callback, []))
       false
     } catch {
-      HostedProbeError::HostedExpiredHostCall => true
+      HostedError::HostedExpiredHostCall => true
       error => raise error
     }
     assert_true(expired)
     assert_eq(entered.val, 0)
     if mode == "guest" {
-      probe.register("later", (_call, args) => {
+      probe.define_function("later", (_call, args) => {
         let expired = try {
           ignore(saved.val.unwrap().call(callback, []))
           false
         } catch {
-          HostedProbeError::HostedExpiredHostCall => true
+          HostedError::HostedExpiredHostCall => true
           error => raise error
         }
         assert_true(expired)
@@ -133,9 +133,9 @@ test "R5 exceptional callback authority expires and never revives" {
 
 ///|
 test "R5 every public admission rejects Running without guest effects" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let entered = Ref(0)
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     entered.val += 1
     args[0]
   })
@@ -144,9 +144,9 @@ test "R5 every public admission rejects Running without guest effects" {
   )
   let function = probe.evaluate("(function(n) { mark(3); return n; })")
   let number = probe.number(42)
-  let typed = @js_engine.research_function1(function)
+  let typed = @js_engine.js_number_unary(function)
   let denied = Ref(0)
-  probe.register("check", (_call, args) => {
+  probe.define_function("check", (_call, args) => {
     let actions : Array[() -> Unit raise Error] = [
       () => ignore(probe.evaluate("mark(4)")),
       () => ignore(probe.evaluate("var =")),
@@ -154,7 +154,7 @@ test "R5 every public admission rejects Running without guest effects" {
       () => ignore(object.get("x")),
       () => ignore(function.call([number])),
       () => ignore(object.call_property("method", [])),
-      () => probe.register("unreachable", (_call, args) => args[0]),
+      () => probe.define_function("unreachable", (_call, args) => args[0]),
       () => ignore(probe.number(1)),
       () => ignore(probe.bool(true)),
       () => ignore(probe.string("x")),
@@ -166,7 +166,7 @@ test "R5 every public admission rejects Running without guest effects" {
         action()
         false
       } catch {
-        HostedProbeError::HostedSessionBusy => true
+        HostedError::HostedSessionBusy => true
         error => raise error
       }
       assert_true(busy)
@@ -189,16 +189,16 @@ test "R5 every public admission rejects Running without guest effects" {
 test "R5 interruption gates admission Host return and reentry" {
   for boundary in ["admission", "return", "reentry", "checkpoint"] {
     let interruption = @runtime.InterruptionHandle()
-    let probe = HostedProbe(
+    let probe = HostedSession(
       @runtime.ExecutionPolicy::new(100000L, 64L, interruption).unwrap(),
     )
     let events : Array[String] = []
-    probe.register("mark", (_call, args) => {
+    probe.define_function("mark", (_call, args) => {
       events.push(args[0].expect_string())
       args[0]
     })
     let blocked = Ref(false)
-    probe.register("stop", (call, args) => {
+    probe.define_function("stop", (call, args) => {
       events.push("host")
       interruption.request()
       if boundary == "reentry" {
@@ -206,7 +206,7 @@ test "R5 interruption gates admission Host return and reentry" {
           ignore(call.call(args[0], []))
           false
         } catch {
-          HostedProbeError::HostedTerminal(cause, _, _) => {
+          HostedError::HostedTerminal(cause, _, _) => {
             assert_eq(
               @runtime.execution_control_failure_code(cause),
               Some("interrupted"),
@@ -233,7 +233,7 @@ test "R5 interruption gates admission Host return and reentry" {
       ignore(probe.evaluate(source))
       false
     } catch {
-      HostedProbeError::HostedTerminal(cause, _, _) => {
+      HostedError::HostedTerminal(cause, _, _) => {
         assert_eq(
           @runtime.execution_control_failure_code(cause),
           Some("interrupted"),
@@ -255,9 +255,9 @@ test "R5 interruption gates admission Host return and reentry" {
 
 ///|
 test "R5 unobserved native progress is a noncatchable terminal" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let entered = Ref(0)
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     entered.val += 1
     args[0]
   })
@@ -269,7 +269,7 @@ test "R5 unobserved native progress is a noncatchable terminal" {
     )
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause, _, _) => {
+    HostedError::HostedTerminal(cause, _, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("execution-limit"),
@@ -285,9 +285,9 @@ test "R5 unobserved native progress is a noncatchable terminal" {
 
 ///|
 test "R5 HostCall owner rejection precedes getter and callee effects" {
-  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let donor = HostedSession(hosted_policy(100000L, 64L))
   let donor_effects = Ref(0)
-  donor.register("donorMark", (_call, args) => {
+  donor.define_function("donorMark", (_call, args) => {
     donor_effects.val += 1
     args[0]
   })
@@ -297,9 +297,9 @@ test "R5 HostCall owner rejection precedes getter and callee effects" {
   let foreign_function = donor.evaluate(
     "(function() { donorMark(3); return 42; })",
   )
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let effects = Ref(0)
-  probe.register("localMark", (_call, args) => {
+  probe.define_function("localMark", (_call, args) => {
     effects.val += 1
     args[0]
   })
@@ -307,7 +307,7 @@ test "R5 HostCall owner rejection precedes getter and callee effects" {
     "({ get method() { localMark(1); return function() { localMark(2); return 42; }; } })",
   )
   let function = probe.evaluate("(function() { localMark(3); return 42; })")
-  probe.register("checkOwners", (call, args) => {
+  probe.define_function("checkOwners", (call, args) => {
     let actions : Array[() -> Unit raise Error] = [
       () => ignore(call.get(foreign, "x")),
       () => ignore(call.call(foreign_function, [])),
@@ -320,7 +320,7 @@ test "R5 HostCall owner rejection precedes getter and callee effects" {
         action()
         false
       } catch {
-        HostedProbeError::HostedForeignValue => true
+        HostedError::HostedForeignValue => true
         error => raise error
       }
       assert_true(rejected)
@@ -338,15 +338,15 @@ test "R5 HostCall owner rejection precedes getter and callee effects" {
 
 ///|
 test "R5 normal body cannot succeed after checkpoint Host failure" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let events : Array[String] = []
   let formatted = Ref(0)
   let original : Error = HostedFormattingProbeError(() => formatted.val += 1)
-  probe.register("failCheckpoint", (_call, _args) => {
+  probe.define_function("failCheckpoint", (_call, _args) => {
     events.push("failed-job")
     raise original
   })
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     events.push(args[0].expect_string())
     args[0]
   })
@@ -358,7 +358,7 @@ test "R5 normal body cannot succeed after checkpoint Host failure" {
     )
     false
   } catch {
-    HostedProbeError::HostedHostFailure(cause, diagnostic, secondary) => {
+    HostedError::HostedHostFailure(cause, diagnostic, secondary) => {
       assert_true(physical_equal(cause, original))
       assert_eq(diagnostic.phase_code(), "checkpoint")
       assert_true(secondary is None)
@@ -373,7 +373,7 @@ test "R5 normal body cannot succeed after checkpoint Host failure" {
     ignore(probe.evaluate("mark('later')"))
     false
   } catch {
-    HostedProbeError::HostedSessionFaulted => true
+    HostedError::HostedSessionFaulted => true
     error => raise error
   }
   assert_true(denied)

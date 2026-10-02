@@ -5,8 +5,8 @@ test "configured hosted depth bypasses guest catch finally and checkpoint" {
     16L,
     @runtime.InterruptionHandle(),
   ).unwrap()
-  let probe = HostedProbe(policy)
-  probe.register("invoke", (call, args) => call.call(args[0], []))
+  let probe = HostedSession(policy)
+  probe.define_function("invoke", (call, args) => call.call(args[0], []))
   let marker = probe.evaluate(
     "var marker = { caught: 0, finalized: 0, job: 0 }; marker",
   )
@@ -53,7 +53,9 @@ test "configured hosted depth bypasses guest catch finally and checkpoint" {
 ///|
 test "unexpected host failure stops guest catch finally and checkpoint immediately" {
   let probe = host_failure_probe()
-  probe.register("explode", (_call, _args) => fail("private host failure"))
+  probe.define_function("explode", (_call, _args) => {
+    fail("private host failure")
+  })
   let marker = probe.evaluate(
     "var marker = { caught: 0, finalized: 0, after: 0, job: 0 }; marker",
   )
@@ -76,8 +78,8 @@ test "unexpected host failure stops guest catch finally and checkpoint immediate
 }
 
 ///|
-fn host_failure_probe() -> HostedProbe raise {
-  HostedProbe(
+fn host_failure_probe() -> HostedSession raise {
+  HostedSession(
     @runtime.ExecutionPolicy::new(100000L, 64L, @runtime.InterruptionHandle()).unwrap(),
   )
 }
@@ -100,7 +102,7 @@ test "foreign host return terminates but handled foreign argument stays availabl
   let donor = host_failure_probe()
   let foreign = donor.number(7)
   let probe = host_failure_probe()
-  probe.register("validate", (call, args) => {
+  probe.define_function("validate", (call, args) => {
     let rejected = try {
       ignore(call.call(args[0], [foreign]))
       false
@@ -118,7 +120,7 @@ test "foreign host return terminates but handled foreign argument stays availabl
     0.0,
   )
   assert_eq(probe.state(), "available")
-  probe.register("foreignReturn", (_call, _args) => foreign)
+  probe.define_function("foreignReturn", (_call, _args) => foreign)
   let failed = try {
     ignore(probe.evaluate("foreignReturn()"))
     false
@@ -137,8 +139,10 @@ test "host catching nested failure cannot resume guest execution or clear termin
   let seen : Ref[Error?] = Ref(None)
   let blocked = Ref(false)
   let reentry_blocked = Ref(false)
-  probe.register("explode", (_call, _args) => fail("original host failure"))
-  probe.register("recover", (call, args) => {
+  probe.define_function("explode", (_call, _args) => {
+    fail("original host failure")
+  })
+  probe.define_function("recover", (call, args) => {
     let _ = call.call(args[0], []) catch {
       HostedHostFailure(cause, _, _) => {
         seen.val = Some(cause)
@@ -199,7 +203,7 @@ test "host catching nested failure cannot resume guest execution or clear termin
 ///|
 test "host cleanup failure cannot replace earlier control termination" {
   let probe = host_failure_probe()
-  probe.register("cleanup", (call, _args) => {
+  probe.define_function("cleanup", (call, _args) => {
     let _ = call.terminate(HostedExpectedNumber) catch { _ => () }
     fail("later cleanup failure")
   })
@@ -227,8 +231,8 @@ test "nested host failure stays primary over later host cleanup failure" {
   let probe = host_failure_probe()
   let original : Error = @errors.InternalError(message="original host defect")
   let caught = Ref(false)
-  probe.register("explode", (_call, _args) => raise original)
-  probe.register("cleanup", (call, args) => {
+  probe.define_function("explode", (_call, _args) => raise original)
+  probe.define_function("cleanup", (call, args) => {
     let _ = call.call(args[0], []) catch {
       _ => {
         caught.val = true
@@ -260,11 +264,11 @@ test "nested host failure stays primary over later host cleanup failure" {
 ///|
 test "intentional and rethrown guest values retain identity and availability" {
   let probe = host_failure_probe()
-  probe.register("throwToken", (call, args) => {
+  probe.define_function("throwToken", (call, args) => {
     call.throw_value(args[0])
     args[0]
   })
-  probe.register("rethrow", (call, args) => call.call(args[0], []))
+  probe.define_function("rethrow", (call, args) => call.call(args[0], []))
   let source =
     #|var token = { secret: 42 };
     #|var direct = false, nested = false;
@@ -295,7 +299,7 @@ test "R3 nested guest provenance survives suspended declarations and dynamic sco
       "function* declared() { yield 1; } rethrow(() => { throw token; })", "with ({}) { rethrow(() => { throw token; }); }",
     ] {
     let probe = host_failure_probe()
-    probe.register("rethrow", (call, args) => call.call(args[0], []))
+    probe.define_function("rethrow", (call, args) => call.call(args[0], []))
     let token = probe.evaluate("var token = { secret: 42 }; token")
     let same = try {
       ignore(probe.evaluate(source))
@@ -315,7 +319,7 @@ test "R3 nested guest provenance survives suspended declarations and dynamic sco
 
 ///|
 fn tagged_hosted_function(
-  probe : HostedProbe,
+  probe : HostedSession,
   identity : String,
   source : String,
 ) -> HostedValue raise Error {
@@ -336,11 +340,11 @@ test "R3 guest phases retain trusted function origins through nested and checkpo
     let callee = tagged_hosted_function(
       probe, origin, "(function() { throw token; })",
     )
-    probe.register("invoke", (call, args) => call.call(args[0], []))
-    probe.register("saved", (_call, _args) => callee)
+    probe.define_function("invoke", (call, args) => call.call(args[0], []))
+    probe.define_function("saved", (_call, _args) => callee)
     let outer = probe.evaluate("(function(fn) { return invoke(fn); })")
     let job = probe.evaluate("(function() { invoke(saved()); })")
-    probe.register("job", (_call, _args) => job)
+    probe.define_function("job", (_call, _args) => job)
     let same = try {
       match phase {
         "body" => ignore(callee.call([]))
@@ -376,7 +380,7 @@ test "R3 a fresh throw of the same value does not inherit a caught nested origin
   let probe = host_failure_probe()
   let token = probe.evaluate("var token = {}; token")
   let saved : Ref[EngineDiagnostic?] = Ref(None)
-  probe.register("invoke", (call, args) => {
+  probe.define_function("invoke", (call, args) => {
     call.call(args[0], []) catch {
       HostedGuestThrow(_, diagnostic) as error => {
         saved.val = Some(diagnostic)
@@ -430,7 +434,7 @@ test "R3 a fresh throw of the same value does not inherit a caught nested origin
 ///|
 test "R3 intentional Host throw gains trusted source without replacing its nested phase" {
   let probe = host_failure_probe()
-  probe.register("throwToken", (call, args) => {
+  probe.define_function("throwToken", (call, args) => {
     call.throw_value(args[0])
     args[0]
   })
@@ -457,12 +461,12 @@ test "R3 intentional Host throw gains trusted source without replacing its neste
 test "R3 terminal origin and retained nested snapshot survive later cleanup information" {
   let probe = host_failure_probe()
   let primary : Error = HostedExpectedNumber
-  let retained : Ref[HostedProbeError?] = Ref(None)
-  probe.register("stop", (call, args) => {
+  let retained : Ref[HostedError?] = Ref(None)
+  probe.define_function("stop", (call, args) => {
     call.terminate(primary)
     args[0]
   })
-  probe.register("cleanup", (call, args) => {
+  probe.define_function("cleanup", (call, args) => {
     ignore(call.call(args[0], [])) catch {
       HostedTerminal(_, _, _) as error => retained.val = Some(error)
       error => raise error

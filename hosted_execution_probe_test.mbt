@@ -1,7 +1,4 @@
 ///|
-using @js_engine {type HostedProbe, type HostedCall, type HostedProbeError}
-
-///|
 fn hosted_policy(
   step_budget : Int64,
   stack_depth_limit : Int64,
@@ -21,8 +18,8 @@ test "hosted terminal remains terminal after host catches it" {
     Ok(policy) => policy
     Err(error) => fail(error.message())
   }
-  let probe = HostedProbe(policy)
-  probe.register("stop", (call, args) => {
+  let probe = HostedSession(policy)
+  probe.define_function("stop", (call, args) => {
     interruption.request()
     let _ = call.record_effect() catch { _ => () }
     args[0]
@@ -34,7 +31,7 @@ test "hosted terminal remains terminal after host catches it" {
     error => Some(error)
   }
   match result {
-    Some(HostedProbeError::HostedTerminal(_)) => ()
+    Some(HostedError::HostedTerminal(_)) => ()
     Some(_) => fail("expected HostedTerminal")
     None => fail("interruption was swallowed")
   }
@@ -44,8 +41,8 @@ test "hosted terminal remains terminal after host catches it" {
 
 ///|
 test "hosted nested JavaScript shares finite execution budget" {
-  let probe = HostedProbe(hosted_policy(16L, 64L))
-  probe.register("invoke", (call, args) => call.call(args[0], []))
+  let probe = HostedSession(hosted_policy(16L, 64L))
+  probe.define_function("invoke", (call, args) => call.call(args[0], []))
   let result = try {
     ignore(probe.evaluate("invoke(function f() { return f(); })"))
     None
@@ -53,7 +50,7 @@ test "hosted nested JavaScript shares finite execution budget" {
     error => Some(error)
   }
   match result {
-    Some(HostedProbeError::HostedTerminal(_)) => ()
+    Some(HostedError::HostedTerminal(_)) => ()
     Some(_) => fail("expected nested terminal")
     None => fail("nested recursive execution returned")
   }
@@ -62,15 +59,15 @@ test "hosted nested JavaScript shares finite execution budget" {
 
 ///|
 test "ancestor host call is rejected before nested getter" {
-  let probe = HostedProbe(hosted_policy(256L, 64L))
-  let saved : Ref[HostedCall?] = Ref(None)
-  probe.register("inner", (_call, args) => {
+  let probe = HostedSession(hosted_policy(256L, 64L))
+  let saved : Ref[HostCallbackContext?] = Ref(None)
+  probe.define_function("inner", (_call, args) => {
     match saved.val {
       Some(parent) => parent.get(args[0], "x")
       None => fail("missing ancestor token")
     }
   })
-  probe.register("outer", (call, args) => {
+  probe.define_function("outer", (call, args) => {
     saved.val = Some(call)
     call.call(args[0], [])
   })
@@ -85,7 +82,7 @@ test "ancestor host call is rejected before nested getter" {
     error => Some(error)
   }
   match result {
-    Some(HostedProbeError::HostedHostFailure(_)) => ()
+    Some(HostedError::HostedHostFailure(_)) => ()
     Some(_) => fail("expected HostFailure")
     None => fail("ancestor token unexpectedly authorized getter")
   }
@@ -95,7 +92,7 @@ test "ancestor host call is rejected before nested getter" {
 
 ///|
 test "body guest throw remains primary over checkpoint guest throw" {
-  let probe = HostedProbe(hosted_policy(256L, 64L))
+  let probe = HostedSession(hosted_policy(256L, 64L))
   let result = try {
     ignore(
       probe.evaluate(
@@ -108,7 +105,7 @@ test "body guest throw remains primary over checkpoint guest throw" {
   }
   match result {
     Some(
-      HostedProbeError::HostedGuestThrowWithSecondary(
+      HostedError::HostedGuestThrowWithSecondary(
         primary~,
         secondary~,
         primary_diagnostic~,
@@ -128,14 +125,14 @@ test "body guest throw remains primary over checkpoint guest throw" {
 
 ///|
 test "host callback authority restores and expires" {
-  let probe = HostedProbe(hosted_policy(256L, 64L))
-  let saved : Ref[HostedCall?] = Ref(None)
-  probe.register("inner", (call, args) => {
+  let probe = HostedSession(hosted_policy(256L, 64L))
+  let saved : Ref[HostCallbackContext?] = Ref(None)
+  probe.define_function("inner", (call, args) => {
     saved.val = Some(call)
     call.record_effect()
     args[0]
   })
-  probe.register("outer", (call, args) => {
+  probe.define_function("outer", (call, args) => {
     let result = call.call(args[0], [])
     call.record_effect()
     result
@@ -150,11 +147,11 @@ test "host callback authority restores and expires" {
     error => Some(error)
   }
   match expired {
-    Some(HostedProbeError::HostedExpiredHostCall) => ()
+    Some(HostedError::HostedExpiredHostCall) => ()
     Some(_) => fail("expected expired callback authority")
     None => fail("callback authority survived callback return")
   }
-  probe.register("busy", (_call, args) => {
+  probe.define_function("busy", (_call, args) => {
     let nested = try {
       ignore(probe.global("Math"))
       None
@@ -162,7 +159,7 @@ test "host callback authority restores and expires" {
       error => Some(error)
     }
     match nested {
-      Some(HostedProbeError::HostedSessionBusy) => args[0]
+      Some(HostedError::HostedSessionBusy) => args[0]
       Some(_) => fail("expected busy entry rejection")
       None => fail("public entry reentered while callback was running")
     }
@@ -172,8 +169,8 @@ test "host callback authority restores and expires" {
 
 ///|
 test "hosted configured depth terminates nested calls independently of steps" {
-  let probe = HostedProbe(hosted_policy(100000L, 1L))
-  probe.register("invoke", (call, args) => call.call(args[0], []))
+  let probe = HostedSession(hosted_policy(100000L, 1L))
+  probe.define_function("invoke", (call, args) => call.call(args[0], []))
   let stopped = try {
     ignore(
       probe.evaluate(
@@ -182,7 +179,7 @@ test "hosted configured depth terminates nested calls independently of steps" {
     )
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause, _, _) => {
+    HostedError::HostedTerminal(cause, _, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("stack-depth-limit"),
@@ -197,7 +194,7 @@ test "hosted configured depth terminates nested calls independently of steps" {
     ignore(probe.evaluate("42"))
     false
   } catch {
-    HostedProbeError::HostedSessionFaulted => true
+    HostedError::HostedSessionFaulted => true
     error => raise error
   }
   assert_true(rejected)
@@ -209,7 +206,7 @@ fn expect_hosted_depth_failure(action : () -> Unit raise Error) -> Unit raise {
     action()
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause, _, _) => {
+    HostedError::HostedTerminal(cause, _, _) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("stack-depth-limit"),
@@ -228,8 +225,8 @@ test "hosted depth retains outer activation across host and releases siblings" {
     source in [
       "(function() { return invoke(() => 42); })", "(function outer() { return invoke(() => 42); })",
     ] {
-    let allowed = HostedProbe(hosted_policy(100000L, 2L))
-    allowed.register("invoke", (call, args) => {
+    let allowed = HostedSession(hosted_policy(100000L, 2L))
+    allowed.define_function("invoke", (call, args) => {
       ignore(call.call(args[0], []))
       let result = call.call(args[0], [])
       call.record_effect()
@@ -240,8 +237,8 @@ test "hosted depth retains outer activation across host and releases siblings" {
     assert_eq(outer.call([]).expect_number(), 42.0)
     assert_eq(allowed.effect_count(), 2)
     assert_eq(allowed.state(), "available")
-    let limited = HostedProbe(hosted_policy(100000L, 1L))
-    limited.register("invoke", (call, args) => call.call(args[0], []))
+    let limited = HostedSession(hosted_policy(100000L, 1L))
+    limited.define_function("invoke", (call, args) => call.call(args[0], []))
     let outer = limited.evaluate(source)
     expect_hosted_depth_failure(() => ignore(outer.call([])))
     assert_eq(limited.state(), "faulted")
@@ -250,13 +247,13 @@ test "hosted depth retains outer activation across host and releases siblings" {
 
 ///|
 test "hosted guest throw releases depth and restores parent authority" {
-  let probe = HostedProbe(hosted_policy(100000L, 2L))
-  probe.register("recover", (call, args) => {
+  let probe = HostedSession(hosted_policy(100000L, 2L))
+  probe.define_function("recover", (call, args) => {
     let caught = try {
       ignore(call.call(args[0], []))
       false
     } catch {
-      HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+      HostedError::HostedGuestThrow(value, diagnostic) => {
         assert_eq(value.expect_number(), 7.0)
         assert_eq(diagnostic.phase_code(), "nested")
         true
@@ -281,8 +278,8 @@ test "hosted recursion hits configured depth before backend stack exhaustion" {
     source in [
       "invoke(function f() { return f(); })", "invoke(function f() { return invoke(f); })",
     ] {
-    let probe = HostedProbe(hosted_policy(100000L, 16L))
-    probe.register("invoke", (call, args) => call.call(args[0], []))
+    let probe = HostedSession(hosted_policy(100000L, 16L))
+    probe.define_function("invoke", (call, args) => call.call(args[0], []))
     expect_hosted_depth_failure(() => ignore(probe.evaluate(source)))
     assert_eq(probe.state(), "faulted")
   }
@@ -290,13 +287,13 @@ test "hosted recursion hits configured depth before backend stack exhaustion" {
 
 ///|
 test "host caught depth termination stays primary and blocks further effects" {
-  let probe = HostedProbe(hosted_policy(100000L, 2L))
-  probe.register("recover", (call, args) => {
+  let probe = HostedSession(hosted_policy(100000L, 2L))
+  probe.define_function("recover", (call, args) => {
     let caught = try {
       ignore(call.call(args[0], []))
       false
     } catch {
-      HostedProbeError::HostedTerminal(cause, _, _) => {
+      HostedError::HostedTerminal(cause, _, _) => {
         assert_eq(
           @runtime.execution_control_failure_code(cause),
           Some("stack-depth-limit"),
@@ -310,7 +307,7 @@ test "host caught depth termination stays primary and blocks further effects" {
       call.record_effect()
       false
     } catch {
-      HostedProbeError::HostedTerminal(cause, _, _) => {
+      HostedError::HostedTerminal(cause, _, _) => {
         assert_eq(
           @runtime.execution_control_failure_code(cause),
           Some("stack-depth-limit"),
@@ -332,24 +329,24 @@ test "host caught depth termination stays primary and blocks further effects" {
 
 ///|
 test "R1 foreign property arguments reject before getters or pending jobs" {
-  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let donor = HostedSession(hosted_policy(100000L, 64L))
   for
     source in [
       "7", "true", "'foreign'", "({})", "new Map()", "new Set()", "Promise.resolve(7)",
     ] {
     let foreign = donor.evaluate(source)
-    let probe = HostedProbe(hosted_policy(100000L, 64L))
+    let probe = HostedSession(hosted_policy(100000L, 64L))
     let events : Array[String] = []
-    probe.register("mark", (_call, args) => {
+    probe.define_function("mark", (_call, args) => {
       events.push(args[0].expect_string())
       args[0]
     })
-    probe.register("invoke", (call, args) => {
+    probe.define_function("invoke", (call, args) => {
       let rejected = try {
         ignore(call.call_property(args[0], "method", [args[1], foreign]))
         false
       } catch {
-        HostedProbeError::HostedForeignValue => true
+        HostedError::HostedForeignValue => true
         error => raise error
       }
       assert_true(rejected, msg=source)
@@ -376,22 +373,22 @@ test "R1 foreign property arguments reject before getters or pending jobs" {
 
 ///|
 test "R1 foreign property receiver rejects without entering its getter" {
-  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let donor = HostedSession(hosted_policy(100000L, 64L))
   let getter_calls = Ref(0)
-  donor.register("mark", (_call, args) => {
+  donor.define_function("mark", (_call, args) => {
     getter_calls.val += 1
     args[0]
   })
   let foreign = donor.evaluate(
     "({ get method() { mark(1); return function(x) { return x; }; } })",
   )
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
-  probe.register("invoke", (call, args) => {
+  let probe = HostedSession(hosted_policy(100000L, 64L))
+  probe.define_function("invoke", (call, args) => {
     let rejected = try {
       ignore(call.call_property(foreign, "method", [args[0]]))
       false
     } catch {
-      HostedProbeError::HostedForeignValue => true
+      HostedError::HostedForeignValue => true
       error => raise error
     }
     assert_true(rejected)
@@ -409,29 +406,29 @@ test "R1 foreign property receiver rejects without entering its getter" {
 test "R1 pure extraction rejects closed and faulted retained primitives" {
   let outcomes : Array[String] = []
   for close in [true, false] {
-    let probe = HostedProbe(hosted_policy(100000L, 64L))
+    let probe = HostedSession(hosted_policy(100000L, 64L))
     let number = probe.number(42)
     let boolean = probe.bool(true)
     let string = probe.string("retained")
     let jobs = Ref(0)
-    probe.register("job", (_call, args) => {
+    probe.define_function("job", (_call, args) => {
       jobs.val += 1
       args[0]
     })
     if close {
       probe.close()
     } else {
-      probe.register("explode", (_call, _args) => fail("host failure"))
+      probe.define_function("explode", (_call, _args) => fail("host failure"))
       let faulted = try {
         ignore(probe.evaluate("queueMicrotask(() => job(1)); explode();"))
         false
       } catch {
-        HostedProbeError::HostedHostFailure(_) => true
+        HostedError::HostedHostFailure(_) => true
         error => raise error
       }
       assert_true(faulted)
     }
-    let extractions : Array[() -> Unit raise HostedProbeError] = [
+    let extractions : Array[() -> Unit raise HostedError] = [
       () => ignore(number.expect_number()),
       () => ignore(boolean.expect_bool()),
       () => ignore(string.expect_string()),
@@ -442,8 +439,8 @@ test "R1 pure extraction rejects closed and faulted retained primitives" {
           extract()
           "accepted"
         } catch {
-          HostedProbeError::HostedSessionClosed => "closed"
-          HostedProbeError::HostedSessionFaulted => "faulted"
+          HostedError::HostedSessionClosed => "closed"
+          HostedError::HostedSessionFaulted => "faulted"
           error => raise error
         },
       )
@@ -458,7 +455,7 @@ test "R1 pure extraction rejects closed and faulted retained primitives" {
 
 ///|
 test "R1 live pure extraction and conversion rejection preserve pending jobs" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let number = probe.number(42)
   let boolean = probe.bool(true)
   let string = probe.string("retained")
@@ -466,16 +463,16 @@ test "R1 live pure extraction and conversion rejection preserve pending jobs" {
   assert_true(boolean.expect_bool())
   assert_eq(string.expect_string(), "retained")
   let events : Array[String] = []
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     events.push(args[0].expect_string())
     args[0]
   })
-  probe.register("inspectValues", (_call, args) => {
+  probe.define_function("inspectValues", (_call, args) => {
     assert_eq(probe.state(), "running")
     assert_eq(number.expect_number(), 42.0)
     assert_true(boolean.expect_bool())
     assert_eq(string.expect_string(), "retained")
-    let extractions : Array[() -> Unit raise HostedProbeError] = [
+    let extractions : Array[() -> Unit raise HostedError] = [
       () => ignore(args[0].expect_number()),
       () => ignore(args[0].expect_bool()),
       () => ignore(args[0].expect_string()),
@@ -485,9 +482,9 @@ test "R1 live pure extraction and conversion rejection preserve pending jobs" {
         extract()
         "accepted"
       } catch {
-        HostedProbeError::HostedExpectedNumber => "number"
-        HostedProbeError::HostedExpectedBool => "bool"
-        HostedProbeError::HostedExpectedString => "string"
+        HostedError::HostedExpectedNumber => "number"
+        HostedError::HostedExpectedBool => "bool"
+        HostedError::HostedExpectedString => "string"
         error => raise error
       }
     })
@@ -509,18 +506,18 @@ test "R1 live pure extraction and conversion rejection preserve pending jobs" {
 
 ///|
 test "R1 public property call rejects arguments replaced by its getter" {
-  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let donor = HostedSession(hosted_policy(100000L, 64L))
   let foreign = donor.evaluate("({ secret: 42 })")
   donor.close()
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let args = [probe.number(1)]
   let events : Array[String] = []
-  probe.register("swap", (_call, inputs) => {
+  probe.define_function("swap", (_call, inputs) => {
     events.push("getter")
     args[0] = foreign
     inputs[0]
   })
-  probe.register("mark", (_call, inputs) => {
+  probe.define_function("mark", (_call, inputs) => {
     events.push("callee")
     inputs[0]
   })
@@ -531,7 +528,7 @@ test "R1 public property call rejects arguments replaced by its getter" {
     ignore(target.call_property("method", args))
     false
   } catch {
-    HostedProbeError::HostedForeignValue => true
+    HostedError::HostedForeignValue => true
     error => raise error
   }
   assert_true(
@@ -546,14 +543,14 @@ test "R1 public property call rejects arguments replaced by its getter" {
 ///|
 test "hosted evaluate counts function depth without counting script roots" {
   for source in ["(function f() { return 42; })()", "(() => 42)()"] {
-    let probe = HostedProbe(hosted_policy(100000L, 1L))
+    let probe = HostedSession(hosted_policy(100000L, 1L))
     assert_eq(probe.evaluate(source).expect_number(), 42.0)
     assert_eq(probe.state(), "available")
-    let limited = HostedProbe(hosted_policy(100000L, 0L))
+    let limited = HostedSession(hosted_policy(100000L, 0L))
     expect_hosted_depth_failure(() => ignore(limited.evaluate(source)))
     assert_eq(limited.state(), "faulted")
   }
-  let root_only = HostedProbe(hosted_policy(100000L, 0L))
+  let root_only = HostedSession(hosted_policy(100000L, 0L))
   let function = root_only.evaluate("(function f() { return 42; })")
   assert_eq(root_only.state(), "available")
   expect_hosted_depth_failure(() => ignore(function.call([])))
@@ -564,11 +561,11 @@ test "hosted evaluate counts function depth without counting script roots" {
 test "hosted synchronous generators consume depth on call and resume" {
   for
     source in ["(function*(){ yield 1 })()", "(function*(x = 1){ yield x })()"] {
-    let limited = HostedProbe(hosted_policy(100000L, 0L))
+    let limited = HostedSession(hosted_policy(100000L, 0L))
     expect_hosted_depth_failure(() => ignore(limited.evaluate(source)))
     assert_eq(limited.state(), "faulted")
   }
-  let limited = HostedProbe(hosted_policy(100000L, 1L))
+  let limited = HostedSession(hosted_policy(100000L, 1L))
   ignore(limited.evaluate("var g = (function*(){ yield 42 })();"))
   expect_hosted_depth_failure(() => {
     ignore(limited.evaluate("(function outer(){ return g.next(); })()"))
@@ -578,7 +575,7 @@ test "hosted synchronous generators consume depth on call and resume" {
 
 ///|
 test "hosted synchronous generator depth releases on yield and guest unwind" {
-  let probe = HostedProbe(hosted_policy(100000L, 1L))
+  let probe = HostedSession(hosted_policy(100000L, 1L))
   assert_eq(
     probe
     .evaluate(
@@ -597,7 +594,7 @@ test "hosted synchronous generator depth releases on yield and guest unwind" {
   )
   assert_eq(probe.state(), "available")
   for depth in [1L, 2L] {
-    let delegated = HostedProbe(hosted_policy(100000L, depth))
+    let delegated = HostedSession(hosted_policy(100000L, depth))
     // Precreate both instances: only delegated body resumption can exceed depth.
     ignore(
       delegated.evaluate(
@@ -621,9 +618,9 @@ test "hosted synchronous generator depth releases on yield and guest unwind" {
 test "R2 public guest operations checkpoint normal and guest throw outcomes" {
   for entry in ["get", "call", "property"] {
     for throws in [false, true] {
-      let probe = HostedProbe(hosted_policy(100000L, 64L))
+      let probe = HostedSession(hosted_policy(100000L, 64L))
       let events : Array[String] = []
-      probe.register("mark", (call, args) => {
+      probe.define_function("mark", (call, args) => {
         assert_eq(probe.state(), "running")
         call.record_effect()
         events.push(args[0].expect_string())
@@ -653,7 +650,7 @@ test "R2 public guest operations checkpoint normal and guest throw outcomes" {
         assert_eq(result.expect_number(), 42.0)
         "normal"
       } catch {
-        HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+        HostedError::HostedGuestThrow(value, diagnostic) => {
           assert_eq(diagnostic.phase_code(), "body")
           assert_eq(value.expect_number(), 7.0)
           "guest"
@@ -672,9 +669,9 @@ test "R2 public guest operations checkpoint normal and guest throw outcomes" {
 test "R2 public completion preserves throws and retains unselected jobs" {
   for entry in ["get", "call", "property"] {
     for body_throws in [false, true] {
-      let probe = HostedProbe(hosted_policy(100000L, 64L))
+      let probe = HostedSession(hosted_policy(100000L, 64L))
       let events : Array[String] = []
-      probe.register("mark", (_call, args) => {
+      probe.define_function("mark", (_call, args) => {
         events.push(args[0].expect_string())
         args[0]
       })
@@ -697,12 +694,12 @@ test "R2 public completion preserves throws and retains unselected jobs" {
         )
         "accepted"
       } catch {
-        HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+        HostedError::HostedGuestThrow(value, diagnostic) => {
           assert_eq(diagnostic.phase_code(), "checkpoint")
           assert_eq(value.expect_number(), 42.0)
           "checkpoint"
         }
-        HostedProbeError::HostedGuestThrowWithSecondary(
+        HostedError::HostedGuestThrowWithSecondary(
           primary~,
           secondary~,
           primary_diagnostic~,
@@ -727,19 +724,19 @@ test "R2 public completion preserves throws and retains unselected jobs" {
 
 ///|
 test "R2 nested returns never recursively checkpoint including checkpoint Host calls" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let events : Array[String] = []
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     events.push(args[0].expect_string())
     args[0]
   })
-  probe.register("invoke", (call, args) => {
+  probe.define_function("invoke", (call, args) => {
     let value = call.call(args[0], [])
     json_inspect(events, content=["nested"])
     events.push("host-return")
     value
   })
-  probe.register("checkpointInvoke", (call, args) => {
+  probe.define_function("checkpointInvoke", (call, args) => {
     let value = call.call(args[0], [])
     json_inspect(events, content=[
       "nested", "host-return", "outer", "job", "checkpoint-nested",
@@ -765,9 +762,9 @@ test "R2 nested returns never recursively checkpoint including checkpoint Host c
 
 ///|
 test "R2 retained jobs wait through pure inspection parse failure and rejection" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let events : Array[String] = []
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     events.push(args[0].expect_string())
     args[0]
   })
@@ -783,7 +780,7 @@ test "R2 retained jobs wait through pure inspection parse failure and rejection"
     )
     false
   } catch {
-    HostedProbeError::HostedGuestThrow(thrown, _) => {
+    HostedError::HostedGuestThrow(thrown, _) => {
       assert_eq(thrown.expect_number(), 1.0)
       true
     }
@@ -796,17 +793,17 @@ test "R2 retained jobs wait through pure inspection parse failure and rejection"
     ignore(probe.evaluate("var ="))
     false
   } catch {
-    HostedProbeError::HostedParse(_) => true
+    HostedError::HostedParse(_) => true
     error => raise error
   }
   assert_true(parse_failed)
-  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let donor = HostedSession(hosted_policy(100000L, 64L))
   let foreign = donor.number(1)
   let rejected = try {
     ignore(target.call_property("method", [foreign]))
     false
   } catch {
-    HostedProbeError::HostedForeignValue => true
+    HostedError::HostedForeignValue => true
     error => raise error
   }
   assert_true(rejected)
@@ -822,13 +819,13 @@ test "R2 terminal body skips checkpoint and terminal checkpoint overrides guest 
     for body_throws in [false, true] {
       let interruption = @runtime.InterruptionHandle()
       let policy = @runtime.ExecutionPolicy::new(100000L, 64L, interruption).unwrap()
-      let probe = HostedProbe(policy)
+      let probe = HostedSession(policy)
       let events : Array[String] = []
-      probe.register("mark", (_call, args) => {
+      probe.define_function("mark", (_call, args) => {
         events.push(args[0].expect_string())
         args[0]
       })
-      probe.register("stop", (_call, args) => {
+      probe.define_function("stop", (_call, args) => {
         interruption.request()
         args[0]
       })
@@ -845,7 +842,7 @@ test "R2 terminal body skips checkpoint and terminal checkpoint overrides guest 
         ignore(target.call([]))
         false
       } catch {
-        HostedProbeError::HostedTerminal(cause, _, _) => {
+        HostedError::HostedTerminal(cause, _, _) => {
           assert_eq(
             @runtime.execution_control_failure_code(cause),
             Some("interrupted"),
@@ -867,14 +864,14 @@ test "R2 terminal body skips checkpoint and terminal checkpoint overrides guest 
 
 ///|
 test "R3 Busy close uses the facade category without cancelling the active turn" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let busy = Ref(false)
-  probe.register("closeBusy", (_call, args) => {
+  probe.define_function("closeBusy", (_call, args) => {
     busy.val = try {
       probe.close()
       false
     } catch {
-      HostedProbeError::HostedSessionBusy => true
+      HostedError::HostedSessionBusy => true
       _ => false
     }
     assert_eq(probe.state(), "running")
@@ -888,7 +885,7 @@ test "R3 Busy close uses the facade category without cancelling the active turn"
     probe.close()
     false
   } catch {
-    HostedProbeError::HostedSessionClosed => true
+    HostedError::HostedSessionClosed => true
     _ => false
   }
   assert_true(closed)
@@ -897,12 +894,12 @@ test "R3 Busy close uses the facade category without cancelling the active turn"
 
 ///|
 test "R3 parse diagnostics retain source positions independently of later failures" {
-  let probe = HostedProbe(hosted_policy(0L, 0L))
+  let probe = HostedSession(hosted_policy(0L, 0L))
   let first = try {
     ignore(probe.evaluate("\nvar ="))
     fail("expected parse failure")
   } catch {
-    HostedProbeError::HostedParse(diagnostic) => diagnostic
+    HostedError::HostedParse(diagnostic) => diagnostic
     error => raise error
   }
   assert_eq(first.failure_kind_code(), "parse-error")
@@ -920,7 +917,7 @@ test "R3 parse diagnostics retain source positions independently of later failur
     ignore(probe.evaluate("\n\nvar ="))
     fail("expected second parse failure")
   } catch {
-    HostedProbeError::HostedParse(diagnostic) => diagnostic
+    HostedError::HostedParse(diagnostic) => diagnostic
     error => raise error
   }
   guard second.source_location() is Some(later) else {
@@ -947,9 +944,9 @@ impl Show for HostedFormattingProbeError with fn output(self, logger) {
 
 ///|
 test "R3 Host diagnostic capture never invokes a formatter that executes guest getters" {
-  let donor = HostedProbe(hosted_policy(100000L, 64L))
+  let donor = HostedSession(hosted_policy(100000L, 64L))
   let getters = Ref(0)
-  donor.register("getterRan", (_call, args) => {
+  donor.define_function("getterRan", (_call, args) => {
     getters.val += 1
     args[0]
   })
@@ -963,13 +960,13 @@ test "R3 Host diagnostic capture never invokes a formatter that executes guest g
       _ => ()
     }
   })
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
-  probe.register("explode", (_call, _args) => raise original)
+  let probe = HostedSession(hosted_policy(100000L, 64L))
+  probe.define_function("explode", (_call, _args) => raise original)
   let failed = try {
     ignore(probe.evaluate("explode()"))
     false
   } catch {
-    HostedProbeError::HostedHostFailure(cause, diagnostic, _) => {
+    HostedError::HostedHostFailure(cause, diagnostic, _) => {
       assert_true(physical_equal(cause, original))
       assert_true(
         diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Discard,
@@ -987,7 +984,7 @@ test "R3 Host diagnostic capture never invokes a formatter that executes guest g
 
 ///|
 test "R3 guest diagnostic capture does not read thrown Proxy properties" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let thrown = try {
     ignore(
       probe.evaluate(
@@ -996,7 +993,7 @@ test "R3 guest diagnostic capture does not read thrown Proxy properties" {
     )
     None
   } catch {
-    HostedProbeError::HostedGuestThrow(value, diagnostic) => {
+    HostedError::HostedGuestThrow(value, diagnostic) => {
       assert_eq(diagnostic.phase_code(), "body")
       assert_eq(diagnostic.failure_kind_code(), "javascript-exception")
       Some(value)
@@ -1004,7 +1001,7 @@ test "R3 guest diagnostic capture does not read thrown Proxy properties" {
     error => raise error
   }
   let token = thrown.unwrap()
-  probe.register("throwSame", (call, _args) => {
+  probe.define_function("throwSame", (call, _args) => {
     call.throw_value(token)
     token
   })
@@ -1021,10 +1018,10 @@ test "R3 guest diagnostic capture does not read thrown Proxy properties" {
 
 ///|
 test "R3 checkpoint Host failure retains earlier guest failure as safe secondary data" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let formatted = Ref(0)
   let original : Error = HostedFormattingProbeError(() => formatted.val += 1)
-  probe.register("failHost", (_call, _args) => raise original)
+  probe.define_function("failHost", (_call, _args) => raise original)
   let failed = try {
     ignore(
       probe.evaluate(
@@ -1033,7 +1030,7 @@ test "R3 checkpoint Host failure retains earlier guest failure as safe secondary
     )
     false
   } catch {
-    HostedProbeError::HostedHostFailure(cause, diagnostic, secondary) => {
+    HostedError::HostedHostFailure(cause, diagnostic, secondary) => {
       assert_true(physical_equal(cause, original))
       assert_eq(diagnostic.phase_code(), "checkpoint")
       assert_eq(diagnostic.operation_code(), "evaluate")
@@ -1057,7 +1054,7 @@ test "R3 checkpoint Host failure retains earlier guest failure as safe secondary
 
 ///|
 test "R3 checkpoint control termination retains an earlier guest diagnostic" {
-  let probe = HostedProbe(hosted_policy(32L, 64L))
+  let probe = HostedSession(hosted_policy(32L, 64L))
   let failed = try {
     ignore(
       probe.evaluate(
@@ -1066,7 +1063,7 @@ test "R3 checkpoint control termination retains an earlier guest diagnostic" {
     )
     false
   } catch {
-    HostedProbeError::HostedTerminal(cause, diagnostic, secondary) => {
+    HostedError::HostedTerminal(cause, diagnostic, secondary) => {
       assert_eq(
         @runtime.execution_control_failure_code(cause),
         Some("execution-limit"),
@@ -1092,19 +1089,21 @@ test "R3 checkpoint control termination retains an earlier guest diagnostic" {
 
 ///|
 test "R3 Faulted cleanup closes without reopening admission or dispatching jobs" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let retained = probe.number(7)
   let jobs = Ref(0)
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     jobs.val += 1
     args[0]
   })
-  probe.register("explode", (_call, _args) => fail("unexpected Host failure"))
+  probe.define_function("explode", (_call, _args) => {
+    fail("unexpected Host failure")
+  })
   let faulted = try {
     ignore(probe.evaluate("queueMicrotask(() => mark(1)); explode()"))
     false
   } catch {
-    HostedProbeError::HostedHostFailure(_) => true
+    HostedError::HostedHostFailure(_) => true
     error => raise error
   }
   assert_true(faulted)
@@ -1113,7 +1112,7 @@ test "R3 Faulted cleanup closes without reopening admission or dispatching jobs"
     ignore(probe.evaluate("42"))
     false
   } catch {
-    HostedProbeError::HostedSessionFaulted => true
+    HostedError::HostedSessionFaulted => true
     error => raise error
   }
   assert_true(denied)
@@ -1123,14 +1122,14 @@ test "R3 Faulted cleanup closes without reopening admission or dispatching jobs"
     ignore(probe.evaluate("42"))
     false
   } catch {
-    HostedProbeError::HostedSessionClosed => true
+    HostedError::HostedSessionClosed => true
     error => raise error
   }
   let expired = try {
     ignore(retained.expect_number())
     false
   } catch {
-    HostedProbeError::HostedSessionClosed => true
+    HostedError::HostedSessionClosed => true
     error => raise error
   }
   assert_true(closed)
@@ -1140,18 +1139,18 @@ test "R3 Faulted cleanup closes without reopening admission or dispatching jobs"
 
 ///|
 test "R3 malformed source cannot bypass unavailable admission" {
-  let probe = HostedProbe(hosted_policy(100000L, 64L))
+  let probe = HostedSession(hosted_policy(100000L, 64L))
   let jobs = Ref(0)
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     jobs.val += 1
     args[0]
   })
-  probe.register("rejectMalformed", (_call, args) => {
+  probe.define_function("rejectMalformed", (_call, args) => {
     let busy = try {
       ignore(probe.evaluate("var ="))
       false
     } catch {
-      HostedProbeError::HostedSessionBusy => true
+      HostedError::HostedSessionBusy => true
       error => raise error
     }
     assert_true(busy)
@@ -1172,18 +1171,20 @@ test "R3 malformed source cannot bypass unavailable admission" {
     ignore(probe.evaluate("var ="))
     false
   } catch {
-    HostedProbeError::HostedSessionClosed => true
+    HostedError::HostedSessionClosed => true
     error => raise error
   }
   assert_true(closed)
   assert_eq(probe.state(), "closed")
-  let faulted = HostedProbe(hosted_policy(100000L, 64L))
-  faulted.register("explode", (_call, _args) => fail("unmapped Host failure"))
+  let faulted = HostedSession(hosted_policy(100000L, 64L))
+  faulted.define_function("explode", (_call, _args) => {
+    fail("unmapped Host failure")
+  })
   let host_failure = try {
     ignore(faulted.evaluate("explode()"))
     false
   } catch {
-    HostedProbeError::HostedHostFailure(_) => true
+    HostedError::HostedHostFailure(_) => true
     error => raise error
   }
   assert_true(host_failure)
@@ -1191,7 +1192,7 @@ test "R3 malformed source cannot bypass unavailable admission" {
     ignore(faulted.evaluate("var ="))
     false
   } catch {
-    HostedProbeError::HostedSessionFaulted => true
+    HostedError::HostedSessionFaulted => true
     error => raise error
   }
   assert_true(denied)

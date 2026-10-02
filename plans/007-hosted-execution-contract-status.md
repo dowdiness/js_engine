@@ -28,9 +28,16 @@ reentry, keeping guest throws, Host Failures, execution limits, and admission re
 Implementing the entire JavaScript specification, rewriting the interpreter, and providing a
 security sandbox are not goals.
 
-`HostedProbe` is currently a prototype. Do not change the existing `Engine`, `ExecutionSession`,
+`HostedSession` is currently a prototype. Do not change the existing `Engine`, `ExecutionSession`,
 or `ProbeRuntime` contracts wholesale. Reuse the runtime's observation, exception, and queue
-mechanisms. This inventory does not settle final type or API names.
+mechanisms. The subsequent public-name cutover is documented in the embedding guide.
+
+The naming cutover changes only public names: `HostedProbe` → `HostedSession`,
+`HostedCall` → `HostCallbackContext`, `HostedProbeError` → `HostedError`,
+`register` → `define_function`, and the three numeric adapters use the names
+listed in the embedding guide. No compatibility aliases remain. Historical
+prototype records and the original agreed-contract appendix retain their
+original terminology; their behavior and acceptance criteria are unchanged.
 
 ### R1 prerequisite migration
 
@@ -83,7 +90,7 @@ different execution paths.
 
 | ID | Implemented behavior | Executed evidence |
 |---|---|---|
-| M2 | `HostedCall.call_property` checks current authority and argument owners before property lookup; the lookup checks the target/receiver owner before a getter runs. Both public `HostedValue.call_property` and nested `HostedCall.call_property` validate argument owners again after the getter, since Host argument arrays are mutable | BB `R1 foreign property arguments reject before getters or pending jobs` covers primitive, Object, Map, Set, and Promise arguments; `R1 foreign property receiver rejects without entering its getter` covers the receiver. `R1 public property call rejects arguments replaced by its getter` covers replacement with a Closed donor's object. Rejection preserves availability, legitimate calls preserve `this`, and pending jobs wait for outer completion |
+| M2 | `HostCallbackContext.call_property` checks current authority and argument owners before property lookup; the lookup checks the target/receiver owner before a getter runs. Both public `HostedValue.call_property` and nested `HostCallbackContext.call_property` validate argument owners again after the getter, since Host argument arrays are mutable | BB `R1 foreign property arguments reject before getters or pending jobs` covers primitive, Object, Map, Set, and Promise arguments; `R1 foreign property receiver rejects without entering its getter` covers the receiver. `R1 public property call rejects arguments replaced by its getter` covers replacement with a Closed donor's object. Rejection preserves availability, legitimate calls preserve `this`, and pending jobs wait for outer completion |
 | M3 | `expect_number`, `expect_bool`, and `expect_string` require a live owner: Available/Running succeeds; Closed/Faulted rejects without guest execution or a checkpoint | BB `R1 pure extraction rejects closed and faulted retained primitives`; `R1 live pure extraction and conversion rejection preserve pending jobs`. All three extraction methods are exercised; strict mismatch does not call guest coercion methods |
 
 Before the fix, the property-call trace contained an extra `getter` before `rejected`,
@@ -140,7 +147,7 @@ concrete public raising types described below.
 
 | ID | Implemented behavior | Executed evidence |
 |---|---|---|
-| M4 | Every fallible Hosted facade operation and constructor raises `HostedProbeError`; callback parameters still admit application errors at the classification seam. Busy/Closed close errors are facade categories. Guest admission rejects Faulted; disposal preserves the existing Faulted→Closed transition without restoring execution | Generated facade interface; BB `R3 Busy close uses the facade category without cancelling the active turn` and `R3 Faulted cleanup closes without reopening admission or dispatching jobs`; public executable smokes exercise evaluate/get/call/property-call errors and lifecycle rejection |
+| M4 | Every fallible Hosted facade operation and constructor raises `HostedError`; callback parameters still admit application errors at the classification seam. Busy/Closed close errors are facade categories. Guest admission rejects Faulted; disposal preserves the existing Faulted→Closed transition without restoring execution | Generated facade interface; BB `R3 Busy close uses the facade category without cancelling the active turn` and `R3 Faulted cleanup closes without reopening admission or dispatching jobs`; public executable smokes exercise evaluate/get/call/property-call errors and lifecycle rejection |
 | M5 | Parse and guest outcomes retain immutable `EngineDiagnostic` data alongside actual guest values. Terminal/Host Failure outcomes retain the first cause and optional data-only secondary diagnostics; Host Failure retains the original application error without invoking its formatter | BB `R3` cases cover parser positions/snapshot independence, formatter/getter exclusion, thrown Proxy identity, earlier guest failure followed by checkpoint Host Failure/control termination. WB cases cover nested carrier preservation, trusted body/nested/checkpoint/checkpoint-nested origins, fresh throws of caught values, intentional Host throws, and immutable terminal snapshots |
 
 Source identity is retained when supplied by trusted function metadata. Bare script
@@ -164,9 +171,9 @@ outcomes do not retain usable guest handles as secondary information.
 
 | ID | Implemented behavior | Executed evidence |
 |---|---|---|
-| M6 | The selected `research_host1/2/function1` adapters use Hosted values/authority with concrete `Double` signatures. Missing/non-number Host arguments become actual, catchable intrinsic JS TypeErrors before user MoonBit code; unmapped user errors remain Host Failures. Retained closures use the public turn boundary and reject Running as Busy | Seven BB `R4` cases on native/js/wasm-gc cover valid unary/binary/extra arguments, strict mismatch/no coercion, uncaught TypeError, guest constructor rebinding, original Host cause/no guest cleanup, retention/Busy, strict result mismatch, and direct adapter owner/frame checks; public executable smoke covers the same consumer paths |
+| M6 | The selected `host_number_unary`, `host_number_binary`, and `js_number_unary` adapters use Hosted values/authority with concrete `Double` signatures. Missing/non-number Host arguments become actual, catchable intrinsic JS TypeErrors before user MoonBit code; unmapped user errors remain Host Failures. Retained closures use the public turn boundary and reject Running as Busy | Seven BB `R4` cases on native/js/wasm-gc cover valid unary/binary/extra arguments, strict mismatch/no coercion, uncaught TypeError, guest constructor rebinding, original Host cause/no guest cleanup, retention/Busy, strict result mismatch, and direct adapter owner/frame checks; public executable smoke covers the same consumer paths |
 
-The adapters retain the prototype names without introducing codec families or
+R4 retained the prototype adapter names without introducing codec families or
 arities. Private generic codec scaffolding is removed; only `Double` is supported.
 The three functions are explicitly classified as experimental-public surfaces.
 Strict extraction, numeric value creation, function retention, and the existing

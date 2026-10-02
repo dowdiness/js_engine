@@ -11,11 +11,11 @@ pub fn has_pending_microtasks(@runtime.Interpreter) -> Bool
 
 pub fn has_pending_timers(@runtime.Interpreter) -> Bool
 
-pub fn research_function1(HostedValue) -> (Double) -> Double raise HostedProbeError
+pub fn host_number_binary((Double, Double) -> Double raise) -> (HostCallbackContext, Array[HostedValue]) -> HostedValue raise
 
-pub fn research_host1((Double) -> Double raise) -> (HostedCall, Array[HostedValue]) -> HostedValue raise
+pub fn host_number_unary((Double) -> Double raise) -> (HostCallbackContext, Array[HostedValue]) -> HostedValue raise
 
-pub fn research_host2((Double, Double) -> Double raise) -> (HostedCall, Array[HostedValue]) -> HostedValue raise
+pub fn js_number_unary(HostedValue) -> (Double) -> Double raise HostedError
 
 pub fn run(String, annex_b? : Bool) -> (Array[String], String) raise
 
@@ -59,7 +59,7 @@ pub fn ExecutionSessionError::output(Self, &Logger) -> Unit
 pub fn ExecutionSessionError::to_string(Self) -> String
 pub impl Show for ExecutionSessionError
 
-pub(all) suberror HostedProbeError {
+pub(all) suberror HostedError {
   HostedParse(EngineDiagnostic)
   HostedGuestThrow(HostedValue, EngineDiagnostic)
   HostedGuestThrowWithSecondary(primary~ : HostedValue, secondary~ : HostedValue, primary_diagnostic~ : EngineDiagnostic, secondary_diagnostic~ : EngineDiagnostic)
@@ -148,46 +148,46 @@ pub fn ExecutionSession::close(Self) -> Unit raise ExecutionSessionError
 pub fn ExecutionSession::evaluate(Self, String) -> Unit raise ExecutionSessionError
 pub fn ExecutionSession::resume_scheduled_turn(Self, ScheduledTurn) -> Unit raise ExecutionSessionError
 
+pub struct HostCallbackContext {
+  // private fields
+}
+pub fn HostCallbackContext::call(Self, HostedValue, Array[HostedValue]) -> HostedValue raise HostedError
+pub fn HostCallbackContext::call_property(Self, HostedValue, String, Array[HostedValue]) -> HostedValue raise HostedError
+pub fn HostCallbackContext::get(Self, HostedValue, String) -> HostedValue raise HostedError
+pub fn HostCallbackContext::record_effect(Self) -> Unit raise HostedError
+pub fn HostCallbackContext::terminate(Self, Error) -> Unit raise HostedError
+pub fn HostCallbackContext::throw_value(Self, HostedValue) -> Unit raise HostedError
+
 pub struct HostEnvironment {
   // private fields
 }
 pub fn HostEnvironment::HostEnvironment(annex_b? : Bool, console? : Bool, script_resources? : Bool, timers? : Bool) -> Self
 pub fn HostEnvironment::create_session(Self, bindings? : SessionBindings) -> ExecutionSession raise SessionCreationError
 
-pub struct HostedCall {
+pub struct HostedSession {
   // private fields
 }
-pub fn HostedCall::call(Self, HostedValue, Array[HostedValue]) -> HostedValue raise HostedProbeError
-pub fn HostedCall::call_property(Self, HostedValue, String, Array[HostedValue]) -> HostedValue raise HostedProbeError
-pub fn HostedCall::get(Self, HostedValue, String) -> HostedValue raise HostedProbeError
-pub fn HostedCall::record_effect(Self) -> Unit raise HostedProbeError
-pub fn HostedCall::terminate(Self, Error) -> Unit raise HostedProbeError
-pub fn HostedCall::throw_value(Self, HostedValue) -> Unit raise HostedProbeError
-
-pub struct HostedProbe {
-  // private fields
-}
-pub fn HostedProbe::HostedProbe(@runtime.ExecutionPolicy) -> Self raise HostedProbeError
-pub fn HostedProbe::bool(Self, Bool) -> HostedValue raise HostedProbeError
-pub fn HostedProbe::close(Self) -> Unit raise HostedProbeError
-pub fn HostedProbe::effect_count(Self) -> Int
-pub fn HostedProbe::evaluate(Self, String) -> HostedValue raise HostedProbeError
-pub fn HostedProbe::global(Self, String) -> HostedValue raise HostedProbeError
-pub fn HostedProbe::number(Self, Double) -> HostedValue raise HostedProbeError
-pub fn HostedProbe::register(Self, String, (HostedCall, Array[HostedValue]) -> HostedValue raise) -> Unit raise HostedProbeError
-pub fn HostedProbe::state(Self) -> String
-pub fn HostedProbe::string(Self, String) -> HostedValue raise HostedProbeError
-pub fn HostedProbe::terminal_cause(Self) -> Error?
+pub fn HostedSession::HostedSession(@runtime.ExecutionPolicy) -> Self raise HostedError
+pub fn HostedSession::bool(Self, Bool) -> HostedValue raise HostedError
+pub fn HostedSession::close(Self) -> Unit raise HostedError
+pub fn HostedSession::define_function(Self, String, (HostCallbackContext, Array[HostedValue]) -> HostedValue raise) -> Unit raise HostedError
+pub fn HostedSession::effect_count(Self) -> Int
+pub fn HostedSession::evaluate(Self, String) -> HostedValue raise HostedError
+pub fn HostedSession::global(Self, String) -> HostedValue raise HostedError
+pub fn HostedSession::number(Self, Double) -> HostedValue raise HostedError
+pub fn HostedSession::state(Self) -> String
+pub fn HostedSession::string(Self, String) -> HostedValue raise HostedError
+pub fn HostedSession::terminal_cause(Self) -> Error?
 
 pub struct HostedValue {
   // private fields
 }
-pub fn HostedValue::call(Self, Array[Self]) -> Self raise HostedProbeError
-pub fn HostedValue::call_property(Self, String, Array[Self]) -> Self raise HostedProbeError
-pub fn HostedValue::expect_bool(Self) -> Bool raise HostedProbeError
-pub fn HostedValue::expect_number(Self) -> Double raise HostedProbeError
-pub fn HostedValue::expect_string(Self) -> String raise HostedProbeError
-pub fn HostedValue::get(Self, String) -> Self raise HostedProbeError
+pub fn HostedValue::call(Self, Array[Self]) -> Self raise HostedError
+pub fn HostedValue::call_property(Self, String, Array[Self]) -> Self raise HostedError
+pub fn HostedValue::expect_bool(Self) -> Bool raise HostedError
+pub fn HostedValue::expect_number(Self) -> Double raise HostedError
+pub fn HostedValue::expect_string(Self) -> String raise HostedError
+pub fn HostedValue::get(Self, String) -> Self raise HostedError
 
 pub struct LoadedScript {
   identity : String

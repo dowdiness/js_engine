@@ -7,29 +7,49 @@ stable root facade described in [EMBEDDING.md](EMBEDDING.md).
 Code is the source of truth. If this document and the API disagree, trust the
 code and open a docs fix.
 
-## Experimental Hosted numeric adapters
+## Experimental Hosted API
 
-The root package exposes `research_host1`, `research_host2`, and
-`research_function1` for the experimental `HostedProbe` path. They support
-strict `Double` conversion only: unary/binary Host callbacks and a unary
-retained JS function. These are not stable facade APIs.
+`HostedSession` owns the execution state and lifetime of its `HostedValue`
+handles. A `HostCallbackContext` permits synchronous JS reentry only during
+the current Host callback; retaining a value does not retain that authority.
+Fallible facade operations raise `HostedError`, with distinct guest, terminal,
+Host Failure, and admission categories. These are not stable facade APIs.
+
+The numeric adapters `host_number_unary`, `host_number_binary`, and
+`js_number_unary` support strict `Double` conversion only.
 
 ```moonbit
 // dowdiness/js_engine → @js_engine
 // dowdiness/js_engine/interpreter/runtime → @runtime
-fn hosted_numbers() -> Double raise {
+using @js_engine {type HostedSession}
+
+fn hosted_examples() -> Double raise {
   let policy = match @runtime.ExecutionPolicy::new(
     100000L, 64L, @runtime.InterruptionHandle(),
   ) {
     Ok(policy) => policy
     Err(error) => fail(error.message())
   }
-  let probe = @js_engine.HostedProbe(policy)
-  probe.register("double", @js_engine.research_host1(n => n * 2))
-  probe.register("sum", @js_engine.research_host2((a, b) => a + b))
-  ignore(probe.evaluate("double(21) + sum(20, 22)"))
-  let saved = @js_engine.research_function1(probe.evaluate("(n) => n + 1"))
-  saved(41) // 42
+  let session = HostedSession(policy)
+
+  // A. Define a Host function and call it from JS.
+  session.define_function("double", @js_engine.host_number_unary(n => n * 2))
+  session.define_function("sum", @js_engine.host_number_binary((a, b) => a + b))
+  assert_eq(session.evaluate("double(21)").expect_number(), 42.0)
+  assert_eq(session.evaluate("sum(20, 22)").expect_number(), 42.0)
+
+  // B. Reenter JS through the current callback context.
+  // Value creation requires Available: create the argument before the callback.
+  let argument = session.number(21)
+  session.define_function("invoke", (context, args) => {
+    context.call(args[0], [argument])
+  })
+  assert_eq(session.evaluate("invoke(n => n * 2)").expect_number(), 42.0)
+
+  // C. Retain a JS function and call it in a later public Turn.
+  let function = session.evaluate("(n) => n + 1")
+  let increment = @js_engine.js_number_unary(function)
+  increment(41) // 42
 }
 ```
 
@@ -38,18 +58,18 @@ before entering the user's MoonBit function. Conversion does not invoke
 `valueOf`, `toString`, getters, or Proxy traps; extra arguments are ignored.
 Guest rebinding of `TypeError` does not replace the mapped error's intrinsic
 prototype. User-function errors are **not** automatically mapped: an unmapped
-error remains a Host Failure and faults the probe.
+error remains a Host Failure and faults the session.
 
-`research_function1` retains the original function and owner, not its global
+`js_number_unary` retains the original function and owner, not its global
 name. Each call uses the ordinary public Hosted turn/checkpoint boundary and
 strictly checks the result. Calling it while the owner is Running rejects
-`HostedSessionBusy`; it does not implicitly use HostCall reentry. Use an active
-`HostedCall` explicitly when nested guest execution is intended.
+`HostedSessionBusy`; it does not implicitly authorize reentry. Use the active
+`HostCallbackContext` explicitly when nested guest execution is intended.
 
 The Hosted path shares one cooperative step/depth policy across the body,
 authorized nested calls, and the eligible outer checkpoint. A self-extending
 Promise job chain cannot obtain a fresh budget. Interruption, Host Failure,
-and bounded native-progress rejection are terminal: the probe becomes Faulted,
+and bounded native-progress rejection are terminal: the session becomes Faulted,
 and guest catch/finally or later jobs cannot recover it. This is not a sandbox
 or preemption of arbitrary MoonBit work.
 

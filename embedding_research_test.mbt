@@ -1,35 +1,38 @@
 ///|
 using @js_engine {
+  type HostedSession,
+  type HostCallbackContext,
+  type HostedError,
   type HostedValue,
-  research_host1,
-  research_host2,
-  research_function1,
+  host_number_unary,
+  host_number_binary,
+  js_number_unary,
 }
 
 ///|
-fn research_hosted_probe() -> HostedProbe raise {
+fn research_hosted_probe() -> HostedSession raise {
   let policy = match
     @runtime.ExecutionPolicy::new(100000L, 64L, @runtime.InterruptionHandle()) {
     Ok(policy) => policy
     Err(error) => fail(error.message())
   }
-  HostedProbe(policy)
+  HostedSession(policy)
 }
 
 ///|
 test "R4 numeric Host adapters reject before user code with catchable TypeError and no coercion" {
   let probe = research_hosted_probe()
   let entered = Ref(0)
-  probe.register(
+  probe.define_function(
     "double",
-    research_host1((n : Double) => {
+    host_number_unary((n : Double) => {
       entered.val += 1
       n * 2
     }),
   )
-  probe.register(
+  probe.define_function(
     "sum",
-    research_host2((a : Double, b : Double) => {
+    host_number_binary((a : Double, b : Double) => {
       entered.val += 1
       a + b
     }),
@@ -55,9 +58,9 @@ test "R4 numeric Host adapters reject before user code with catchable TypeError 
 test "R4 uncaught typed mismatch retains a real TypeError and leaves Available" {
   let probe = research_hosted_probe()
   let entered = Ref(0)
-  probe.register(
+  probe.define_function(
     "double",
-    research_host1((n : Double) => {
+    host_number_unary((n : Double) => {
       entered.val += 1
       n * 2
     }),
@@ -66,7 +69,7 @@ test "R4 uncaught typed mismatch retains a real TypeError and leaves Available" 
     ignore(probe.evaluate("double('21')"))
     None
   } catch {
-    HostedProbeError::HostedGuestThrow(value, _) => Some(value)
+    HostedError::HostedGuestThrow(value, _) => Some(value)
     error => raise error
   }
   let value = match thrown {
@@ -87,16 +90,16 @@ test "R4 user function errors remain original noncatchable Host Failures" {
     message="application error, not adapter mismatch",
   )
   let guest_cleanup = Ref(0)
-  probe.register(
+  probe.define_function(
     "explode",
-    research_host1((n : Double) => {
+    host_number_unary((n : Double) => {
       if n == 1 {
         raise original
       }
       n
     }),
   )
-  probe.register("mark", (_call, args) => {
+  probe.define_function("mark", (_call, args) => {
     guest_cleanup.val += 1
     args[0]
   })
@@ -108,7 +111,7 @@ test "R4 user function errors remain original noncatchable Host Failures" {
     )
     false
   } catch {
-    HostedProbeError::HostedHostFailure(cause, _, _) => {
+    HostedError::HostedHostFailure(cause, _, _) => {
       assert_true(physical_equal(cause, original))
       true
     }
@@ -123,22 +126,22 @@ test "R4 user function errors remain original noncatchable Host Failures" {
 test "R4 retained numeric closure preserves identity and rejects implicit Running reentry" {
   let probe = research_hosted_probe()
   let entered = Ref(0)
-  probe.register("touch", (_call, args) => {
+  probe.define_function("touch", (_call, args) => {
     entered.val += 1
     args[0]
   })
   ignore(probe.evaluate("function saved(n) { touch(0); return n + 1; }"))
-  let saved : (Double) -> Double raise HostedProbeError = research_function1(
+  let saved : (Double) -> Double raise HostedError = js_number_unary(
     probe.global("saved"),
   )
   assert_eq(saved(41), 42.0)
   ignore(probe.evaluate("saved = function(n) { return n + 1000; };"))
-  probe.register("busySaved", (_call, args) => {
+  probe.define_function("busySaved", (_call, args) => {
     let busy = try {
       ignore(saved(41))
       false
     } catch {
-      HostedProbeError::HostedSessionBusy => true
+      HostedError::HostedSessionBusy => true
       error => raise error
     }
     assert_true(busy)
@@ -158,14 +161,14 @@ test "R4 retained numeric result mismatch does not coerce or fault" {
     #|var coercions = 0;
     #|function saved(n) { return { get valueOf() { coercions++; return () => n; }, get toString() { coercions++; return () => '' + n; } }; }
   ignore(probe.evaluate(source))
-  let saved : (Double) -> Double raise HostedProbeError = research_function1(
+  let saved : (Double) -> Double raise HostedError = js_number_unary(
     probe.global("saved"),
   )
   let rejected = try {
     ignore(saved(21))
     false
   } catch {
-    HostedProbeError::HostedExpectedNumber => true
+    HostedError::HostedExpectedNumber => true
     error => raise error
   }
   assert_true(rejected)
@@ -180,19 +183,19 @@ test "R4 exposed Host adapter validates owner and live authority before user cod
   let foreign = donor.number(21)
   let owned = probe.number(21)
   let entered = Ref(0)
-  let escaped : Ref[HostedCall?] = Ref(None)
-  let typed = research_host1(n => {
+  let escaped : Ref[HostCallbackContext?] = Ref(None)
+  let typed = host_number_unary(n => {
     entered.val += 1
     n * 2
   })
   donor.close()
-  probe.register("checkForeign", (call, args) => {
+  probe.define_function("checkForeign", (call, args) => {
     escaped.val = Some(call)
     let rejected = try {
       ignore(typed(call, [foreign]))
       false
     } catch {
-      HostedProbeError::HostedForeignValue => true
+      HostedError::HostedForeignValue => true
       error => raise error
     }
     assert_true(rejected)
@@ -204,7 +207,7 @@ test "R4 exposed Host adapter validates owner and live authority before user cod
     ignore(typed(escaped.val.unwrap(), [owned]))
     false
   } catch {
-    HostedProbeError::HostedExpiredHostCall => true
+    HostedError::HostedExpiredHostCall => true
     error => raise error
   }
   assert_true(expired)
@@ -216,9 +219,9 @@ test "R4 exposed Host adapter validates owner and live authority before user cod
 test "R4 mapped TypeError keeps intrinsic identity after guest constructor rebinding" {
   let probe = research_hosted_probe()
   let entered = Ref(0)
-  probe.register(
+  probe.define_function(
     "double",
-    research_host1(n => {
+    host_number_unary(n => {
       entered.val += 1
       n * 2
     }),

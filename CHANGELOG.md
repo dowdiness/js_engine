@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [Unreleased]
+
+### Changed
+
+- Renamed the experimental Hosted API without changing execution behavior:
+  `HostedProbe` → `HostedSession`, `HostedCall` → `HostCallbackContext`,
+  `HostedProbeError` → `HostedError`, and `register` → `define_function`.
+- Renamed the selected strict `Double` adapters: `research_host1` →
+  `host_number_unary`, `research_host2` → `host_number_binary`, and
+  `research_function1` → `js_number_unary`. Old names have no compatibility
+  aliases. `HostedValue`, error variants and payloads, admission rules, and
+  Turn/checkpoint semantics are unchanged; the API remains experimental.
+
 ## [0.9.0] — 2026-09-11
 
 This release adds application-owned hosting services, makes verified bytecode
