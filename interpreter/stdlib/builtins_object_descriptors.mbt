@@ -39,6 +39,7 @@ fn append_own_property_descriptor_result(
   string_props : Map[String, Value],
   symbol_props : Map[Int, Value],
 ) -> Unit raise Error {
+  interp.observe_execution_step()
   match interp.get_own_property(source, key) {
     Some((desc, val)) => {
       let desc_value = @runtime.descriptor_to_value(desc, val)
@@ -75,9 +76,11 @@ fn collect_define_properties_pairs_from_keys(
 ) -> Array[(Value, @runtime.PartialDescriptor)] raise Error {
   let pairs : Array[(Value, @runtime.PartialDescriptor)] = []
   for key in keys {
+    interp.observe_execution_step()
     match interp.get_own_property(obj, key) {
       Some((own_desc, _)) =>
         if own_desc.enumerable {
+          interp.observe_execution_step()
           let desc_val = match key {
             Symbol(_) => interp.get_computed_property(obj, key, loc)
             _ => interp.get_property(obj, @runtime.to_js_string(key), loc)
@@ -100,6 +103,7 @@ fn apply_define_properties_pairs(
 ) -> Unit raise Error {
   for pair in pairs {
     let (key, partial) = pair
+    interp.observe_execution_step()
     let ok = interp.define_own_property(obj, key, partial, loc)
     if !ok {
       let key_display = match key {

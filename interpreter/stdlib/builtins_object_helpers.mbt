@@ -19,12 +19,6 @@ fn to_object(
       }
       let props : Map[String, Value] = Map([])
       props["length"] = Value::Number(s.length().to_double())
-      let chars = s.to_array()
-      for i = 0; i < chars.length(); i = i + 1 {
-        let buf = StringBuilder()
-        buf.write_char(chars[i])
-        props[i.to_string()] = Value::String_(buf.to_string())
-      }
       let descs : Map[String, PropDescriptor] = Map([])
       descs["length"] = {
         writable: false,
@@ -34,7 +28,11 @@ fn to_object(
         setter: None,
         is_accessor: false,
       }
-      for i = 0; i < chars.length(); i = i + 1 {
+      for i, ch in s.iter2() {
+        interp.observe_execution_step()
+        let buf = StringBuilder()
+        buf.write_char(ch)
+        props[i.to_string()] = Value::String_(buf.to_string())
         descs[i.to_string()] = {
           writable: false,
           enumerable: true,

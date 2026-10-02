@@ -2316,12 +2316,14 @@ pub fn collect_for_in_keys(
           _ => []
         }
         for k in own_keys {
+          interp.observe_execution_step()
           match k {
             String_(s) =>
               if !seen.contains(s) {
                 // Use [[GetOwnPropertyDescriptor]] trap to check enumerability.
                 // If the trap returns None the key is not an own property —
                 // don't mark it seen so the prototype chain can still surface it.
+                interp.observe_execution_step()
                 let desc_opt = proxy_get_own_property(
                   interp,
                   proxy_data,
@@ -2342,6 +2344,7 @@ pub fn collect_for_in_keys(
           }
         }
         // Walk prototype chain via [[GetPrototypeOf]] trap
+        interp.observe_execution_step()
         current = proxy_get_prototype_of(interp, proxy_data)
         continue
       }
@@ -2356,6 +2359,7 @@ pub fn collect_for_in_keys(
             _ => 0
           }
           for i = 0; i < ta_len; i = i + 1 {
+            interp.observe_execution_step()
             let k = i.to_string()
             if !seen.contains(k) &&
               (interp.stdlib_hooks.typedarray_is_valid_index)(
@@ -2369,14 +2373,16 @@ pub fn collect_for_in_keys(
           }
         }
         let sorted = if data.class_name == "Module" {
-          module_namespace_own_string_keys(data)
+          module_namespace_own_string_keys_observed(interp, data)
         } else {
-          sort_property_keys(data.bag.properties)
+          sort_property_keys_observed(interp, data.bag.properties)
         }
         for k in sorted {
+          interp.observe_execution_step()
           if !seen.contains(k) {
             seen.add(k)
             let enumerable = if data.class_name == "Module" {
+              interp.observe_execution_step()
               match interp.get_own_property(Object(data), String_(k)) {
                 Some((d, _)) => d.enumerable
                 None => false
@@ -2392,10 +2398,14 @@ pub fn collect_for_in_keys(
             }
           }
         }
+        if !(data.prototype is Null) {
+          interp.observe_execution_step()
+        }
         current = data.prototype
       }
       Array(data) => {
         for i = 0; i < data.elements.length(); i = i + 1 {
+          interp.observe_execution_step()
           if data.holes.contains(i) {
             continue
           }
@@ -2411,8 +2421,9 @@ pub fn collect_for_in_keys(
             }
           }
         }
-        let sorted = sort_property_keys(data.bag.properties)
+        let sorted = sort_property_keys_observed(interp, data.bag.properties)
         for k in sorted {
+          interp.observe_execution_step()
           if !seen.contains(k) {
             let enumerable = match data.bag.descriptors.get(k) {
               Some(d) => d.enumerable

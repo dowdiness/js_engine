@@ -228,10 +228,12 @@ fn executor_own_keys_decrement_string(
 ///|
 fn ExecutorOwnPropertyKeysOperation::validate_trap_keys(
   self : ExecutorOwnPropertyKeysOperation,
+  interp : Interpreter,
 ) -> Unit raise Error {
   let seen_strings : Map[String, Bool] = Map([])
   let seen_symbols : Map[Int, Bool] = Map([])
   for key in self.trap_keys {
+    interp.observe_execution_step()
     match key {
       String_(name) => {
         guard !seen_strings.contains(name) else {
@@ -260,6 +262,7 @@ fn ExecutorOwnPropertyKeysOperation::validate_trap_keys(
 ///|
 fn ExecutorOwnPropertyKeysOperation::finish_invariants(
   self : ExecutorOwnPropertyKeysOperation,
+  interp : Interpreter,
 ) -> ExecutorActivationStep raise Error {
   let trap_keys = self.trap_keys
   if self.target_extensible && self.target_nonconfigurable_keys.is_empty() {
@@ -269,6 +272,7 @@ fn ExecutorOwnPropertyKeysOperation::finish_invariants(
   let unchecked : Map[String, Int] = Map([])
   let unchecked_symbols : Map[Int, Int] = Map([])
   for key in trap_keys {
+    interp.observe_execution_step()
     match key {
       String_(name) => unchecked[name] = unchecked.get(name).unwrap_or(0) + 1
       Symbol(symbol) =>
@@ -280,6 +284,7 @@ fn ExecutorOwnPropertyKeysOperation::finish_invariants(
     }
   }
   for key in self.target_nonconfigurable_keys {
+    interp.observe_execution_step()
     match key {
       String_(name) => executor_own_keys_decrement_string(unchecked, name)
       Symbol(symbol) =>
@@ -298,6 +303,7 @@ fn ExecutorOwnPropertyKeysOperation::finish_invariants(
     return ExecutorActivationNormal(make_array(trap_keys.copy()))
   }
   for key in self.target_configurable_keys {
+    interp.observe_execution_step()
     match key {
       String_(name) => executor_own_keys_decrement_string(unchecked, name)
       Symbol(symbol) =>
@@ -312,8 +318,14 @@ fn ExecutorOwnPropertyKeysOperation::finish_invariants(
     }
   }
   let mut remaining = 0
-  unchecked.each(fn(_key, count) { remaining += count })
-  unchecked_symbols.each(fn(_key, count) { remaining += count })
+  unchecked.each(fn(_key, count) raise {
+    interp.observe_execution_step()
+    remaining += count
+  })
+  unchecked_symbols.each(fn(_key, count) raise {
+    interp.observe_execution_step()
+    remaining += count
+  })
   guard remaining == 0 else {
     raise @errors.TypeError(
       message="'ownKeys' on proxy: trap returned extra keys for a non-extensible target",
@@ -408,7 +420,7 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
     ExecutorOwnPropertyKeysHaveLength(length) => {
       self.trap_length = length
       if self.index.to_int64() >= length {
-        self.validate_trap_keys()
+        self.validate_trap_keys(interp)
         self.start_invariants(interp)
       } else {
         let trap_result = match self.trap_result {
@@ -418,6 +430,7 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
               message="managed ownKeys lost its trap result",
             )
         }
+        interp.observe_execution_step()
         self.phase = ExecutorOwnPropertyKeysAwaitIndex
         executor_copy_key_get(
           trap_result,
@@ -426,7 +439,8 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
         )
       }
     }
-    ExecutorOwnPropertyKeysHaveIndex(value) =>
+    ExecutorOwnPropertyKeysHaveIndex(value) => {
+      interp.observe_execution_step()
       match value {
         String_(_) | Symbol(_) => {
           self.trap_keys.push(value)
@@ -439,6 +453,7 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
             message="'ownKeys' on proxy: trap result must contain only Strings and Symbols",
           )
       }
+    }
     ExecutorOwnPropertyKeysNeedTargetExtensible => {
       let operation = ExecutorDeleteIsExtensibleOperation(
         target=self.target,
@@ -501,10 +516,11 @@ fn ExecutorOwnPropertyKeysOperation::step_frame(
       }
     ExecutorOwnPropertyKeysNeedTargetDescriptor =>
       if self.index >= self.target_keys.length() {
-        self.finish_invariants()
+        self.finish_invariants(interp)
       } else {
         let key = self.target_keys[self.index]
         self.current_key = Some(key)
+        interp.observe_execution_step()
         let operation = ExecutorDeleteGetOwnOperation(
           target=self.target,
           key~,
@@ -699,8 +715,10 @@ fn ExecutorCopyDataPropertiesFrame::consume_own_keys(
 fn executor_copy_data_properties_is_excluded(
   excluded_keys : Array[Value],
   key : Value,
-) -> Bool {
+  interp : Interpreter,
+) -> Bool raise Error {
   for excluded in excluded_keys {
+    interp.observe_execution_step()
     if strict_equal(excluded, key) {
       return true
     }
@@ -717,6 +735,7 @@ fn ExecutorCopyDataPropertiesFrame::consume_get_own(
   self.current_key = Some(self.keys[self.index])
   match descriptor {
     Some(info) if info.descriptor.enumerable => {
+      interp.observe_execution_step()
       self.phase = ExecutorCopyDataPropertiesAwaitGet
       executor_copy_key_get(
         self.request.source,
@@ -798,12 +817,14 @@ fn ExecutorCopyDataPropertiesFrame::step_frame(
         if executor_copy_data_properties_is_excluded(
             self.request.excluded_keys,
             key,
+            interp,
           ) {
           self.index += 1
           self.current_key = None
           self.step_frame(interp)
         } else {
           self.current_key = Some(key)
+          interp.observe_execution_step()
           let operation = ExecutorDeleteGetOwnOperation(
             target=self.request.source,
             key~,
@@ -845,6 +866,7 @@ fn ExecutorCopyDataPropertiesFrame::step_frame(
             message="CopyDataProperties Get completed without a key",
           )
       }
+      interp.observe_execution_step()
       let succeeded = interp.define_own_property(
         self.request.target,
         key,
