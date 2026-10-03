@@ -27,6 +27,10 @@ fn keyed_collection_setup_source_972() -> String {
     #|var iteratorSet = new Set(valueSource);
     #|var setIterator = iteratorSet.values();
     #|for (var j = 0; j < 2000; j += 1) iteratorSet.delete(j);
+    #|var callbackTotal = 2001;
+    #|var mapCallbackSeen = [];
+    #|var setCallbackSeen = [];
+    #|var mutatorCallbackCalls = 0;
     #|function mapGetMissing() { return largeMap.get(-1); }
     #|function mapSetMissing() { return largeMap.set(-1, -1); }
     #|function mapHasMissing() { return largeMap.has(-1); }
@@ -41,12 +45,61 @@ fn keyed_collection_setup_source_972() -> String {
     #|function mapForEachLarge() {
     #|  return largeMap.forEach(function() {});
     #|}
+    #|function mapForEachWithCallback() {
+    #|  mapCallbackSeen = [];
+    #|  return largeMap.forEach(function(value, key) {
+    #|    mapCallbackSeen.push(key);
+    #|  });
+    #|}
+    #|function mapCallbackPrefixIsValid() {
+    #|  if (mapCallbackSeen.length <= 0 || mapCallbackSeen.length >= callbackTotal) return false;
+    #|  for (var i = 0; i < mapCallbackSeen.length; i++) {
+    #|    if (mapCallbackSeen[i] !== i) return false;
+    #|  }
+    #|  return true;
+    #|}
+    #|function mapSetStopped() { return largeMap.set(-1, -1); }
+    #|function mapDeleteStopped() { return largeMap.delete(-1); }
+    #|function mapGetOrInsertComputedStopped() {
+    #|  return largeMap.getOrInsertComputed(-1, function() {
+    #|    mutatorCallbackCalls = mutatorCallbackCalls + 1;
+    #|    return -1;
+    #|  });
+    #|}
+    #|function mapClearStopped() { return largeMap.clear(); }
+    #|function mapMutatorState() {
+    #|  return largeMap.size + ":" + largeMap.has(-1) + ":" + mutatorCallbackCalls;
+    #|}
     #|function setAddMissing() { return largeSet.add(-1); }
     #|function setHasMissing() { return largeSet.has(-1); }
     #|function setDeleteMissing() { return largeSet.delete(-1); }
     #|function setClearLarge() { return largeSet.clear(); }
     #|function setForEachLarge() {
     #|  return largeSet.forEach(function() {});
+    #|}
+    #|function setForEachWithCallback() {
+    #|  setCallbackSeen = [];
+    #|  return largeSet.forEach(function(value) {
+    #|    setCallbackSeen.push(value);
+    #|  });
+    #|}
+    #|function setCallbackPrefixIsValid() {
+    #|  if (setCallbackSeen.length <= 0 || setCallbackSeen.length >= callbackTotal) return false;
+    #|  for (var i = 0; i < setCallbackSeen.length; i++) {
+    #|    if (setCallbackSeen[i] !== i) return false;
+    #|  }
+    #|  return true;
+    #|}
+    #|function setAddStopped() { return largeSet.add(-1); }
+    #|function setDeleteStopped() { return largeSet.delete(-1); }
+    #|function setClearStopped() { return largeSet.clear(); }
+    #|function setMutatorState() {
+    #|  return largeSet.size + ":" + largeSet.has(-1) + ":" + mutatorCallbackCalls;
+    #|}
+    #|function resetMutatorState() {
+    #|  largeMap = new Map(pairSource);
+    #|  largeSet = new Set(valueSource);
+    #|  mutatorCallbackCalls = 0;
     #|}
     #|function nextAfterTombstones() { return setIterator.next().value; }
   )
@@ -152,6 +205,71 @@ test "representative direct Map and Set scans stay on candidate Bytecode" {
 }
 
 ///|
+test "Map and Set forEach callbacks preserve a bounded monotonic prefix" {
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    run_executor_neutral_bytecode(interp, keyed_collection_setup_source_972()),
+  )
+  assert_tree_keyed_collection_limit_972(interp, "mapForEachWithCallback();")
+  assert_tree_keyed_collection_limit_972(interp, "setForEachWithCallback();")
+  assert_eq(
+    interp.run(@parser.parse("mapCallbackPrefixIsValid();").stmts).to_string(),
+    "true",
+  )
+  assert_eq(
+    interp.run(@parser.parse("setCallbackPrefixIsValid();").stmts).to_string(),
+    "true",
+  )
+}
+
+///|
+test "interrupted Map and Set mutators preserve pre-probe state" {
+  let interp = @interpreter.new_interpreter()
+  ignore(interp.run(@parser.parse(keyed_collection_setup_source_972()).stmts))
+  for
+    (call_source, state_source) in [
+      ("mapSetStopped();", "mapMutatorState();"),
+      ("mapDeleteStopped();", "mapMutatorState();"),
+      ("mapGetOrInsertComputedStopped();", "mapMutatorState();"),
+      ("mapClearStopped();", "mapMutatorState();"),
+      ("setAddStopped();", "setMutatorState();"),
+      ("setDeleteStopped();", "setMutatorState();"),
+      ("setClearStopped();", "setMutatorState();"),
+    ] {
+    ignore(interp.run(@parser.parse("resetMutatorState();").stmts))
+    assert_tree_keyed_collection_limit_972(interp, call_source)
+    assert_eq(
+      interp.run(@parser.parse(state_source).stmts).to_string(),
+      "2001:false:0",
+    )
+  }
+}
+
+///|
+test "empty Set forEach validates callback before bounded iteration" {
+  let source =
+    #|function invalidEmptySetCallback() {
+    #|  var empty = new Set();
+    #|  try { empty.forEach({}); }
+    #|  catch (error) {
+    #|    return error instanceof TypeError ? "TypeError:" + error.message : "other";
+    #|  }
+    #|  return "no-error";
+    #|}
+    #|invalidEmptySetCallback();
+  let interp = @interpreter.new_interpreter()
+  let actual = interp.with_execution_policy(keyed_collection_policy_972(100L), () => {
+    interp.run(@parser.parse(source).stmts).to_string()
+  }) catch {
+    error =>
+      fail(
+        "empty Set invalid callback was not checked first: " + error.to_string(),
+      )
+  }
+  assert_eq(actual, "TypeError:callbackfn is not callable")
+}
+
+///|
 test "Set iterator tombstone probes stop before cursor advance" {
   let interp = @interpreter.new_interpreter()
   ignore(interp.run(@parser.parse(keyed_collection_setup_source_972()).stmts))
@@ -173,6 +291,51 @@ test "Set iterator tombstone probes stop before cursor advance" {
     None =>
       fail("Set iterator tombstone scan completed without observing progress")
   }
+  assert_eq(
+    interp.run(@parser.parse("nextAfterTombstones();").stmts).to_string(),
+    "2000",
+  )
+}
+
+///|
+test "candidate Set iterator rejection preserves the first live value" {
+  let interp = @interpreter.new_interpreter()
+  ignore(
+    run_executor_neutral_bytecode(interp, keyed_collection_setup_source_972()),
+  )
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=true),
+  }
+  let caught : Error? = interp.with_execution_policy(
+    keyed_collection_policy_972(1000L),
+    () => {
+      try {
+        ignore(
+          run_candidate_program_with_recorder(
+            interp,
+            @parser.parse("nextAfterTombstones();").stmts,
+            evidence,
+          ),
+        )
+        None
+      } catch {
+        error => Some(error)
+      }
+    },
+  )
+  match caught {
+    Some(error) =>
+      assert_eq(
+        @runtime.execution_control_failure_code(error),
+        Some("execution-limit"),
+      )
+    None => fail("candidate Set iterator tombstone scan completed")
+  }
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
   assert_eq(
     interp.run(@parser.parse("nextAfterTombstones();").stmts).to_string(),
     "2000",
