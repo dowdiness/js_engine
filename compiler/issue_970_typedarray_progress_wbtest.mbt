@@ -375,3 +375,55 @@ test "candidate TypedArray arraylike reads stop before the sentinel" {
   }
   assert_eq(interp.global.get("touched").to_string(), "0")
 }
+
+///|
+fn issue970_global_index(
+  interp : @interpreter.Interpreter,
+  name : String,
+  index : Int,
+) -> String raise Error {
+  let target = interp.global.get(name)
+  interp
+  .get_property(target, index.to_string(), @token.Loc::default())
+  .to_string()
+}
+
+///|
+test "candidate TypedArray writes stop before later destinations" {
+  let interp = @interpreter.new_interpreter()
+  let setup_source =
+    #|var fillTarget = new Uint8Array(5000);
+    #|fillTarget.fill(9);
+    #|var reverseTarget = new Uint8Array(5000);
+    #|reverseTarget.fill(7);
+    #|reverseTarget[0] = 1;
+    #|reverseTarget[4999] = 2;
+    #|var copyTarget = new Uint8Array(700);
+    #|copyTarget.fill(9);
+    #|copyTarget[1] = 4;
+    #|var setSource = new Uint8Array(700);
+    #|setSource.fill(4);
+    #|var setTarget = new Uint8Array(700);
+    #|setTarget.fill(9);
+    #|function fillRun(){ fillTarget.fill(1); }
+    #|function reverseRun(){ reverseTarget.reverse(); }
+    #|function copyRun(){ copyTarget.copyWithin(0, 1); }
+    #|function setRun(){ setTarget.set(setSource); }
+  ignore(run_executor_neutral_bytecode(interp, setup_source))
+
+  issue970_assert_execution_limit(interp, "fillRun();")
+  assert_eq(issue970_global_index(interp, "fillTarget", 0), "1")
+  assert_eq(issue970_global_index(interp, "fillTarget", 4999), "9")
+
+  issue970_assert_execution_limit(interp, "reverseRun();")
+  assert_eq(issue970_global_index(interp, "reverseTarget", 0), "2")
+  assert_eq(issue970_global_index(interp, "reverseTarget", 2500), "7")
+
+  issue970_assert_execution_limit(interp, "copyRun();")
+  assert_eq(issue970_global_index(interp, "copyTarget", 0), "4")
+  assert_eq(issue970_global_index(interp, "copyTarget", 698), "9")
+
+  issue970_assert_execution_limit(interp, "setRun();")
+  assert_eq(issue970_global_index(interp, "setTarget", 0), "4")
+  assert_eq(issue970_global_index(interp, "setTarget", 699), "9")
+}
