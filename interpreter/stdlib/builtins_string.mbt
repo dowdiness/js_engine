@@ -1,52 +1,283 @@
 ///|
+fn string_unit_at_observed(
+  interp : Interpreter,
+  value : String,
+  index : Int,
+) -> Int raise Error {
+  interp.observe_execution_step()
+  value.at(index).to_int()
+}
+
+///|
+fn string_write_unit_observed(
+  interp : Interpreter,
+  buf : StringBuilder,
+  unit : Int,
+) -> Unit raise Error {
+  interp.observe_execution_step()
+  buf.write_char(unit.unsafe_to_char())
+}
+
+///|
+fn string_append_observed(
+  interp : Interpreter,
+  buf : StringBuilder,
+  value : String,
+) -> Unit raise Error {
+  for i = 0; i < value.length(); i = i + 1 {
+    let unit = string_unit_at_observed(interp, value, i)
+    string_write_unit_observed(interp, buf, unit)
+  }
+}
+
+///|
+fn string_append_range_observed(
+  interp : Interpreter,
+  buf : StringBuilder,
+  value : String,
+  start : Int,
+  end : Int,
+) -> Unit raise Error {
+  guard start < end else { return }
+  for i = start; i < end; i = i + 1 {
+    let unit = string_unit_at_observed(interp, value, i)
+    string_write_unit_observed(interp, buf, unit)
+  }
+}
+
+///|
+fn string_copy_range_observed(
+  interp : Interpreter,
+  value : String,
+  start : Int,
+  end : Int,
+) -> String raise Error {
+  let buf = StringBuilder()
+  string_append_range_observed(interp, buf, value, start, end)
+  buf.to_string()
+}
+
+///|
+fn string_match_at_observed(
+  interp : Interpreter,
+  value : String,
+  value_start : Int,
+  search : String,
+  search_start : Int,
+  length : Int,
+) -> Bool raise Error {
+  for j = 0; j < length; j = j + 1 {
+    let value_unit = string_unit_at_observed(interp, value, value_start + j)
+    let search_unit = string_unit_at_observed(interp, search, search_start + j)
+    if value_unit != search_unit {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn string_code_point_at_observed(
+  interp : Interpreter,
+  value : String,
+  index : Int,
+) -> (Int, Int) raise Error {
+  let first = string_unit_at_observed(interp, value, index)
+  if first >= 0xD800 && first <= 0xDBFF && index + 1 < value.length() {
+    let second = string_unit_at_observed(interp, value, index + 1)
+    if second >= 0xDC00 && second <= 0xDFFF {
+      let code_point = (first - 0xD800) * 0x400 + (second - 0xDC00) + 0x10000
+      return (code_point, 2)
+    }
+  }
+  (first, 1)
+}
+
+///|
+fn string_code_point_before_observed(
+  interp : Interpreter,
+  value : String,
+  end : Int,
+) -> (Int, Int) raise Error {
+  let last = string_unit_at_observed(interp, value, end - 1)
+  if last >= 0xDC00 && last <= 0xDFFF && end >= 2 {
+    let first = string_unit_at_observed(interp, value, end - 2)
+    if first >= 0xD800 && first <= 0xDBFF {
+      let code_point = (first - 0xD800) * 0x400 + (last - 0xDC00) + 0x10000
+      return (code_point, 2)
+    }
+  }
+  (last, 1)
+}
+
+///|
+fn string_write_code_point_observed(
+  interp : Interpreter,
+  buf : StringBuilder,
+  code_point : Int,
+) -> Unit raise Error {
+  if code_point <= 0xFFFF {
+    string_write_unit_observed(interp, buf, code_point)
+  } else {
+    let adjusted = code_point - 0x10000
+    let high = 0xD800 + (adjusted >> 10)
+    let low = 0xDC00 + (adjusted & 0x3FF)
+    string_write_unit_observed(interp, buf, high)
+    string_write_unit_observed(interp, buf, low)
+  }
+}
+
+///|
+fn string_case_convert_observed(
+  interp : Interpreter,
+  value : String,
+  uppercase : Bool,
+) -> String raise Error {
+  let buf = StringBuilder()
+  let mut index = 0
+  while index < value.length() {
+    let (code_point, unit_count) = string_code_point_at_observed(
+      interp, value, index,
+    )
+    let mapped = if uppercase {
+      unicode_to_upper(code_point)
+    } else {
+      unicode_to_lower(code_point)
+    }
+    string_write_code_point_observed(interp, buf, mapped)
+    index += unit_count
+  }
+  buf.to_string()
+}
+
+///|
+fn string_trim_start_observed(
+  interp : Interpreter,
+  value : String,
+) -> String raise Error {
+  let length = value.length()
+  let mut start = 0
+  while start < length {
+    let (code_point, unit_count) = string_code_point_at_observed(
+      interp, value, start,
+    )
+    if @runtime.is_es_whitespace_cp(code_point) {
+      start += unit_count
+    } else {
+      break
+    }
+  }
+  if start == 0 {
+    value
+  } else {
+    string_copy_range_observed(interp, value, start, length)
+  }
+}
+
+///|
+fn string_trim_end_observed(
+  interp : Interpreter,
+  value : String,
+) -> String raise Error {
+  let length = value.length()
+  let mut end = length
+  while end > 0 {
+    let (code_point, unit_count) = string_code_point_before_observed(
+      interp, value, end,
+    )
+    if @runtime.is_es_whitespace_cp(code_point) {
+      end -= unit_count
+    } else {
+      break
+    }
+  }
+  if end == length {
+    value
+  } else {
+    string_copy_range_observed(interp, value, 0, end)
+  }
+}
+
+///|
+fn string_trim_observed(
+  interp : Interpreter,
+  value : String,
+) -> String raise Error {
+  let length = value.length()
+  let mut start = 0
+  while start < length {
+    let (code_point, unit_count) = string_code_point_at_observed(
+      interp, value, start,
+    )
+    if @runtime.is_es_whitespace_cp(code_point) {
+      start += unit_count
+    } else {
+      break
+    }
+  }
+  let mut end = length
+  while end > start {
+    let (code_point, unit_count) = string_code_point_before_observed(
+      interp, value, end,
+    )
+    if @runtime.is_es_whitespace_cp(code_point) {
+      end -= unit_count
+    } else {
+      break
+    }
+  }
+  if start == 0 && end == length {
+    value
+  } else {
+    string_copy_range_observed(interp, value, start, end)
+  }
+}
+
+///|
 /// GetSubstitution - handles replacement patterns like $&, $`, $', $$, $<n> for string replace.
 fn get_substitution(
+  interp : Interpreter,
   replacement : String,
   matched : String,
   str : String,
   position : Int,
-) -> String {
-  let repl_chars = replacement.to_array()
+) -> String raise Error {
   let buf = StringBuilder()
   let mut i = 0
-  while i < repl_chars.length() {
-    if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
-      let next = repl_chars[i + 1]
-      if next == '$' {
-        buf.write_char('$')
+  while i < replacement.length() {
+    let current = string_unit_at_observed(interp, replacement, i)
+    if current == 0x24 && i + 1 < replacement.length() {
+      let next = string_unit_at_observed(interp, replacement, i + 1)
+      if next == 0x24 {
+        string_write_unit_observed(interp, buf, 0x24)
         i += 2
         continue
-      } else if next == '&' {
-        buf.write_string(matched)
+      } else if next == 0x26 {
+        string_append_observed(interp, buf, matched)
         i += 2
         continue
-      } else if next == '`' {
+      } else if next == 0x60 {
         // $` = portion of str before matched
-        let s_chars = str.to_array()
-        for k = 0; k < position && k < s_chars.length(); k = k + 1 {
-          buf.write_char(s_chars[k])
-        }
+        let end = if position < str.length() { position } else { str.length() }
+        string_append_range_observed(interp, buf, str, 0, end)
         i += 2
         continue
-      } else if next == '\'' {
+      } else if next == 0x27 {
         // $' = portion of str after matched
-        let s_chars = str.to_array()
         let after = position + matched.length()
-        for k = after; k < s_chars.length(); k = k + 1 {
-          buf.write_char(s_chars[k])
-        }
+        string_append_range_observed(interp, buf, str, after, str.length())
         i += 2
         continue
-      } else if next >= '0' && next <= '9' {
+      } else if next >= 0x30 && next <= 0x39 {
         // $1-$99 group references - for string replace these are undefined
         // (only relevant for regex replace, not string replace)
-        buf.write_char('$')
-        buf.write_char(next)
+        string_write_unit_observed(interp, buf, current)
+        string_write_unit_observed(interp, buf, next)
         i += 2
         continue
       }
     }
-    buf.write_char(repl_chars[i])
+    string_write_unit_observed(interp, buf, current)
     i += 1
   }
   buf.to_string()
@@ -203,7 +434,6 @@ pub fn get_string_method(
   annex_b? : Bool = false,
 ) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
-  let chars = s.to_array()
   match prop {
     "charAt" =>
       @runtime.make_interp_method_func(
@@ -211,14 +441,16 @@ pub fn get_string_method(
         name="charAt",
         length=1,
         fn(interp, _this_val, args) raise {
+          let str = s
           let idx = if args.length() > 0 {
             interp.to_number(args[0]).to_int()
           } else {
             0
           }
-          if idx >= 0 && idx < chars.length() {
+          if idx >= 0 && idx < str.length() {
+            let unit = string_unit_at_observed(interp, str, idx)
             let buf = StringBuilder()
-            buf.write_char(chars[idx])
+            string_write_unit_observed(interp, buf, unit)
             Value::String_(buf.to_string())
           } else {
             Value::String_("")
@@ -231,15 +463,16 @@ pub fn get_string_method(
         name="charCodeAt",
         length=1,
         fn(interp, _this_val, args) raise {
+          let str = s
           let idx = if args.length() > 0 {
             interp.to_number(args[0]).to_int()
           } else {
             0
           }
-          // charCodeAt returns UTF-16 code units, not Unicode code points
-          let units = string_to_utf16(s)
-          if idx >= 0 && idx < units.length() {
-            Value::Number(units[idx].to_double())
+          // charCodeAt returns UTF-16 code units, not Unicode code points.
+          if idx >= 0 && idx < str.length() {
+            let unit = string_unit_at_observed(interp, str, idx)
+            Value::Number(unit.to_double())
           } else {
             Value::Number(0.0 / 0.0)
           }
@@ -252,16 +485,18 @@ pub fn get_string_method(
         length=1,
         fn(interp, _this_val, args) raise {
           // String.prototype.at() - access character at index (supports negative)
+          let str = s
           let idx = if args.length() > 0 {
             interp.to_number(args[0]).to_int()
           } else {
             0
           }
-          let len = chars.length()
+          let len = str.length()
           let actual_idx = if idx < 0 { len + idx } else { idx }
           if actual_idx >= 0 && actual_idx < len {
+            let unit = string_unit_at_observed(interp, str, actual_idx)
             let buf = StringBuilder()
-            buf.write_char(chars[actual_idx])
+            string_write_unit_observed(interp, buf, unit)
             Value::String_(buf.to_string())
           } else {
             Undefined
@@ -275,24 +510,17 @@ pub fn get_string_method(
         length=1,
         fn(interp, _this_val, args) raise {
           // String.prototype.codePointAt() - get code point at index
+          let str = s
           let idx = if args.length() > 0 {
             interp.to_number(args[0]).to_int()
           } else {
             0
           }
-          if idx >= 0 && idx < chars.length() {
-            let code = chars[idx].to_int()
-            // Check for high surrogate
-            if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
-              let next = chars[idx + 1].to_int()
-              // Check for low surrogate
-              if next >= 0xDC00 && next <= 0xDFFF {
-                // Combine surrogate pair to get code point
-                let cp = (code - 0xD800) * 0x400 + (next - 0xDC00) + 0x10000
-                return Value::Number(cp.to_double())
-              }
-            }
-            Value::Number(code.to_double())
+          if idx >= 0 && idx < str.length() {
+            let (code_point, _) = string_code_point_at_observed(
+              interp, str, idx,
+            )
+            Value::Number(code_point.to_double())
           } else {
             Undefined
           }
@@ -305,10 +533,14 @@ pub fn get_string_method(
         name="concat",
         length=1,
         fn(interp, _this_val, args) raise {
+          if args.length() == 0 {
+            return Value::String_(str)
+          }
           let buf = StringBuilder()
-          buf.write_string(str)
+          string_append_observed(interp, buf, str)
           for arg in args {
-            buf.write_string(interp.to_js_string(arg))
+            let next = interp.to_js_string(arg)
+            string_append_observed(interp, buf, next)
           }
           Value::String_(buf.to_string())
         },
@@ -443,12 +675,7 @@ pub fn get_string_method(
           if start >= end {
             return Value::String_("")
           }
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for i = start; i < end; i = i + 1 {
-            buf.write_char(s_chars[i])
-          }
-          Value::String_(buf.to_string())
+          Value::String_(string_copy_range_observed(interp, str, start, end))
         },
       )
     }
@@ -490,12 +717,7 @@ pub fn get_string_method(
             start = end
             end = tmp
           }
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for i = start; i < end; i = i + 1 {
-            buf.write_char(s_chars[i])
-          }
-          Value::String_(buf.to_string())
+          Value::String_(string_copy_range_observed(interp, str, start, end))
         },
       )
     }
@@ -544,126 +766,112 @@ pub fn get_string_method(
           if end > slen {
             end = slen
           }
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for i = start; i < end; i = i + 1 {
-            buf.write_char(s_chars[i])
-          }
-          Value::String_(buf.to_string())
+          Value::String_(string_copy_range_observed(interp, str, start, end))
         },
       )
     }
     "toLowerCase" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toLowerCase",
-        fn(_args) {
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for c in s_chars {
-            let code = c.to_int()
-            let lower = unicode_to_lower(code)
-            buf.write_char(lower.unsafe_to_char())
-          }
-          Value::String_(buf.to_string())
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_case_convert_observed(interp, str, false))
         },
       )
     }
     "toUpperCase" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toUpperCase",
-        fn(_args) {
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for c in s_chars {
-            let code = c.to_int()
-            let upper = unicode_to_upper(code)
-            buf.write_char(upper.unsafe_to_char())
-          }
-          Value::String_(buf.to_string())
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_case_convert_observed(interp, str, true))
         },
       )
     }
     "toLocaleLowerCase" => {
       // Locale-specific lowercase (currently uses same Unicode mapping)
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toLocaleLowerCase",
-        fn(_args) {
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for c in s_chars {
-            let code = c.to_int()
-            let lower = unicode_to_lower(code)
-            buf.write_char(lower.unsafe_to_char())
-          }
-          Value::String_(buf.to_string())
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_case_convert_observed(interp, str, false))
         },
       )
     }
     "toLocaleUpperCase" => {
       // Locale-specific uppercase (currently uses same Unicode mapping)
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toLocaleUpperCase",
-        fn(_args) {
-          let s_chars = str.to_array()
-          let buf = StringBuilder()
-          for c in s_chars {
-            let code = c.to_int()
-            let upper = unicode_to_upper(code)
-            buf.write_char(upper.unsafe_to_char())
-          }
-          Value::String_(buf.to_string())
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_case_convert_observed(interp, str, true))
         },
       )
     }
     "trim" => {
       let str = s
-      @runtime.make_native_func(realm_state=Some(realm_state), name="trim", fn(
-        _args,
-      ) {
-        Value::String_(string_trim(str))
-      })
+      @runtime.make_interp_method_func(
+        realm_state=Some(realm_state),
+        name="trim",
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_trim_observed(interp, str))
+        },
+      )
     }
     "trimStart" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="trimStart",
-        fn(_args) { Value::String_(string_trim_start(str)) },
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_trim_start_observed(interp, str))
+        },
       )
     }
     "trimEnd" => {
       let str = s
-      @runtime.make_native_func(realm_state=Some(realm_state), name="trimEnd", fn(
-        _args,
-      ) {
-        Value::String_(string_trim_end(str))
-      })
+      @runtime.make_interp_method_func(
+        realm_state=Some(realm_state),
+        name="trimEnd",
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_trim_end_observed(interp, str))
+        },
+      )
     }
     "trimLeft" => {
       let str = s
       // Per spec, trimLeft.name === "trimStart"
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="trimStart",
-        fn(_args) { Value::String_(string_trim_start(str)) },
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_trim_start_observed(interp, str))
+        },
       )
     }
     "trimRight" => {
       let str = s
       // Per spec, trimRight.name === "trimEnd"
-      @runtime.make_native_func(realm_state=Some(realm_state), name="trimEnd", fn(
-        _args,
-      ) {
-        Value::String_(string_trim_end(str))
-      })
+      @runtime.make_interp_method_func(
+        realm_state=Some(realm_state),
+        name="trimEnd",
+        length=0,
+        fn(interp, _this_val, _args) raise {
+          Value::String_(string_trim_end_observed(interp, str))
+        },
+      )
     }
     "toLocaleString" => {
       let str = s
@@ -728,41 +936,33 @@ pub fn get_string_method(
         // Empty separator splits into individual characters
         if sep.length() == 0 {
           let result : Array[Value] = []
-          let chars = str.to_array()
-          let chars_len = chars.length().to_int64()
-          let count = if chars_len < limit {
-            chars.length()
+          let string_length = str.length()
+          let count = if string_length.to_int64() < limit {
+            string_length
           } else {
             limit.to_int()
           }
           for i = 0; i < count; i = i + 1 {
+            let unit = string_unit_at_observed(interp, str, i)
             let buf = StringBuilder()
-            buf.write_char(chars[i])
+            string_write_unit_observed(interp, buf, unit)
             result.push(Value::String_(buf.to_string()))
           }
           return @runtime.make_array(result)
         }
         let result : Array[Value] = []
-        let s_chars = str.to_array()
-        let sep_chars = sep.to_array()
         let slen = str.length()
         let sep_len = sep.length()
         let mut last = 0
         let mut i = 0
         while i <= slen - sep_len {
-          let mut matched = true
-          for j = 0; j < sep_len; j = j + 1 {
-            if s_chars[i + j] != sep_chars[j] {
-              matched = false
-              break
-            }
-          }
+          let matched = string_match_at_observed(
+            interp, str, i, sep, 0, sep_len,
+          )
           if matched {
-            let buf = StringBuilder()
-            for k = last; k < i; k = k + 1 {
-              buf.write_char(s_chars[k])
-            }
-            result.push(Value::String_(buf.to_string()))
+            result.push(
+              Value::String_(string_copy_range_observed(interp, str, last, i)),
+            )
             // Per spec: if we've reached the limit, return immediately
             if result.length().to_int64() >= limit {
               return @runtime.make_array(result)
@@ -775,11 +975,9 @@ pub fn get_string_method(
         }
         // Add remaining part if we haven't hit the limit
         if result.length().to_int64() < limit {
-          let buf = StringBuilder()
-          for k = last; k < slen; k = k + 1 {
-            buf.write_char(s_chars[k])
-          }
-          result.push(Value::String_(buf.to_string()))
+          result.push(
+            Value::String_(string_copy_range_observed(interp, str, last, slen)),
+          )
         }
         @runtime.make_array(result)
       })
@@ -832,10 +1030,16 @@ pub fn get_string_method(
         let search = interp.to_js_string(search_value)
         let replace_val = if args.length() > 1 { args[1] } else { Undefined }
         let is_func = @runtime.is_callable(replace_val)
+        let replacement = if is_func {
+          ""
+        } else {
+          interp.to_js_string(replace_val)
+        }
         let slen = str.length()
         let search_len = search.length()
         if search_len == 0 {
           let rep = if is_func {
+            interp.observe_execution_step()
             let result = @runtime.call_callable_direct(
               replace_val,
               Undefined,
@@ -844,27 +1048,23 @@ pub fn get_string_method(
             )
             interp.to_js_string(result)
           } else {
-            get_substitution(interp.to_js_string(replace_val), "", str, 0)
+            get_substitution(interp, replacement, "", str, 0)
           }
-          return Value::String_(rep + str)
+          let buf = StringBuilder()
+          string_append_observed(interp, buf, rep)
+          string_append_range_observed(interp, buf, str, 0, slen)
+          return Value::String_(buf.to_string())
         }
-        let s_chars = str.to_array()
-        let search_chars = search.to_array()
         // Find first occurrence
         for i = 0; i <= slen - search_len; i = i + 1 {
-          let mut matched = true
-          for j = 0; j < search_len; j = j + 1 {
-            if s_chars[i + j] != search_chars[j] {
-              matched = false
-              break
-            }
-          }
+          let matched = string_match_at_observed(
+            interp, str, i, search, 0, search_len,
+          )
           if matched {
             let buf = StringBuilder()
-            for k = 0; k < i; k = k + 1 {
-              buf.write_char(s_chars[k])
-            }
+            string_append_range_observed(interp, buf, str, 0, i)
             let rep = if is_func {
+              interp.observe_execution_step()
               let result = @runtime.call_callable_direct(
                 replace_val,
                 Undefined,
@@ -877,12 +1077,10 @@ pub fn get_string_method(
               )
               interp.to_js_string(result)
             } else {
-              get_substitution(interp.to_js_string(replace_val), search, str, i)
+              get_substitution(interp, replacement, search, str, i)
             }
-            buf.write_string(rep)
-            for k = i + search_len; k < slen; k = k + 1 {
-              buf.write_char(s_chars[k])
-            }
+            string_append_observed(interp, buf, rep)
+            string_append_range_observed(interp, buf, str, i + search_len, slen)
             return Value::String_(buf.to_string())
           }
         }
@@ -1196,14 +1394,19 @@ pub fn get_string_method(
             return Value::String_(str)
           }
           let buf = StringBuilder()
-          let pad_chars = pad_str.to_array()
           let mut filled = 0
           let needed = target_len - slen
+          let pad_length = pad_str.length()
           while filled < needed {
-            buf.write_char(pad_chars[filled % pad_chars.length()])
+            let unit = string_unit_at_observed(
+              interp,
+              pad_str,
+              filled % pad_length,
+            )
+            string_write_unit_observed(interp, buf, unit)
             filled = filled + 1
           }
-          buf.write_string(str)
+          string_append_observed(interp, buf, str)
           Value::String_(buf.to_string())
         },
       )
@@ -1236,12 +1439,17 @@ pub fn get_string_method(
             return Value::String_(str)
           }
           let buf = StringBuilder()
-          buf.write_string(str)
-          let pad_chars = pad_str.to_array()
+          let pad_length = pad_str.length()
+          string_append_observed(interp, buf, str)
           let mut filled = 0
           let needed = target_len - slen
           while filled < needed {
-            buf.write_char(pad_chars[filled % pad_chars.length()])
+            let unit = string_unit_at_observed(
+              interp,
+              pad_str,
+              filled % pad_length,
+            )
+            string_write_unit_observed(interp, buf, unit)
             filled = filled + 1
           }
           Value::String_(buf.to_string())
@@ -1360,9 +1568,9 @@ pub fn get_string_method(
           if search_len == 0 {
             // Empty string: insert replacement before each char and at end
             let buf = StringBuilder()
-            let s_chars = str.to_array()
-            for i, c in s_chars {
+            for i = 0; i < slen; i = i + 1 {
               let rep = if is_func {
+                interp.observe_execution_step()
                 let result = @runtime.call_callable_direct(
                   replace_val,
                   Undefined,
@@ -1375,64 +1583,58 @@ pub fn get_string_method(
                 )
                 interp.to_js_string(result)
               } else {
-                get_substitution(replacement, "", str, i)
+                get_substitution(interp, replacement, "", str, i)
               }
-              buf.write_string(rep)
-              buf.write_char(c)
+              string_append_observed(interp, buf, rep)
+              let unit = string_unit_at_observed(interp, str, i)
+              string_write_unit_observed(interp, buf, unit)
             }
             let rep_end = if is_func {
+              interp.observe_execution_step()
               let result = @runtime.call_callable_direct(
                 replace_val,
                 Undefined,
                 [
                   Value::String_(""),
-                  Value::Number(s_chars.length().to_double()),
+                  Value::Number(slen.to_double()),
                   Value::String_(str),
                 ],
                 interp=Some(interp),
               )
               interp.to_js_string(result)
             } else {
-              get_substitution(replacement, "", str, s_chars.length())
+              get_substitution(interp, replacement, "", str, slen)
             }
-            buf.write_string(rep_end)
+            string_append_observed(interp, buf, rep_end)
             return Value::String_(buf.to_string())
           }
-          let s_chars = str.to_array()
-          let search_chars = search.to_array()
           let buf = StringBuilder()
           let mut i = 0
           while i < slen {
-            if i <= slen - search_len {
-              let mut matched = true
-              for j = 0; j < search_len; j = j + 1 {
-                if s_chars[i + j] != search_chars[j] {
-                  matched = false
-                  break
-                }
+            if i <= slen - search_len &&
+              string_match_at_observed(interp, str, i, search, 0, search_len) {
+              let rep = if is_func {
+                interp.observe_execution_step()
+                let result = @runtime.call_callable_direct(
+                  replace_val,
+                  Undefined,
+                  [
+                    Value::String_(search),
+                    Value::Number(i.to_double()),
+                    Value::String_(str),
+                  ],
+                  interp=Some(interp),
+                )
+                interp.to_js_string(result)
+              } else {
+                get_substitution(interp, replacement, search, str, i)
               }
-              if matched {
-                let rep = if is_func {
-                  let result = @runtime.call_callable_direct(
-                    replace_val,
-                    Undefined,
-                    [
-                      Value::String_(search),
-                      Value::Number(i.to_double()),
-                      Value::String_(str),
-                    ],
-                    interp=Some(interp),
-                  )
-                  interp.to_js_string(result)
-                } else {
-                  get_substitution(replacement, search, str, i)
-                }
-                buf.write_string(rep)
-                i = i + search_len
-                continue
-              }
+              string_append_observed(interp, buf, rep)
+              i = i + search_len
+              continue
             }
-            buf.write_char(s_chars[i])
+            let unit = string_unit_at_observed(interp, str, i)
+            string_write_unit_observed(interp, buf, unit)
             i = i + 1
           }
           Value::String_(buf.to_string())
@@ -1490,21 +1692,22 @@ pub fn get_string_method(
     }
     "isWellFormed" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="isWellFormed",
-        fn(_args) {
+        length=0,
+        fn(interp, _this_val, _args) raise {
           // Check if string is well-formed UTF-16 (no lone surrogates)
-          let c = str.to_array()
           let mut i = 0
-          while i < c.length() {
-            let code = c[i].to_int()
+          let length = str.length()
+          while i < length {
+            let code = string_unit_at_observed(interp, str, i)
             if code >= 0xD800 && code <= 0xDBFF {
               // High surrogate - must be followed by low surrogate
-              if i + 1 >= c.length() {
+              if i + 1 >= length {
                 return Value::Bool(false)
               }
-              let next = c[i + 1].to_int()
+              let next = string_unit_at_observed(interp, str, i + 1)
               if next < 0xDC00 || next > 0xDFFF {
                 return Value::Bool(false)
               }
@@ -1523,35 +1726,36 @@ pub fn get_string_method(
     }
     "toWellFormed" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toWellFormed",
-        fn(_args) {
+        length=0,
+        fn(interp, _this_val, _args) raise {
           // Replace lone surrogates with U+FFFD
-          let c = str.to_array()
           let buf = StringBuilder()
           let mut i = 0
-          while i < c.length() {
-            let code = c[i].to_int()
+          let length = str.length()
+          while i < length {
+            let code = string_unit_at_observed(interp, str, i)
             if code >= 0xD800 && code <= 0xDBFF {
-              if i + 1 < c.length() {
-                let next = c[i + 1].to_int()
+              if i + 1 < length {
+                let next = string_unit_at_observed(interp, str, i + 1)
                 if next >= 0xDC00 && next <= 0xDFFF {
                   // Valid surrogate pair - write both and skip ahead
-                  buf.write_char(c[i])
-                  buf.write_char(c[i + 1])
+                  string_write_unit_observed(interp, buf, code)
+                  string_write_unit_observed(interp, buf, next)
                   i = i + 2
                   continue
                 } else {
-                  buf.write_char('\u{FFFD}')
+                  string_write_unit_observed(interp, buf, 0xFFFD)
                 }
               } else {
-                buf.write_char('\u{FFFD}')
+                string_write_unit_observed(interp, buf, 0xFFFD)
               }
             } else if code >= 0xDC00 && code <= 0xDFFF {
-              buf.write_char('\u{FFFD}')
+              string_write_unit_observed(interp, buf, 0xFFFD)
             } else {
-              buf.write_char(c[i])
+              string_write_unit_observed(interp, buf, code)
             }
             i = i + 1
           }
@@ -1588,34 +1792,58 @@ pub fn get_string_method(
                 } else {
                   "undefined"
                 }
-                String_(
-                  "<a name=\"" + escape_html_attr(name) + "\">" + s + "</a>",
-                )
+                let buf = StringBuilder()
+                string_append_observed(interp, buf, "<a name=\"")
+                string_append_html_attr_observed(interp, buf, name)
+                string_append_observed(interp, buf, "\">")
+                string_append_observed(interp, buf, s)
+                string_append_observed(interp, buf, "</a>")
+                Value::String_(buf.to_string())
               },
             )
           "big" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="big",
-              fn(_args) { Value::String_("<big>" + s + "</big>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<big>", s, "</big>"),
+                )
+              },
             )
           "blink" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="blink",
-              fn(_args) { Value::String_("<blink>" + s + "</blink>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<blink>", s, "</blink>"),
+                )
+              },
             )
           "bold" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="bold",
-              fn(_args) { Value::String_("<b>" + s + "</b>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<b>", s, "</b>"),
+                )
+              },
             )
           "fixed" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="fixed",
-              fn(_args) { Value::String_("<tt>" + s + "</tt>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<tt>", s, "</tt>"),
+                )
+              },
             )
           "fontcolor" =>
             @runtime.make_interp_method_func(
@@ -1628,13 +1856,13 @@ pub fn get_string_method(
                 } else {
                   "undefined"
                 }
-                String_(
-                  "<font color=\"" +
-                  escape_html_attr(color) +
-                  "\">" +
-                  s +
-                  "</font>",
-                )
+                let buf = StringBuilder()
+                string_append_observed(interp, buf, "<font color=\"")
+                string_append_html_attr_observed(interp, buf, color)
+                string_append_observed(interp, buf, "\">")
+                string_append_observed(interp, buf, s)
+                string_append_observed(interp, buf, "</font>")
+                Value::String_(buf.to_string())
               },
             )
           "fontsize" =>
@@ -1648,20 +1876,25 @@ pub fn get_string_method(
                 } else {
                   "undefined"
                 }
-                String_(
-                  "<font size=\"" +
-                  escape_html_attr(size) +
-                  "\">" +
-                  s +
-                  "</font>",
-                )
+                let buf = StringBuilder()
+                string_append_observed(interp, buf, "<font size=\"")
+                string_append_html_attr_observed(interp, buf, size)
+                string_append_observed(interp, buf, "\">")
+                string_append_observed(interp, buf, s)
+                string_append_observed(interp, buf, "</font>")
+                Value::String_(buf.to_string())
               },
             )
           "italics" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="italics",
-              fn(_args) { Value::String_("<i>" + s + "</i>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<i>", s, "</i>"),
+                )
+              },
             )
           "link" =>
             @runtime.make_interp_method_func(
@@ -1674,34 +1907,58 @@ pub fn get_string_method(
                 } else {
                   "undefined"
                 }
-                Value::String_(
-                  "<a href=\"" + escape_html_attr(url) + "\">" + s + "</a>",
-                )
+                let buf = StringBuilder()
+                string_append_observed(interp, buf, "<a href=\"")
+                string_append_html_attr_observed(interp, buf, url)
+                string_append_observed(interp, buf, "\">")
+                string_append_observed(interp, buf, s)
+                string_append_observed(interp, buf, "</a>")
+                Value::String_(buf.to_string())
               },
             )
           "small" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="small",
-              fn(_args) { Value::String_("<small>" + s + "</small>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<small>", s, "</small>"),
+                )
+              },
             )
           "strike" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="strike",
-              fn(_args) { Value::String_("<strike>" + s + "</strike>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<strike>", s, "</strike>"),
+                )
+              },
             )
           "sub" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="sub",
-              fn(_args) { Value::String_("<sub>" + s + "</sub>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<sub>", s, "</sub>"),
+                )
+              },
             )
           "sup" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="sup",
-              fn(_args) { Value::String_("<sup>" + s + "</sup>") },
+              length=0,
+              fn(interp, _this_val, _args) raise {
+                Value::String_(
+                  string_html_wrap_observed(interp, "<sup>", s, "</sup>"),
+                )
+              },
             )
           _ => Undefined
         }
@@ -1711,17 +1968,32 @@ pub fn get_string_method(
 }
 
 ///|
-/// Escape double-quotes in attribute values per CreateHTML (ECMA-262 Annex B)
-fn escape_html_attr(value : String) -> String {
-  let chars = value.to_array()
-  let buf = StringBuilder()
-  for c in chars {
-    if c == '"' {
-      buf.write_string("&quot;")
+fn string_append_html_attr_observed(
+  interp : Interpreter,
+  buf : StringBuilder,
+  value : String,
+) -> Unit raise Error {
+  for i = 0; i < value.length(); i = i + 1 {
+    let unit = string_unit_at_observed(interp, value, i)
+    if unit == 0x22 {
+      string_append_observed(interp, buf, "&quot;")
     } else {
-      buf.write_char(c)
+      string_write_unit_observed(interp, buf, unit)
     }
   }
+}
+
+///|
+fn string_html_wrap_observed(
+  interp : Interpreter,
+  prefix : String,
+  value : String,
+  suffix : String,
+) -> String raise Error {
+  let buf = StringBuilder()
+  string_append_observed(interp, buf, prefix)
+  string_append_observed(interp, buf, value)
+  string_append_observed(interp, buf, suffix)
   buf.to_string()
 }
 
@@ -1860,30 +2132,8 @@ fn unicode_to_upper(code : Int) -> Int {
 }
 
 ///|
-fn string_trim_start(s : String) -> String {
-  let chars = s.to_array()
-  let mut start = 0
-  while start < chars.length() {
-    if is_es_whitespace(chars[start]) {
-      start = start + 1
-    } else {
-      break
-    }
-  }
-  if start == 0 {
-    return s
-  }
-  let buf = StringBuilder()
-  for i = start; i < chars.length(); i = i + 1 {
-    buf.write_char(chars[i])
-  }
-  buf.to_string()
-}
-
-///|
-fn string_trim(s : String) -> String {
-  let trimmed_left = string_trim_start(s)
-  string_trim_end(trimmed_left)
+fn is_es_whitespace(c : Char) -> Bool {
+  @runtime.is_es_whitespace_cp(c.to_int())
 }
 
 ///|
@@ -2014,32 +2264,4 @@ pub fn setup_string_prototype(
     }
     _ => ()
   }
-}
-
-///|
-
-///|
-fn is_es_whitespace(c : Char) -> Bool {
-  @runtime.is_es_whitespace_cp(c.to_int())
-}
-
-///|
-fn string_trim_end(s : String) -> String {
-  let chars = s.to_array()
-  let mut end = chars.length()
-  while end > 0 {
-    if is_es_whitespace(chars[end - 1]) {
-      end = end - 1
-    } else {
-      break
-    }
-  }
-  if end == chars.length() {
-    return s
-  }
-  let buf = StringBuilder()
-  for i = 0; i < end; i = i + 1 {
-    buf.write_char(chars[i])
-  }
-  buf.to_string()
 }
