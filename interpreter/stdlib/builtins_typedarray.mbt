@@ -1063,6 +1063,7 @@ pub fn setup_typedarray_builtins(
           // Buffer all source elements first to handle overlapping ArrayBuffers
           let temp : Array[Double] = []
           for i = 0; i < src_len; i = i + 1 {
+            interp.observe_execution_step()
             let val = typedarray_get_index(src_data, i, realm_state)
             match val {
               Value::Number(n) => temp.push(n)
@@ -1070,6 +1071,7 @@ pub fn setup_typedarray_builtins(
             }
           }
           for i = 0; i < src_len; i = i + 1 {
+            interp.observe_execution_step()
             typedarray_set_index(
               data,
               target_offset_int + i,
@@ -1087,8 +1089,10 @@ pub fn setup_typedarray_builtins(
           }
           let target_offset_int = target_offset.to_int()
           for i = 0L; i < src_len; i = i + 1L {
+            interp.observe_execution_step()
             let val = @runtime.get_array_like_element_interp(interp, src_obj, i)
             let num = interp.to_number(val)
+            interp.observe_execution_step()
             typedarray_set_index(
               data,
               target_offset_int + i.to_int(),
@@ -1244,11 +1248,13 @@ pub fn setup_typedarray_builtins(
         match new_ta {
           Object(new_data) =>
             for i = 0; i < new_length; i = i + 1 {
+              interp.observe_execution_step()
               let val = typedarray_get_index(data, begin_index + i, realm_state)
               let num = match val {
                 Value::Number(n) => n
                 _ => 0.0
               }
+              interp.observe_execution_step()
               typedarray_set_index(new_data, i, num, realm_state)
             }
           _ => ()
@@ -1338,6 +1344,7 @@ pub fn setup_typedarray_builtins(
         // Read all source values first to handle overlapping
         let temp : Array[Double] = []
         for i = 0; i < count; i = i + 1 {
+          interp.observe_execution_step()
           let val = typedarray_get_index(data, start_idx + i, realm_state)
           match val {
             Value::Number(n) => temp.push(n)
@@ -1345,6 +1352,7 @@ pub fn setup_typedarray_builtins(
           }
         }
         for i = 0; i < count; i = i + 1 {
+          interp.observe_execution_step()
           typedarray_set_index(data, target_idx + i, temp[i], realm_state)
         }
       }
@@ -1408,6 +1416,7 @@ pub fn setup_typedarray_builtins(
       }
       let _ = validate_typed_array(this_val, "fill", realm_state)
       for i = start_idx; i < end_idx; i = i + 1 {
+        interp.observe_execution_step()
         typedarray_set_index(data, i, fill_val, realm_state)
       }
       this_val
@@ -1444,6 +1453,7 @@ pub fn setup_typedarray_builtins(
         0
       }
       for i = from_idx; i < len; i = i + 1 {
+        interp.observe_execution_step()
         if typedarray_is_valid_index(data, i, realm_state) {
           let elem = typedarray_get_index(data, i, realm_state)
           if typedarray_index_search_matches(search_val, elem) {
@@ -1482,6 +1492,7 @@ pub fn setup_typedarray_builtins(
         len - 1
       }
       for i = from_idx; i >= 0; i = i - 1 {
+        interp.observe_execution_step()
         if typedarray_is_valid_index(data, i, realm_state) {
           let elem = typedarray_get_index(data, i, realm_state)
           if typedarray_index_search_matches(search_val, elem) {
@@ -1523,6 +1534,7 @@ pub fn setup_typedarray_builtins(
         0
       }
       for i = from_idx; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
         if typedarray_includes_search_matches(search_val, elem) {
           return Value::Bool(true)
@@ -1552,13 +1564,17 @@ pub fn setup_typedarray_builtins(
       }
       let buf = StringBuilder()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         if i > 0 {
           buf.write_string(sep)
         }
         let elem = typedarray_get_index(data, i, realm_state)
         match elem {
           Null | Undefined => ()
-          _ => buf.write_string(interp.to_js_string(elem))
+          _ => {
+            interp.observe_execution_step()
+            buf.write_string(interp.to_js_string(elem))
+          }
         }
       }
       Value::String_(buf.to_string())
@@ -1568,7 +1584,8 @@ pub fn setup_typedarray_builtins(
   // toString - delegates to join
   ta_proto_props["toString"] = match array_to_string {
     Undefined =>
-      @runtime.make_method_func(name="toString", length=0, fn(
+      @runtime.make_interp_method_func(name="toString", length=0, fn(
+        interp,
         this_val,
         _args,
       ) raise {
@@ -1579,6 +1596,7 @@ pub fn setup_typedarray_builtins(
         }
         let buf = StringBuilder()
         for i = 0; i < len; i = i + 1 {
+          interp.observe_execution_step()
           if i > 0 {
             buf.write_string(",")
           }
@@ -1604,6 +1622,7 @@ pub fn setup_typedarray_builtins(
       let parts : Array[String] = []
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
         match elem {
           Null | Undefined => parts.push("")
@@ -1614,6 +1633,7 @@ pub fn setup_typedarray_builtins(
                 message="TypedArray.prototype.toLocaleString element method is not callable",
               )
             }
+            interp.observe_execution_step()
             let result = interp.call_value(tls, elem, [], loc)
             parts.push(interp.to_js_string(result))
           }
@@ -1624,10 +1644,10 @@ pub fn setup_typedarray_builtins(
   )
 
   // reverse()
-  ta_proto_props["reverse"] = @runtime.make_method_func(
+  ta_proto_props["reverse"] = @runtime.make_interp_method_func(
     name="reverse",
     length=0,
-    fn(this_val, _args) raise {
+    fn(interp, this_val, _args) raise {
       let (data, _) = validate_typed_array(this_val, "reverse", realm_state)
       let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
@@ -1636,7 +1656,9 @@ pub fn setup_typedarray_builtins(
       let mut lo = 0
       let mut hi = len - 1
       while lo < hi {
+        interp.observe_execution_step()
         let lo_val = typedarray_get_index(data, lo, realm_state)
+        interp.observe_execution_step()
         let hi_val = typedarray_get_index(data, hi, realm_state)
         let lo_num = match lo_val {
           Value::Number(n) => n
@@ -1646,7 +1668,9 @@ pub fn setup_typedarray_builtins(
           Value::Number(n) => n
           _ => 0.0
         }
+        interp.observe_execution_step()
         typedarray_set_index(data, lo, hi_num, realm_state)
+        interp.observe_execution_step()
         typedarray_set_index(data, hi, lo_num, realm_state)
         lo = lo + 1
         hi = hi - 1
@@ -2076,6 +2100,9 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="forEach requires a callback function")
       }
       let callback = args[0]
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="forEach callback is not callable")
+      }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
@@ -2083,7 +2110,9 @@ pub fn setup_typedarray_builtins(
       }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let _ = interp.call_value(
           callback,
           this_arg,
@@ -2127,7 +2156,9 @@ pub fn setup_typedarray_builtins(
       match result {
         Object(result_data) =>
           for i = 0; i < len; i = i + 1 {
+            interp.observe_execution_step()
             let elem = typedarray_get_index(data, i, realm_state)
+            interp.observe_execution_step()
             let mapped = interp.call_value(
               callback,
               this_arg,
@@ -2135,6 +2166,7 @@ pub fn setup_typedarray_builtins(
               loc,
             )
             let num = interp.to_number(mapped)
+            interp.observe_execution_step()
             typedarray_set_index(result_data, i, num, realm_state)
           }
         _ => ()
@@ -2163,7 +2195,9 @@ pub fn setup_typedarray_builtins(
       let loc = @token.Loc::default()
       let kept : Array[Double] = []
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2189,6 +2223,7 @@ pub fn setup_typedarray_builtins(
       match result {
         Object(result_data) =>
           for i = 0; i < kept.length(); i = i + 1 {
+            interp.observe_execution_step()
             typedarray_set_index(result_data, i, kept[i], realm_state)
           }
         _ => ()
@@ -2222,11 +2257,14 @@ pub fn setup_typedarray_builtins(
             message="Reduce of empty array with no initial value",
           )
         }
+        interp.observe_execution_step()
         accumulator = typedarray_get_index(data, 0, realm_state)
         start_idx = 1
       }
       for i = start_idx; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         accumulator = interp.call_value(
           callback,
           Undefined,
@@ -2263,11 +2301,14 @@ pub fn setup_typedarray_builtins(
             message="Reduce of empty array with no initial value",
           )
         }
+        interp.observe_execution_step()
         accumulator = typedarray_get_index(data, len - 1, realm_state)
         start_idx = len - 2
       }
       for i = start_idx; i >= 0; i = i - 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         accumulator = interp.call_value(
           callback,
           Undefined,
@@ -2289,6 +2330,9 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="every requires a callback function")
       }
       let callback = args[0]
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="every callback is not callable")
+      }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
@@ -2296,7 +2340,9 @@ pub fn setup_typedarray_builtins(
       }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2321,6 +2367,9 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="some requires a callback function")
       }
       let callback = args[0]
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="some callback is not callable")
+      }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
@@ -2328,7 +2377,9 @@ pub fn setup_typedarray_builtins(
       }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2360,7 +2411,9 @@ pub fn setup_typedarray_builtins(
       }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2392,7 +2445,9 @@ pub fn setup_typedarray_builtins(
       }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2423,7 +2478,9 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       for i = len - 1; i >= 0; i = i - 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2458,7 +2515,9 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       for i = len - 1; i >= 0; i = i - 1 {
+        interp.observe_execution_step()
         let elem = typedarray_get_index(data, i, realm_state)
+        interp.observe_execution_step()
         let result = interp.call_value(
           callback,
           this_arg,
@@ -2473,10 +2532,10 @@ pub fn setup_typedarray_builtins(
     },
   )
 
-  ta_proto_props["toReversed"] = @runtime.make_method_func(
+  ta_proto_props["toReversed"] = @runtime.make_interp_method_func(
     name="toReversed",
     length=0,
-    fn(this_val, _args) raise {
+    fn(interp, this_val, _args) raise {
       let (data, _) = validate_typed_array(this_val, "toReversed", realm_state)
       let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
@@ -2487,11 +2546,13 @@ pub fn setup_typedarray_builtins(
       match new_ta {
         Object(new_data) =>
           for i = 0; i < len; i = i + 1 {
+            interp.observe_execution_step()
             let val = typedarray_get_index(data, len - 1 - i, realm_state)
             let num = match val {
               Value::Number(n) => n
               _ => 0.0
             }
+            interp.observe_execution_step()
             typedarray_set_index(new_data, i, num, realm_state)
           }
         _ => ()
@@ -2650,13 +2711,16 @@ pub fn setup_typedarray_builtins(
       match new_ta {
         Object(new_data) => {
           for i = 0; i < len; i = i + 1 {
+            interp.observe_execution_step()
             let val = typedarray_get_index(data, i, realm_state)
             let num = match val {
               Value::Number(n) => n
               _ => 0.0
             }
+            interp.observe_execution_step()
             typedarray_set_index(new_data, i, num, realm_state)
           }
+          interp.observe_execution_step()
           typedarray_set_index(new_data, idx, replacement_num, realm_state)
         }
         _ => ()
@@ -2800,15 +2864,17 @@ pub fn setup_typedarray_builtins(
         Symbol(iterator_sym),
         loc,
       )
-      match iterator_method {
+      let source_is_array_like = match iterator_method {
         Undefined | Null => {
           let array_like = to_object(source, interp)
           let len = @runtime.to_array_like_length_interp(array_like, interp)
           for i = 0L; i < len; i = i + 1L {
+            interp.observe_execution_step()
             source_values.push(
               interp.get_property(array_like, i.to_string(), loc),
             )
           }
+          true
         }
         _ => {
           if !@runtime.is_callable(iterator_method) {
@@ -2822,6 +2888,7 @@ pub fn setup_typedarray_builtins(
             ) {
             source_values.push(value)
           }
+          false
         }
       }
       let len = source_values.length()
@@ -2840,6 +2907,9 @@ pub fn setup_typedarray_builtins(
       for i = 0; i < len; i = i + 1 {
         let value = source_values[i]
         let mapped = if has_map_fn {
+          if source_is_array_like {
+            interp.observe_execution_step()
+          }
           interp.call_value(
             map_fn,
             this_arg,
@@ -2848,6 +2918,9 @@ pub fn setup_typedarray_builtins(
           )
         } else {
           value
+        }
+        if source_is_array_like {
+          interp.observe_execution_step()
         }
         let _ = interp.set_property(
           result,
@@ -2883,6 +2956,7 @@ pub fn setup_typedarray_builtins(
       interp.realm_state,
     )
     for i = 0; i < len; i = i + 1 {
+      interp.observe_execution_step()
       let _ = interp.set_property(
         result,
         i.to_string(),
@@ -3134,11 +3208,13 @@ pub fn setup_typedarray_builtins(
               match result {
                 Object(result_data) =>
                   for i = 0; i < src_len; i = i + 1 {
+                    interp.observe_execution_step()
                     let val = typedarray_get_index(src_data, i, realm_state)
                     let num = match val {
                       Value::Number(nv) => nv
                       _ => 0.0
                     }
+                    interp.observe_execution_step()
                     typedarray_set_index(result_data, i, num, realm_state)
                   }
                 _ => ()
@@ -3255,8 +3331,10 @@ pub fn setup_typedarray_builtins(
                   match result {
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
+                        interp.observe_execution_step()
                         let v = interp.get_property(first, i.to_string(), loc)
                         let num = interp.to_number(v)
+                        interp.observe_execution_step()
                         typedarray_set_index(result_data, i, num, realm_state)
                       }
                     _ => ()
@@ -3315,8 +3393,10 @@ pub fn setup_typedarray_builtins(
                   match result {
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
+                        interp.observe_execution_step()
                         let v = interp.get_property(first, i.to_string(), loc)
                         let num = interp.to_number(v)
+                        interp.observe_execution_step()
                         typedarray_set_index(result_data, i, num, realm_state)
                       }
                     _ => ()
