@@ -152,6 +152,83 @@ fn issue968_assert_native_prefix(
 }
 
 ///|
+test "reverse observes upper index before its native getter" {
+  let events : Ref[Array[String]] = { val: [], }
+  let arm : Ref[Bool] = { val: false, }
+  let destination : Ref[String] = { val: "untouched", }
+  let interp = @interpreter.new_interpreter()
+  interp.global.def_builtin(
+    "issue968ReverseLowerGetter",
+    @runtime.make_native_func(name="issue968ReverseLowerGetter", _args => {
+      events.val.push("lower")
+      arm.val = true
+      @runtime.Value::Number(0.0)
+    }),
+  )
+  interp.global.def_builtin(
+    "issue968ReverseUpperGetter",
+    @runtime.make_native_func(name="issue968ReverseUpperGetter", _args => {
+      events.val.push("upper")
+      @runtime.Value::Number(1.0)
+    }),
+  )
+  interp.global.def_builtin(
+    "issue968ReverseLowerSetter",
+    @runtime.make_native_func(name="issue968ReverseLowerSetter", _args => {
+      events.val.push("lower-set")
+      destination.val = "written"
+      @runtime.Value::Undefined
+    }),
+  )
+  interp.global.def_builtin(
+    "issue968ReverseUpperSetter",
+    @runtime.make_native_func(name="issue968ReverseUpperSetter", _args => {
+      events.val.push("upper-set")
+      destination.val = "written"
+      @runtime.Value::Undefined
+    }),
+  )
+  interp.global.def(
+    "[[ExecutionControl]]",
+    @runtime.make_native_func(name="issue968ReverseObserver", _args => {
+      events.val.push("observe")
+      if arm.val {
+        raise @errors.TypeError(message="upper observation")
+      }
+      @runtime.Value::Undefined
+    }),
+    VarBinding,
+  )
+  ignore(
+    interp.run(
+      @parser.parse(
+        "var observed = Array(2);" +
+        "Object.defineProperty(observed, '0', { configurable: true, get: issue968ReverseLowerGetter, set: issue968ReverseLowerSetter });" +
+        "Object.defineProperty(observed, '1', { configurable: true, get: issue968ReverseUpperGetter, set: issue968ReverseUpperSetter });",
+      ).stmts,
+    ),
+  )
+  events.val = []
+  let observed = interp.global.get("observed")
+  let reverse = interp.get_property(observed, "reverse", @token.Loc::default())
+  let completion : Error? = try {
+    ignore(interp.call_value(reverse, observed, [], @token.Loc::default()))
+    None
+  } catch {
+    error => Some(error)
+  }
+  match completion {
+    Some(error) => assert_true(error.to_string().contains("upper observation"))
+    None => fail("reverse completed before observing the upper index")
+  }
+  assert_true(events.val.contains("lower"))
+  assert_true(!events.val.contains("upper"))
+  assert_eq(destination.val, "untouched")
+  assert_true(!events.val.contains("lower-set"))
+  assert_true(!events.val.contains("upper-set"))
+}
+
+///|
 test "candidate Array callbacks charge native host calls without guest overhead" {
   let interp = @interpreter.new_interpreter()
   let trace : Ref[Array[Int]] = { val: [], }

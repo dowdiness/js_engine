@@ -167,6 +167,7 @@ fn array_reverse_indexed_properties_observed_968(
     } else {
       None
     }
+    interp.observe_execution_step()
     let upper_exists = array_mutator_has_index(interp, o, upper)
     let upper_value = if upper_exists {
       Some(@runtime.get_array_like_element_interp(interp, o, upper))
