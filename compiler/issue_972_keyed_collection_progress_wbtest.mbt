@@ -223,6 +223,68 @@ test "Map and Set forEach callbacks preserve a bounded monotonic prefix" {
 }
 
 ///|
+test "candidate Map and Set forEach charge native callback traversal" {
+  let interp = @interpreter.new_interpreter()
+  let trace : Ref[Array[Int]] = { val: [], }
+  interp.global.def_builtin(
+    "issue972NativeCallback",
+    @runtime.make_native_func(name="issue972NativeCallback", args => {
+      match args[1] {
+        @runtime.Value::Number(index) => trace.val.push(index.to_int())
+        _ => ()
+      }
+      @runtime.Value::Undefined
+    }),
+  )
+  for
+    call_source in [
+      "largeMap.forEach(issue972NativeCallback);", "largeSet.forEach(issue972NativeCallback);",
+    ] {
+    trace.val = []
+    ignore(
+      run_executor_neutral_bytecode(interp, keyed_collection_setup_source_972()),
+    )
+    let evidence : Ref[CandidateRouteEvidence] = {
+      val: CandidateRouteEvidence(trace=true),
+    }
+    let outcome : Result[@runtime.Value, Error] = interp.with_execution_policy(
+      keyed_collection_policy_972(1000L),
+      () => {
+        Ok(
+          run_candidate_program_with_recorder(
+            interp,
+            @parser.parse(call_source).stmts,
+            evidence,
+          ),
+        ) catch {
+          error => Err(error)
+        }
+      },
+    )
+    match outcome {
+      Err(error) =>
+        assert_eq(
+          @runtime.execution_control_failure_code(error),
+          Some("execution-limit"),
+        )
+      Ok(_) => fail("native callback traversal completed under element budget")
+    }
+    assert_true(trace.val.length() > 0)
+    assert_true(trace.val.length() < 2001)
+    let mut expected = 0
+    for index in trace.val {
+      assert_eq(index, expected)
+      expected += 1
+    }
+    assert_true(evidence.val.summary.bytecode_starts > 0)
+    assert_eq(evidence.val.summary.tree_starts, 0)
+    assert_eq(evidence.val.summary.fallback_violations, 0)
+    assert_eq(evidence.val.summary.replay_violations, 0)
+    assert_eq(evidence.val.summary.active_activations, 0)
+  }
+}
+
+///|
 test "interrupted Map and Set mutators preserve pre-probe state" {
   let interp = @interpreter.new_interpreter()
   ignore(interp.run(@parser.parse(keyed_collection_setup_source_972()).stmts))
