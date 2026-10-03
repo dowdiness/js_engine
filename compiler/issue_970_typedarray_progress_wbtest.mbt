@@ -398,9 +398,11 @@ test "candidate TypedArray writes stop before later destinations" {
     #|reverseTarget.fill(7);
     #|reverseTarget[0] = 1;
     #|reverseTarget[4999] = 2;
+    #|reverseTarget[2500] = 3;
     #|var copyTarget = new Uint8Array(700);
     #|copyTarget.fill(9);
     #|copyTarget[1] = 4;
+    #|copyTarget[699] = 4;
     #|var setSource = new Uint8Array(700);
     #|setSource.fill(4);
     #|var setTarget = new Uint8Array(700);
@@ -417,7 +419,7 @@ test "candidate TypedArray writes stop before later destinations" {
 
   issue970_assert_execution_limit(interp, "reverseRun();")
   assert_eq(issue970_global_index(interp, "reverseTarget", 0), "2")
-  assert_eq(issue970_global_index(interp, "reverseTarget", 2500), "7")
+  assert_eq(issue970_global_index(interp, "reverseTarget", 2500), "3")
 
   issue970_assert_execution_limit(interp, "copyRun();")
   assert_eq(issue970_global_index(interp, "copyTarget", 0), "4")
