@@ -536,10 +536,12 @@ pub fn get_string_method(
           if args.length() == 0 {
             return Value::String_(str)
           }
+          let first = interp.to_js_string(args[0])
           let buf = StringBuilder()
           string_append_observed(interp, buf, str)
-          for arg in args {
-            let next = interp.to_js_string(arg)
+          string_append_observed(interp, buf, first)
+          for i = 1; i < args.length(); i = i + 1 {
+            let next = interp.to_js_string(args[i])
             string_append_observed(interp, buf, next)
           }
           Value::String_(buf.to_string())

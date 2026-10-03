@@ -1,4 +1,35 @@
 ///|
+fn issue974_native_string_object(
+  name : String,
+  calls : Ref[Int],
+  result : String,
+) -> Value {
+  let to_string : Value = Value::Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Value::Null,
+    callable: Some(
+      Callable::NonConstructableCallable(name, fn(_args) {
+        calls.val += 1
+        Value::String_(result)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let bag = PropertyBag::PropertyBag()
+  bag.properties["toString"] = to_string
+  Value::Object({
+    bag,
+    prototype: Value::Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 test "candidate String.concat observes output code units" {
   let interp = @interpreter.new_interpreter()
   ignore(
@@ -38,6 +69,148 @@ test "candidate String.concat observes output code units" {
       }
     None => fail("large String.concat must be interruptible")
   }
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate String.concat coerces a throwing first argument before output" {
+  let interp = @interpreter.new_interpreter()
+  let first_calls : Ref[Int] = { val: 0, }
+  let throwing_to_string : Value = Value::Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Value::Null,
+    callable: Some(
+      Callable::NonConstructableCallable("issue-974-concat-throwing-toString", fn(
+        _args,
+      ) raise {
+        first_calls.val += 1
+        @runtime.raise_js_exception(Value::String_("concat-first-arg"))
+        Value::Undefined
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let first_arg : Value = Value::Object({
+    bag: {
+      let bag = PropertyBag::PropertyBag()
+      bag.properties["toString"] = throwing_to_string
+      bag
+    },
+    prototype: Value::Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  interp.global.def_builtin("issue974ConcatThrowingArg", first_arg)
+  ignore(
+    run_executor_neutral_bytecode(
+      interp,
+      "var issue974ConcatLarge = 'a'.repeat(5000); " +
+      "function concatThrowingFirst() { " +
+      "return issue974ConcatLarge.concat(issue974ConcatThrowingArg); }",
+    ),
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100L, 100L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid concat coercion policy")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=true),
+  }
+  let caught : Error? = interp.with_execution_policy(policy, () => {
+    try {
+      ignore(
+        run_candidate_program_with_recorder(
+          interp,
+          @parser.parse("concatThrowingFirst();").stmts,
+          evidence,
+        ),
+      )
+      None
+    } catch {
+      error => Some(error)
+    }
+  })
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_eq(value.to_string(), "concat-first-arg")
+    Some(error) => fail("first concat coercion raised " + error.to_string())
+    None => fail("throwing first concat coercion unexpectedly completed")
+  }
+  assert_eq(first_calls.val, 1)
+  assert_true(evidence.val.summary.bytecode_starts > 0)
+  assert_eq(evidence.val.summary.tree_starts, 0)
+  assert_eq(evidence.val.summary.fallback_violations, 0)
+  assert_eq(evidence.val.summary.replay_violations, 0)
+  assert_eq(evidence.val.summary.active_activations, 0)
+}
+
+///|
+test "candidate String.concat interleaves host coercion and output" {
+  let interp = @interpreter.new_interpreter()
+  let first_calls : Ref[Int] = { val: 0, }
+  let later_calls : Ref[Int] = { val: 0, }
+  interp.global.def_builtin(
+    "issue974ConcatFirstHostArg",
+    issue974_native_string_object(
+      "issue-974-concat-first-host-toString", first_calls, "first",
+    ),
+  )
+  interp.global.def_builtin(
+    "issue974ConcatLaterHostArg",
+    issue974_native_string_object(
+      "issue-974-concat-later-host-toString", later_calls, "later",
+    ),
+  )
+  ignore(
+    run_executor_neutral_bytecode(
+      interp,
+      "var issue974ConcatInterleaveLarge = 'a'.repeat(5000); " +
+      "function concatHostOrder() { return " +
+      "issue974ConcatInterleaveLarge.concat(" +
+      "issue974ConcatFirstHostArg, issue974ConcatLaterHostArg); }",
+    ),
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100L, 100L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid concat interleaving policy")
+  }
+  let evidence : Ref[CandidateRouteEvidence] = {
+    val: CandidateRouteEvidence(trace=true),
+  }
+  let caught : Error? = interp.with_execution_policy(policy, () => {
+    try {
+      ignore(
+        run_candidate_program_with_recorder(
+          interp,
+          @parser.parse("concatHostOrder();").stmts,
+          evidence,
+        ),
+      )
+      None
+    } catch {
+      error => Some(error)
+    }
+  })
+  match caught {
+    Some(error) =>
+      assert_eq(
+        @runtime.execution_control_failure_code(error),
+        Some("execution-limit"),
+      )
+    None => fail("long concat unexpectedly completed")
+  }
+  assert_eq(first_calls.val, 1)
+  assert_eq(later_calls.val, 0)
   assert_true(evidence.val.summary.bytecode_starts > 0)
   assert_eq(evidence.val.summary.tree_starts, 0)
   assert_eq(evidence.val.summary.fallback_violations, 0)
