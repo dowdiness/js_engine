@@ -902,15 +902,9 @@ fn async_generator_step(
               gen_obj.delegating = false
               gen_obj.delegate_iterator = Undefined
               gen_obj.delegate_next = Undefined
-              gen_obj.state = Completed
-              let _ = i.call_value(
-                rej_fn,
-                Undefined,
-                [e],
-                @token.Loc::default(),
-              ) catch {
-                _ => Undefined
-              }
+              // A rejected Await exits yield* with a throw completion. Resume
+              // the outer body so its catch/finally can handle it or yield.
+              async_generator_step(i, gen, Throw(e), res_fn, rej_fn)
               Undefined
             },
           )
