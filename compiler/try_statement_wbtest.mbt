@@ -225,6 +225,108 @@ test "finally runs when catch binding initialization throws" {
 }
 
 ///|
+test "catch pattern predeclares bindings before defaults" {
+  let source =
+    #|var later = 42, trace = [];
+    #|try {
+    #|  try { throw []; }
+    #|  catch ([first = later, later, ...rest]) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) { trace.push(error.name); }
+    #|JSON.stringify([trace, later]);
+  assert_try_result(source, "[[\"finally\",\"ReferenceError\"],42]")
+}
+
+///|
+test "catch pattern predeclares self and rest bindings" {
+  let self_default =
+    #|var self = 42, trace = [];
+    #|try {
+    #|  try { throw []; }
+    #|  catch ([self = self, ...rest]) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) { trace.push(error.name); }
+    #|JSON.stringify([trace, self]);
+  assert_try_result(self_default, "[[\"finally\",\"ReferenceError\"],42]")
+  let rest_default =
+    #|var rest = 43, trace = [];
+    #|try {
+    #|  try { throw []; }
+    #|  catch ([first = rest, ...rest]) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) { trace.push(error.name); }
+    #|JSON.stringify([trace, rest]);
+  assert_try_result(rest_default, "[[\"finally\",\"ReferenceError\"],43]")
+}
+
+///|
+test "catch pattern predeclares object defaults and computed keys" {
+  let object_default =
+    #|var later = 42, trace = [];
+    #|try {
+    #|  try { throw {}; }
+    #|  catch ({first: first = later, later, ...rest}) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) { trace.push(error.name); }
+    #|JSON.stringify([trace, later]);
+  assert_try_result(object_default, "[[\"finally\",\"ReferenceError\"],42]")
+  let computed_key =
+    #|var later = 42, trace = [];
+    #|try {
+    #|  try { throw {42: 1}; }
+    #|  catch ({[later]: first, later, ...rest}) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) { trace.push(error.name); }
+    #|JSON.stringify([trace, later]);
+  assert_try_result(computed_key, "[[\"finally\",\"ReferenceError\"],42]")
+}
+
+///|
+test "catch pattern defaults retain initialized cells in closures" {
+  let source =
+    #|var read;
+    #|try { throw {}; }
+    #|catch ({first = 1, second = first, closure = () => [first, second], ...rest}) { read = closure; }
+    #|JSON.stringify(read());
+  assert_try_result(source, "[1,1]")
+}
+
+///|
+test "catch pattern partial initialization preserves escaped cells" {
+  let source =
+    #|var escaped, result, trace = [], c = 99;
+    #|try {
+    #|  try { throw [1]; }
+    #|  catch ([a, b = (escaped = [() => a, () => c])[0], c = missing]) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) {
+    #|  result = escaped[0]() + ":";
+    #|  try { escaped[1](); } catch (inner) { result += inner.name; }
+    #|}
+    #|JSON.stringify([trace, result]);
+  assert_try_result(source, "[[\"finally\"],\"1:ReferenceError\"]")
+}
+
+///|
+test "catch pattern closes iterator after TDZ failure" {
+  let source =
+    #|var later = 42, trace = [], iterator = {
+    #|  [Symbol.iterator]() { return this; },
+    #|  next() { trace.push("next"); return {value: undefined, done: false}; },
+    #|  return() { trace.push("return"); throw "close"; }
+    #|};
+    #|try {
+    #|  try { throw iterator; }
+    #|  catch ([first = later, later, ...rest]) { trace.push("body"); }
+    #|  finally { trace.push("finally"); }
+    #|} catch (error) { trace.push(error.name); }
+    #|JSON.stringify(trace);
+  assert_try_result(
+    source, "[\"next\",\"return\",\"finally\",\"ReferenceError\"]",
+  )
+}
+
+///|
 test "finally yield preserves the injected generator return" {
   let source =
     #|function* sequence() {
@@ -235,4 +337,23 @@ test "finally yield preserves the injected generator return" {
     #|var result = it.next();
     #|[cleanup.value, cleanup.done, result.value, result.done].join(',');
   assert_try_result(source, "cleanup,false,returned,true")
+}
+
+///|
+test "catch pattern retains initialization cells across yield" {
+  let source =
+    #|var later = 42, read;
+    #|function* sample() {
+    #|  try { throw []; }
+    #|  catch ([first = () => later, later = (read = first, yield 'pause')]) {
+    #|    return [first(), read()];
+    #|  }
+    #|}
+    #|var iterator = sample(), trace = [iterator.next().value];
+    #|try { read(); trace.push('initialized'); }
+    #|catch (error) { trace.push(error.name); }
+    #|try { trace.push(iterator.next(7).value); }
+    #|catch (error) { trace.push(error.name); }
+    #|JSON.stringify(trace);
+  assert_try_result(source, "[\"pause\",\"ReferenceError\",[7,7]]")
 }
