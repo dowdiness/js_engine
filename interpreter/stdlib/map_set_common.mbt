@@ -62,6 +62,83 @@ fn MapData::clear_entries(self : MapData) -> Unit {
 }
 
 ///|
+/// Search an array while charging each logical probe before its predicate.
+/// Built-in keyed-collection scans use this for SameValueZero comparisons,
+/// tombstone inspection, and stable Map record-id lookup.
+fn[T] observed_array_search(
+  interp : @runtime.Interpreter,
+  values : Array[T],
+  predicate : (T) -> Bool,
+) -> Int? raise Error {
+  let mut index = 0
+  while index < values.length() {
+    interp.observe_execution_step()
+    if predicate(values[index]) {
+      return Some(index)
+    }
+    index += 1
+  }
+  None
+}
+
+///|
+/// Charge every entry before a bulk clear mutates the backing array.
+fn[T] observe_array_entries(
+  interp : @runtime.Interpreter,
+  values : Array[T],
+) -> Unit raise Error {
+  for _ in values {
+    interp.observe_execution_step()
+  }
+}
+
+///|
+/// Search live Set slots, charging before tombstone inspection and
+/// SameValueZero comparison.
+fn observed_set_value_search(
+  interp : @runtime.Interpreter,
+  data : SetData,
+  value : Value,
+) -> Int? raise Error {
+  let mut index = 0
+  while index < data.values.length() {
+    interp.observe_execution_step()
+    let is_tombstoned = match data.tombstones {
+      None => false
+      Some(ts) => ts.contains(index)
+    }
+    if !is_tombstoned && same_value_zero(data.values[index], value) {
+      return Some(index)
+    }
+    index += 1
+  }
+  None
+}
+
+///|
+/// Find the next live Set slot for an iterator, charging before each
+/// tombstone check and before advancing past a tombstone.
+fn observed_set_live_index_from(
+  interp : @runtime.Interpreter,
+  data : SetData,
+  start : Int,
+) -> Int? raise Error {
+  let mut index = start
+  while index < data.values.length() {
+    interp.observe_execution_step()
+    let is_tombstoned = match data.tombstones {
+      None => false
+      Some(ts) => ts.contains(index)
+    }
+    if !is_tombstoned {
+      return Some(index)
+    }
+    index += 1
+  }
+  None
+}
+
+///|
 /// Get Map.prototype methods for a Map instance
 pub fn get_map_method(
   data : MapData,
@@ -206,7 +283,7 @@ fn make_keyed_collection_iterator(
 fn build_keyed_collection_iterator_proto(
   realm_state : @runtime.RealmState,
   iterator_name : String,
-  next_handler : (Value) -> Value raise Error,
+  next_handler : (@runtime.Interpreter, Value) -> Value raise Error,
 ) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
   let tostringtag_sym = well_known_symbols.to_string_tag
@@ -222,11 +299,11 @@ fn build_keyed_collection_iterator_proto(
     setter: None,
     is_accessor: false,
   }
-  proto_props["next"] = @runtime.make_method_func(
+  proto_props["next"] = @runtime.make_interp_method_func(
     name="next",
     length=0,
     realm_state=Some(realm_state),
-    fn(this_val, _args) raise { next_handler(this_val) },
+    fn(interp, this_val, _args) raise { next_handler(interp, this_val) },
   )
   Value::Object({
     bag: {
@@ -259,7 +336,7 @@ fn get_or_create_keyed_collection_iterator_proto(
   cache : Ref[Value?],
   realm_state : @runtime.RealmState,
   iterator_name : String,
-  next_handler : (Value) -> Value raise Error,
+  next_handler : (@runtime.Interpreter, Value) -> Value raise Error,
 ) -> Value {
   match cache.val {
     Some(proto) => proto

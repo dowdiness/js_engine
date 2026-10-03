@@ -31,7 +31,10 @@ fn map_iterator_result_value(
 }
 
 ///|
-fn map_iterator_next(this_val : Value) -> Value raise Error {
+fn map_iterator_next(
+  _interp : @runtime.Interpreter,
+  this_val : Value,
+) -> Value raise Error {
   match this_val {
     Object(data) => {
       guard data.class_name == MAP_ITERATOR_NAME else {
@@ -96,87 +99,100 @@ fn setup_map_builtins(
   let map_proto_props : Map[String, Value] = Map([])
 
   // Map.prototype.get(key)
-  map_proto_props["get"] = @runtime.make_method_func(name="get", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        let key = if args.length() > 0 { args[0] } else { Undefined }
-        // Find key using SameValueZero
-        match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
-          Some(i) => data.entries[i].1
-          None => Undefined
-        }
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.get called on incompatible receiver",
-        )
-    }
-  })
-
-  // Map.prototype.set(key, value)
-  map_proto_props["set"] = @runtime.make_method_func(name="set", length=2, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        let raw_key = if args.length() > 0 { args[0] } else { Undefined }
-        let value = if args.length() > 1 { args[1] } else { Undefined }
-        let key = canonicalize_keyed_collection_key(raw_key)
-        // Find existing key using SameValueZero
-        match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
-          Some(i) => {
-            // Update existing entry
-            data.entries[i] = (key, value)
-            return this_val
-          }
-          None => ()
-        }
-        // Add new entry
-        data.append_entry(key, value)
-        this_val
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.set called on incompatible receiver",
-        )
-    }
-  })
-
-  // Map.prototype.has(key)
-  map_proto_props["has"] = @runtime.make_method_func(name="has", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        let key = if args.length() > 0 { args[0] } else { Undefined }
-        // Find key using SameValueZero
-        Value::Bool(
-          data.entries.search_by(entry => same_value_zero(entry.0, key))
-          is Some(_),
-        )
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.has called on incompatible receiver",
-        )
-    }
-  })
-
-  // Map.prototype.delete(key)
-  map_proto_props["delete"] = @runtime.make_method_func(
-    name="delete",
+  map_proto_props["get"] = @runtime.make_interp_method_func(
+    name="get",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Value::Map(data) => {
-          let key = if args.length() > 0 { args[0] } else { Undefined }
-          // Find and remove key using SameValueZero
-          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          let raw_key = if args.length() > 0 { args[0] } else { Undefined }
+          let key = canonicalize_keyed_collection_key(raw_key)
+          match
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            }) {
+            Some(i) => data.entries[i].1
+            None => Undefined
+          }
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.get called on incompatible receiver",
+          )
+      }
+    },
+  )
+
+  // Map.prototype.set(key, value)
+  map_proto_props["set"] = @runtime.make_interp_method_func(
+    name="set",
+    length=2,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Map(data) => {
+          let raw_key = if args.length() > 0 { args[0] } else { Undefined }
+          let value = if args.length() > 1 { args[1] } else { Undefined }
+          let key = canonicalize_keyed_collection_key(raw_key)
+          match
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            }) {
+            Some(i) => {
+              // Update existing entry
+              data.entries[i] = (key, value)
+              return this_val
+            }
+            None => ()
+          }
+          // Add new entry
+          data.append_entry(key, value)
+          this_val
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.set called on incompatible receiver",
+          )
+      }
+    },
+  )
+
+  // Map.prototype.has(key)
+  map_proto_props["has"] = @runtime.make_interp_method_func(
+    name="has",
+    length=1,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Map(data) => {
+          let raw_key = if args.length() > 0 { args[0] } else { Undefined }
+          let key = canonicalize_keyed_collection_key(raw_key)
+          Value::Bool(
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            })
+            is Some(_),
+          )
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.has called on incompatible receiver",
+          )
+      }
+    },
+  )
+
+  // Map.prototype.delete(key)
+  map_proto_props["delete"] = @runtime.make_interp_method_func(
+    name="delete",
+    length=1,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Map(data) => {
+          let raw_key = if args.length() > 0 { args[0] } else { Undefined }
+          let key = canonicalize_keyed_collection_key(raw_key)
+          match
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            }) {
             Some(i) => {
               data.remove_entry_at(i)
               Value::Bool(true)
@@ -193,21 +209,23 @@ fn setup_map_builtins(
   )
 
   // Map.prototype.clear()
-  map_proto_props["clear"] = @runtime.make_method_func(name="clear", length=0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Map(data) => {
-        data.clear_entries()
-        Undefined
+  map_proto_props["clear"] = @runtime.make_interp_method_func(
+    name="clear",
+    length=0,
+    fn(interp, this_val, _args) raise {
+      match this_val {
+        Value::Map(data) => {
+          observe_array_entries(interp, data.entries)
+          data.clear_entries()
+          Undefined
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="Method Map.prototype.clear called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Map.prototype.clear called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Map.prototype.forEach(callback, thisArg?)
   map_proto_props["forEach"] = @runtime.make_interp_method_func(
@@ -229,7 +247,10 @@ fn setup_map_builtins(
           // shift to lower indexes.
           let mut next_entry_id = 0
           while true {
-            match data.entry_ids.search_by(id => id >= next_entry_id) {
+            match
+              observed_array_search(interp, data.entry_ids, id => {
+                id >= next_entry_id
+              }) {
               None => break
               Some(i) => {
                 let entry_id = data.entry_ids[i]
@@ -300,17 +321,20 @@ fn setup_map_builtins(
   )
 
   // Map.prototype.getOrInsert(key, value)
-  map_proto_props["getOrInsert"] = @runtime.make_method_func(
+  map_proto_props["getOrInsert"] = @runtime.make_interp_method_func(
     name="getOrInsert",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Value::Map(data) => {
           let raw_key = if args.length() > 0 { args[0] } else { Undefined }
           let value = if args.length() > 1 { args[1] } else { Undefined }
           let key = canonicalize_keyed_collection_key(raw_key)
           // If key exists, return existing value
-          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            }) {
             Some(i) => return data.entries[i].1
             None => ()
           }
@@ -340,7 +364,10 @@ fn setup_map_builtins(
           }
           let key = canonicalize_keyed_collection_key(raw_key)
           // If key exists, return existing value without calling callback
-          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            }) {
             Some(i) => return data.entries[i].1
             None => ()
           }
@@ -348,7 +375,10 @@ fn setup_map_builtins(
           let loc = @token.Loc::default()
           let value = interp.call_value(callbackfn, Undefined, [key], loc)
           // Re-check if key was added by callback (mutation during callback)
-          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match
+            observed_array_search(interp, data.entries, entry => {
+              same_value_zero(entry.0, key)
+            }) {
             Some(i) => {
               // Overwrite with computed value per spec
               data.entries[i] = (key, value)

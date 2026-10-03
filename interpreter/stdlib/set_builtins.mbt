@@ -118,130 +118,77 @@ fn setup_set_builtins(
   let set_proto_props : Map[String, Value] = Map([])
 
   // Set.prototype.add(value)
-  set_proto_props["add"] = @runtime.make_method_func(name="add", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => {
-        let raw_value = if args.length() > 0 { args[0] } else { Undefined }
-        let value = canonicalize_keyed_collection_key(raw_value)
-        // Only skip if the value exists at a non-tombstoned index. A tombstoned
-        // slot is logically deleted, so delete+add during forEach must append.
-        let already_live = match data.tombstones {
-          None =>
-            data.values.search_by(v => same_value_zero(v, value)) is Some(_)
-          Some(ts) => {
-            let mut found = false
-            for i, v in data.values {
-              if !ts.contains(i) && same_value_zero(v, value) {
-                found = true
-                break
-              }
-            }
-            found
-          }
-        }
-        if already_live {
-          return this_val
-        }
-        // Add new value
-        data.values.push(value)
-        this_val
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.add called on incompatible receiver",
-        )
-    }
-  })
-
-  // Set.prototype.has(value)
-  set_proto_props["has"] = @runtime.make_method_func(name="has", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => {
-        let value = if args.length() > 0 { args[0] } else { Undefined }
-        // Skip tombstoned indices: a value deleted during active forEach is not "in" the set.
-        let found = match data.tombstones {
-          None =>
-            data.values.search_by(v => same_value_zero(v, value)) is Some(_)
-          Some(ts) => {
-            let mut found = false
-            for i, v in data.values {
-              if !ts.contains(i) && same_value_zero(v, value) {
-                found = true
-                break
-              }
-            }
-            found
-          }
-        }
-        Value::Bool(found)
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.has called on incompatible receiver",
-        )
-    }
-  })
-
-  // Set.prototype.delete(value)
-  set_proto_props["delete"] = @runtime.make_method_func(
-    name="delete",
+  set_proto_props["add"] = @runtime.make_interp_method_func(
+    name="add",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Value::Set(data) => {
-          let value = if args.length() > 0 { args[0] } else { Undefined }
+          let raw_value = if args.length() > 0 { args[0] } else { Undefined }
+          let value = canonicalize_keyed_collection_key(raw_value)
+          // A tombstoned slot is logically deleted, so delete+add during
+          // forEach must append.
+          if observed_set_value_search(interp, data, value) is Some(_) {
+            return this_val
+          }
+          // Add new value
+          data.values.push(value)
+          this_val
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.add called on incompatible receiver",
+          )
+      }
+    },
+  )
+
+  // Set.prototype.has(value)
+  set_proto_props["has"] = @runtime.make_interp_method_func(
+    name="has",
+    length=1,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Set(data) => {
+          let raw_value = if args.length() > 0 { args[0] } else { Undefined }
+          let value = canonicalize_keyed_collection_key(raw_value)
+          // A tombstoned value is logically absent while iteration is active.
+          let found = observed_set_value_search(interp, data, value) is Some(_)
+          Value::Bool(found)
+        }
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.has called on incompatible receiver",
+          )
+      }
+    },
+  )
+
+  // Set.prototype.delete(value)
+  set_proto_props["delete"] = @runtime.make_interp_method_func(
+    name="delete",
+    length=1,
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Value::Set(data) => {
+          let raw_value = if args.length() > 0 { args[0] } else { Undefined }
+          let value = canonicalize_keyed_collection_key(raw_value)
           // Tombstone when iteration is active (tombstones is Some) to keep
           // array indices stable for forEach and for..of cursors. Compact
           // immediately when tombstones is None (no active or pending iteration).
-          if data.tombstones is Some(_) {
-            // Search only non-tombstoned slots.
-            let mut found_idx : Int? = None
-            match data.tombstones {
-              None =>
-                for i, v in data.values {
-                  if same_value_zero(v, value) {
-                    found_idx = Some(i)
-                    break
-                  }
+          match observed_set_value_search(interp, data, value) {
+            None => Value::Bool(false)
+            Some(i) =>
+              match data.tombstones {
+                Some(ts) => {
+                  ts.add(i)
+                  Value::Bool(true)
                 }
-              Some(ts) =>
-                for i, v in data.values {
-                  if !ts.contains(i) && same_value_zero(v, value) {
-                    found_idx = Some(i)
-                    break
-                  }
+                None => {
+                  let _ = data.values.remove(i)
+                  Value::Bool(true)
                 }
-            }
-            match found_idx {
-              None => Value::Bool(false)
-              Some(i) => {
-                let ts = match data.tombstones {
-                  None => {
-                    let ts : @set.Set[Int] = Default::default()
-                    data.tombstones = Some(ts)
-                    ts
-                  }
-                  Some(ts) => ts
-                }
-                ts.add(i)
-                Value::Bool(true)
               }
-            }
-          } else {
-            // No active iteration: compact normally.
-            match data.values.search_by(v => same_value_zero(v, value)) {
-              Some(i) => {
-                let _ = data.values.remove(i)
-                Value::Bool(true)
-              }
-              None => Value::Bool(false)
-            }
           }
         }
         _ =>
@@ -253,42 +200,44 @@ fn setup_set_builtins(
   )
 
   // Set.prototype.clear()
-  set_proto_props["clear"] = @runtime.make_method_func(name="clear", length=0, fn(
-    this_val,
-    _args,
-  ) raise {
-    match this_val {
-      Value::Set(data) => {
-        if data.tombstones is Some(_) {
-          // Iteration active (forEach or for..of): tombstone every current slot
-          // so cursor indices stay stable. Elements added after clear() append
-          // at higher indices and are visited normally by existing cursors.
-          let n = data.values.length()
-          if n > 0 {
-            let ts = match data.tombstones {
-              None => {
-                let ts : @set.Set[Int] = Default::default()
-                data.tombstones = Some(ts)
-                ts
+  set_proto_props["clear"] = @runtime.make_interp_method_func(
+    name="clear",
+    length=0,
+    fn(interp, this_val, _args) raise {
+      match this_val {
+        Value::Set(data) => {
+          observe_array_entries(interp, data.values)
+          if data.tombstones is Some(_) {
+            // Iteration active (forEach or for..of): tombstone every current slot
+            // so cursor indices stay stable. Elements added after clear() append
+            // at higher indices and are visited normally by existing cursors.
+            let n = data.values.length()
+            if n > 0 {
+              let ts = match data.tombstones {
+                None => {
+                  let ts : @set.Set[Int] = Default::default()
+                  data.tombstones = Some(ts)
+                  ts
+                }
+                Some(ts) => ts
               }
-              Some(ts) => ts
+              for i in 0..<n {
+                ts.add(i)
+              }
             }
-            for i in 0..<n {
-              ts.add(i)
-            }
+          } else {
+            data.values.clear()
+            data.tombstones = None
           }
-        } else {
-          data.values.clear()
-          data.tombstones = None
+          Undefined
         }
-        Undefined
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.clear called on incompatible receiver",
+          )
       }
-      _ =>
-        raise @errors.TypeError(
-          message="Method Set.prototype.clear called on incompatible receiver",
-        )
-    }
-  })
+    },
+  )
 
   // Set.prototype.forEach(callback, thisArg?)
   set_proto_props["forEach"] = @runtime.make_interp_method_func(
@@ -298,6 +247,9 @@ fn setup_set_builtins(
       match this_val {
         Value::Set(data) => {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
+          if !@runtime.is_callable(callback) {
+            raise @errors.TypeError(message="callbackfn is not callable")
+          }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
           // §24.2.3.12: iteration is over the live [[SetData]] list. delete()
@@ -320,6 +272,7 @@ fn setup_set_builtins(
           let result : Result[Value, Error] = try {
             let mut i = 0
             while i < data.values.length() {
+              interp.observe_execution_step()
               let is_tombstoned = match data.tombstones {
                 None => false
                 Some(ts) => ts.contains(i)
@@ -1080,7 +1033,10 @@ fn setup_set_builtins(
 
 ///|
 /// §23.2.5.2.1 %SetIteratorPrototype%.next
-fn set_iterator_next(this_val : Value) -> Value raise Error {
+fn set_iterator_next(
+  interp : @runtime.Interpreter,
+  this_val : Value,
+) -> Value raise Error {
   match this_val {
     Object(data) => {
       guard data.class_name == SET_ITERATOR_NAME else {
@@ -1094,50 +1050,39 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
       // §23.2.5.2.1 step 7: [[IteratedSet]] undefined → already done
       match iterated_set {
         Undefined => @runtime.create_iter_result(Undefined, true)
-        Set(set_data) => {
+        Set(set_data) =>
           // tombstone mode was entered at make_set_iterator so that delete/clear
           // tombstone instead of compacting while this iterator is live.
-          // Skip tombstoned slots (entries deleted during live iteration).
-          let mut idx = current
-          while idx < set_data.values.length() {
-            let is_tomb = match set_data.tombstones {
-              None => false
-              Some(ts) => ts.contains(idx)
+          // Skip tombstoned slots (entries deleted during live iteration),
+          // charging before each logical inspection and cursor advance.
+          match observed_set_live_index_from(interp, set_data, current) {
+            Some(idx) => {
+              let value = set_data.values[idx]
+              @runtime.set_keyed_collection_iterator_next_index(
+                data,
+                set_iterator_slots.next_index,
+                Number((idx + 1).to_double()),
+              )
+              let result_value = if kind == SET_ITERATOR_KIND_ENTRIES {
+                @runtime.make_array([value, value])
+              } else {
+                value
+              }
+              @runtime.create_iter_result(result_value, false)
             }
-            if is_tomb {
-              idx += 1
-            } else {
-              break
+            None => {
+              // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined (done flag).
+              // Do NOT compact here. Multiple live iterators share the same tombstone
+              // set and compacting on one would shift values[] indices, corrupting
+              // any other iterator's stored numeric cursor. Tombstone cleanup is the
+              // responsibility of forEach when it exits tombstone mode.
+              @runtime.detach_keyed_collection_iterator_target(
+                data,
+                set_iterator_slots.target,
+              )
+              @runtime.create_iter_result(Undefined, true)
             }
           }
-          if idx < set_data.values.length() {
-            let value = set_data.values[idx]
-            @runtime.set_keyed_collection_iterator_next_index(
-              data,
-              set_iterator_slots.next_index,
-              Number((idx + 1).to_double()),
-            )
-            let result_value = if kind == SET_ITERATOR_KIND_ENTRIES {
-              @runtime.make_array([value, value])
-            } else {
-              value
-            }
-            @runtime.create_iter_result(result_value, false)
-          } else {
-            // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined (done flag).
-            // Do NOT compact here. Multiple live iterators share the same tombstone
-            // set and compact at the same-time compacting would shift values[] indices,
-            // corrupting any other iterator's stored numeric cursor. Tombstone cleanup
-            // is the responsibility of forEach when it exits tombstone mode
-            // (tombstones_pre_existed=false at forEach entry). Until then, tombstones
-            // persist — size is bounded by the count of deleted entries (≤ values.length).
-            @runtime.detach_keyed_collection_iterator_target(
-              data,
-              set_iterator_slots.target,
-            )
-            @runtime.create_iter_result(Undefined, true)
-          }
-        }
         _ => keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
       }
     }
