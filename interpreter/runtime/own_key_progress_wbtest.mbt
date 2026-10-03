@@ -356,9 +356,11 @@ fn own_key_runtime_value_result_code(result : Result[Value, Error]) -> String {
 }
 
 ///|
-fn own_key_runtime_symbol_only_consumer_proxy(
+fn own_key_runtime_descriptor_cancel_proxy(
   interp : Interpreter,
   interruption : InterruptionHandle,
+  calls : Ref[Int],
+  returned_keys : Array[Value],
 ) -> Value {
   let base = make_object(
     { "x": Number(1.0) },
@@ -372,6 +374,7 @@ fn own_key_runtime_symbol_only_consumer_proxy(
     name="interrupting getOwnPropertyDescriptor",
     realm_state=Some(interp.realm_state),
     fn(_args) {
+      calls.val += 1
       interruption.request()
       make_object(
         {
@@ -402,11 +405,10 @@ fn own_key_runtime_symbol_only_consumer_proxy(
     is_callable: false,
     is_constructor: false,
   })
-  let symbol = interp.realm_state.well_known_symbols.iterator
   let outer_own_keys = make_native_func(
-    name="symbol-only ownKeys",
+    name="descriptor cancellation ownKeys",
     realm_state=Some(interp.realm_state),
-    fn(_args) { make_array([Symbol(symbol)]) },
+    fn(_args) { make_array(returned_keys.copy()) },
   )
   let outer_handler = make_object(
     { "ownKeys": outer_own_keys },
@@ -422,6 +424,18 @@ fn own_key_runtime_symbol_only_consumer_proxy(
     is_callable: false,
     is_constructor: false,
   })
+}
+
+///|
+fn own_key_runtime_symbol_only_consumer_proxy(
+  interp : Interpreter,
+  interruption : InterruptionHandle,
+) -> Value {
+  let calls : Ref[Int] = { val: 0, }
+  let symbol = interp.realm_state.well_known_symbols.iterator
+  own_key_runtime_descriptor_cancel_proxy(interp, interruption, calls, [
+    Symbol(symbol),
+  ])
 }
 
 ///|
@@ -472,7 +486,7 @@ fn own_key_runtime_interrupting_index_proxy(
 }
 
 ///|
-test "proxy enumerable filtering observes symbol classification" {
+test "enumerable consumer propagates descriptor interruption" {
   let interp = Interpreter::new()
   let interruption = InterruptionHandle()
   let source = own_key_runtime_symbol_only_consumer_proxy(interp, interruption)
@@ -521,6 +535,78 @@ test "synchronous proxy ownKeys stops before native index classification" {
   assert_eq(managed_control.active_depth(), 0L)
   assert_eq(own_key_runtime_value_result_code(sync_result), "interrupted")
   assert_eq(own_key_runtime_result_code(managed_result), "interrupted")
+}
+
+///|
+test "Proxy ownKeys observes the final target descriptor cancellation" {
+  let interp = Interpreter::new()
+  let unbounded_interruption = InterruptionHandle()
+  let unbounded_calls : Ref[Int] = { val: 0, }
+  let unbounded_source = own_key_runtime_descriptor_cancel_proxy(
+    interp,
+    unbounded_interruption,
+    unbounded_calls,
+    [],
+  )
+  let unbounded_keys = interp.own_property_keys(unbounded_source)
+  assert_eq(unbounded_keys.length(), 0)
+  assert_eq(unbounded_calls.val, 1)
+
+  let sync_interruption = InterruptionHandle()
+  let managed_interruption = InterruptionHandle()
+  let sync_calls : Ref[Int] = { val: 0, }
+  let managed_calls : Ref[Int] = { val: 0, }
+  let sync_source = own_key_runtime_descriptor_cancel_proxy(
+    interp,
+    sync_interruption,
+    sync_calls,
+    [],
+  )
+  let managed_source = own_key_runtime_descriptor_cancel_proxy(
+    interp,
+    managed_interruption,
+    managed_calls,
+    [],
+  )
+  let sync_policy = ExecutionPolicy::new(1000L, 100L, sync_interruption).unwrap()
+  let managed_policy = ExecutionPolicy::new(1000L, 100L, managed_interruption).unwrap()
+  let sync_control = sync_policy.to_execution_control()
+  let managed_control = managed_policy.to_execution_control()
+  let sync_result : Result[Value, Error] = Ok(
+    interp.with_execution_control(sync_control, () => {
+      make_array(interp.own_property_keys(sync_source))
+    }),
+  ) catch {
+    error => Err(error)
+  }
+  let managed_target = make_object(Map([]), Null, None, "Object", Map([]), true)
+  let managed_result : Result[Unit, Error] = Ok(
+    interp.with_execution_control(managed_control, () => {
+      run_executor_copy_data_properties_for_wb(
+        interp, managed_target, managed_source,
+      )
+    }),
+  ) catch {
+    error => Err(error)
+  }
+  assert_eq(sync_control.active_depth(), 0L)
+  assert_eq(managed_control.active_depth(), 0L)
+  assert_eq(sync_calls.val, 1)
+  assert_eq(managed_calls.val, 1)
+  let managed_target_status = match
+    interp.get_own_property(managed_target, String_("x")) {
+    None => "untouched"
+    Some(_) => "written"
+  }
+  let outcomes = [
+    "sync=" + own_key_runtime_value_result_code(sync_result),
+    "managed=" + own_key_runtime_result_code(managed_result),
+    "managed-target=" + managed_target_status,
+  ]
+  assert_eq(
+    outcomes.join("|"),
+    "sync=interrupted|managed=interrupted|managed-target=untouched",
+  )
 }
 
 ///|

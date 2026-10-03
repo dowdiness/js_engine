@@ -818,7 +818,9 @@ pub fn proxy_own_property_keys(
   let target_configurable_keys : Array[Value] = []
   for key in target_keys {
     interp.observe_execution_step()
-    let non_configurable = match interp.get_own_property(target, key) {
+    let target_descriptor = interp.get_own_property(target, key)
+    interp.observe_execution_step()
+    let non_configurable = match target_descriptor {
       Some((desc, _)) => !desc.configurable
       None => false
     }

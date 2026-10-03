@@ -201,6 +201,7 @@ fn ExecutorOwnPropertyKeysOperation::consume_target_descriptor(
         message="managed ownKeys descriptor had no current key",
       )
   }
+  interp.observe_execution_step()
   match descriptor {
     Some(info) if !info.descriptor.configurable =>
       self.target_nonconfigurable_keys.push(key)

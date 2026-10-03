@@ -307,7 +307,8 @@
         "compiler/own_key_progress_wbtest.mbt#candidate Reflect.ownKeys traversal must honor the operation budget",
         "interpreter/runtime/own_key_progress_wbtest.mbt#native own-key collection covers Module bags and typed arrays",
         "interpreter/runtime/own_key_progress_wbtest.mbt#native getter interruption stops before synchronous and managed writes",
-        "interpreter/runtime/own_key_progress_wbtest.mbt#proxy enumerable filtering observes symbol classification",
+        "interpreter/runtime/own_key_progress_wbtest.mbt#enumerable consumer propagates descriptor interruption",
+        "interpreter/runtime/own_key_progress_wbtest.mbt#Proxy ownKeys observes the final target descriptor cancellation",
         "interpreter/runtime/own_key_progress_wbtest.mbt#synchronous proxy ownKeys stops before native index classification",
         "interpreter/runtime/own_key_progress_wbtest.mbt#managed native ownKeys result respects budget and reuses interpreter"
       ],
