@@ -88,6 +88,7 @@ fn Interpreter::copy_object_rest_properties(
   let rest_props : Map[String, Value] = Map([])
   let rest_symbol_props : Map[Int, Value] = Map([])
   for key in self.own_property_keys(value) {
+    self.observe_execution_step()
     let excluded = match key {
       String_(name) => excluded_string_keys.contains(name)
       Symbol(sym) => excluded_symbol_keys.contains(sym.id)
@@ -96,8 +97,10 @@ fn Interpreter::copy_object_rest_properties(
     if excluded {
       continue
     }
+    self.observe_execution_step()
     match self.get_own_property(value, key) {
       Some((desc, _)) if desc.enumerable => {
+        self.observe_execution_step()
         let property_value = self.get_computed_property(value, key, loc)
         match key {
           String_(name) => rest_props[name] = property_value

@@ -295,9 +295,17 @@ fn module_namespace_export_descriptor() -> PropDescriptor {
 }
 
 ///|
-fn module_namespace_own_string_keys(data : ObjectData) -> Array[String] {
+/// Observed lexical collection for interpreter-owned namespace traversal;
+/// sorting is bookkeeping after every namespace key has been charged.
+fn module_namespace_own_string_keys_observed(
+  interp : Interpreter,
+  data : ObjectData,
+) -> Array[String] raise Error {
   let keys : Array[String] = []
-  data.bag.properties.each(fn(k, _) { keys.push(k) })
+  data.bag.properties.each(fn(k, _) raise {
+    interp.observe_execution_step()
+    keys.push(k)
+  })
   keys.sort_by(fn(a, b) { a.lexical_compare(b) })
   keys
 }

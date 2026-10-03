@@ -15,14 +15,14 @@
 /// integer-index run before the exotic "length" key.
 
 ///|
-/// Append the own symbol keys of a property bag (resolved id -> SymbolData) to
-/// `out`, in insertion order. Unresolvable ids are skipped.
-fn append_resolved_symbol_keys(
+fn append_resolved_symbol_keys_observed(
+  interp : Interpreter,
   out : Array[Value],
   symbol_props : Map[Int, Value],
   sym_state : SymbolState,
-) -> Unit {
-  symbol_props.each(fn(sym_id, _raw) {
+) -> Unit raise Error {
+  symbol_props.each(fn(sym_id, _raw) raise {
+    interp.observe_execution_step()
     match sym_state.get_symbol_by_id(sym_id) {
       Some(sym) => out.push(Value::Symbol(sym))
       None => ()
@@ -31,31 +31,40 @@ fn append_resolved_symbol_keys(
 }
 
 ///|
-fn append_bag_own_keys(
+fn append_bag_own_keys_observed(
+  interp : Interpreter,
   keys : Array[Value],
   bag : PropertyBag,
   sym_state : SymbolState,
-) -> Unit {
-  for prop_name in sort_property_keys(bag.properties) {
+) -> Unit raise Error {
+  for prop_name in sort_property_keys_observed(interp, bag.properties) {
     keys.push(Value::String_(prop_name))
   }
-  append_resolved_symbol_keys(keys, bag.symbol_properties, sym_state)
+  append_resolved_symbol_keys_observed(
+    interp,
+    keys,
+    bag.symbol_properties,
+    sym_state,
+  )
 }
 
 ///|
-fn append_array_own_keys(
+fn append_array_own_keys_observed(
+  interp : Interpreter,
   keys : Array[Value],
   data : ArrayData,
   sym_state : SymbolState,
-) -> Unit {
+) -> Unit raise Error {
   let element_len = data.elements.length()
   for i in 0..<element_len {
+    interp.observe_execution_step()
     if !data.holes.contains(i) {
       keys.push(Value::String_(i.to_string()))
     }
   }
-  let sorted_bag_keys = sort_property_keys(data.bag.properties)
+  let sorted_bag_keys = sort_property_keys_observed(interp, data.bag.properties)
   for prop_name in sorted_bag_keys {
+    interp.observe_execution_step()
     match array_index_of_key(prop_name) {
       Some(idx) if idx >= element_len.to_int64() =>
         keys.push(Value::String_(prop_name))
@@ -64,12 +73,18 @@ fn append_array_own_keys(
   }
   keys.push(Value::String_("length"))
   for prop_name in sorted_bag_keys {
+    interp.observe_execution_step()
     match array_index_of_key(prop_name) {
       Some(_) => ()
       None => keys.push(Value::String_(prop_name))
     }
   }
-  append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
+  append_resolved_symbol_keys_observed(
+    interp,
+    keys,
+    data.bag.symbol_properties,
+    sym_state,
+  )
 }
 
 ///|
@@ -82,9 +97,10 @@ fn append_typedarray_own_keys(
   keys : Array[Value],
   data : ObjectData,
   sym_state : SymbolState,
-) -> Unit {
+) -> Unit raise Error {
   let length = typedarray_declared_length(data)
   for i in 0..<length {
+    interp.observe_execution_step()
     if (interp.stdlib_hooks.typedarray_is_valid_index)(
         data,
         i,
@@ -93,13 +109,19 @@ fn append_typedarray_own_keys(
       keys.push(Value::String_(i.to_string()))
     }
   }
-  for prop_name in sort_property_keys(data.bag.properties) {
+  for prop_name in sort_property_keys_observed(interp, data.bag.properties) {
+    interp.observe_execution_step()
     if is_typedarray_own_index_key(prop_name, length) {
       continue
     }
     keys.push(Value::String_(prop_name))
   }
-  append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
+  append_resolved_symbol_keys_observed(
+    interp,
+    keys,
+    data.bag.symbol_properties,
+    sym_state,
+  )
 }
 
 ///|
@@ -118,24 +140,31 @@ pub fn Interpreter::own_property_keys(
   match val {
     Object(data) =>
       if data.class_name == "Module" {
-        for prop_name in module_namespace_own_string_keys(data) {
+        for prop_name in module_namespace_own_string_keys_observed(self, data) {
           keys.push(Value::String_(prop_name))
         }
-        append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
+        append_resolved_symbol_keys_observed(
+          self,
+          keys,
+          data.bag.symbol_properties,
+          sym_state,
+        )
       } else if is_typedarray_class(data.class_name) {
         append_typedarray_own_keys(self, keys, data, sym_state)
       } else {
-        append_bag_own_keys(keys, data.bag, sym_state)
+        append_bag_own_keys_observed(self, keys, data.bag, sym_state)
       }
-    Array(data) => append_array_own_keys(keys, data, sym_state)
-    Map(data) => append_bag_own_keys(keys, data.bag, sym_state)
-    Set(data) => append_bag_own_keys(keys, data.bag, sym_state)
-    Promise(data) => append_bag_own_keys(keys, data.bag, sym_state)
+    Array(data) => append_array_own_keys_observed(self, keys, data, sym_state)
+    Map(data) => append_bag_own_keys_observed(self, keys, data.bag, sym_state)
+    Set(data) => append_bag_own_keys_observed(self, keys, data.bag, sym_state)
+    Promise(data) =>
+      append_bag_own_keys_observed(self, keys, data.bag, sym_state)
     Value::String_(s) => {
       // ToObject(String) characterization (§10.4.3): indexed character slots
       // then "length". Only reached through getOwnPropertyNames coercion.
-      let length = utf16_length(s)
+      let length = s.length()
       for i in 0..<length {
+        self.observe_execution_step()
         keys.push(Value::String_(i.to_string()))
       }
       keys.push(Value::String_("length"))
@@ -169,6 +198,7 @@ pub fn own_string_property_names(
     _ => {
       let result : Array[Value] = []
       for key in interp.own_property_keys(source) {
+        interp.observe_execution_step()
         if key is Value::String_(_) {
           result.push(key)
         }
@@ -193,6 +223,7 @@ pub fn own_symbol_properties(
     _ => {
       let result : Array[Value] = []
       for key in interp.own_property_keys(source) {
+        interp.observe_execution_step()
         if key is Value::Symbol(_) {
           result.push(key)
         }

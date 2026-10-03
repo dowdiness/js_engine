@@ -865,9 +865,12 @@ pub fn Interpreter::copy_object_spread_properties(
     return
   }
   for key in self.own_property_keys(source) {
+    self.observe_execution_step()
     match self.get_own_property(source, key) {
       Some((desc, _)) if desc.enumerable => {
+        self.observe_execution_step()
         let value = self.get_computed_property(source, key, loc)
+        self.observe_execution_step()
         let succeeded = self.define_own_property(
           target,
           key,

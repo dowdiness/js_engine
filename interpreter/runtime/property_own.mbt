@@ -9,6 +9,19 @@ fn array_index_of_key(key : String) -> Int64? {
 }
 
 ///|
+fn compare_array_index_keys(a : String, b : String) -> Int {
+  let na = array_index_of_key(a).unwrap_or(0L)
+  let nb = array_index_of_key(b).unwrap_or(0L)
+  if na < nb {
+    -1
+  } else if na > nb {
+    1
+  } else {
+    0
+  }
+}
+
+///|
 /// Sort property keys per OrdinaryOwnPropertyKeys spec order:
 /// 1. Integer indices in ascending numeric order
 /// 2. Other string keys in insertion order
@@ -21,17 +34,29 @@ pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
       None => str_keys.push(k)
     }
   })
-  int_keys.sort_by(fn(a, b) {
-    let na = array_index_of_key(a).unwrap_or(0L)
-    let nb = array_index_of_key(b).unwrap_or(0L)
-    if na < nb {
-      -1
-    } else if na > nb {
-      1
-    } else {
-      0
+  int_keys.sort_by(compare_array_index_keys)
+  [..int_keys, ..str_keys]
+}
+
+///|
+/// Observed key partitioning for interpreter-owned traversal. The pure sorter
+/// above remains the deterministic ordering core; this counterpart observes
+/// each collected key before it is classified, then reuses the same numeric
+/// ordering semantics without charging the comparator.
+fn sort_property_keys_observed(
+  interp : Interpreter,
+  props : Map[String, Value],
+) -> Array[String] raise Error {
+  let int_keys : Array[String] = []
+  let str_keys : Array[String] = []
+  props.each(fn(k, _v) raise {
+    interp.observe_execution_step()
+    match array_index_of_key(k) {
+      Some(_) => int_keys.push(k)
+      None => str_keys.push(k)
     }
   })
+  int_keys.sort_by(compare_array_index_keys)
   [..int_keys, ..str_keys]
 }
 

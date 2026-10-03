@@ -774,7 +774,9 @@ pub fn proxy_own_property_keys(
   let trap_keys : Array[Value] = []
   let trap_result_len = to_array_like_length_interp(trap_result, interp)
   for i = 0L; i < trap_result_len; i = i + 1L {
+    interp.observe_execution_step()
     let elem = get_array_like_element_interp(interp, trap_result, i)
+    interp.observe_execution_step()
     match elem {
       Value::String_(_) | Value::Symbol(_) => trap_keys.push(elem)
       _ =>
@@ -787,6 +789,7 @@ pub fn proxy_own_property_keys(
   let seen_strings : @set.Set[String] = Default::default()
   let seen_symbols : Map[Int, Bool] = Map([])
   for key in trap_keys {
+    interp.observe_execution_step()
     match key {
       Value::String_(s) => {
         if seen_strings.contains(s) {
@@ -814,7 +817,10 @@ pub fn proxy_own_property_keys(
   let target_nonconfigurable_keys : Array[Value] = []
   let target_configurable_keys : Array[Value] = []
   for key in target_keys {
-    let non_configurable = match interp.get_own_property(target, key) {
+    interp.observe_execution_step()
+    let target_descriptor = interp.get_own_property(target, key)
+    interp.observe_execution_step()
+    let non_configurable = match target_descriptor {
       Some((desc, _)) => !desc.configurable
       None => false
     }
@@ -832,6 +838,7 @@ pub fn proxy_own_property_keys(
   let unchecked : Map[String, Int] = Map([]) // string key -> count
   let unchecked_sym : Map[Int, Int] = Map([]) // symbol id -> count
   for key in trap_keys {
+    interp.observe_execution_step()
     match key {
       Value::String_(s) =>
         unchecked[s] = match unchecked.get(s) {
@@ -848,6 +855,7 @@ pub fn proxy_own_property_keys(
   }
   // Step 17: For each key in targetNonconfigurableKeys, must be in trapResult
   for key in target_nonconfigurable_keys {
+    interp.observe_execution_step()
     match key {
       Value::String_(s) =>
         match unchecked.get(s) {
@@ -874,6 +882,7 @@ pub fn proxy_own_property_keys(
   }
   // Step 19: For each key in targetConfigurableKeys, must be in unchecked
   for key in target_configurable_keys {
+    interp.observe_execution_step()
     match key {
       Value::String_(s) =>
         match unchecked.get(s) {
@@ -896,8 +905,14 @@ pub fn proxy_own_property_keys(
   }
   // Step 20: If uncheckedResultKeys is not empty, throw TypeError
   let mut remaining = 0
-  unchecked.each(fn(_k, v) { remaining = remaining + v })
-  unchecked_sym.each(fn(_k, v) { remaining = remaining + v })
+  unchecked.each(fn(_k, v) raise {
+    interp.observe_execution_step()
+    remaining = remaining + v
+  })
+  unchecked_sym.each(fn(_k, v) raise {
+    interp.observe_execution_step()
+    remaining = remaining + v
+  })
   if remaining > 0 {
     raise @errors.TypeError(
       message="'ownKeys' on proxy: trap returned extra keys for a non-extensible target",

@@ -713,6 +713,7 @@ pub fn setup_object_builtins(
             )
             let loc = @token.Loc::default()
             for i = 1; i < args.length(); i = i + 1 {
+              interp.observe_execution_step()
               match args[i] {
                 Null | Undefined => ()
                 next_source => {
@@ -723,8 +724,10 @@ pub fn setup_object_builtins(
                   )
                   let keys = interp.own_property_keys(source)
                   for key in keys {
+                    interp.observe_execution_step()
                     match interp.get_own_property(source, key) {
                       Some((desc, _)) if desc.enumerable => {
+                        interp.observe_execution_step()
                         let property_value = match key {
                           String_(prop) =>
                             interp.get_property(source, prop, loc)
@@ -735,6 +738,7 @@ pub fn setup_object_builtins(
                               message="Object.assign received a non-property key",
                             )
                         }
+                        interp.observe_execution_step()
                         let _ = match key {
                           String_(prop) =>
                             interp.set_property(

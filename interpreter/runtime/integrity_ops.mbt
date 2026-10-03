@@ -106,17 +106,20 @@ fn Interpreter::set_integrity_level(
   for key in keys {
     let current = match level {
       Sealed => None
-      Frozen =>
+      Frozen => {
+        self.observe_execution_step()
         match self.get_own_property(obj, key) {
           Some((desc, _)) => Some(desc)
           None => None
         }
+      }
     }
     // Frozen skips keys that disappeared after [[OwnPropertyKeys]]. Sealed
     // follows the spec and still attempts DefinePropertyOrThrow for each key.
     if level is Frozen && current is None {
       continue
     }
+    self.observe_execution_step()
     let succeeded = self.define_own_property(
       obj,
       key,
@@ -141,6 +144,7 @@ fn Interpreter::test_integrity_level(
   guard !self.is_extensible_internal(obj) else { return Bool(false) }
   let keys = self.own_property_keys(obj)
   for key in keys {
+    self.observe_execution_step()
     match self.get_own_property(obj, key) {
       Some((desc, _)) if !descriptor_has_integrity(level, desc) =>
         return Bool(false)
