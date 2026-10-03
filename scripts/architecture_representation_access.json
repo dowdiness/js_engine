@@ -1104,8 +1104,8 @@
     {
       "path": "interpreter/stdlib/map_builtins.mbt",
       "pattern_id": "representation-map-set-fields",
-      "allowed_count": 16,
-      "fingerprint": "16:978:14860:698052",
+      "allowed_count": 17,
+      "fingerprint": "17:926:767653:296804",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1167,8 +1167,8 @@
     {
       "path": "interpreter/stdlib/map_set_common.mbt",
       "pattern_id": "representation-map-set-fields",
-      "allowed_count": 3,
-      "fingerprint": "3:112:970002:845581",
+      "allowed_count": 6,
+      "fingerprint": "6:273:133609:165093",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1230,8 +1230,8 @@
     {
       "path": "interpreter/stdlib/map_set_common.mbt",
       "pattern_id": "runtime-set-data-type",
-      "allowed_count": 2,
-      "fingerprint": "2:46:480323:280008",
+      "allowed_count": 4,
+      "fingerprint": "4:92:960646:560016",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1248,8 +1248,8 @@
     {
       "path": "interpreter/stdlib/set_builtins.mbt",
       "pattern_id": "representation-map-set-fields",
-      "allowed_count": 40,
-      "fingerprint": "40:1936:299081:453968",
+      "allowed_count": 32,
+      "fingerprint": "32:1552:612759:529509",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1285,7 +1285,7 @@
       "path": "interpreter/stdlib/set_builtins.mbt",
       "pattern_id": "runtime-set-constructor",
       "allowed_count": 23,
-      "fingerprint": "23:673:999795:485585",
+      "fingerprint": "23:671:431734:986011",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
