@@ -13,12 +13,414 @@ fn is_concat_spreadable(
 }
 
 ///|
+fn array_has_execution_observer_968(interp : Interpreter) -> Bool {
+  interp.global.bindings.get("[[ExecutionControl]]") is Some(_)
+}
+
+///|
 fn array_flat_elements_with_length(value : Value, len : Int64) -> Array[Value] {
   let elements : Array[Value] = []
   for i = 0L; i < len; i = i + 1L {
     elements.push(@runtime.get_array_like_element(value, i))
   }
   elements
+}
+
+///|
+fn array_push_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  match o {
+    Array(_) if args.length() == 0 =>
+      return array_push_indexed_properties(interp, o, args)
+    _ => ()
+  }
+  let mut len = array_mutator_length_number(interp, o)
+  if len + args.length().to_double() > ARRAY_MAX_SAFE_LENGTH {
+    raise @errors.TypeError(message="Invalid array length")
+  }
+  for arg in args {
+    interp.observe_execution_step()
+    array_mutator_set_property_key(interp, o, len.to_string(), arg)
+    len = len + 1.0
+  }
+  array_mutator_set_length_number(interp, o, len)
+  Value::Number(len)
+}
+
+///|
+fn array_shift_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+) -> Value raise Error {
+  let len = array_mutator_length_number(interp, o)
+  let len64 = len.to_int64()
+  if len64 == 0L {
+    return array_shift_indexed_properties(interp, o)
+  }
+  if !array_has_execution_observer_968(interp) {
+    match o {
+      Array(arr) =>
+        match
+          array_shift_sparse_high_index_properties(interp, arr, len, len64) {
+          Some(result) => return result
+          None => ()
+        }
+      _ => ()
+    }
+  }
+  interp.observe_execution_step()
+  let first = interp.get_property(o, "0", @token.Loc::default())
+  let mut k = 1L
+  while k < len64 {
+    interp.observe_execution_step()
+    let from_key = k.to_string()
+    let to_key = (k - 1L).to_string()
+    if interp.has_property(o, from_key) {
+      let from_value = interp.get_property(o, from_key, @token.Loc::default())
+      array_mutator_set_property_key(interp, o, to_key, from_value)
+    } else {
+      array_mutator_delete_property_key(interp, o, to_key)
+    }
+    k = k + 1L
+  }
+  interp.observe_execution_step()
+  array_mutator_delete_property_key(interp, o, (len64 - 1L).to_string())
+  array_mutator_set_length_number(interp, o, len - 1.0)
+  first
+}
+
+///|
+fn array_unshift_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  match o {
+    Array(_) if args.length() == 0 =>
+      return array_unshift_indexed_properties(interp, o, args)
+    _ => ()
+  }
+  let len = array_mutator_length_number(interp, o)
+  let len64 = len.to_int64()
+  let arg_count = args.length()
+  if arg_count > 0 {
+    if len + arg_count.to_double() > ARRAY_MAX_SAFE_LENGTH {
+      raise @errors.TypeError(message="Invalid array length")
+    }
+    if !array_has_execution_observer_968(interp) {
+      match o {
+        Array(arr) =>
+          match
+            array_unshift_sparse_high_index_properties(
+              interp, arr, args, len, len64,
+            ) {
+            Some(result) => return result
+            None => ()
+          }
+        _ => ()
+      }
+    }
+    let arg_count64 = arg_count.to_int64()
+    let mut k = len64
+    while k > 0L {
+      interp.observe_execution_step()
+      let from_key = (k - 1L).to_string()
+      let to_key = (k + arg_count64 - 1L).to_string()
+      if interp.has_property(o, from_key) {
+        let from_value = interp.get_property(o, from_key, @token.Loc::default())
+        array_mutator_set_property_key(interp, o, to_key, from_value)
+      } else {
+        array_mutator_delete_property_key(interp, o, to_key)
+      }
+      k = k - 1L
+    }
+    for j = 0; j < arg_count; j = j + 1 {
+      interp.observe_execution_step()
+      array_mutator_set_property_key(interp, o, j.to_string(), args[j])
+    }
+  }
+  let new_len = len + arg_count.to_double()
+  array_mutator_set_length_number(interp, o, new_len)
+  Value::Number(new_len)
+}
+
+///|
+fn array_reverse_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+) -> Value raise Error {
+  let len = @runtime.to_array_like_length_interp(o, interp)
+  match o {
+    Array(_) if len <= 1L => return array_reverse_indexed_properties(interp, o)
+    _ => ()
+  }
+  let middle = len / 2L
+  for lower = 0L; lower < middle; lower = lower + 1L {
+    interp.observe_execution_step()
+    let upper = len - lower - 1L
+    let lower_exists = array_mutator_has_index(interp, o, lower)
+    let lower_value = if lower_exists {
+      Some(@runtime.get_array_like_element_interp(interp, o, lower))
+    } else {
+      None
+    }
+    let upper_exists = array_mutator_has_index(interp, o, upper)
+    let upper_value = if upper_exists {
+      Some(@runtime.get_array_like_element_interp(interp, o, upper))
+    } else {
+      None
+    }
+    match (lower_value, upper_value) {
+      (Some(lv), Some(uv)) => {
+        array_mutator_set_index(interp, o, lower, uv)
+        array_mutator_set_index(interp, o, upper, lv)
+      }
+      (Some(lv), None) => {
+        array_mutator_delete_index(interp, o, lower)
+        array_mutator_set_index(interp, o, upper, lv)
+      }
+      (None, Some(uv)) => {
+        array_mutator_set_index(interp, o, lower, uv)
+        array_mutator_delete_index(interp, o, upper)
+      }
+      (None, None) => ()
+    }
+  }
+  o
+}
+
+///|
+fn array_fill_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  let fill_value = if args.length() > 0 { args[0] } else { Undefined }
+  let len = @runtime.to_array_like_length_interp(o, interp)
+  match o {
+    Array(_) if len == 0L =>
+      return array_fill_indexed_properties(interp, o, args)
+    _ => ()
+  }
+  let start = if args.length() > 1 {
+    array_mutator_relative_index64(
+      array_mutator_to_integer_index(interp, args[1]),
+      len,
+    )
+  } else {
+    0L
+  }
+  let final_index = if args.length() > 2 {
+    match args[2] {
+      Undefined => len
+      _ =>
+        array_mutator_relative_index64(
+          array_mutator_to_integer_index(interp, args[2]),
+          len,
+        )
+    }
+  } else {
+    len
+  }
+  for k = start; k < final_index; k = k + 1L {
+    interp.observe_execution_step()
+    array_mutator_set_index(interp, o, k, fill_value)
+  }
+  o
+}
+
+///|
+fn array_copy_within_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  let len = @runtime.to_array_like_length_interp(o, interp)
+  match o {
+    Array(_) if len == 0L =>
+      return array_copy_within_indexed_properties(interp, o, args)
+    _ => ()
+  }
+  let mut to = if args.length() > 0 {
+    array_mutator_relative_index64(
+      array_mutator_to_integer_index(interp, args[0]),
+      len,
+    )
+  } else {
+    0L
+  }
+  let mut from = if args.length() > 1 {
+    array_mutator_relative_index64(
+      array_mutator_to_integer_index(interp, args[1]),
+      len,
+    )
+  } else {
+    0L
+  }
+  let final_index = if args.length() > 2 {
+    match args[2] {
+      Undefined => len
+      _ =>
+        array_mutator_relative_index64(
+          array_mutator_to_integer_index(interp, args[2]),
+          len,
+        )
+    }
+  } else {
+    len
+  }
+  let mut count = if final_index - from < len - to {
+    final_index - from
+  } else {
+    len - to
+  }
+  if count <= 0 {
+    return o
+  }
+  let mut direction = 1L
+  if from < to && to < from + count {
+    direction = -1L
+    from = from + count - 1L
+    to = to + count - 1L
+  }
+  while count > 0L {
+    interp.observe_execution_step()
+    if array_mutator_has_index(interp, o, from) {
+      let from_value = @runtime.get_array_like_element_interp(interp, o, from)
+      array_mutator_set_index(interp, o, to, from_value)
+    } else {
+      array_mutator_delete_index(interp, o, to)
+    }
+    from = from + direction
+    to = to + direction
+    count = count - 1L
+  }
+  o
+}
+
+///|
+fn array_splice_indexed_properties_observed_968(
+  interp : Interpreter,
+  o : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  let alen = @runtime.to_array_like_length_interp(o, interp)
+  match o {
+    Array(_) if alen == 0L && args.length() == 0 =>
+      return array_splice_indexed_properties(interp, o, args)
+    _ => ()
+  }
+  let mut start = if args.length() > 0 {
+    array_mutator_to_integer_index(interp, args[0])
+  } else {
+    0L
+  }
+  if start < 0L {
+    start = alen + start
+    if start < 0L {
+      start = 0L
+    }
+  }
+  if start > alen {
+    start = alen
+  }
+  let del_count = if args.length() == 0 {
+    0L
+  } else if args.length() == 1 {
+    alen - start
+  } else {
+    let d = array_mutator_to_integer_index(interp, args[1])
+    if d < 0L {
+      0L
+    } else if d > alen - start {
+      alen - start
+    } else {
+      d
+    }
+  }
+  let items_count = if args.length() > 2 {
+    (args.length() - 2).to_int64()
+  } else {
+    0L
+  }
+  let new_len = alen - del_count + items_count
+  if new_len > ARRAY_MAX_SAFE_LENGTH_I64 {
+    raise @errors.TypeError(message="Invalid array length")
+  }
+  let removed = @runtime.array_species_create(interp, o, del_count)
+  for i = 0L; i < del_count; i = i + 1L {
+    interp.observe_execution_step()
+    if array_mutator_has_index(interp, o, start + i) {
+      @runtime.create_data_property_or_throw(
+        interp,
+        removed,
+        i,
+        @runtime.get_array_like_element_interp(interp, o, start + i),
+      )
+    }
+  }
+  @runtime.set_array_like_length(removed, del_count)
+  let new_items : Array[Value] = []
+  for i = 2; i < args.length(); i = i + 1 {
+    new_items.push(args[i])
+  }
+  if items_count < del_count {
+    for i = start; i < alen - del_count; i = i + 1L {
+      interp.observe_execution_step()
+      let from = i + del_count
+      let to = i + items_count
+      if array_mutator_has_index(interp, o, from) {
+        let from_value = @runtime.get_array_like_element_interp(interp, o, from)
+        array_mutator_set_index(interp, o, to, from_value)
+      } else {
+        array_mutator_delete_index(interp, o, to)
+      }
+    }
+    for i = alen; i > new_len; i = i - 1L {
+      interp.observe_execution_step()
+      array_mutator_delete_index(interp, o, i - 1L)
+    }
+  } else if items_count > del_count {
+    for i = alen - del_count; i > start; i = i - 1L {
+      interp.observe_execution_step()
+      let from = i + del_count - 1L
+      let to = i + items_count - 1L
+      if array_mutator_has_index(interp, o, from) {
+        let from_value = @runtime.get_array_like_element_interp(interp, o, from)
+        array_mutator_set_index(interp, o, to, from_value)
+      } else {
+        array_mutator_delete_index(interp, o, to)
+      }
+    }
+  }
+  for i = 0; i < new_items.length(); i = i + 1 {
+    interp.observe_execution_step()
+    array_mutator_set_index(interp, o, start + i.to_int64(), new_items[i])
+  }
+  array_mutator_set_length(interp, o, new_len)
+  removed
+}
+
+///|
+fn array_make_with_prototype_observed_968(
+  interp : Interpreter,
+  args : Array[Value],
+  prototype : Value,
+) -> Value raise Error {
+  let result = @runtime.make_array_with_prototype([], prototype)
+  match result {
+    Array(data) => {
+      for value in args {
+        interp.observe_execution_step()
+        data.elements.push(value)
+      }
+      result
+    }
+    _ => result
+  }
 }
 
 ///|
@@ -47,7 +449,7 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      array_push_indexed_properties(interp, o, args)
+      array_push_indexed_properties_observed_968(interp, o, args)
     },
   )
   array_proto_props["pop"] = @runtime.make_interp_method_func(
@@ -63,7 +465,7 @@ fn setup_array_builtins(
     length=0,
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
-      array_shift_indexed_properties(interp, o)
+      array_shift_indexed_properties_observed_968(interp, o)
     },
   )
   array_proto_props["unshift"] = @runtime.make_interp_method_func(
@@ -71,7 +473,7 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      array_unshift_indexed_properties(interp, o, args)
+      array_unshift_indexed_properties_observed_968(interp, o, args)
     },
   )
   array_proto_props["join"] = @runtime.make_interp_method_func(
@@ -90,6 +492,7 @@ fn setup_array_builtins(
       }
       let parts : Array[String] = []
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         let v = @runtime.get_array_like_element_interp(interp, o, i)
         match v {
           Null | Undefined => parts.push("")
@@ -247,6 +650,7 @@ fn setup_array_builtins(
       let a = @runtime.array_species_create(interp, o, count)
       let mut n = 0L
       for i = start; i < end; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           @runtime.create_data_property_or_throw(
             interp,
@@ -279,6 +683,7 @@ fn setup_array_builtins(
         if spreadable {
           let len = @runtime.to_array_like_length_interp(item, interp)
           for i = 0L; i < len; i = i + 1L {
+            interp.observe_execution_step()
             let key = i.to_string()
             if interp.has_property(item, key) {
               @runtime.create_data_property_or_throw(
@@ -291,6 +696,7 @@ fn setup_array_builtins(
             n += 1
           }
         } else {
+          interp.observe_execution_step()
           @runtime.create_data_property_or_throw(interp, a, n, item)
           n += 1
         }
@@ -304,7 +710,7 @@ fn setup_array_builtins(
     length=0,
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
-      array_reverse_indexed_properties(interp, o)
+      array_reverse_indexed_properties_observed_968(interp, o)
     },
   )
   array_proto_props["fill"] = @runtime.make_interp_method_func(
@@ -312,7 +718,7 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      array_fill_indexed_properties(interp, o, args)
+      array_fill_indexed_properties_observed_968(interp, o, args)
     },
   )
   let object_proto_to_string = match obj_proto {
@@ -364,6 +770,7 @@ fn setup_array_builtins(
       let len = @runtime.to_array_like_length_interp(o, interp)
       let parts : Array[String] = []
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         let v = @runtime.get_array_like_element_interp(interp, o, i)
         match v {
           Null | Undefined => parts.push("")
@@ -401,6 +808,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           let _ = interp.call_value(
             callback,
@@ -433,6 +841,7 @@ fn setup_array_builtins(
       let loc = @token.Loc::default()
       let a = @runtime.array_species_create(interp, o, len)
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
@@ -468,6 +877,7 @@ fn setup_array_builtins(
       let a = @runtime.array_species_create(interp, o, 0L)
       let mut to = 0L
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           let el = @runtime.get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
@@ -506,6 +916,7 @@ fn setup_array_builtins(
         // Per spec: find first present element as initial value
         let mut k_present = false
         while k < len {
+          interp.observe_execution_step()
           if @runtime.has_array_like_element(interp, o, k) {
             acc = @runtime.get_array_like_element_interp(interp, o, k)
             k = k + 1L
@@ -521,6 +932,7 @@ fn setup_array_builtins(
         }
       }
       while k < len {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, k) {
           acc = interp.call_value(
             callback,
@@ -560,6 +972,7 @@ fn setup_array_builtins(
         // Per spec: find last present element as initial value (searching right to left)
         let mut k_present = false
         while k >= 0L {
+          interp.observe_execution_step()
           if @runtime.has_array_like_element(interp, o, k) {
             acc = @runtime.get_array_like_element_interp(interp, o, k)
             k = k - 1L
@@ -575,6 +988,7 @@ fn setup_array_builtins(
         }
       }
       while k >= 0L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, k) {
           acc = interp.call_value(
             callback,
@@ -608,6 +1022,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -637,6 +1052,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -666,6 +1082,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = len - 1L; i >= 0L; i = i - 1L {
+        interp.observe_execution_step()
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -695,6 +1112,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = len - 1L; i >= 0L; i = i - 1L {
+        interp.observe_execution_step()
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -724,6 +1142,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
@@ -758,6 +1177,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
@@ -862,7 +1282,7 @@ fn setup_array_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      array_splice_indexed_properties(interp, o, args)
+      array_splice_indexed_properties_observed_968(interp, o, args)
     },
   )
   array_proto_props["copyWithin"] = @runtime.make_interp_method_func(
@@ -870,7 +1290,7 @@ fn setup_array_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      array_copy_within_indexed_properties(interp, o, args)
+      array_copy_within_indexed_properties_observed_968(interp, o, args)
     },
   )
   array_proto_props["entries"] = make_array_entries_iterator_method(realm_state)
@@ -885,6 +1305,7 @@ fn setup_array_builtins(
       array_mutator_require_array_create_length(len)
       let result : Array[Value] = []
       for i = len - 1L; i >= 0L; i = i - 1L {
+        interp.observe_execution_step()
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       @runtime.make_array(result)
@@ -1059,12 +1480,15 @@ fn setup_array_builtins(
       array_mutator_require_array_create_length(new_len)
       let result : Array[Value] = []
       for i = 0L; i < start; i = i + 1L {
+        interp.observe_execution_step()
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       for i = 2; i < args.length(); i = i + 1 {
+        interp.observe_execution_step()
         result.push(args[i])
       }
       for i = start + del_count; i < len; i = i + 1L {
+        interp.observe_execution_step()
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       @runtime.make_array(result)
@@ -1089,6 +1513,7 @@ fn setup_array_builtins(
       array_mutator_require_array_create_length(len)
       let result : Array[Value] = []
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         if i == actual_idx {
           result.push(value)
         } else {
@@ -1186,6 +1611,7 @@ fn setup_array_builtins(
       @runtime.make_array([])
     }
     for i, value in args {
+      interp.observe_execution_step()
       @runtime.create_data_property_or_throw(
         interp,
         result,
@@ -1305,6 +1731,7 @@ fn setup_array_builtins(
         @runtime.make_array([])
       }
       for i = 0L; i < len; i = i + 1L {
+        interp.observe_execution_step()
         let value = interp.get_property(array_like, i.to_string(), loc)
         let mapped = match map_fn {
           Some(fn_val) =>
@@ -1410,10 +1837,13 @@ fn setup_array_builtins(
               @runtime.set_array_prototype_override(arr_data, instance_proto)
               Value::Array(arr_data)
             }
-            _ => @runtime.make_array_with_prototype(args, instance_proto)
+            _ =>
+              array_make_with_prototype_observed_968(
+                interp, args, instance_proto,
+              )
           }
         } else {
-          @runtime.make_array_with_prototype(args, instance_proto)
+          array_make_with_prototype_observed_968(interp, args, instance_proto)
         }
       }),
     ),
