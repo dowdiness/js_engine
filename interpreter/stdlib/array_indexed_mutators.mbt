@@ -291,6 +291,7 @@ fn array_push_indexed_properties(
     raise @errors.TypeError(message="Invalid array length")
   }
   for arg in args {
+    interp.observe_execution_step()
     array_mutator_set_property_key(interp, o, len.to_string(), arg)
     len = len + 1.0
   }
@@ -326,6 +327,7 @@ fn array_reverse_indexed_properties(
   let len = @runtime.to_array_like_length_interp(o, interp)
   let middle = len / 2L
   for lower = 0L; lower < middle; lower = lower + 1L {
+    interp.observe_execution_step()
     let upper = len - lower - 1L
     let lower_exists = array_mutator_has_index(interp, o, lower)
     let lower_value = if lower_exists {
@@ -333,6 +335,7 @@ fn array_reverse_indexed_properties(
     } else {
       None
     }
+    interp.observe_execution_step()
     let upper_exists = array_mutator_has_index(interp, o, upper)
     let upper_value = if upper_exists {
       Some(@runtime.get_array_like_element_interp(interp, o, upper))
@@ -410,6 +413,7 @@ fn array_copy_within_indexed_properties(
     to = to + count - 1L
   }
   while count > 0L {
+    interp.observe_execution_step()
     if array_mutator_has_index(interp, o, from) {
       let from_value = @runtime.get_array_like_element_interp(interp, o, from)
       array_mutator_set_index(interp, o, to, from_value)
@@ -454,6 +458,7 @@ fn array_fill_indexed_properties(
     len
   }
   for k = start; k < final_index; k = k + 1L {
+    interp.observe_execution_step()
     array_mutator_set_index(interp, o, k, fill_value)
   }
   o
@@ -580,17 +585,22 @@ fn array_shift_indexed_properties(
     array_mutator_set_length_number(interp, o, 0.0)
     return Undefined
   }
-  match o {
-    Array(arr) =>
-      match array_shift_sparse_high_index_properties(interp, arr, len, len64) {
-        Some(result) => return result
-        None => ()
-      }
-    _ => ()
+  if !array_has_execution_observer_968(interp) {
+    match o {
+      Array(arr) =>
+        match
+          array_shift_sparse_high_index_properties(interp, arr, len, len64) {
+          Some(result) => return result
+          None => ()
+        }
+      _ => ()
+    }
   }
+  interp.observe_execution_step()
   let first = interp.get_property(o, "0", @token.Loc::default())
   let mut k = 1L
   while k < len64 {
+    interp.observe_execution_step()
     let from_key = k.to_string()
     let to_key = (k - 1L).to_string()
     if interp.has_property(o, from_key) {
@@ -601,6 +611,7 @@ fn array_shift_indexed_properties(
     }
     k = k + 1L
   }
+  interp.observe_execution_step()
   array_mutator_delete_property_key(interp, o, (len64 - 1L).to_string())
   array_mutator_set_length_number(interp, o, len - 1.0)
   first
@@ -622,20 +633,23 @@ fn array_unshift_indexed_properties(
     if len + arg_count.to_double() > ARRAY_MAX_SAFE_LENGTH {
       raise @errors.TypeError(message="Invalid array length")
     }
-    match o {
-      Array(arr) =>
-        match
-          array_unshift_sparse_high_index_properties(
-            interp, arr, args, len, len64,
-          ) {
-          Some(result) => return result
-          None => ()
-        }
-      _ => ()
+    if !array_has_execution_observer_968(interp) {
+      match o {
+        Array(arr) =>
+          match
+            array_unshift_sparse_high_index_properties(
+              interp, arr, args, len, len64,
+            ) {
+            Some(result) => return result
+            None => ()
+          }
+        _ => ()
+      }
     }
     let arg_count64 = arg_count.to_int64()
     let mut k = len64
     while k > 0L {
+      interp.observe_execution_step()
       let from_key = (k - 1L).to_string()
       let to_key = (k + arg_count64 - 1L).to_string()
       if interp.has_property(o, from_key) {
@@ -647,6 +661,7 @@ fn array_unshift_indexed_properties(
       k = k - 1L
     }
     for j = 0; j < arg_count; j = j + 1 {
+      interp.observe_execution_step()
       array_mutator_set_property_key(interp, o, j.to_string(), args[j])
     }
   }
@@ -701,6 +716,7 @@ fn array_splice_indexed_properties(
   }
   let removed = @runtime.array_species_create(interp, o, del_count)
   for i = 0L; i < del_count; i = i + 1L {
+    interp.observe_execution_step()
     if array_mutator_has_index(interp, o, start + i) {
       @runtime.create_data_property_or_throw(
         interp,
@@ -717,6 +733,7 @@ fn array_splice_indexed_properties(
   }
   if items_count < del_count {
     for i = start; i < alen - del_count; i = i + 1L {
+      interp.observe_execution_step()
       let from = i + del_count
       let to = i + items_count
       if array_mutator_has_index(interp, o, from) {
@@ -727,10 +744,12 @@ fn array_splice_indexed_properties(
       }
     }
     for i = alen; i > new_len; i = i - 1L {
+      interp.observe_execution_step()
       array_mutator_delete_index(interp, o, i - 1L)
     }
   } else if items_count > del_count {
     for i = alen - del_count; i > start; i = i - 1L {
+      interp.observe_execution_step()
       let from = i + del_count - 1L
       let to = i + items_count - 1L
       if array_mutator_has_index(interp, o, from) {
@@ -742,6 +761,7 @@ fn array_splice_indexed_properties(
     }
   }
   for i = 0; i < new_items.length(); i = i + 1 {
+    interp.observe_execution_step()
     array_mutator_set_index(interp, o, start + i.to_int64(), new_items[i])
   }
   array_mutator_set_length(interp, o, new_len)

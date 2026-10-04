@@ -174,9 +174,9 @@ test "bounded JSON call retains target mutation before later budget failure" {
   let engine = @js_engine.Engine()
   engine.eval(
     (
-      #|let events = [];
-      #|function target() { events.push("started"); return 42; }
-      #|function readEvents() { return events; }
+      #|let startedCount = 0;
+      #|function target() { startedCount++; return 42; }
+      #|function readEvents() { return startedCount; }
     ),
   )
   ignore(
@@ -184,14 +184,15 @@ test "bounded JSON call retains target mutation before later budget failure" {
       engine.call_json_bounded(
         "target",
         [],
-        bounded_call_policy(4L, 10L, @js_engine.InterruptionHandle()),
+        // Three steps retain the scalar effect before later work, without Array work.
+        bounded_call_policy(3L, 10L, @js_engine.InterruptionHandle()),
       ),
       "execution-limit",
       "execute",
       @js_engine.PendingJobs::None,
     ),
   )
-  json_inspect(engine.call_json("readEvents", []), content=["started"])
+  json_inspect(engine.call_json("readEvents", []), content=1)
 }
 
 ///|
@@ -199,13 +200,14 @@ test "one bounded call budget continues from getter into target" {
   let engine = @js_engine.Engine()
   engine.eval(
     (
-      #|let events = [];
+      #|let getterCount = 0;
+      #|let targetCount = 0;
       #|Object.defineProperty(globalThis, "target", {
-      #|  get() { events.push("getter"); return function() {
-      #|    events.push("target"); return 42;
+      #|  get() { getterCount++; return function() {
+      #|    targetCount++; return 42;
       #|  }; }
       #|});
-      #|function readEvents() { return events; }
+      #|function readEvents() { return [getterCount, targetCount]; }
     ),
   )
   ignore(
@@ -213,14 +215,15 @@ test "one bounded call budget continues from getter into target" {
       engine.call_json_bounded(
         "target",
         [],
-        bounded_call_policy(6L, 10L, @js_engine.InterruptionHandle()),
+        // Five steps retain the getter effect before target work, without Array work.
+        bounded_call_policy(5L, 10L, @js_engine.InterruptionHandle()),
       ),
       "execution-limit",
       "execute",
       @js_engine.PendingJobs::None,
     ),
   )
-  json_inspect(engine.call_json("readEvents", []), content=["getter"])
+  json_inspect(engine.call_json("readEvents", []), content=[1, 0])
 }
 
 ///|
