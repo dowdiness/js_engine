@@ -24742,9 +24742,7 @@ test "class static block: execution order" {
     #|console.log(order.join(","));
     #|console.log(C.x);
   let output = run_output(src)
-  // TODO: §15.7.11 requires interleaved static field/block evaluation in definition order.
-  // Current implementation evaluates all static fields first, then all static blocks.
-  json_inspect(output, content=["field,field2,block1,block2", "1"])
+  json_inspect(output, content=["field,block1,field2,block2", "1"])
 }
 
 ///|
