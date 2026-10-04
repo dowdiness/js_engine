@@ -104,6 +104,38 @@ fn[T] exec_stmt_rethrow_with_handler(
 }
 
 ///|
+fn async_for_of_resume_value(gen_opt : GeneratorObject?) -> Value raise Error {
+  match gen_opt {
+    Some(g) =>
+      match g.resume_action {
+        ThrowAction(e) => {
+          g.resume_action = NextAction
+          raise JsException(e)
+        }
+        _ => g.yield_value
+      }
+    None => fail("for-await-of: no generator")
+  }
+}
+
+///|
+fn Interpreter::async_for_of_next_result_value(
+  self : Interpreter,
+  result : Value,
+  loc : @token.Loc,
+) -> Value? raise Error {
+  guard is_object_value(result) else {
+    raise @errors.TypeError(message="Iterator result is not an object")
+  }
+  let done = self.get_property(result, "done", loc)
+  if is_truthy(done) {
+    None
+  } else {
+    Some(self.get_property(result, "value", loc))
+  }
+}
+
+///|
 /// Collect all binding names from a pattern (IdentPat leaves only).
 /// Used to build the TDZ environment for let/const for-of ForDeclaration
 /// per spec §14.7.5.12 step 2 (ForIn/OfHeadEvaluation TDZnames).
@@ -1925,27 +1957,7 @@ fn Interpreter::exec_stmt(
         // Await next iteration value
         let yielded_value = if is_awaiting {
           is_awaiting = false
-          match gen_opt {
-            Some(g) => {
-              // Check if the resume was a throw (promise was rejected).
-              // When a throw resumes the generator, g.yield_value is Undefined
-              // (set by generator_resume's Throw handler), not a proper IteratorResult.
-              // TODO(closeOnRejection): resume_action coupling - this reads
-              // gen.resume_action directly, which is normally consumed by
-              // eval_yield. If for-await-of is refactored to use eval_yield's
-              // resume mechanism, this check would break because resume_action
-              // would be consumed before reaching here.
-              match g.resume_action {
-                ThrowAction(e) => {
-                  g.resume_action = NextAction
-                  raise JsException(e)
-                }
-                _ => ()
-              }
-              g.yield_value
-            }
-            None => fail("for-await-of: no generator")
-          }
+          async_for_of_resume_value(gen_opt)
         } else {
           let next_promise = self.call_value(next_method, iterator, [], loc)
           match gen_opt {
@@ -1964,13 +1976,11 @@ fn Interpreter::exec_stmt(
           }
           raise YieldSignal(next_promise)
         }
-        // Check done
-        let done_val = self.get_property(yielded_value, "done", loc)
-        if is_truthy(done_val) {
-          completion = self.get_property(yielded_value, "value", loc)
-          break
+        let value = match
+          self.async_for_of_next_result_value(yielded_value, loc) {
+          None => break
+          Some(value) => value
         }
-        let value = self.get_property(yielded_value, "value", loc)
         // Bind value to loop variable
         let body_env_parent = match loop_binding_env {
           Some(e) => e
@@ -2084,10 +2094,7 @@ fn Interpreter::exec_stmt(
         } else {
           let yielded_value = if is_awaiting {
             is_awaiting = false
-            match gen_opt {
-              Some(g) => g.yield_value
-              None => fail("for-await-of: no generator")
-            }
+            async_for_of_resume_value(gen_opt)
           } else {
             let next_promise = self.call_value(next_method, iterator, [], loc)
             match gen_opt {
@@ -2106,12 +2113,11 @@ fn Interpreter::exec_stmt(
             }
             raise YieldSignal(next_promise)
           }
-          let done_val = self.get_property(yielded_value, "done", loc)
-          if is_truthy(done_val) {
-            completion = self.get_property(yielded_value, "value", loc)
-            break
+          let v = match
+            self.async_for_of_next_result_value(yielded_value, loc) {
+            None => break
+            Some(value) => value
           }
-          let v = self.get_property(yielded_value, "value", loc)
           (v, Environment::new(parent=Some(env)), true)
         }
         if should_bind {
@@ -2231,10 +2237,7 @@ fn Interpreter::exec_stmt(
         } else {
           let yielded_value = if is_awaiting {
             is_awaiting = false
-            match gen_opt {
-              Some(g) => g.yield_value
-              None => fail("for-await-of: no generator")
-            }
+            async_for_of_resume_value(gen_opt)
           } else {
             let next_promise = self.call_value(next_method, iterator, [], loc)
             match gen_opt {
@@ -2253,12 +2256,11 @@ fn Interpreter::exec_stmt(
             }
             raise YieldSignal(next_promise)
           }
-          let done_val = self.get_property(yielded_value, "done", loc)
-          if is_truthy(done_val) {
-            completion = self.get_property(yielded_value, "value", loc)
-            break
+          let v = match
+            self.async_for_of_next_result_value(yielded_value, loc) {
+            None => break
+            Some(value) => value
           }
-          let v = self.get_property(yielded_value, "value", loc)
           (v, Environment::new(parent=Some(env)), true)
         }
         if should_assign {
