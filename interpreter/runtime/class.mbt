@@ -24,6 +24,12 @@ fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
 }
 
 ///|
+priv enum OrderedStaticElement {
+  StaticField(ClassFieldInit)
+  StaticBlock(Array[@ast.Stmt])
+}
+
+///|
 fn Interpreter::create_class(
   self : Interpreter,
   ctx : ExecContext,
@@ -130,8 +136,9 @@ fn Interpreter::create_class(
   let mut constructor_overridden : Bool = false
   // Collect instance field initializers (evaluated during construction)
   let instance_fields : Array[ClassFieldInit] = []
-  // Collect static field initializers (evaluated after class object is created)
-  let static_fields : Array[ClassFieldInit] = []
+  // Collect public static elements in source order. Keys are evaluated during
+  // the member pass; initializers and blocks run after class setup below.
+  let static_elements : Array[OrderedStaticElement] = []
   // Collect private instance field initializers (evaluated during construction)
   let private_instance_fields : Array[ClassFieldInit] = []
   // Collect private static field initializers (evaluated after class object is created)
@@ -203,12 +210,13 @@ fn Interpreter::create_class(
             private_instance_fields.push(field_init)
           }
         } else if f.is_static {
-          static_fields.push(field_init)
+          static_elements.push(StaticField(field_init))
         } else {
           instance_fields.push(field_init)
         }
       }
-      @ast.ClassMember::StaticBlock(_) => ()
+      @ast.ClassMember::StaticBlock(stmts, _) =>
+        static_elements.push(StaticBlock(stmts))
       @ast.ClassMember::Method(m) => { // method branch
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
@@ -739,96 +747,93 @@ fn Interpreter::create_class(
     Some(binding) => class_env.initialize(binding, class_obj)
     None => ()
   }
-  // Evaluate static field initializers (run once at class definition time).
-  // Class bodies are strict, but field initializers are not generator bodies.
+  // Evaluate static elements (run once at class definition time) in source
+  // order. Class bodies are strict, but initializers are not generator bodies.
   let static_field_ctx : ExecContext = {
     strict: true,
     current_generator: None,
   }
-  for sf in static_fields {
-    let key_str : String = match sf.key {
-      String_(s) => s
-      Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
-      _ => self.to_js_string(sf.key)
-    }
-    let value : Value = match sf.initializer {
-      Some(expr) => {
-        // Evaluate initializer with `this` = class_obj and class name in scope
-        let field_env = Environment::new(parent=Some(static_method_env))
-        field_env.def_builtin("this", class_obj)
-        self.eval_expr(static_field_ctx, expr, field_env)
-      }
-      None => Undefined
-    }
-    match class_obj {
-      Object(class_data) =>
-        match sf.key {
-          Symbol(sym) => {
-            if !class_data.bag.symbol_properties.contains(sym.id) &&
-              !class_data.extensible {
-              raise @errors.TypeError(
-                message="Cannot define static field on non-extensible object",
-              )
-            }
-            match class_data.bag.symbol_descriptors.get(sym.id) {
-              Some(d) =>
-                if !d.configurable {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-configurable static class field",
-                  )
-                }
-              None => ()
-            }
-            class_data.bag.symbol_properties[sym.id] = value
-            class_data.bag.symbol_descriptors[sym.id] = {
-              writable: true,
-              enumerable: true,
-              configurable: true,
-              getter: None,
-              setter: None,
-              is_accessor: false,
-            }
-          }
-          _ => {
-            if !class_data.bag.properties.contains(key_str) &&
-              !class_data.extensible {
-              raise @errors.TypeError(
-                message="Cannot define static field on non-extensible object",
-              )
-            }
-            match class_data.bag.descriptors.get(key_str) {
-              Some(d) =>
-                if !d.configurable {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-configurable static class field",
-                  )
-                }
-              None => ()
-            }
-            class_data.bag.properties[key_str] = value
-            class_data.bag.descriptors[key_str] = {
-              writable: true,
-              enumerable: true,
-              configurable: true,
-              getter: None,
-              setter: None,
-              is_accessor: false,
-            }
-          }
+  for element in static_elements {
+    match element {
+      StaticField(sf) => {
+        let key_str : String = match sf.key {
+          String_(s) => s
+          Symbol(sym) => sym.id.to_string()
+          _ => self.to_js_string(sf.key)
         }
-      _ => ()
-    }
-  }
-  // Execute static blocks in order (after static field initialization)
-  // Each StaticBlock has `this` = class_obj and the class name in scope.
-  for mbr in members {
-    match mbr {
-      @ast.ClassMember::StaticBlock(stmts, _) => {
+        let value : Value = match sf.initializer {
+          Some(expr) => {
+            // Evaluate initializer with `this` = class_obj and class name in scope
+            let field_env = Environment::new(parent=Some(static_method_env))
+            field_env.def_builtin("this", class_obj)
+            self.eval_expr(static_field_ctx, expr, field_env)
+          }
+          None => Undefined
+        }
+        match class_obj {
+          Object(class_data) =>
+            match sf.key {
+              Symbol(sym) => {
+                if !class_data.bag.symbol_properties.contains(sym.id) &&
+                  !class_data.extensible {
+                  raise @errors.TypeError(
+                    message="Cannot define static field on non-extensible object",
+                  )
+                }
+                match class_data.bag.symbol_descriptors.get(sym.id) {
+                  Some(d) =>
+                    if !d.configurable {
+                      raise @errors.TypeError(
+                        message="Cannot redefine non-configurable static class field",
+                      )
+                    }
+                  None => ()
+                }
+                class_data.bag.symbol_properties[sym.id] = value
+                class_data.bag.symbol_descriptors[sym.id] = {
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                  getter: None,
+                  setter: None,
+                  is_accessor: false,
+                }
+              }
+              _ => {
+                if !class_data.bag.properties.contains(key_str) &&
+                  !class_data.extensible {
+                  raise @errors.TypeError(
+                    message="Cannot define static field on non-extensible object",
+                  )
+                }
+                match class_data.bag.descriptors.get(key_str) {
+                  Some(d) =>
+                    if !d.configurable {
+                      raise @errors.TypeError(
+                        message="Cannot redefine non-configurable static class field",
+                      )
+                    }
+                  None => ()
+                }
+                class_data.bag.properties[key_str] = value
+                class_data.bag.descriptors[key_str] = {
+                  writable: true,
+                  enumerable: true,
+                  configurable: true,
+                  getter: None,
+                  setter: None,
+                  is_accessor: false,
+                }
+              }
+            }
+          _ => ()
+        }
+      }
+      StaticBlock(stmts) => {
         let block_env = Environment::new(parent=Some(static_method_env))
         block_env.def_builtin("this", class_obj)
         let _ = self.exec_stmts(static_field_ctx, stmts, block_env)
       }
-      _ => ()
     }
   }
   class_obj
