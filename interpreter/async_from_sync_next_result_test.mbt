@@ -166,3 +166,82 @@ test "Async-from-Sync next validates Number before getters and accepts object re
     "[0,0,[[\"fulfilled\",[true,true,true,true,true]],[\"rejected\",\"TypeError\",[],0]]]",
   ])
 }
+
+///|
+test "Async-from-Sync object results close the original iterator on break" {
+  let source =
+    #|async function run() {
+    #|  var kinds = ["object", "array", "map", "set", "proxy"];
+    #|  var reports = [];
+    #|  async function check(kind) {
+    #|    var marker = { kind: kind };
+    #|    var result = { done: false, value: marker };
+    #|    if (kind === "array") {
+    #|      result = [];
+    #|      result.done = false;
+    #|      result.value = marker;
+    #|    } else if (kind === "map") {
+    #|      result = new Map();
+    #|      result.done = false;
+    #|      result.value = marker;
+    #|    } else if (kind === "set") {
+    #|      result = new Set();
+    #|      result.done = false;
+    #|      result.value = marker;
+    #|    } else if (kind === "proxy") {
+    #|      result = new Proxy(result, {});
+    #|    }
+    #|    var iterator;
+    #|    var nextCalls = 0;
+    #|    var nextReceiver = false;
+    #|    var nextArgs = -1;
+    #|    var returnCalls = 0;
+    #|    var returnReceiver = false;
+    #|    var returnArgs = -1;
+    #|    iterator = {
+    #|      next: function() {
+    #|        nextCalls += 1;
+    #|        nextReceiver = this === iterator;
+    #|        nextArgs = arguments.length;
+    #|        if (nextCalls === 1) return result;
+    #|        return { done: true, value: undefined };
+    #|      },
+    #|      return: function() {
+    #|        returnCalls += 1;
+    #|        returnReceiver = this === iterator;
+    #|        returnArgs = arguments.length;
+    #|        return { done: true, value: undefined };
+    #|      }
+    #|    };
+    #|    var iterable = {};
+    #|    iterable[Symbol.asyncIterator] = null;
+    #|    iterable[Symbol.iterator] = function() { return iterator; };
+    #|    var bodyCalls = 0;
+    #|    var observed = false;
+    #|    var completed = false;
+    #|    var errorName = "";
+    #|    try {
+    #|      for await (const item of iterable) {
+    #|        bodyCalls += 1;
+    #|        observed = item === marker;
+    #|        break;
+    #|      }
+    #|    } catch (error) {
+    #|      errorName = error.name;
+    #|    }
+    #|    completed = true;
+    #|    return [kind, completed, errorName, observed, bodyCalls,
+    #|      nextCalls, nextReceiver, nextArgs, returnCalls, returnReceiver,
+    #|      returnArgs];
+    #|  }
+    #|  for (var i = 0; i < kinds.length; i += 1) {
+    #|    reports.push(await check(kinds[i]));
+    #|  }
+    #|  console.log(JSON.stringify(reports));
+    #|}
+    #|run();
+  let output = run_output_async(source)
+  json_inspect(output, content=[
+    "[[\"object\",true,\"\",true,1,1,true,0,1,true,0],[\"array\",true,\"\",true,1,1,true,0,1,true,0],[\"map\",true,\"\",true,1,1,true,0,1,true,0],[\"set\",true,\"\",true,1,1,true,0,1,true,0],[\"proxy\",true,\"\",true,1,1,true,0,1,true,0]]",
+  ])
+}
