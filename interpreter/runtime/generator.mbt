@@ -486,7 +486,7 @@ pub fn setup_generator_function_constructor(
 ///|
 /// Yield signal — used to suspend generator execution
 pub suberror YieldSignal {
-  YieldSignal(Value) // the yielded value
+  YieldSignal(Value) // a yielded value or sync delegated iterator result
 }
 
 ///|
@@ -1252,6 +1252,9 @@ fn run_generator_body(
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
           gen.state = SuspendedYield
+          if gen.delegating && !gen.is_async {
+            return yielded_value
+          }
           return create_iter_result(yielded_value, false)
         }
         GeneratorReturnSignal(v) => {
@@ -1479,22 +1482,15 @@ fn Interpreter::eval_yield(
             // (§7.4.3 IteratorValue) and yield* evaluates to the return value.
             self.get_property(first_result, "value", loc)
           } else {
-            // Save delegation state on generator and yield the value.
-            // Read value from bag.properties directly — must NOT trigger
-            // value getter when done is false (test262 check).
-            let value = match first_result {
-              Object(data) =>
-                match data.bag.properties.get("value") {
-                  Some(v) => v
-                  None => Undefined
-                }
-              _ => Undefined
-            }
+            // Save delegation state on generator and carry the original
+            // iterator result through YieldSignal. The runner returns this
+            // object directly for synchronous delegation, preserving its
+            // identity and delaying any value access while done is false.
             gen.delegate_iterator = iterator
             gen.delegate_next = next_method
             gen.delegating = true
             gen.resume_at_yield = current_yield_index
-            raise YieldSignal(value)
+            raise YieldSignal(first_result)
           }
         }
       } else {
@@ -1554,9 +1550,9 @@ fn inject_error(
 /// Resume a delegated yield* — forward the resume to the delegate iterator
 
 ///|
-/// Process a sync delegation result: check IsObject, extract done/value,
-/// then either complete delegation (done:true, calling `make_resume_action`)
-/// or yield the value (done:false).
+/// Process a sync delegation result: check IsObject and read done.
+/// Complete delegation with Get(value) when done, or return the original
+/// iterator result without reading value when not done.
 fn process_delegate_result(
   interp : Interpreter,
   gen : GeneratorObject,
@@ -1577,16 +1573,8 @@ fn process_delegate_result(
     gen.resume_action = make_resume_action(value)
     generator_continue(interp, gen)
   } else {
-    let value = match result {
-      Object(data) =>
-        match data.bag.properties.get("value") {
-          Some(v) => v
-          None => Undefined
-        }
-      _ => Undefined
-    }
     gen.state = SuspendedYield
-    create_iter_result(value, false)
+    result
   }
 }
 
