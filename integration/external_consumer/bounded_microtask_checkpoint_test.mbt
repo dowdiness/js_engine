@@ -194,26 +194,26 @@ test "one microtask budget spans the complete drain" {
   let engine = @js_engine.Engine()
   engine.eval(
     (
-      #|let events = [];
-      #|queueMicrotask(() => events.push("A"));
-      #|queueMicrotask(() => events.push("B"));
+      #|let events = "";
+      #|queueMicrotask(() => events += "A");
+      #|queueMicrotask(() => events += "B");
       #|function snapshot() { return events; }
     ),
   )
   ignore(
     expect_microtask_guardrail(
       engine.run_microtask_checkpoint_bounded(
-        bounded_microtask_policy(5L, 100L, @js_engine.InterruptionHandle()),
+        bounded_microtask_policy(4L, 100L, @js_engine.InterruptionHandle()),
       ),
       "execution-limit",
       @js_engine.PendingJobs::Present,
     ),
   )
-  json_inspect(engine.call_json("snapshot", []), content=["A"])
+  json_inspect(engine.call_json("snapshot", []), content="A")
   // The first job is consumed, while the job whose dispatch was rejected is
   // retained. A per-job budget reset would have run both jobs instead.
   assert_false(engine.run_microtask_checkpoint())
-  json_inspect(engine.call_json("snapshot", []), content=["A", "B"])
+  json_inspect(engine.call_json("snapshot", []), content="AB")
 }
 
 ///|

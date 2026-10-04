@@ -219,12 +219,12 @@ test "finite timer-following microtask consumes the shared remaining budget" {
   let engine = @js_engine.Engine()
   engine.eval(
     (
-      #|let events = [];
+      #|let events = "";
       #|setTimeout(() => {
-      #|  events.push("timer");
+      #|  events += "timer";
       #|  queueMicrotask(() => {
-      #|    events.push("micro-start");
-      #|    events.push("micro-finish");
+      #|    events += "|micro-start";
+      #|    events += "|micro-finish";
       #|  });
       #|}, 0);
       #|function snapshot() { return events; }
@@ -233,14 +233,14 @@ test "finite timer-following microtask consumes the shared remaining budget" {
   ignore(
     expect_timer_guardrail(
       engine.run_timer_checkpoint_bounded(
-        bounded_timer_policy(15L, 100L, @js_engine.InterruptionHandle()),
+        bounded_timer_policy(12L, 100L, @js_engine.InterruptionHandle()),
       ),
       "execution-limit",
       "timer-microtask-checkpoint",
       @js_engine.PendingJobs::None,
     ),
   )
-  json_inspect(engine.call_json("snapshot", []), content=["timer", "micro-start"])
+  json_inspect(engine.call_json("snapshot", []), content="timer|micro-start")
   assert_false(engine.has_pending_timers())
 }
 
