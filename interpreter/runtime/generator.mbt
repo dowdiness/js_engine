@@ -814,8 +814,8 @@ fn create_generator_instance(
       this_val
     }
     func_env.def("this", effective_this, LetBinding)
+    func_env.def("<new.target>", Undefined, LetBinding)
   }
-  func_env.def("<new.target>", Undefined, LetBinding)
   let has_arguments_param = match params_ext {
     Some(pext) => ext_params_include_arguments(pext, rest_param)
     None => params_include_arguments(params, rest_param)
