@@ -486,7 +486,7 @@ pub fn setup_generator_function_constructor(
 ///|
 /// Yield signal — used to suspend generator execution
 pub suberror YieldSignal {
-  YieldSignal(Value) // the yielded value
+  YieldSignal(Value) // a yielded value or sync delegated iterator result
 }
 
 ///|
@@ -1550,9 +1550,9 @@ fn inject_error(
 /// Resume a delegated yield* — forward the resume to the delegate iterator
 
 ///|
-/// Process a sync delegation result: check IsObject, extract done/value,
-/// then either complete delegation (done:true, calling `make_resume_action`)
-/// or yield the value (done:false).
+/// Process a sync delegation result: check IsObject and read done.
+/// Complete delegation with Get(value) when done, or return the original
+/// iterator result without reading value when not done.
 fn process_delegate_result(
   interp : Interpreter,
   gen : GeneratorObject,
