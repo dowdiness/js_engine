@@ -785,7 +785,7 @@ fn reject_on_error(ip : Interpreter, action : () -> Value raise Error) -> Value 
 fn async_from_sync_next(
   ip : Interpreter,
   this_val : Value,
-  _args : Array[Value],
+  args : Array[Value],
 ) -> Value {
   reject_on_error(ip, fn() -> Value raise Error {
     let data = match this_val {
@@ -804,7 +804,8 @@ fn async_from_sync_next(
       None => raise @errors.TypeError(message="SyncNextMethod slot missing")
     }
     let loc = @token.Loc::default()
-    let result = ip.call_value(sync_next, sync_iterator, [], loc)
+    let next_args = if args.length() > 0 { [args[0]] } else { [] }
+    let result = ip.call_value(sync_next, sync_iterator, next_args, loc)
     async_from_sync_continuation(ip, result, sync_iterator, true)
   })
 }
