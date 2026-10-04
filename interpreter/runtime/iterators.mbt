@@ -806,6 +806,9 @@ fn async_from_sync_next(
     let loc = @token.Loc::default()
     let next_args = if args.length() > 0 { [args[0]] } else { [] }
     let result = ip.call_value(sync_next, sync_iterator, next_args, loc)
+    guard is_object_value(result) else {
+      raise @errors.TypeError(message="Iterator result is not an object")
+    }
     async_from_sync_continuation(ip, result, sync_iterator, true)
   })
 }
