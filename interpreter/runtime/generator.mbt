@@ -1684,11 +1684,7 @@ fn get_optional_method(
   let func = interp.get_property(obj, name, loc)
   match func {
     Undefined | Null => None
-    Object(fd) =>
-      match fd.callable {
-        Some(_) => Some(func)
-        None => raise @errors.TypeError(message="\{name} is not a function")
-      }
+    _ if is_callable(func) => Some(func)
     _ => raise @errors.TypeError(message="\{name} is not a function")
   }
 }
