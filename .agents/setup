@@ -38,4 +38,8 @@ if [[ ! -d playground/web/node_modules || ! -f playground/web/node_modules/.orb-
   (cd playground/web && npm ci --no-audit --no-fund)
   printf '%s\n' "$stamp" > playground/web/node_modules/.orb-setup-lock
 fi
+if [[ ! -f playground/web/node_modules/.orb-setup-browser ]]; then
+  (cd playground/web && npx playwright install --with-deps chromium)
+  touch playground/web/node_modules/.orb-setup-browser
+fi
 echo "[orb setup] Playground dependencies ready in $((SECONDS - start))s"
