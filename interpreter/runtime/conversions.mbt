@@ -40,7 +40,7 @@ pub fn call_callable_direct(
   callable_val : Value,
   this_val : Value,
   args : Array[Value],
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match resolve_effective_interp(interp) {
     Some(ip) =>
@@ -105,7 +105,7 @@ pub fn is_callable(val : Value) -> Bool {
 pub fn has_property(
   val : Value,
   name : String,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Bool {
   match val {
     Object(data) => {
@@ -199,7 +199,7 @@ fn lookup_property_chain(
   obj_val : Value,
   data : ObjectData,
   name : String,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value? raise Error {
   let effective = resolve_effective_interp(interp)
   // Descriptor check first: accessors write Undefined into bag.properties as a
@@ -262,8 +262,8 @@ fn lookup_property_chain(
 pub fn lookup_symbol_property_chain(
   obj_val : Value,
   data : ObjectData,
-  sym_id : Int,
-  interp? : Interpreter? = None,
+  sym_id : Int32,
+  interp~ : Interpreter? = None,
 ) -> Value? raise Error {
   // Check own symbol descriptors for getter first
   match data.bag.symbol_descriptors.get(sym_id) {
@@ -326,7 +326,7 @@ pub fn lookup_symbol_property_chain(
 fn call_symbol_to_primitive(
   obj_val : Value,
   hint : String,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value? raise Error {
   let effective = resolve_effective_interp(interp)
   let to_prim_sym = match effective {
@@ -383,7 +383,7 @@ fn call_symbol_to_primitive(
 pub fn to_primitive_number(
   obj_val : Value,
   data : ObjectData,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match call_symbol_to_primitive(obj_val, "number", interp~) {
     Some(result) => return result
@@ -404,7 +404,7 @@ fn lookup_ordinary_method(
   obj_val : Value,
   data : ObjectData,
   method_name : String,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value? raise Error {
   let effective = resolve_effective_interp(interp)
   match lookup_property_chain(obj_val, data, method_name, interp~) {
@@ -431,7 +431,7 @@ fn lookup_ordinary_method(
 fn ordinary_to_primitive_number(
   obj_val : Value,
   data : ObjectData,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match lookup_ordinary_method(obj_val, data, "valueOf", interp~) {
     Some(vo_fn) =>
@@ -488,7 +488,7 @@ fn try_proxy_ordinary_method(
 fn to_primitive_via_dispatch(
   obj_val : Value,
   hint : String,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   let effective = match resolve_effective_interp(interp) {
     Some(ip) => ip
@@ -572,7 +572,7 @@ pub fn Interpreter::to_primitive_value(
 pub fn to_primitive_default(
   obj_val : Value,
   data : ObjectData,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match call_symbol_to_primitive(obj_val, "default", interp~) {
     Some(result) => return result
@@ -592,7 +592,7 @@ pub fn to_primitive_default(
 fn to_primitive_default_array(
   arr_val : Value,
   hint : String,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   let effective = resolve_effective_interp(interp)
   match effective {
@@ -657,7 +657,7 @@ fn to_primitive_default_array(
 }
 
 ///|
-pub fn is_es_whitespace_cp(cp : Int) -> Bool {
+pub fn is_es_whitespace_cp(cp : Int32) -> Bool {
   cp == 0x09 ||
   cp == 0x0A ||
   cp == 0x0B ||
@@ -750,7 +750,7 @@ fn parse_octal_string(s : String) -> Double {
 ///|
 pub fn to_number(
   val : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Double raise Error {
   match val {
     Number(n) => n
@@ -832,7 +832,7 @@ pub fn to_number(
 /// Follows the ECMAScript spec: check @@toPrimitive, then toString, then valueOf.
 fn to_primitive_string(
   obj_val : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match call_symbol_to_primitive(obj_val, "string", interp~) {
     Some(result) => return result
@@ -924,7 +924,7 @@ fn to_primitive_string(
 /// / toString hooks (so the caller observes side-effects in spec order).
 pub fn to_property_key(
   val : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match val {
     Symbol(_) => val
@@ -944,7 +944,7 @@ pub fn to_property_key(
 /// For objects, calls ToPrimitive(hint: "string") then converts result to string.
 pub fn to_js_string(
   val : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> String raise Error {
   match val {
     String_(s) => s
@@ -1225,7 +1225,7 @@ pub fn Interpreter::to_primitive_default(
 /// ECMAScript ToIndex: converts a value to a non-negative integer index.
 /// Throws RangeError for negative values or values >= 2^53.
 /// Returns 0 for undefined.
-pub fn to_index(val : Value, interp? : Interpreter? = None) -> Int64 raise {
+pub fn to_index(val : Value, interp~ : Interpreter? = None) -> Int64 raise {
   match val {
     Undefined => 0L
     _ => {
@@ -1258,7 +1258,7 @@ pub fn Interpreter::to_index(
 }
 
 ///|
-pub fn to_int32(n : Double) -> Int {
+pub fn to_int32(n : Double) -> Int32 {
   if n.is_nan() || n.is_inf() || n == 0.0 {
     return 0
   }

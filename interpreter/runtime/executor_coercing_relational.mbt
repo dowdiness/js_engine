@@ -40,7 +40,7 @@ fn executor_relational_primitive_result(
   operator : ExecutorRelationalOperator,
   left : Value,
   right : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   let comparison = match operator {
     ExecutorRelationalLessThan | ExecutorRelationalGreaterThanOrEqual =>

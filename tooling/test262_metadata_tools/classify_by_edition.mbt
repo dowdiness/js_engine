@@ -9,12 +9,12 @@ pub extend FailureRecord with @debug.Debug::{to_repr}
 
 ///|
 struct EditionBucket {
-  total : Int
-  passed : Int
-  failed : Int
-  skipped : Int
-  timeout : Int
-  error : Int
+  total : Int32
+  passed : Int32
+  failed : Int32
+  skipped : Int32
+  timeout : Int32
+  error : Int32
   failures : Array[FailureRecord]
 } derive(Debug)
 
@@ -109,12 +109,12 @@ fn bucket_record(
 }
 
 ///|
-fn bucket_executed(bucket : EditionBucket) -> Int {
+fn bucket_executed(bucket : EditionBucket) -> Int32 {
   bucket.passed + bucket.failed
 }
 
 ///|
-fn bucket_timeout_error(bucket : EditionBucket) -> Int {
+fn bucket_timeout_error(bucket : EditionBucket) -> Int32 {
   bucket.timeout + bucket.error
 }
 
@@ -343,7 +343,7 @@ fn edition_order() -> Array[String] {
 }
 
 ///|
-fn edition_rank(edition : String) -> Int {
+fn edition_rank(edition : String) -> Int32 {
   for i, known in edition_order() {
     if known == edition {
       return i
@@ -419,7 +419,7 @@ fn path_edition_fallback() -> Array[(String, String)] {
 }
 
 ///|
-fn line_leading_whitespace(line : String) -> Int {
+fn line_leading_whitespace(line : String) -> Int32 {
   let mut count = 0
   while count < line.length() && (line[count] == ' ' || line[count] == '\t') {
     count += 1
@@ -592,9 +592,9 @@ fn result_abs_path(path : String, test262_root : String) -> String {
 fn classify_result_records(
   records : Array[ResultRecord],
   test262_root : String,
-) -> (Map[String, EditionBucket], Map[String, Int]) {
+) -> (Map[String, EditionBucket], Map[String, Int32]) {
   let buckets : Map[String, EditionBucket] = Map([])
-  let unmapped_counts : Map[String, Int] = Map([])
+  let unmapped_counts : Map[String, Int32] = Map([])
   let feature_cache : Map[String, Array[String]] = Map([])
   for record in records {
     let features = match feature_cache.get(record.path) {
@@ -755,7 +755,7 @@ fn render_classify_table(
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
   ]
   let mut totals = empty_bucket()
-  let fully_skipped : Array[(String, Int)] = []
+  let fully_skipped : Array[(String, Int32)] = []
   for edition in sorted_edition_keys(buckets) {
     let bucket = buckets[edition]
     if bucket.total == 0 {
@@ -843,7 +843,7 @@ fn collapse_js_paths(value : String) -> String {
     if value[i] == '/' {
       let start = i
       let mut j = i + 1
-      let mut js_end : Int? = None
+      let mut js_end : Int32? = None
       while j < len && value[j] != ' ' && value[j] != '\t' && value[j] != '\n' {
         if j + 3 <= len &&
           value[j] == '.' &&
@@ -983,7 +983,7 @@ fn reason_key(reason : String) -> String {
 }
 
 ///|
-fn top_subdir(path : String, depth~ : Int) -> String {
+fn top_subdir(path : String, depth~ : Int32) -> String {
   let parts = @path_utils.path_components(@path_utils.normalize_path(path))
   let end = if depth < parts.length() { depth } else { parts.length() }
   [ for i in 0..<end => parts[i] ].join("/")
@@ -994,7 +994,7 @@ fn render_failure_analysis(
   mode : String,
   buckets : Map[String, EditionBucket],
   edition_filter : String?,
-  top_n : Int,
+  top_n : Int32,
 ) -> Array[String] {
   let lines : Array[String] = ["## Failure analysis — " + mode]
   for edition in sorted_edition_keys(buckets) {
@@ -1013,7 +1013,7 @@ fn render_failure_analysis(
       bucket.failures.length().to_string() +
       " failures",
     )
-    let subdir_counts : Map[String, Int] = Map([])
+    let subdir_counts : Map[String, Int32] = Map([])
     for failure in bucket.failures {
       increment_count(subdir_counts, top_subdir(failure.path, depth=4))
     }
@@ -1033,7 +1033,7 @@ fn render_failure_analysis(
         )
       }
     }
-    let reason_counts : Map[String, Int] = Map([])
+    let reason_counts : Map[String, Int32] = Map([])
     for failure in bucket.failures {
       increment_count(reason_counts, reason_key(failure.reason))
     }
@@ -1073,7 +1073,7 @@ fn append_section(
 }
 
 ///|
-fn classify_json_int(value : Int) -> Json {
+fn classify_json_int(value : Int32) -> Json {
   Json::number(value.to_double(), repr=value.to_string())
 }
 
@@ -1122,15 +1122,15 @@ fn editions_json(buckets : Map[String, EditionBucket]) -> Json {
 /// This reads existing result artifacts only. It does not run the engine.
 pub fn run_classify_by_edition(
   result_paths : Array[String],
-  test262_root? : String = ".",
-  show_unmapped? : Bool = false,
-  list_failures? : Bool = false,
-  edition_filter? : String? = None,
-  top? : Int = 15,
-  json_output? : String = "",
-  compact? : Bool = false,
+  test262_root~ : String = ".",
+  show_unmapped~ : Bool = false,
+  list_failures~ : Bool = false,
+  edition_filter~ : String? = None,
+  top~ : Int32 = 15,
+  json_output~ : String = "",
+  compact~ : Bool = false,
 ) -> ToolRun raise {
-  let all_unmapped : Map[String, Int] = Map([])
+  let all_unmapped : Map[String, Int32] = Map([])
   let stdout_lines : Array[String] = []
   let failure_sections : Array[Array[String]] = []
   let mode_editions : Map[String, Json] = Map([])

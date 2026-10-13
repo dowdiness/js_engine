@@ -246,7 +246,7 @@ fn direct_return_result_pipeline(
       None => return None
     }
     let args : Array[Value] = []
-    let mut result_argument_index : Int? = None
+    let mut result_argument_index : Int32? = None
     for index, source in call.argument_sources {
       match source {
         DirectReturnLeafClosedArgument(argument) =>

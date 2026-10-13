@@ -85,15 +85,15 @@ pub(all) struct RealmState {
   weakmap_prototype : Ref[Value?]
   weakset_prototype : Ref[Value?]
   arraybuffer_state : ArrayBufferState
-  arraybuffer_id_counter : Ref[Int]
-  arraybuffer_store : Map[Int, Array[Int]]
-  detached_buffers : Map[Int, Bool]
-  weakmap_id_counter : Ref[Int]
-  weakmap_storage : Map[Int, Array[(Value, Value)]]
-  weakmap_id_table : Array[(ObjectData, Int)]
-  weakset_id_counter : Ref[Int]
-  weakset_storage : Map[Int, Array[Value]]
-  weakset_id_table : Array[(ObjectData, Int)]
+  arraybuffer_id_counter : Ref[Int32]
+  arraybuffer_store : Map[Int32, Array[Int32]]
+  detached_buffers : Map[Int32, Bool]
+  weakmap_id_counter : Ref[Int32]
+  weakmap_storage : Map[Int32, Array[(Value, Value)]]
+  weakmap_id_table : Array[(ObjectData, Int32)]
+  weakset_id_counter : Ref[Int32]
+  weakset_storage : Map[Int32, Array[Value]]
+  weakset_id_table : Array[(ObjectData, Int32)]
 }
 
 ///|

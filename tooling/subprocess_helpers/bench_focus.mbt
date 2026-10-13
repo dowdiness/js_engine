@@ -11,7 +11,7 @@ const DEFAULT_PROCESS_TIMEOUT_MS = 3600000
 pub struct ToolRun {
   stdout : String
   stderr : String
-  code : Int
+  code : Int32
 } derive(Debug)
 
 ///|
@@ -19,7 +19,7 @@ pub extend ToolRun with @debug.Debug::{to_repr}
 
 ///|
 struct ProcessCapture {
-  code : Int
+  code : Int32
   stdout : String
   stderr : String
 } derive(Debug)
@@ -29,13 +29,13 @@ pub extend ProcessCapture with @debug.Debug::{to_repr}
 
 ///|
 pub struct BenchConfig {
-  priv runs : Int
+  priv runs : Int32
   priv rows : Array[String]
   priv command : String
   priv output_root : String
   priv timestamp : String?
   priv fail_on_missing : Bool
-  priv command_timeout_ms : Int
+  priv command_timeout_ms : Int32
 } derive(Debug)
 
 ///|
@@ -43,13 +43,13 @@ pub extend BenchConfig with @debug.Debug::{to_repr}
 
 ///|
 pub fn BenchConfig::BenchConfig(
-  runs~ : Int,
+  runs~ : Int32,
   rows~ : Array[String],
   command~ : String,
   output_root~ : String,
   timestamp~ : String?,
   fail_on_missing~ : Bool,
-  command_timeout_ms? : Int = DEFAULT_PROCESS_TIMEOUT_MS,
+  command_timeout_ms~ : Int32 = DEFAULT_PROCESS_TIMEOUT_MS,
 ) -> BenchConfig {
   {
     runs,
@@ -65,7 +65,7 @@ pub fn BenchConfig::BenchConfig(
 ///|
 struct BenchSummary {
   name : String
-  runs : Int
+  runs : Int32
   median_ms : Double
   mean_ms : Double
   min_ms : Double
@@ -115,12 +115,12 @@ fn splitlines(source : String) -> Array[String] {
 }
 
 ///|
-fn pad_int(value : Int, width : Int) -> String {
+fn pad_int(value : Int32, width : Int32) -> String {
   value.to_string().pad_start(width, '0')
 }
 
 ///|
-fn civil_from_days(days_since_epoch : Int) -> (Int, Int, Int) {
+fn civil_from_days(days_since_epoch : Int32) -> (Int32, Int32, Int32) {
   let z = days_since_epoch + 719468
   let era = (if z >= 0 { z } else { z - 146096 }) / 146097
   let doe = z - era * 146097
@@ -185,7 +185,7 @@ pub fn row_names(raw : String) -> Array[String] raise {
 ///|
 async fn collect_command(
   command : String,
-  timeout_ms? : Int = DEFAULT_PROCESS_TIMEOUT_MS,
+  timeout_ms~ : Int32 = DEFAULT_PROCESS_TIMEOUT_MS,
 ) -> ProcessCapture {
   let argv = tokenize_command(command) catch {
     e => fail("error: invalid benchmark command: \{e}")
@@ -395,7 +395,7 @@ fn summarize_row(
 }
 
 ///|
-fn pow10(places : Int) -> Int {
+fn pow10(places : Int32) -> Int32 {
   let mut value = 1
   for _ in 0..<places {
     value *= 10
@@ -404,7 +404,7 @@ fn pow10(places : Int) -> Int {
 }
 
 ///|
-fn format_fixed(value : Double, places : Int) -> String {
+fn format_fixed(value : Double, places : Int32) -> String {
   let scale = pow10(places)
   let mut scaled = (value * scale.to_double()).round().to_int()
   let negative = scaled < 0
@@ -430,7 +430,7 @@ fn fmt_pct(value : Double) -> String {
 ///|
 fn render_bench_table(
   summaries : Array[BenchSummary],
-  total_runs : Int,
+  total_runs : Int32,
 ) -> String {
   let lines : Array[String] = [
     "| benchmark | runs | median | mean | min | max | across-run CV | median in-run CV |",
@@ -473,7 +473,7 @@ fn render_bench_table(
 }
 
 ///|
-fn csv_path(out_dir : String, run : Int) -> String {
+fn csv_path(out_dir : String, run : Int32) -> String {
   @path_utils.join_path(
     out_dir,
     "run-" + run.to_string().pad_start(2, '0') + ".csv",

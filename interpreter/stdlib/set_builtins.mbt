@@ -215,7 +215,7 @@ fn setup_set_builtins(
             if n > 0 {
               let ts = match data.tombstones {
                 None => {
-                  let ts : @set.Set[Int] = Default::default()
+                  let ts : @set.Set[Int32] = Default::default()
                   data.tombstones = Some(ts)
                   ts
                 }
@@ -1111,7 +1111,7 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
 fn make_set_iterator(
   realm_state : @runtime.RealmState,
   set_data : SetData,
-  kind : Int,
+  kind : Int32,
 ) -> Value {
   make_keyed_collection_iterator(
     get_set_iterator_proto(realm_state),

@@ -39,13 +39,12 @@ fn expect_starts_with_result(
   expected : Bool,
 ) -> Unit raise Error {
   match result {
-    Ok(value) => {
+    Ok(value) =>
       if expected {
         json_inspect(value, content=true)
       } else {
         json_inspect(value, content=false)
       }
-    }
     Err(diagnostic) => fail(diagnostic.message())
   }
 }
@@ -165,8 +164,13 @@ test "default String.startsWith preserves coercion and error precedence" {
     ),
     true,
   )
-  json_inspect(engine.call_json("readEvents", []), content="thismatchsearchposition")
-  json_inspect(engine.call_json("precedence", []), content=[true, true, true, true])
+  json_inspect(
+    engine.call_json("readEvents", []),
+    content="thismatchsearchposition",
+  )
+  json_inspect(engine.call_json("precedence", []), content=[
+    true, true, true, true,
+  ])
 }
 
 ///|

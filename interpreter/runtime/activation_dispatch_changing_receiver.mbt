@@ -239,7 +239,7 @@ priv struct ChangingReceiverFunctionSnapshot {
 priv struct ChangingReceiverCallPreflight {
   function : ChangingReceiverFunctionSnapshot
   receivers : Array[Value]
-  initial_depth : Int
+  initial_depth : Int32
   root_call_loc : @token.Loc
   throw_type_error_snapshot : CallbackFreeBindingSnapshot
   expected_global_object : ObjectData
@@ -249,7 +249,7 @@ priv struct ChangingReceiverCallPreflight {
 priv struct TrustedChangingReceiverRegistry {
   function : ChangingReceiverFunctionSnapshot
   receivers : Array[Value]
-  initial_depth : Int
+  initial_depth : Int32
   root_call_loc : @token.Loc
   throw_type_error : Value?
   throw_type_error_snapshot : CallbackFreeBindingSnapshot
@@ -257,7 +257,7 @@ priv struct TrustedChangingReceiverRegistry {
 }
 
 ///|
-fn changing_receiver_depth(args : Array[Value]) -> Int? {
+fn changing_receiver_depth(args : Array[Value]) -> Int32? {
   guard args.length() == 1 && args[0] is Number(value) else { return None }
   guard value >= 0.0 &&
     value <= CHANGING_RECEIVER_MAX_DEPTH &&
@@ -339,7 +339,7 @@ fn changing_receiver_chain(
   initial_receiver : Value,
   callee : Value,
   plan : ChangingReceiverActivationPlan,
-  depth : Int,
+  depth : Int32,
 ) -> Array[Value]? {
   guard changing_receiver_resolves_prototype_data_method(
     initial_receiver,
@@ -481,7 +481,7 @@ fn Interpreter::seal_changing_receiver_registry(
 fn TrustedChangingReceiverRegistry::receiver_index(
   self : TrustedChangingReceiverRegistry,
   args : Array[Value],
-) -> Int raise InvalidActivationDispatchShell {
+) -> Int32 raise InvalidActivationDispatchShell {
   let depth = match changing_receiver_depth(args) {
     Some(value) => value
     None =>
@@ -504,7 +504,7 @@ fn TrustedChangingReceiverRegistry::require_call(
   callee : Value,
   this_value : Value,
   args : Array[Value],
-) -> Int raise InvalidActivationDispatchShell {
+) -> Int32 raise InvalidActivationDispatchShell {
   let throw_type_error_snapshot = numeric_recursion_callback_free_throw_type_error(
     interp.global,
   )

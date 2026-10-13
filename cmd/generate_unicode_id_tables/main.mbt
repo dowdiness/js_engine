@@ -36,7 +36,7 @@ fn argv0(args : Array[String]) -> String {
 }
 
 ///|
-fn exit_with_code(code : Int) -> Unit {
+fn exit_with_code(code : Int32) -> Unit {
   if code != 0 {
     @sys.exit(code)
   }

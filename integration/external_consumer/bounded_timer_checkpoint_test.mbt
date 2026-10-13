@@ -6,9 +6,7 @@ fn bounded_timer_policy(
 ) -> @js_engine.ExecutionPolicy raise Error {
   match
     @js_engine.ExecutionPolicy::new(
-      step_budget,
-      stack_depth_limit,
-      interruption,
+      step_budget, stack_depth_limit, interruption,
     ) {
     Ok(policy) => policy
     Err(_) => fail("expected a valid bounded timer policy")
@@ -108,7 +106,10 @@ test "timer callback activation is charged once at the direct call boundary" {
     ) {
     Ok(_) => ()
     Err(diagnostic) =>
-      fail("one callback activation should fit the finite boundary: " + diagnostic.message())
+      fail(
+        "one callback activation should fit the finite boundary: " +
+        diagnostic.message(),
+      )
   }
   assert_false(accepted.has_pending_timers())
 }
@@ -346,13 +347,13 @@ test "zero bounded timer budget retains a pending timeout" {
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
       inspect(diagnostic.operation_code(), content="timer-checkpoint")
       inspect(diagnostic.phase_code(), content="timer-queue-dispatch")
-      assert_true(diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Discard)
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Discard,
+      )
       assert_true(
         diagnostic.retained_effects() is @js_engine.RetainedEffects::MayRemain,
       )
-      assert_true(
-        diagnostic.pending_jobs() is @js_engine.PendingJobs::Present,
-      )
+      assert_true(diagnostic.pending_jobs() is @js_engine.PendingJobs::Present)
     }
   }
   assert_true(engine.has_pending_timers())

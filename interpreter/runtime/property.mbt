@@ -103,7 +103,7 @@ fn Interpreter::array_get_indexed(
   self : Interpreter,
   obj : Value,
   data : ArrayData,
-  index : Int,
+  index : Int32,
   key : String,
   loc : @token.Loc,
 ) -> Value raise Error {
@@ -1423,7 +1423,7 @@ fn Interpreter::get_computed_property_impl(
           // outside Int) flow into the non-index path and walk the
           // prototype, rather than overflowing `n.to_int()`.
           let mut is_index : Bool = false
-          let mut idx : Int = -1
+          let mut idx : Int32 = -1
           try {
             let n = @string.parse_double(s)
             if n >= 0.0 && n.to_string() == s {

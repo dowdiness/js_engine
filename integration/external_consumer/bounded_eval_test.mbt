@@ -25,11 +25,10 @@ fn policy(
   stack_depth_limit : Int64,
   interruption : @js_engine.InterruptionHandle,
 ) -> @js_engine.ExecutionPolicy raise Error {
-  match @js_engine.ExecutionPolicy::new(
-    step_budget,
-    stack_depth_limit,
-    interruption,
-  ) {
+  match
+    @js_engine.ExecutionPolicy::new(
+      step_budget, stack_depth_limit, interruption,
+    ) {
     Ok(policy) => policy
     Err(_) => fail("expected a valid bounded policy")
   }
@@ -48,8 +47,12 @@ fn expect_guardrail(
       inspect(diagnostic.operation_code(), content="eval")
       inspect(diagnostic.phase_code(), content="execute")
       assert_true(diagnostic.source_identity() == Some(source_id))
-      assert_true(diagnostic.retained_effects() is @js_engine.RetainedEffects::MayRemain)
-      assert_true(diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Unknown)
+      assert_true(
+        diagnostic.retained_effects() is @js_engine.RetainedEffects::MayRemain,
+      )
+      assert_true(
+        diagnostic.engine_integrity() is @js_engine.EngineIntegrity::Unknown,
+      )
       diagnostic
     }
   }
@@ -102,7 +105,8 @@ test "bounded eval preserves a finite exact result below the depth limit" {
       FINITE_RECURSION_SOURCE,
       policy(100000L, 257L, interruption),
       source_id="finite.js",
-    ) is Ok(_),
+    )
+    is Ok(_),
   )
   engine.eval("function readAnswer(){return globalThis.answer;}")
   json_inspect(engine.call_json("readAnswer", []), content=256)
@@ -216,7 +220,8 @@ test "guest lookalike remains a JavaScript exception while caught depth succeeds
       PROTECTED_RECURSION_SOURCE,
       policy(100000L, 1L, @js_engine.InterruptionHandle()),
       source_id="caught.js",
-    ) is Ok(_),
+    )
+    is Ok(_),
   )
 }
 

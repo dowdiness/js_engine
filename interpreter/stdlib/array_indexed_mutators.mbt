@@ -203,7 +203,7 @@ fn array_mutator_entries_contain_index(
 fn array_mutator_compare_entry_index_ascending(
   a : (Int64, String, Value),
   b : (Int64, String, Value),
-) -> Int {
+) -> Int32 {
   if a.0 < b.0 {
     -1
   } else if a.0 > b.0 {
@@ -217,7 +217,7 @@ fn array_mutator_compare_entry_index_ascending(
 fn array_mutator_compare_entry_index_descending(
   a : (Int64, String, Value),
   b : (Int64, String, Value),
-) -> Int {
+) -> Int32 {
   -array_mutator_compare_entry_index_ascending(a, b)
 }
 

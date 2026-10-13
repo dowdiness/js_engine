@@ -186,11 +186,11 @@ pub extend InternalSlotKey with @debug.Debug::{to_repr}
 /// so descriptor invariants are enforced in one place.
 pub(all) struct PropertyBag {
   properties : Map[String, Value] // User-visible string-keyed properties only
-  symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
+  symbol_properties : Map[Int32, Value] // Symbol-keyed properties (key is symbol ID)
   descriptors : Map[String, PropDescriptor]
-  symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
+  symbol_descriptors : Map[Int32, PropDescriptor] // Descriptors for symbol properties
   internal_slots : Map[InternalSlotKey, Value] // Engine-internal slots, invisible to enumeration
-  host_slots : Map[Int, Value] // Embedder slots; invisible to JS enumeration
+  host_slots : Map[Int32, Value] // Embedder slots; invisible to JS enumeration
 }
 
 ///|
@@ -208,9 +208,9 @@ pub fn PropertyBag::PropertyBag() -> PropertyBag {
 
 ///|
 pub(all) struct ArrayBufferState {
-  id_counter : Ref[Int]
-  store : Map[Int, Array[Int]]
-  detached : Map[Int, Bool]
+  id_counter : Ref[Int32]
+  store : Map[Int32, Array[Int32]]
+  detached : Map[Int32, Bool]
 }
 
 ///|
@@ -237,7 +237,7 @@ pub(all) struct ArrayData {
   mut length_writable : Bool
   // Tracks deleted (hole) indices so ordinary_get_own_property and
   // has_array_property correctly report them absent after `delete arr[i]`.
-  holes : Map[Int, Unit]
+  holes : Map[Int32, Unit]
   // §10.4.2 [[Extensible]]: false after Object.preventExtensions/seal/freeze.
   mut extensible : Bool
 }
@@ -332,7 +332,7 @@ pub fn PartialDescriptor::is_generic(self : PartialDescriptor) -> Bool {
 ///|
 /// Symbol data structure - each symbol has a unique ID and optional description
 pub(all) struct SymbolData {
-  id : Int // Unique identifier for this symbol
+  id : Int32 // Unique identifier for this symbol
   description : String? // Optional description (the argument to Symbol())
 }
 
@@ -341,8 +341,8 @@ pub(all) struct SymbolData {
 /// Uses SameValueZero for key comparison (NaN === NaN, +0 === -0)
 pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
-  entry_ids : Array[Int] // Stable record identities for live-iteration semantics
-  mut next_entry_id : Int
+  entry_ids : Array[Int32] // Stable record identities for live-iteration semantics
+  mut next_entry_id : Int32
   // None = use realm's Map.prototype; Some(Null) = explicit null; Some(v) = override
   mut prototype : Value?
   // Expando properties: stores instance fields from subclasses (class D extends Map)
@@ -354,9 +354,9 @@ pub(all) struct MapData {
 /// Construct MapData with entries and an empty property bag (no expando properties).
 pub fn MapData::MapData(
   entries : Array[(Value, Value)],
-  prototype? : Value? = None,
+  prototype~ : Value? = None,
 ) -> MapData {
-  let entry_ids : Array[Int] = []
+  let entry_ids : Array[Int32] = []
   for i in 0..<entries.length() {
     entry_ids.push(i)
   }
@@ -381,11 +381,11 @@ pub(all) struct SetData {
   // Compaction ONLY happens at forEach exit when tombstones_pre_existed=false.
   // Iterator exhaustion does NOT compact — multiple live iterators share the same
   // tombstone set and compacting on one would corrupt the other's stored cursor.
-  mut tombstones : @set.Set[Int]?
+  mut tombstones : @set.Set[Int32]?
   // Counts active forEach calls. forEach uses this to guard the compaction it owns:
   // a nested for..of that exhausts inside a forEach body checks iteration_depth>0
   // to avoid compacting while the forEach cursor is still walking.
-  mut iteration_depth : Int
+  mut iteration_depth : Int32
   // None = use realm's Set.prototype; Some(Null) = explicit null; Some(v) = override
   mut prototype : Value?
   // Expando properties: stores instance fields from subclasses (class D extends Set)
@@ -397,7 +397,7 @@ pub(all) struct SetData {
 /// Construct SetData with values and an empty property bag (no expando properties).
 pub fn SetData::SetData(
   values : Array[Value],
-  prototype? : Value? = None,
+  prototype~ : Value? = None,
 ) -> SetData {
   {
     values,
@@ -411,7 +411,7 @@ pub fn SetData::SetData(
 
 ///|
 /// Live element count — values.length() minus tombstoned slots.
-pub fn SetData::effective_size(self : SetData) -> Int {
+pub fn SetData::effective_size(self : SetData) -> Int32 {
   let ts_count = match self.tombstones {
     None => 0
     Some(ts) => ts.length()
@@ -575,7 +575,7 @@ pub fn get_array_named_prop(arr : ArrayData, key : String) -> Value? {
 ///|
 pub fn set_array_symbol_prop(
   arr : ArrayData,
-  sym_id : Int,
+  sym_id : Int32,
   value : Value,
 ) -> Unit {
   arr.bag.symbol_properties[sym_id] = value
@@ -585,7 +585,7 @@ pub fn set_array_symbol_prop(
 }
 
 ///|
-pub fn get_array_symbol_prop(arr : ArrayData, sym_id : Int) -> Value? {
+pub fn get_array_symbol_prop(arr : ArrayData, sym_id : Int32) -> Value? {
   arr.bag.symbol_properties.get(sym_id)
 }
 

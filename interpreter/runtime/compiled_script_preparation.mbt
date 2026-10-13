@@ -83,7 +83,7 @@ pub fn compiled_script_preparation_matches(
   function_names : Array[String],
   lexical_bindings : Array[CompiledScriptLexicalBinding],
   expected_settlement : CompiledScriptEarlyErrorSettlement,
-  provenance_token? : Ref[Unit]? = None,
+  provenance_token~ : Ref[Unit]? = None,
 ) -> Bool {
   let settlement_matches = match preparation.early_error_settlement {
     Some(actual) => {
@@ -120,7 +120,7 @@ pub fn compiled_script_preparation_matches(
 pub fn prepare_compiled_script_early_error(
   stmts : Array[@ast.Stmt],
   strict : Bool,
-  provenance_token? : Ref[Unit]? = None,
+  provenance_token~ : Ref[Unit]? = None,
 ) -> CompiledScriptEarlyErrorSettlement {
   let error : Error? = try {
     validate_compiled_script_early_errors(stmts, strict)

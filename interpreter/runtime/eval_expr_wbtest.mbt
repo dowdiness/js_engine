@@ -1,7 +1,7 @@
 ///|
 test "eval_binary_op converts the right operand before Symbol failure" {
   let interp = Interpreter::new()
-  let calls : Ref[Int] = { val: 0, }
+  let calls : Ref[Int32] = { val: 0, }
   let hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -80,7 +80,7 @@ test "relational less-than-or-equal compares object String primitives lexicograp
 ///|
 test "relational less-than-or-equal leaves right untouched on left ToPrimitive throw" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -128,7 +128,7 @@ test "relational less-than-or-equal leaves right untouched on left ToPrimitive t
 ///|
 test "relational less-than-or-equal converts right before left Symbol numeric failure" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -244,7 +244,7 @@ test "relational less-than compares object String primitives in source order" {
 ///|
 test "relational less-than converts both operands before Symbol numeric failure" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),
@@ -316,7 +316,7 @@ test "relational greater operators compare object String primitives" {
 ///|
 test "relational greater operators convert both operands before Symbol failure" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="rightToPrimitive",
     realm_state=Some(interp.realm_state),

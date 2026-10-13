@@ -580,7 +580,7 @@ test "managed CopyDataProperties keeps one key snapshot across source mutation" 
 ///|
 test "managed CopyDataProperties creates data properties for proto-named and symbol keys" {
   let interp = Interpreter::new()
-  let setter_calls : Ref[Int] = { val: 0, }
+  let setter_calls : Ref[Int32] = { val: 0, }
   let inherited_setter = make_method_func(
     name="inherited proto setter",
     realm_state=Some(interp.realm_state),

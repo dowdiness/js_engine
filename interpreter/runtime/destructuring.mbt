@@ -38,7 +38,7 @@ fn Interpreter::destructuring_property_key(
 fn destructuring_mark_used_key(
   key : Value,
   string_keys : @set.Set[String],
-  symbol_keys : Map[Int, Bool],
+  symbol_keys : Map[Int32, Bool],
 ) -> Unit {
   match key {
     String_(s) => string_keys.add(s)
@@ -82,11 +82,11 @@ fn Interpreter::copy_object_rest_properties(
   self : Interpreter,
   value : Value,
   excluded_string_keys : @set.Set[String],
-  excluded_symbol_keys : Map[Int, Bool],
+  excluded_symbol_keys : Map[Int32, Bool],
   loc : @token.Loc,
 ) -> Value raise Error {
   let rest_props : Map[String, Value] = Map([])
-  let rest_symbol_props : Map[Int, Value] = Map([])
+  let rest_symbol_props : Map[Int32, Value] = Map([])
   for key in self.own_property_keys(value) {
     self.observe_execution_step()
     let excluded = match key {
@@ -272,7 +272,7 @@ fn Interpreter::bind_pattern(
         )
       }
       let used_string_keys : @set.Set[String] = Default::default()
-      let used_symbol_keys : Map[Int, Bool] = Map([])
+      let used_symbol_keys : Map[Int32, Bool] = Map([])
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
         destructuring_mark_used_key(
@@ -616,7 +616,7 @@ fn Interpreter::assign_pattern(
         )
       }
       let used_string_keys : @set.Set[String] = Default::default()
-      let used_symbol_keys : Map[Int, Bool] = Map([])
+      let used_symbol_keys : Map[Int32, Bool] = Map([])
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
         destructuring_mark_used_key(

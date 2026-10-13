@@ -719,7 +719,7 @@ test "expression reducer rejects invalid cursors before scheduling work" {
 ///|
 fn expression_test_expect_abrupt(
   plan : DispatchExpressionPlan,
-  next_index : Int,
+  next_index : Int32,
   values : Array[Value],
   completion : DispatchCompletion,
 ) -> Unit raise Error {
@@ -774,7 +774,7 @@ test "expression reducer preserves abrupt identity at every call leaf" {
 ///|
 fn expression_test_expect_binary_abrupt(
   plan : DispatchExpressionPlan,
-  next_index : Int,
+  next_index : Int32,
   values : Array[Value],
   right_value : Value,
   completion : DispatchCompletion,

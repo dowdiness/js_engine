@@ -7,24 +7,24 @@ priv suberror DispatchObservationProbeError {
 priv struct DispatchObservationProbe {
   deny_first : Bool
   observed_interp : Interpreter?
-  mut attempts : Int
-  mut acquired : Int
-  mut accepted : Int
-  mut rejected : Int
-  mut released : Int
-  mut denied : Int
-  mut active : Int
-  mut maximum_active : Int
-  active_ordinals : Array[Int]
-  mut lifo_violations : Int
-  release_ordinals : Array[Int]
+  mut attempts : Int32
+  mut acquired : Int32
+  mut accepted : Int32
+  mut rejected : Int32
+  mut released : Int32
+  mut denied : Int32
+  mut active : Int32
+  mut maximum_active : Int32
+  active_ordinals : Array[Int32]
+  mut lifo_violations : Int32
+  release_ordinals : Array[Int32]
   release_state_restored : Array[Bool]
 }
 
 ///|
 fn DispatchObservationProbe::DispatchObservationProbe(
-  deny_first? : Bool = false,
-  observed_interp? : Interpreter? = None,
+  deny_first~ : Bool = false,
+  observed_interp~ : Interpreter? = None,
 ) -> DispatchObservationProbe {
   {
     deny_first,
@@ -136,7 +136,7 @@ fn DispatchObservationProbe::port(
 fn dispatch_observation_numeric_fixture(
   interp : Interpreter,
   probe : DispatchObservationProbe,
-  source? : String = "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  source~ : String = "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
 ) -> (PrimitiveProgramDispatchShell, Array[@ast.Stmt], ExecContext) raise {
   let stmts = @parser.parse(source).stmts
   let preflight = match
@@ -209,7 +209,7 @@ fn dispatch_observation_proxy_fixture(
 ///|
 fn expect_dispatch_observation_balanced(
   probe : DispatchObservationProbe,
-  expected_count : Int,
+  expected_count : Int32,
 ) -> Unit raise {
   let expected = expected_count.to_string()
   inspect(probe.attempts, content=expected)
@@ -376,7 +376,7 @@ test "runtime abrupt completion releases every observed numeric call" {
 test "runtime abrupt skips catch, runs finalizers, and preserves identity before release" {
   let interp = Interpreter::new()
   let trace : Array[String] = []
-  let observed_steps : Ref[Int] = { val: 0, }
+  let observed_steps : Ref[Int32] = { val: 0, }
   let runtime_failure : Error = ExecutionControlError(Interrupted)
   interp.global.bindings[EXECUTION_CONTROL_BINDING] = {
     value: make_object(
@@ -403,11 +403,11 @@ test "runtime abrupt skips catch, runs finalizers, and preserves identity before
     annex_b_hoisted: false,
     is_parameter: false,
   }
-  let attempts : Ref[Int] = { val: 0, }
-  let accepted : Ref[Int] = { val: 0, }
-  let rejected : Ref[Int] = { val: 0, }
-  let released : Ref[Int] = { val: 0, }
-  let denied : Ref[Int] = { val: 0, }
+  let attempts : Ref[Int32] = { val: 0, }
+  let accepted : Ref[Int32] = { val: 0, }
+  let rejected : Ref[Int32] = { val: 0, }
+  let released : Ref[Int32] = { val: 0, }
+  let denied : Ref[Int32] = { val: 0, }
   let observation_port = ActivationObservationPort(
     begin_entry=() => {
       attempts.val += 1

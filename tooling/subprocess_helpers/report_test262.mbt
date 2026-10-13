@@ -30,7 +30,7 @@ pub fn ReportConfig::ReportConfig(
   format~ : String,
   baseline~ : String,
   no_baseline~ : Bool,
-  repo_root? : String? = None,
+  repo_root~ : String? = None,
 ) -> ReportConfig {
   {
     run_id,
@@ -58,12 +58,12 @@ pub extend RunInfo with @debug.Debug::{to_repr}
 
 ///|
 struct Test262Summary {
-  total : Int
-  passed : Int
-  failed : Int
-  skipped : Int
-  timeout : Int
-  error : Int
+  total : Int32
+  passed : Int32
+  failed : Int32
+  skipped : Int32
+  timeout : Int32
+  error : Int32
 } derive(Debug)
 
 ///|
@@ -71,8 +71,8 @@ pub extend Test262Summary with @debug.Debug::{to_repr}
 
 ///|
 struct BaselineInfo {
-  strict_min : Int
-  nonstrict_min : Int
+  strict_min : Int32
+  nonstrict_min : Int32
   updated : String
 } derive(Debug)
 
@@ -121,7 +121,7 @@ fn json_int_field(
   fields : Map[String, Json],
   key : String,
   context : String,
-) -> Int raise {
+) -> Int32 raise {
   @json.from_json(required_field(fields, key, context))
 }
 
@@ -158,8 +158,8 @@ fn json_int64_field(
 fn json_int_default(
   fields : Map[String, Json],
   key : String,
-  default : Int,
-) -> Int raise {
+  default : Int32,
+) -> Int32 raise {
   match fields.get(key) {
     Some(value) => @json.from_json(value)
     None => default
@@ -233,7 +233,7 @@ fn load_baseline(path : String) -> BaselineInfo? raise {
 }
 
 ///|
-fn prefix(source : String, len : Int) -> String {
+fn prefix(source : String, len : Int32) -> String {
   if source.length() <= len {
     source
   } else {
@@ -242,7 +242,7 @@ fn prefix(source : String, len : Int) -> String {
 }
 
 ///|
-fn format_int_grouped(value : Int) -> String {
+fn format_int_grouped(value : Int32) -> String {
   let negative = value < 0
   let digits = (if negative { -value } else { value }).to_string()
   let parts : Array[String] = []
@@ -260,7 +260,7 @@ fn format_int_grouped(value : Int) -> String {
 }
 
 ///|
-fn signed_grouped(value : Int) -> String {
+fn signed_grouped(value : Int32) -> String {
   if value >= 0 {
     "+" + format_int_grouped(value)
   } else {
@@ -269,7 +269,7 @@ fn signed_grouped(value : Int) -> String {
 }
 
 ///|
-fn pct(num : Int, denom : Int) -> String {
+fn pct(num : Int32, denom : Int32) -> String {
   if denom == 0 {
     "—"
   } else {
@@ -278,7 +278,7 @@ fn pct(num : Int, denom : Int) -> String {
 }
 
 ///|
-fn report_numbers(summary : Test262Summary) -> (Int, Int, Int) {
+fn report_numbers(summary : Test262Summary) -> (Int32, Int32, Int32) {
   let passed = summary.passed
   let executed = summary.passed + summary.failed
   let discovered = summary.total
@@ -508,7 +508,7 @@ async fn executable_exists(cmd : String) -> Bool {
 async fn collect_process_args(
   exe : String,
   args : Array[String],
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> ProcessCapture {
   let result = @async.with_timeout_opt(timeout_ms, () => {
     @process.collect_output(exe, args)
@@ -615,7 +615,7 @@ fn find_file_rec(dir : String, filename : String) -> String? raise {
 }
 
 ///|
-fn parse_uint(s : String, context : String) -> Int raise {
+fn parse_uint(s : String, context : String) -> Int32 raise {
   guard s.length() > 0 else {
     fail("expected positive integer, got empty string (in '" + context + "')")
   }
@@ -637,7 +637,10 @@ fn parse_uint(s : String, context : String) -> Int raise {
 
 ///|
 // Parses "NofM" from the inner part of a shard filename, e.g. "2of4" → (2, 4).
-fn parse_shard_of_total(inner : String, context : String) -> (Int, Int) raise {
+fn parse_shard_of_total(
+  inner : String,
+  context : String,
+) -> (Int32, Int32) raise {
   let chars = inner.to_array()
   let len = chars.length()
   let mut of_pos = -1
@@ -668,7 +671,7 @@ fn validate_shard_completeness(
   mode : String,
 ) -> Unit raise {
   let mut expected_total = 0
-  let seen_indices : Array[Int] = []
+  let seen_indices : Array[Int32] = []
   for path in paths {
     let name = @path_utils.basename(path)
     let inner = name[prefix.length():name.length() - suffix.length()].to_owned()

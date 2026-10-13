@@ -10,9 +10,9 @@ pub(all) struct StdlibHooks {
   get_set_method : (SetData, String, RealmState) -> Value
   get_promise_method : (PromiseData, String, RealmState) -> Value
   make_regexp_object : (RealmState, String, String) -> Value raise Error
-  typedarray_get_index : (ObjectData, Int, RealmState) -> Value
-  typedarray_set_index : (ObjectData, Int, Double, RealmState) -> Unit
-  typedarray_is_valid_index : (ObjectData, Int, RealmState) -> Bool
+  typedarray_get_index : (ObjectData, Int32, RealmState) -> Value
+  typedarray_set_index : (ObjectData, Int32, Double, RealmState) -> Unit
+  typedarray_is_valid_index : (ObjectData, Int32, RealmState) -> Bool
   // Factory for creating a fully-wired realm (builtins + harness + hooks).
   // Populated by the wiring layer; the default produces a bare interpreter.
   create_realm : () -> Interpreter

@@ -1865,7 +1865,7 @@ fn Parser::parse_yield_expr(self : Parser) -> @ast.Expr raise Error {
 ///|
 fn Parser::parse_arrow_body(
   self : Parser,
-  is_async? : Bool = false,
+  is_async~ : Bool = false,
 ) -> Array[@ast.Stmt] raise Error {
   // Arrow functions are never generators; yield is illegal inside them
   self.push_generator_context(false)

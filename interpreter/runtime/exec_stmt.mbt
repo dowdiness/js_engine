@@ -154,7 +154,7 @@ fn save_for_of_resume_state(
   iterator : Value,
   next_method : Value,
   loop_env : Environment,
-  yield_base : Int,
+  yield_base : Int32,
 ) -> Unit {
   match gen_opt {
     Some(g) => {
@@ -239,7 +239,7 @@ fn restore_for_of_loop_env(
 ///|
 fn save_stmt_resume_frame(
   gen_opt : GeneratorObject?,
-  index : Int,
+  index : Int32,
   env : Environment,
   last : Value,
 ) -> Unit {
@@ -257,7 +257,7 @@ fn save_stmt_resume_frame(
 fn restore_stmt_resume_frame(
   gen_opt : GeneratorObject?,
   fallback_env : Environment,
-) -> (Int, Environment, Value) {
+) -> (Int32, Environment, Value) {
   match gen_opt {
     Some(g) =>
       if g.resuming && g.stmt_resume_index_stack.length() > 0 {
@@ -278,7 +278,7 @@ fn Interpreter::exec_stmt(
   ctx : ExecContext,
   stmt : @ast.Stmt,
   env : Environment,
-  label? : String? = None,
+  label~ : String? = None,
 ) -> Signal raise Error {
   self.observe_execution_step()
   match stmt {

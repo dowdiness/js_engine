@@ -1,6 +1,6 @@
 ///|
 fn receiver_recursion_sealed_fixture(
-  source_identity? : String? = None,
+  source_identity~ : String? = None,
 ) -> (Interpreter, Array[@ast.Stmt], TrustedReceiverRecursionRegistry) raise {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = source_identity
@@ -23,7 +23,7 @@ fn receiver_recursion_sealed_fixture(
 
 ///|
 fn receiver_recursion_computed_sealed_fixture(
-  source_identity? : String? = None,
+  source_identity~ : String? = None,
 ) -> (Interpreter, Array[@ast.Stmt], TrustedReceiverRecursionRegistry) raise {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = source_identity
@@ -46,7 +46,7 @@ fn receiver_recursion_computed_sealed_fixture(
 
 ///|
 fn receiver_recursion_escaped_computed_sealed_fixture(
-  source_identity? : String? = None,
+  source_identity~ : String? = None,
 ) -> (Interpreter, Array[@ast.Stmt], TrustedReceiverRecursionRegistry) raise {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = source_identity
@@ -82,7 +82,7 @@ fn receiver_recursion_rejection(
 ///|
 fn receiver_recursion_recipe_with_access(
   original : ReceiverRecursionExpressionRecipe,
-  drift_index : Int,
+  drift_index : Int32,
 ) -> ReceiverRecursionExpressionRecipe {
   let static_access = ReceiverRecursionStatic
   ReceiverRecursionExpressionRecipe(
@@ -136,7 +136,7 @@ fn receiver_recursion_access_with_escape(
 ///|
 fn receiver_recursion_recipe_with_escape(
   original : ReceiverRecursionExpressionRecipe,
-  drift_index : Int,
+  drift_index : Int32,
 ) -> ReceiverRecursionExpressionRecipe {
   let drifted = (access : ReceiverRecursionAccessKind) => {
     receiver_recursion_access_with_escape(access, false)
@@ -195,7 +195,7 @@ fn receiver_recursion_drift_computed_property_key(
 ///|
 fn receiver_recursion_toggle_escaped_access(
   stmts : Array[@ast.Stmt],
-  drift_index : Int,
+  drift_index : Int32,
 ) -> Unit raise {
   fn toggle_key(key : @ast.Expr) -> @ast.Expr raise {
     match key {
@@ -698,7 +698,7 @@ test "mutual receiver recursion preflight seals both function identities" {
 
 ///|
 fn mutual_receiver_sealed_fixture(
-  source_identity? : String? = None,
+  source_identity~ : String? = None,
 ) -> (Interpreter, Array[@ast.Stmt], TrustedMutualReceiverRecursionRegistry) raise {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = source_identity

@@ -63,7 +63,7 @@ priv struct TrustedNumericRecursionRegistry {
 
 ///|
 fn TrustedNumericRecursionRegistry::TrustedNumericRecursionRegistry(
-  program_plan? : NumericRecursionPlan? = None,
+  program_plan~ : NumericRecursionPlan? = None,
   entry~ : TrustedNumericRecursionFunction,
   peer~ : TrustedNumericRecursionFunction?,
   throw_type_error~ : Value?,

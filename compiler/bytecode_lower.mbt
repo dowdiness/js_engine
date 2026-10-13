@@ -463,7 +463,7 @@ fn stmt_is_iteration_label_target(stmt : @ast.Stmt) -> Bool {
 ///|
 fn add_local_candidate(
   names : Array[String],
-  indices : Map[String, Int],
+  indices : Map[String, Int32],
   captured : Map[String, Bool],
   name : String,
 ) -> Unit {
@@ -476,8 +476,8 @@ fn add_local_candidate(
 ///|
 fn add_env_slot_candidate(
   names : Array[String],
-  indices : Map[String, Int],
-  local_indices : Map[String, Int],
+  indices : Map[String, Int32],
+  local_indices : Map[String, Int32],
   name : String,
 ) -> Unit {
   if !local_indices.contains(name) && !indices.contains(name) {
@@ -738,7 +738,7 @@ fn collect_nested_function_refs_from_pattern(
 fn collect_name_refs_from_stmts(
   stmts : Array[@ast.Stmt],
   refs : Map[String, Bool],
-  nested_functions? : Bool = true,
+  nested_functions~ : Bool = true,
 ) -> Unit {
   for stmt in stmts {
     collect_name_refs_from_stmt(stmt, refs, nested_functions~)
@@ -757,7 +757,7 @@ fn collect_current_function_name_refs_from_stmts(
 fn collect_name_refs_from_stmt(
   stmt : @ast.Stmt,
   refs : Map[String, Bool],
-  nested_functions? : Bool = true,
+  nested_functions~ : Bool = true,
 ) -> Unit {
   match stmt {
     TryCatchStmt(body, _, caught, finalizer, _) => {
@@ -872,7 +872,7 @@ fn collect_name_refs_from_stmt(
 fn collect_name_refs_from_expr(
   expr : @ast.Expr,
   refs : Map[String, Bool],
-  nested_functions? : Bool = true,
+  nested_functions~ : Bool = true,
 ) -> Unit {
   match expr {
     Ident(name, _) => refs[name] = true
@@ -969,7 +969,7 @@ fn collect_name_refs_from_expr(
 fn collect_name_refs_from_props(
   props : Array[@ast.Property],
   refs : Map[String, Bool],
-  nested_functions? : Bool = true,
+  nested_functions~ : Bool = true,
 ) -> Unit {
   for prop in props {
     match prop.kind {
@@ -988,7 +988,7 @@ fn collect_name_refs_from_props(
 fn collect_name_refs_from_pattern(
   pattern : @ast.Pattern,
   refs : Map[String, Bool],
-  nested_functions? : Bool = true,
+  nested_functions~ : Bool = true,
 ) -> Unit {
   match pattern {
     IdentPat(name) => refs[name] = true
@@ -1039,7 +1039,7 @@ fn collect_name_refs_from_pattern(
 fn collect_name_refs_from_binding_pattern_exprs(
   pattern : @ast.Pattern,
   refs : Map[String, Bool],
-  nested_functions? : Bool = true,
+  nested_functions~ : Bool = true,
 ) -> Unit {
   match pattern {
     IdentPat(_) => ()
@@ -1677,9 +1677,9 @@ fn plan_bytecode_locals(
   use_local_slots~ : Bool,
 ) -> BytecodeLocalPlan {
   let names : Array[String] = []
-  let indices : Map[String, Int] = Map([])
+  let indices : Map[String, Int32] = Map([])
   let env_names : Array[String] = []
-  let env_indices : Map[String, Int] = Map([])
+  let env_indices : Map[String, Int32] = Map([])
   let refs_arguments = bytecode_body_references_outer_arguments(body)
   if use_local_slots &&
     !bytecode_body_references_eval(body) &&
@@ -1723,19 +1723,19 @@ fn compile_bytecode_function(
   body : Array[@ast.Stmt],
   rest_param : String?,
   owner_allocator : Ref[SourcePointOwnerAllocator],
-  source_text? : String? = None,
-  use_local_slots? : Bool = true,
-  call_self_name? : Bool = false,
-  template_cache_key_prefix? : String = "main",
-  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
-  enclosing_strict? : Bool = false,
-  is_method? : Bool = false,
-  header_provenance? : BytecodeHeaderProvenance? = None,
-  activation_kind? : BytecodeActivationKind = FunctionActivation,
-  candidate_identity_plan? : CandidateIdentityPlan? = None,
-  candidate_mode? : Bool = false,
-  function_form? : BytecodeFunctionForm = OrdinaryFunction,
-  function_form_loc? : @token.Loc? = None,
+  source_text~ : String? = None,
+  use_local_slots~ : Bool = true,
+  call_self_name~ : Bool = false,
+  template_cache_key_prefix~ : String = "main",
+  source_unit~ : SourceUnitHandle = SourceUnitHandle(0),
+  enclosing_strict~ : Bool = false,
+  is_method~ : Bool = false,
+  header_provenance~ : BytecodeHeaderProvenance? = None,
+  activation_kind~ : BytecodeActivationKind = FunctionActivation,
+  candidate_identity_plan~ : CandidateIdentityPlan? = None,
+  candidate_mode~ : Bool = false,
+  function_form~ : BytecodeFunctionForm = OrdinaryFunction,
+  function_form_loc~ : @token.Loc? = None,
 ) -> BytecodeFunction raise Error {
   let body_has_use_strict = @static_semantics.has_use_strict(body)
   let function_strict = enclosing_strict || body_has_use_strict
@@ -1986,10 +1986,10 @@ fn BytecodeBuilder::add_function(
   body : Array[@ast.Stmt],
   rest_param : String?,
   consumer_form : BytecodeFunctionConsumerForm,
-  source_text? : String? = None,
-  call_self_name? : Bool = false,
-  is_method? : Bool = false,
-) -> Int raise Error {
+  source_text~ : String? = None,
+  call_self_name~ : Bool = false,
+  is_method~ : Bool = false,
+) -> Int32 raise Error {
   let idx = if self.candidate_mode {
     let index = self.candidate_child_slot_count
     self.candidate_child_slot_count += 1
@@ -2074,7 +2074,7 @@ fn BytecodeBuilder::add_function(
 fn BytecodeBuilder::add_candidate_unsupported_function(
   self : BytecodeBuilder,
   consumer_form : BytecodeFunctionConsumerForm,
-) -> Int raise Error {
+) -> Int32 raise Error {
   guard self.candidate_mode else {
     raise @errors.InternalError(
       message="unsupported candidate child slot escaped candidate lowering",
@@ -2130,7 +2130,7 @@ fn BytecodeBuilder::compile_candidate_unsupported_expression(
 ///|
 fn BytecodeBuilder::child_source_identity(
   self : BytecodeBuilder,
-  child_index : Int,
+  child_index : Int32,
   consumer_form : BytecodeFunctionConsumerForm,
 ) -> BytecodeSourceIdentity raise Error {
   match self.candidate_identity_plan {
@@ -2424,7 +2424,7 @@ fn BytecodeBuilder::compile_for_in_expr(
 fn BytecodeBuilder::begin_lexical_scope(
   self : BytecodeBuilder,
   bindings : Array[BytecodeLexicalBinding],
-) -> (Int, Array[(String, Int?, Int?)])? {
+) -> (Int32, Array[(String, Int32?, Int32?)])? {
   guard !bindings.is_empty() else { return None }
   let shadowed = bindings.map(binding => {
     let name = binding.name
@@ -2440,7 +2440,7 @@ fn BytecodeBuilder::begin_lexical_scope(
 ///|
 fn BytecodeBuilder::end_lexical_scope(
   self : BytecodeBuilder,
-  scope : (Int, Array[(String, Int?, Int?)])?,
+  scope : (Int32, Array[(String, Int32?, Int32?)])?,
 ) -> Unit raise Error {
   guard scope is Some((enter, shadowed)) else { return }
   guard self.code[enter] is EnterHandler(kind, _, _) else {
@@ -2468,7 +2468,7 @@ fn BytecodeBuilder::end_lexical_scope(
 fn BytecodeBuilder::compile_stmt(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
-  declaration_updates_completion? : Bool = true,
+  declaration_updates_completion~ : Bool = true,
 ) -> Unit raise Error {
   let _ = self.emit_statement_observation(bytecode_stmt_loc(stmt))
   self.compile_stmt_body(stmt, declaration_updates_completion~)
@@ -2479,7 +2479,7 @@ fn BytecodeBuilder::compile_stmt(
 fn BytecodeBuilder::compile_stmt_body(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
-  declaration_updates_completion? : Bool = true,
+  declaration_updates_completion~ : Bool = true,
 ) -> Unit raise Error {
   match stmt {
     ExprStmt(expr, _) => self.compile_expr_for_completion(expr)
@@ -3043,7 +3043,7 @@ fn BytecodeBuilder::emit_property_call_prepare(
   self : BytecodeBuilder,
   prop : String,
   loc : @token.Loc,
-  suspended? : Bool = false,
+  suspended~ : Bool = false,
 ) -> Unit raise Error {
   let instr = if suspended {
     PreparePlainPropertyCall(prop, loc)
@@ -3167,7 +3167,7 @@ fn BytecodeBuilder::compile_nullish_coalesce(
 /// Repeat of the `JumpIfNotNullishKeep / Pop / LoadUndefined / MarkOptionalChainShortCircuit / Jump` pattern.
 fn BytecodeBuilder::emit_optional_null_guard(
   self : BytecodeBuilder,
-  end_jumps : Array[Int],
+  end_jumps : Array[Int32],
 ) -> Unit {
   let jump = self.emit(JumpIfNotNullishKeep(-1))
   let _ = self.emit(Pop)
@@ -3183,7 +3183,7 @@ fn BytecodeBuilder::emit_optional_null_guard(
 /// Repeat of the `JumpIfNotOptionalChainShortCircuitKeep / Jump` pattern.
 fn BytecodeBuilder::emit_chain_short_circuit_guard(
   self : BytecodeBuilder,
-  end_jumps : Array[Int],
+  end_jumps : Array[Int32],
 ) -> Unit {
   let jump = self.emit(JumpIfNotOptionalChainShortCircuitKeep(-1))
   end_jumps.push(self.emit(Jump(-1)))
@@ -3194,7 +3194,7 @@ fn BytecodeBuilder::emit_chain_short_circuit_guard(
 fn BytecodeBuilder::compile_optional_chain_expr_body(
   self : BytecodeBuilder,
   expr : @ast.Expr,
-  end_jumps : Array[Int],
+  end_jumps : Array[Int32],
 ) -> Unit raise Error {
   match expr {
     OptionalMember(obj, prop, loc) => {
@@ -3360,7 +3360,7 @@ fn BytecodeBuilder::compile_optional_chain_expr(
   self : BytecodeBuilder,
   expr : @ast.Expr,
 ) -> Unit raise Error {
-  let end_jumps : Array[Int] = []
+  let end_jumps : Array[Int32] = []
   let _ = self.emit(BeginOptionalChain)
   self.compile_optional_chain_expr_body(expr, end_jumps)
   for jump in end_jumps {
@@ -3431,7 +3431,7 @@ fn BytecodeBuilder::compile_optional_call_with_receiver_tail(
   self : BytecodeBuilder,
   args : Array[@ast.Expr],
   loc : @token.Loc,
-  end_jumps : Array[Int],
+  end_jumps : Array[Int32],
   optional_callee~ : Bool,
 ) -> Unit raise Error {
   if optional_callee {
@@ -3453,7 +3453,7 @@ fn BytecodeBuilder::compile_optional_chain_call_with_receiver_tail(
   self : BytecodeBuilder,
   args : Array[@ast.Expr],
   loc : @token.Loc,
-  end_jumps : Array[Int],
+  end_jumps : Array[Int32],
   optional_callee~ : Bool,
 ) -> Unit raise Error {
   if optional_callee {
@@ -3479,7 +3479,7 @@ fn BytecodeBuilder::compile_optional_property_call(
   optional_obj~ : Bool,
   optional_callee~ : Bool,
 ) -> Unit raise Error {
-  let end_jumps : Array[Int] = []
+  let end_jumps : Array[Int32] = []
   self.compile_expr(obj)
   if optional_obj {
     let member_jump = self.emit(JumpIfNotNullishKeep(-1))
@@ -3508,7 +3508,7 @@ fn BytecodeBuilder::compile_optional_computed_call(
   optional_obj~ : Bool,
   optional_callee~ : Bool,
 ) -> Unit raise Error {
-  let end_jumps : Array[Int] = []
+  let end_jumps : Array[Int32] = []
   self.compile_expr(obj)
   if optional_obj {
     let member_jump = self.emit(JumpIfNotNullishKeep(-1))
@@ -3537,7 +3537,7 @@ fn BytecodeBuilder::compile_chain_property_call(
   loc : @token.Loc,
   optional_callee~ : Bool,
 ) -> Unit raise Error {
-  let end_jumps : Array[Int] = []
+  let end_jumps : Array[Int32] = []
   let _ = self.emit(BeginOptionalChain)
   self.compile_optional_chain_expr_body(obj, end_jumps)
   let member_jump = self.emit(JumpIfNotOptionalChainShortCircuitKeep(-1))
@@ -3566,7 +3566,7 @@ fn BytecodeBuilder::compile_chain_computed_call(
   loc : @token.Loc,
   optional_callee~ : Bool,
 ) -> Unit raise Error {
-  let end_jumps : Array[Int] = []
+  let end_jumps : Array[Int32] = []
   let _ = self.emit(BeginOptionalChain)
   self.compile_optional_chain_expr_body(obj, end_jumps)
   let member_jump = self.emit(JumpIfNotOptionalChainShortCircuitKeep(-1))
@@ -4258,7 +4258,7 @@ fn bytecode_reject_object_data_property_super(
 fn BytecodeBuilder::compile_object_method(
   self : BytecodeBuilder,
   prop : @ast.Property,
-  computed_key_on_stack? : Bool = false,
+  computed_key_on_stack~ : Bool = false,
 ) -> Unit raise Error {
   let function_loc = bytecode_expr_loc(prop.value)
   let consumer_form = if computed_key_on_stack {
@@ -5121,7 +5121,7 @@ fn BytecodeBuilder::compile_expr_body(
           }
         }
       } else {
-        let hole_idxs : Array[Int] = []
+        let hole_idxs : Array[Int32] = []
         for i, element in elements {
           match element {
             ArrayHole(_) => {

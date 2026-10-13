@@ -1,5 +1,5 @@
 ///|
-fn nest_groupings(expr : @ast.Expr, depth : Int) -> @ast.Expr {
+fn nest_groupings(expr : @ast.Expr, depth : Int32) -> @ast.Expr {
   let loc = @token.Loc::default()
   let mut nested = expr
   for _ in 0..<depth {

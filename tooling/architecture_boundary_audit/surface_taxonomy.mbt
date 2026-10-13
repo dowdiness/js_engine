@@ -64,7 +64,7 @@ fn validate_taxonomy_schema_version(
   data : Map[String, Json],
   path : String,
 ) -> Unit raise {
-  let version : Int = @json.from_json(require_field(data, "version", path)) catch {
+  let version : Int32 = @json.from_json(require_field(data, "version", path)) catch {
     _ => schema_error(path, "version must be an integer")
   }
   if version != TAXONOMY_SCHEMA_VERSION {
@@ -386,7 +386,7 @@ fn render_surface_report(
   surfaces : Array[PackageSurface],
   rules : TaxonomyRules,
   list_surfaces~ : Bool,
-) -> (Array[String], Array[String], Int) {
+) -> (Array[String], Array[String], Int32) {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
   if list_surfaces {
@@ -461,7 +461,7 @@ fn render_surface_report(
 fn run_surface_taxonomy(
   root~ : String,
   list_surfaces~ : Bool,
-) -> (Array[String], Array[String], Int) raise {
+) -> (Array[String], Array[String], Int32) raise {
   let rules = load_taxonomy(root)
   let surfaces = discover_package_surfaces(root)
   render_surface_report(surfaces, rules, list_surfaces~)

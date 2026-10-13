@@ -573,7 +573,7 @@ fn mutual_receiver_recursion_plans_match(
 #warnings("-unused_value")
 fn mutual_receiver_root_statement_matches(
   plan : MutualReceiverRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {
@@ -687,7 +687,7 @@ fn mutual_receiver_root_statement_matches(
 fn mutual_receiver_body_statement_matches(
   plan : MutualReceiverRecursionPlan,
   node : MutualReceiverNode,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   let selected = match node {

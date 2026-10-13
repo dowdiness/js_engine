@@ -19,7 +19,7 @@ priv enum MicrotaskQueueReadiness {
 ///|
 priv struct MicrotaskQueuePolicy {
   queue : Array[Microtask]
-  mut next_index : Int
+  mut next_index : Int32
   mut phase : MicrotaskQueuePolicyPhase
 }
 

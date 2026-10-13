@@ -15,7 +15,7 @@ fn add_lexical_decl_name(
 fn collect_pattern_decl_names(
   pattern : @ast.Pattern,
   names : @set.Set[String],
-  lexical? : Bool = false,
+  lexical~ : Bool = false,
 ) -> Unit raise Error {
   for name in @static_semantics.bound_names(pattern) {
     if lexical {
@@ -30,9 +30,9 @@ fn collect_pattern_decl_names(
 fn collect_block_lexical_decl_names_from_stmt(
   stmt : @ast.Stmt,
   lexical_names : @set.Set[String],
-  block_function_kinds : Map[String, Int],
-  include_block_functions? : Bool = false,
-  allow_duplicate_block_functions? : Bool = false,
+  block_function_kinds : Map[String, Int32],
+  include_block_functions~ : Bool = false,
+  allow_duplicate_block_functions~ : Bool = false,
 ) -> Unit raise Error {
   match stmt {
     VarDecl(LetKind, name, _, _) => add_lexical_decl_name(lexical_names, name)
@@ -167,12 +167,12 @@ fn collect_block_lexical_decl_names_from_stmt(
 ///|
 fn validate_block_statement_list_early_errors(
   stmts : Array[@ast.Stmt],
-  include_block_functions? : Bool = false,
-  allow_duplicate_block_functions? : Bool = false,
-  include_function_decls_in_var_names? : Bool = false,
+  include_block_functions~ : Bool = false,
+  allow_duplicate_block_functions~ : Bool = false,
+  include_function_decls_in_var_names~ : Bool = false,
 ) -> Unit raise Error {
   let lexical_names : @set.Set[String] = Default::default()
-  let block_function_kinds : Map[String, Int] = Map([])
+  let block_function_kinds : Map[String, Int32] = Map([])
   for stmt in stmts {
     collect_block_lexical_decl_names_from_stmt(
       stmt,
@@ -225,7 +225,7 @@ fn validate_for_statement_early_errors(
   body : @ast.Stmt,
 ) -> Unit raise Error {
   let lexical_names : @set.Set[String] = Default::default()
-  let block_function_kinds : Map[String, Int] = Map([])
+  let block_function_kinds : Map[String, Int32] = Map([])
   match init {
     Some(init_stmt) =>
       collect_block_lexical_decl_names_from_stmt(
@@ -1062,7 +1062,7 @@ fn annex_b_candidate_conflicts(
   name : String,
   top_lex : @set.Set[String],
   lex_stack : Array[@set.Set[String]],
-  excluded? : @set.Set[String] = Default::default(),
+  excluded~ : @set.Set[String] = Default::default(),
 ) -> Bool {
   // §B.3.2.1 step ii parameter carve-out: when called from a function body,
   // `excluded` contains formal parameter names (plus "arguments" when the
@@ -1106,7 +1106,7 @@ fn hoist_eval_annex_b_candidates(
   stmts : Array[@ast.Stmt],
   var_env : Environment,
   top_lex : @set.Set[String],
-  excluded? : @set.Set[String] = Default::default(),
+  excluded~ : @set.Set[String] = Default::default(),
 ) -> Unit raise Error {
   let lex_stack : Array[@set.Set[String]] = []
   let work : Array[AnnexBWalkTask] = []
@@ -1349,9 +1349,9 @@ fn Interpreter::hoist_declarations(
   _self : Interpreter,
   stmts : Array[@ast.Stmt],
   env : Environment,
-  strict? : Bool = false,
-  suppress_annex_b_candidates? : Bool = false,
-  param_source? : Environment? = None,
+  strict~ : Bool = false,
+  suppress_annex_b_candidates~ : Bool = false,
+  param_source~ : Environment? = None,
 ) -> Unit raise Error {
   let is_global = physical_equal(env, _self.global)
   // §15.1.11 GlobalDeclarationInstantiation pre-check: verify all declarations

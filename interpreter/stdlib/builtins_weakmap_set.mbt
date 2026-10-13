@@ -20,7 +20,10 @@ fn is_valid_weak_key(val : Value) -> Bool {
 
 ///|
 /// Get the WeakMap ID from the per-realm side table (non-forgeable)
-fn get_weakmap_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
+fn get_weakmap_id(
+  realm_state : @runtime.RealmState,
+  data : ObjectData,
+) -> Int32? {
   realm_state.weakmap_id_table
   .search_by(entry => physical_equal(entry.0, data))
   .map(i => realm_state.weakmap_id_table[i].1)
@@ -31,14 +34,17 @@ fn get_weakmap_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? 
 fn set_weakmap_id(
   realm_state : @runtime.RealmState,
   data : ObjectData,
-  id : Int,
+  id : Int32,
 ) -> Unit {
   realm_state.weakmap_id_table.push((data, id))
 }
 
 ///|
 /// Get the WeakSet ID from the per-realm side table (non-forgeable)
-fn get_weakset_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
+fn get_weakset_id(
+  realm_state : @runtime.RealmState,
+  data : ObjectData,
+) -> Int32? {
   realm_state.weakset_id_table
   .search_by(entry => physical_equal(entry.0, data))
   .map(i => realm_state.weakset_id_table[i].1)
@@ -49,7 +55,7 @@ fn get_weakset_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? 
 fn set_weakset_id(
   realm_state : @runtime.RealmState,
   data : ObjectData,
-  id : Int,
+  id : Int32,
 ) -> Unit {
   realm_state.weakset_id_table.push((data, id))
 }
@@ -461,9 +467,9 @@ fn setup_weakmap_builtins(
   wm_proto_descs["getOrInsertComputed"] = method_desc
 
   // Create WeakMap prototype
-  let wm_proto_sym_props : Map[Int, Value] = Map([])
+  let wm_proto_sym_props : Map[Int32, Value] = Map([])
   wm_proto_sym_props[tostringtag_sym.id] = Value::String_("WeakMap")
-  let wm_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let wm_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   wm_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -714,9 +720,9 @@ fn setup_weakset_builtins(
   ws_proto_descs["delete"] = ws_method_desc
 
   // Create WeakSet prototype
-  let ws_proto_sym_props : Map[Int, Value] = Map([])
+  let ws_proto_sym_props : Map[Int32, Value] = Map([])
   ws_proto_sym_props[tostringtag_sym.id] = Value::String_("WeakSet")
-  let ws_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let ws_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   ws_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,

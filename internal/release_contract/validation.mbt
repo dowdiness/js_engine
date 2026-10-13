@@ -76,8 +76,8 @@ fn append_string_mismatch(
 fn append_int_mismatch(
   diagnostics : Array[ReleaseDiagnostic],
   code : String,
-  expected : Int,
-  actual : Int,
+  expected : Int32,
+  actual : Int32,
 ) -> Unit {
   append_string_mismatch(
     diagnostics,

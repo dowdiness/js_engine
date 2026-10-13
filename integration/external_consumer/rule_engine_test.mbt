@@ -56,14 +56,16 @@ fn portable_code_or_fallback(code : String) -> String {
 }
 
 ///|
-fn source_position_fields(position : @js_engine.SourcePosition) -> (Int, Int, Int) {
+fn source_position_fields(
+  position : @js_engine.SourcePosition,
+) -> (Int32, Int32, Int32) {
   (position.line(), position.column(), position.offset())
 }
 
 ///|
 fn source_location_fields(
   location : @js_engine.SourceLocation,
-) -> ((Int, Int, Int), (Int, Int, Int)?) {
+) -> ((Int32, Int32, Int32), (Int32, Int32, Int32)?) {
   (
     source_position_fields(location.start()),
     location.end().map(source_position_fields),
@@ -111,14 +113,8 @@ test "stable facade injects host-owned policy without runtime values" {
   )
   json_inspect(
     [
-      engine.call_json(
-        "allowWithHostPolicy",
-        [request("member", "read")],
-      ),
-      engine.call_json(
-        "allowWithHostPolicy",
-        [request("member", "delete")],
-      ),
+      engine.call_json("allowWithHostPolicy", [request("member", "read")]),
+      engine.call_json("allowWithHostPolicy", [request("member", "delete")]),
     ],
     content=[true, false],
   )
@@ -130,19 +126,32 @@ test "external consumer can inspect opaque structured diagnostics" {
   match engine.eval_diagnostic("let =", source_id="consumer-input.js") {
     Ok(_) => fail("expected parse failure")
     Err(diagnostic) => {
-      inspect(portable_code_or_fallback(diagnostic.failure_kind_code()), content="parse-error")
-      inspect(portable_code_or_fallback(diagnostic.operation_code()), content="eval")
-      inspect(portable_code_or_fallback(diagnostic.phase_code()), content="parse")
-      inspect(portable_code_or_fallback("future-code"), content="other")
-      assert_true(
-        diagnostic.source_identity() == Some("consumer-input.js"),
+      inspect(
+        portable_code_or_fallback(diagnostic.failure_kind_code()),
+        content="parse-error",
       )
+      inspect(
+        portable_code_or_fallback(diagnostic.operation_code()),
+        content="eval",
+      )
+      inspect(
+        portable_code_or_fallback(diagnostic.phase_code()),
+        content="parse",
+      )
+      inspect(portable_code_or_fallback("future-code"), content="other")
+      assert_true(diagnostic.source_identity() == Some("consumer-input.js"))
       match diagnostic.source_location() {
         None => ()
         Some(location) => ignore(source_location_fields(location))
       }
-      inspect(diagnostic_integrity_code(diagnostic.engine_integrity()), content="reusable")
-      inspect(diagnostic_effects_code(diagnostic.retained_effects()), content="none")
+      inspect(
+        diagnostic_integrity_code(diagnostic.engine_integrity()),
+        content="reusable",
+      )
+      inspect(
+        diagnostic_effects_code(diagnostic.retained_effects()),
+        content="none",
+      )
       inspect(diagnostic_jobs_code(diagnostic.pending_jobs()), content="none")
       assert_true(diagnostic.message().length() > 0)
     }

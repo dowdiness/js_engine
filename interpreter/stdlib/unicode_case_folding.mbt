@@ -4,7 +4,7 @@
 
 ///|
 /// 1512 mappings, sorted by source.
-let unicode_simple_fold_mappings : Array[(Int, Int)] = [
+let unicode_simple_fold_mappings : Array[(Int32, Int32)] = [
   (0x0041, 0x0061),
   (0x0042, 0x0062),
   (0x0043, 0x0063),
@@ -1521,7 +1521,7 @@ let unicode_simple_fold_mappings : Array[(Int, Int)] = [
 
 ///|
 /// 1512 mappings, sorted by target/source.
-let unicode_simple_fold_inverse : Array[(Int, Int)] = [
+let unicode_simple_fold_inverse : Array[(Int32, Int32)] = [
   (0x0061, 0x0041),
   (0x0062, 0x0042),
   (0x0063, 0x0043),
@@ -3038,7 +3038,7 @@ let unicode_simple_fold_inverse : Array[(Int, Int)] = [
 
 ///|
 /// ECMAScript RegExp Canonicalize for Unicode ignore-case mode.
-fn unicode_simple_fold(cp : Int) -> Int {
+fn unicode_simple_fold(cp : Int32) -> Int32 {
   let mut lo = 0
   let mut hi = unicode_simple_fold_mappings.length()
   while lo < hi {
@@ -3060,9 +3060,9 @@ fn unicode_simple_fold(cp : Int) -> Int {
 /// `folded_cp`. The inverse table keeps class matching logarithmic in the
 /// number of Unicode mappings instead of scanning the full table.
 fn unicode_simple_fold_equivalent_in_range(
-  folded_cp : Int,
-  range_lo : Int,
-  range_hi : Int,
+  folded_cp : Int32,
+  range_lo : Int32,
+  range_hi : Int32,
 ) -> Bool {
   if unicode_simple_fold(folded_cp) == folded_cp &&
     folded_cp >= range_lo &&

@@ -3,7 +3,7 @@
 // candidate tree and checked child slots remain captured by the compiler
 // closure, rather than entering the bytecode frame's VM state.
 priv struct CandidateChildMaterializer {
-  materialize : (Interpreter, Int, Environment) -> Value raise Error
+  materialize : (Interpreter, Int32, Environment) -> Value raise Error
 }
 
 ///|
@@ -45,9 +45,9 @@ fn candidate_request_form(
 fn candidate_child_index_for_request(
   candidate : CandidateFunction,
   request : @runtime.FunctionMaterializationRequest,
-) -> Int? raise Error {
+) -> Int32? raise Error {
   let site = request.site
-  let mut found : Int? = None
+  let mut found : Int32? = None
   for child_index, child in candidate.children {
     let child_site = match child.materialization_site {
       Some(child_site) => child_site

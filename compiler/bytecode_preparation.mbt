@@ -119,14 +119,14 @@ fn bytecode_lexical_kind_equal_for_verification(
 ///|
 priv struct BytecodeFunctionConsumerScan {
   by_child : Array[BytecodeFunctionConsumerForm?]
-  declarations : Array[(String, Int)]
+  declarations : Array[(String, Int32)]
   invalid_index : Bool
 }
 
 ///|
 fn bytecode_function_consumer_for_verification(
   instruction : BytecodeInstr,
-) -> (BytecodeFunctionConsumerForm, Int)? {
+) -> (BytecodeFunctionConsumerForm, Int32)? {
   match instruction {
     DeclareFunction(name, index) => Some((DeclareFunctionConsumer(name), index))
     MakeFunction(index) => Some((FunctionConsumer, index))
@@ -142,13 +142,13 @@ fn bytecode_function_consumer_for_verification(
 ///|
 fn scan_bytecode_function_consumers_for_verification(
   code : Array[BytecodeInstr],
-  child_count : Int,
+  child_count : Int32,
 ) -> BytecodeFunctionConsumerScan raise Error {
   let by_child : Array[BytecodeFunctionConsumerForm?] = Array::makei(
     child_count,
     _ => None,
   )
-  let declarations : Array[(String, Int)] = []
+  let declarations : Array[(String, Int32)] = []
   let mut invalid_index = false
   for instruction in code {
     match instruction {
@@ -176,9 +176,9 @@ fn scan_bytecode_function_consumers_for_verification(
 
 ///|
 fn bytecode_preparation_mismatch_for_verification(
-  function_path : Array[Int],
+  function_path : Array[Int32],
   category : String,
-  index : Int,
+  index : Int32,
   expected : String,
   actual : String,
 ) -> Unit raise Error {
@@ -199,7 +199,7 @@ fn bytecode_preparation_mismatch_for_verification(
 ///|
 fn verify_lexical_preparation(
   function : BytecodeFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Unit raise Error {
   match function.header_provenance {
     None => ()
@@ -264,8 +264,8 @@ fn verify_lexical_preparation(
 ///|
 fn verify_function_declaration_preparation(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  consumers : Array[(String, Int)],
+  function_path : Array[Int32],
+  consumers : Array[(String, Int32)],
 ) -> Unit raise Error {
   let actual = function.preparation.function_declarations
   if actual.length() != consumers.length() {
@@ -366,7 +366,7 @@ fn bytecode_signature_facts_equal(
 ///|
 fn verify_signature_preparation(
   function : BytecodeFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
   provenance : BytecodeHeaderProvenance?,
 ) -> Unit raise Error {
   let facts = match function.preparation.signature_validation {
@@ -468,8 +468,8 @@ fn verify_signature_preparation(
 fn verify_bytecode_child_provenance(
   parent : BytecodeFunction,
   child : BytecodeFunction,
-  child_index : Int,
-  function_path : Array[Int],
+  child_index : Int32,
+  function_path : Array[Int32],
   expected_consumer : BytecodeFunctionConsumerForm?,
 ) -> Unit raise Error {
   let provenance = match child.header_provenance {
@@ -531,9 +531,9 @@ fn verify_bytecode_child_provenance(
 ///|
 fn verify_bytecode_preparation(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  child_count? : Int? = None,
-  recurse? : Bool = true,
+  function_path : Array[Int32],
+  child_count~ : Int32? = None,
+  recurse~ : Bool = true,
 ) -> Unit raise Error {
   let expected_child_count = match child_count {
     Some(count) => count

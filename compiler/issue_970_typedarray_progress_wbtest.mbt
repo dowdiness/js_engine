@@ -241,7 +241,7 @@ test "candidate TypedArray preconditions run before element work" {
 ///|
 test "candidate TypedArray native callbacks stop at the execution boundary" {
   let interp = @interpreter.new_interpreter()
-  let trace : Ref[Array[Int]] = { val: [], }
+  let trace : Ref[Array[Int32]] = { val: [], }
   interp.global.def_builtin(
     "issue970NativeCallback",
     @runtime.make_native_func(name="issue970NativeCallback", args => {
@@ -380,7 +380,7 @@ test "candidate TypedArray arraylike reads stop before the sentinel" {
 fn issue970_global_index(
   interp : @interpreter.Interpreter,
   name : String,
-  index : Int,
+  index : Int32,
 ) -> String raise Error {
   let target = interp.global.get(name)
   interp

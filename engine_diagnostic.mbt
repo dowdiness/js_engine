@@ -26,17 +26,17 @@ pub(all) enum PendingJobs {
 ///|
 /// A position within a source identified by an Engine diagnostic.
 pub struct SourcePosition {
-  line_ : Int
-  column_ : Int
-  offset_ : Int
+  line_ : Int32
+  column_ : Int32
+  offset_ : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn SourcePosition::SourcePosition(
-  line : Int,
-  column : Int,
-  offset : Int,
+  line : Int32,
+  column : Int32,
+  offset : Int32,
 ) -> SourcePosition {
   { line_: line, column_: column, offset_: offset, }
 }
@@ -78,7 +78,7 @@ fn EngineDiagnostic::EngineDiagnostic(
   operation_code~ : String,
   phase_code~ : String,
   source_identity~ : String?,
-  source_location? : SourceLocation? = None,
+  source_location~ : SourceLocation? = None,
   engine_integrity~ : EngineIntegrity,
   retained_effects~ : RetainedEffects,
   pending_jobs~ : PendingJobs,
@@ -158,17 +158,17 @@ pub fn SourceLocation::end(self : SourceLocation) -> SourcePosition? {
 }
 
 ///|
-pub fn SourcePosition::line(self : SourcePosition) -> Int {
+pub fn SourcePosition::line(self : SourcePosition) -> Int32 {
   self.line_
 }
 
 ///|
-pub fn SourcePosition::column(self : SourcePosition) -> Int {
+pub fn SourcePosition::column(self : SourcePosition) -> Int32 {
   self.column_
 }
 
 ///|
-pub fn SourcePosition::offset(self : SourcePosition) -> Int {
+pub fn SourcePosition::offset(self : SourcePosition) -> Int32 {
   self.offset_
 }
 
@@ -297,7 +297,7 @@ fn Engine::eval_failure(
   phase : String,
   source_id : String?,
   effects : RetainedEffects,
-  source_location? : SourceLocation? = None,
+  source_location~ : SourceLocation? = None,
 ) -> EngineDiagnostic {
   EngineDiagnostic(
     failure_kind_code=kind,
@@ -518,7 +518,7 @@ fn make_engine_diagnostic(
   operation_code~ : String,
   phase_code~ : String,
   source_identity~ : String?,
-  source_location? : SourceLocation? = None,
+  source_location~ : SourceLocation? = None,
   engine_integrity~ : EngineIntegrity,
   retained_effects~ : RetainedEffects,
   pending_jobs~ : PendingJobs,
@@ -1165,7 +1165,7 @@ fn run_operation_diagnostic(
 pub fn run_diagnostic(
   source : String,
   source_id? : String,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> Result[(Array[String], String), EngineDiagnostic] {
   let interp = @interpreter.new_interpreter(annex_b~)
   let program = match @parser.parse_diagnostic(source) {

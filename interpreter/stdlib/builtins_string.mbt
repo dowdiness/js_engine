@@ -2,8 +2,8 @@
 fn string_unit_at_observed(
   interp : Interpreter,
   value : String,
-  index : Int,
-) -> Int raise Error {
+  index : Int32,
+) -> Int32 raise Error {
   interp.observe_execution_step()
   value.at(index).to_int()
 }
@@ -12,7 +12,7 @@ fn string_unit_at_observed(
 fn string_write_unit_observed(
   interp : Interpreter,
   buf : StringBuilder,
-  unit : Int,
+  unit : Int32,
 ) -> Unit raise Error {
   interp.observe_execution_step()
   buf.write_char(unit.unsafe_to_char())
@@ -35,8 +35,8 @@ fn string_append_range_observed(
   interp : Interpreter,
   buf : StringBuilder,
   value : String,
-  start : Int,
-  end : Int,
+  start : Int32,
+  end : Int32,
 ) -> Unit raise Error {
   guard start < end else { return }
   for i = start; i < end; i = i + 1 {
@@ -49,8 +49,8 @@ fn string_append_range_observed(
 fn string_copy_range_observed(
   interp : Interpreter,
   value : String,
-  start : Int,
-  end : Int,
+  start : Int32,
+  end : Int32,
 ) -> String raise Error {
   let buf = StringBuilder()
   string_append_range_observed(interp, buf, value, start, end)
@@ -61,10 +61,10 @@ fn string_copy_range_observed(
 fn string_match_at_observed(
   interp : Interpreter,
   value : String,
-  value_start : Int,
+  value_start : Int32,
   search : String,
-  search_start : Int,
-  length : Int,
+  search_start : Int32,
+  length : Int32,
 ) -> Bool raise Error {
   for j = 0; j < length; j = j + 1 {
     let value_unit = string_unit_at_observed(interp, value, value_start + j)
@@ -80,8 +80,8 @@ fn string_match_at_observed(
 fn string_code_point_at_observed(
   interp : Interpreter,
   value : String,
-  index : Int,
-) -> (Int, Int) raise Error {
+  index : Int32,
+) -> (Int32, Int32) raise Error {
   let first = string_unit_at_observed(interp, value, index)
   if first >= 0xD800 && first <= 0xDBFF && index + 1 < value.length() {
     let second = string_unit_at_observed(interp, value, index + 1)
@@ -97,8 +97,8 @@ fn string_code_point_at_observed(
 fn string_code_point_before_observed(
   interp : Interpreter,
   value : String,
-  end : Int,
-) -> (Int, Int) raise Error {
+  end : Int32,
+) -> (Int32, Int32) raise Error {
   let last = string_unit_at_observed(interp, value, end - 1)
   if last >= 0xDC00 && last <= 0xDFFF && end >= 2 {
     let first = string_unit_at_observed(interp, value, end - 2)
@@ -114,7 +114,7 @@ fn string_code_point_before_observed(
 fn string_write_code_point_observed(
   interp : Interpreter,
   buf : StringBuilder,
-  code_point : Int,
+  code_point : Int32,
 ) -> Unit raise Error {
   if code_point <= 0xFFFF {
     string_write_unit_observed(interp, buf, code_point)
@@ -240,7 +240,7 @@ fn get_substitution(
   replacement : String,
   matched : String,
   str : String,
-  position : Int,
+  position : Int32,
 ) -> String raise Error {
   let buf = StringBuilder()
   let mut i = 0
@@ -287,8 +287,8 @@ fn get_substitution(
 /// Convert a MoonBit string (sequence of Unicode code points) to an array
 /// of UTF-16 code units.  Supplementary characters (code point > 0xFFFF) are
 /// split into a surrogate pair (high surrogate + low surrogate).
-fn string_to_utf16(s : String) -> Array[Int] {
-  let units : Array[Int] = []
+fn string_to_utf16(s : String) -> Array[Int32] {
+  let units : Array[Int32] = []
   let cps = s.to_array()
   for ch in cps {
     let cp = ch.to_int()
@@ -322,7 +322,7 @@ fn string_to_integer_or_infinity(n : Double) -> Double {
 
 ///|
 /// Get the UTF-16 length of a string (counting code units, not code points).
-pub fn utf16_length(s : String) -> Int {
+pub fn utf16_length(s : String) -> Int32 {
   let cps = s.to_array()
   let mut len = 0
   for ch in cps {
@@ -344,8 +344,8 @@ fn string_index_of_observed(
   interp : Interpreter,
   str : String,
   search : String,
-  start : Int,
-) -> Int raise Error {
+  start : Int32,
+) -> Int32 raise Error {
   let s_units = string_to_utf16(str)
   let search_units = string_to_utf16(search)
   let slen = s_units.length()
@@ -380,8 +380,8 @@ fn string_last_index_of_observed(
   interp : Interpreter,
   str : String,
   search : String,
-  from : Int,
-) -> Int raise Error {
+  from : Int32,
+) -> Int32 raise Error {
   let s_units = string_to_utf16(str)
   let search_units = string_to_utf16(search)
   let slen = s_units.length()
@@ -431,7 +431,7 @@ pub fn get_string_method(
   s : String,
   prop : String,
   realm_state : @runtime.RealmState,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
   match prop {
@@ -2001,7 +2001,7 @@ fn string_html_wrap_observed(
 
 ///|
 /// Unicode-aware character to lowercase conversion
-fn unicode_to_lower(code : Int) -> Int {
+fn unicode_to_lower(code : Int32) -> Int32 {
   // ASCII uppercase (A-Z)
   if code >= 65 && code <= 90 {
     return code + 32
@@ -2068,7 +2068,7 @@ fn unicode_to_lower(code : Int) -> Int {
 
 ///|
 /// Unicode-aware character to uppercase conversion
-fn unicode_to_upper(code : Int) -> Int {
+fn unicode_to_upper(code : Int32) -> Int32 {
   // ASCII lowercase (a-z)
   if code >= 97 && code <= 122 {
     return code - 32
@@ -2142,7 +2142,7 @@ fn is_es_whitespace(c : Char) -> Bool {
 /// Extract string from a this value (for String.prototype methods called via .call())
 fn this_to_string_impl(
   this_val : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> String raise Error {
   match this_val {
     Value::String_(s) => s
@@ -2183,7 +2183,7 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
 pub fn setup_string_prototype(
   string_proto : Value,
   realm_state : @runtime.RealmState,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> Unit {
   match string_proto {
     Object(data) => {

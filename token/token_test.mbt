@@ -1,5 +1,9 @@
 ///|
-fn expect_int(actual : Int, expected : Int, label : String) -> Unit raise Error {
+fn expect_int(
+  actual : Int32,
+  expected : Int32,
+  label : String,
+) -> Unit raise Error {
   guard actual == expected else {
     fail(
       label +

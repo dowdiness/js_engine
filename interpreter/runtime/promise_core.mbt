@@ -15,7 +15,7 @@ pub extend TimerTask with Eq::{equal, not_equal}
 pub impl Compare for TimerTask with fn compare(
   self : TimerTask,
   other : TimerTask,
-) -> Int {
+) -> Int32 {
   let d = self.delay.compare(other.delay)
   if d != 0 {
     -d

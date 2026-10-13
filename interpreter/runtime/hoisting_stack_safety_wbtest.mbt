@@ -7,7 +7,10 @@ fn hoisting_test_seed() -> (@token.Loc, @ast.Expr?) raise Error {
 }
 
 ///|
-fn deeply_wrapped_stmt(stmt : @ast.Stmt, depth : Int) -> @ast.Stmt raise Error {
+fn deeply_wrapped_stmt(
+  stmt : @ast.Stmt,
+  depth : Int32,
+) -> @ast.Stmt raise Error {
   let (loc, _) = hoisting_test_seed()
   let mut nested = stmt
   for _ in 0..<depth {
@@ -211,7 +214,7 @@ test "compiled script preparation rejects an unsettled early-error boundary" {
 fn annex_b_tagged_names(
   source : String,
   names : Array[String],
-  excluded? : @set.Set[String] = Default::default(),
+  excluded~ : @set.Set[String] = Default::default(),
 ) -> Array[String] raise Error {
   let parsed = @parser.parse(source)
   let interp = Interpreter::new()

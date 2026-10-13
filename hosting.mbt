@@ -82,13 +82,13 @@ pub fn ScriptResource::source(self : ScriptResource) -> String {
 /// Opaque permission to resume one Session-owned timer callback once.
 pub struct ScheduledTurn {
   priv host_binding : SessionHostBinding
-  priv id : Int
+  priv id : Int32
 }
 
 ///|
 fn ScheduledTurn::ScheduledTurn(
   host_binding~ : SessionHostBinding,
-  id~ : Int,
+  id~ : Int32,
 ) -> ScheduledTurn {
   { host_binding, id, }
 }
@@ -96,20 +96,20 @@ fn ScheduledTurn::ScheduledTurn(
 ///|
 /// A timer request delivered to an application-owned scheduler.
 pub struct TimerSchedule {
-  priv delay_milliseconds_ : Int
+  priv delay_milliseconds_ : Int32
   priv turn_ : ScheduledTurn
 }
 
 ///|
 fn TimerSchedule::TimerSchedule(
-  delay_milliseconds~ : Int,
+  delay_milliseconds~ : Int32,
   turn~ : ScheduledTurn,
 ) -> TimerSchedule {
   { delay_milliseconds_: delay_milliseconds, turn_: turn, }
 }
 
 ///|
-pub fn TimerSchedule::delay_milliseconds(self : TimerSchedule) -> Int {
+pub fn TimerSchedule::delay_milliseconds(self : TimerSchedule) -> Int32 {
   self.delay_milliseconds_
 }
 
@@ -119,7 +119,7 @@ pub fn TimerSchedule::turn(self : TimerSchedule) -> ScheduledTurn {
 }
 
 ///|
-const MAX_SCHEDULED_TURN_ID : Int = 0x7FFFFFFF
+const MAX_SCHEDULED_TURN_ID : Int32 = 0x7FFFFFFF
 
 ///|
 /// Reusable application-owned configuration for creating independent
@@ -133,10 +133,10 @@ pub struct HostEnvironment {
 
 ///|
 pub fn HostEnvironment::HostEnvironment(
-  annex_b? : Bool = false,
-  console? : Bool = false,
-  script_resources? : Bool = false,
-  timers? : Bool = false,
+  annex_b~ : Bool = false,
+  console~ : Bool = false,
+  script_resources~ : Bool = false,
+  timers~ : Bool = false,
 ) -> HostEnvironment {
   { annex_b, console, script_resources, timers, }
 }
@@ -151,9 +151,9 @@ pub struct SessionBindings {
 
 ///|
 pub fn SessionBindings::SessionBindings(
-  console_output_sink? : ((ConsoleOutput) -> Unit raise Error)? = None,
-  script_resource_resolver? : ((ScriptResourceRequest) -> ScriptResource? raise Error)? = None,
-  timer_scheduler? : ((TimerSchedule) -> Unit raise Error)? = None,
+  console_output_sink~ : ((ConsoleOutput) -> Unit raise Error)? = None,
+  script_resource_resolver~ : ((ScriptResourceRequest) -> ScriptResource? raise Error)? = None,
+  timer_scheduler~ : ((TimerSchedule) -> Unit raise Error)? = None,
 ) -> SessionBindings {
   { console_output_sink, script_resource_resolver, timer_scheduler, }
 }
@@ -251,8 +251,8 @@ priv struct SessionHostBinding {
   script_resource_resolver : ((ScriptResourceRequest) -> ScriptResource? raise Error)?
   timer_scheduler : ((TimerSchedule) -> Unit raise Error)?
   load_stack : Array[String]
-  scheduled_callbacks : Map[Int, ScheduledCallback]
-  mut next_scheduled_turn_id : Int
+  scheduled_callbacks : Map[Int32, ScheduledCallback]
+  mut next_scheduled_turn_id : Int32
   mut failure : SessionHostFailure?
 }
 
@@ -346,8 +346,8 @@ fn SessionHostBinding::schedule_timer(
   self : SessionHostBinding,
   callback : @runtime.Value,
   arguments : Array[@runtime.Value],
-  delay_milliseconds : Int,
-) -> Int raise Error {
+  delay_milliseconds : Int32,
+) -> Int32 raise Error {
   guard self.timer_scheduler is Some(schedule) else {
     fail("selected Timers capability has no Session binding")
   }
@@ -383,7 +383,7 @@ fn SessionHostBinding::schedule_timer(
 ///|
 fn SessionHostBinding::cancel_scheduled_turn(
   self : SessionHostBinding,
-  id : Int,
+  id : Int32,
 ) -> Unit {
   ignore(self.scheduled_callbacks.remove(id))
 }
@@ -619,7 +619,7 @@ fn Engine::run_scheduled_callback_diagnostic(
 /// Create a new Execution Session with an independent Hosted Realm.
 pub fn HostEnvironment::create_session(
   self : HostEnvironment,
-  bindings? : SessionBindings = SessionBindings(),
+  bindings~ : SessionBindings = SessionBindings(),
 ) -> ExecutionSession raise SessionCreationError {
   guard self.console || bindings.console_output_sink is None else {
     raise BindingForAbsentCapability("Console")

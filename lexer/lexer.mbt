@@ -57,7 +57,7 @@ fn is_js_whitespace(c : Char) -> Bool {
 }
 
 ///|
-fn is_unicode_space_cp(cp : Int) -> Bool {
+fn is_unicode_space_cp(cp : Int32) -> Bool {
   cp == 0x00A0 || // No-Break Space
   cp == 0xFEFF || // Zero Width No-Break Space (BOM)
   cp == 0x1680 || // OGHAM SPACE MARK
@@ -75,7 +75,7 @@ fn is_line_terminator(c : Char) -> Bool {
 }
 
 ///|
-fn is_id_start_cp(cp : Int) -> Bool {
+fn is_id_start_cp(cp : Int32) -> Bool {
   // ES262 §11.6 IdentifierStartChar = UnicodeIDStart | $ | _.
   // ASCII fast path covers letters + `$` + `_`; non-ASCII delegates to the
   // generated `ID_Start` table (Unicode 17.0, see lexer/unicode_id.mbt).
@@ -87,7 +87,7 @@ fn is_id_start_cp(cp : Int) -> Bool {
 }
 
 ///|
-fn is_id_continue_cp(cp : Int) -> Bool {
+fn is_id_continue_cp(cp : Int32) -> Bool {
   // ES262 §11.6 IdentifierPartChar = UnicodeIDContinue | $ | <ZWNJ> | <ZWJ>.
   // ZWNJ (U+200C) and ZWJ (U+200D) are themselves in `ID_Continue`, so the
   // generated table covers them directly.
@@ -99,7 +99,7 @@ fn is_id_continue_cp(cp : Int) -> Bool {
 }
 
 ///|
-fn write_code_point(buf : StringBuilder, cp : Int) -> Unit {
+fn write_code_point(buf : StringBuilder, cp : Int32) -> Unit {
   if cp <= 0xFFFF {
     buf.write_char(cp.unsafe_to_char())
   } else {
@@ -172,7 +172,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut astral_count = 0
   let chars = source.to_array()
   let len = chars.length()
-  let template_depth_stack : Array[Int] = []
+  let template_depth_stack : Array[Int32] = []
   // Track whether each open paren was preceded by a control-flow keyword
   // (if/while/for/switch/with). When the matching ) is emitted, it should
   // trigger regex context (a / after it starts a regex, not division).
@@ -192,22 +192,22 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let brace_content_is_block : Array[Bool] = []
   let mut last_rbrace_is_block = false
   let pending_function_is_generator : Array[Bool] = []
-  let pending_function_param_depth : Array[Int] = []
+  let pending_function_param_depth : Array[Int32] = []
   // Parallel to pending_function_*: whether the function keyword was in statement position
   // (declaration), which means its body } allows a following / to be regex.
   let pending_function_is_stmt_pos : Array[Bool] = []
-  let function_body_depth : Array[Int] = []
+  let function_body_depth : Array[Int32] = []
   let function_body_is_generator : Array[Bool] = []
   let mut last_yield_allows_regex = false
   // class body tracking: stacked per nesting so class A extends class B {} {} works.
   // Each entry is (is_stmt_pos, paren_depth_when_class_was_seen, brace_depth_when_class_was_seen).
-  let class_pending : Array[(Bool, Int, Int)] = []
+  let class_pending : Array[(Bool, Int32, Int32)] = []
   // Ternary depth: stack of brace_depth at each bare ? (never ?. or ??).
   // A : matches the top entry only when current brace_depth == top, so object-property
   // colons inside the consequent don't consume the ternary's slot.
-  let ternary_depths : Array[Int] = []
+  let ternary_depths : Array[Int32] = []
   let mut last_colon_is_ternary = false
-  fn utf16_pos() -> Int {
+  fn utf16_pos() -> Int32 {
     offset + astral_count
   }
 
@@ -220,7 +220,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     { line, col, offset: utf16_pos(), }
   }
 
-  fn char_at(i : Int) -> Char {
+  fn char_at(i : Int32) -> Char {
     chars[i]
   }
 
@@ -247,7 +247,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   // Parse unicode escape after \u has been consumed.
   // offset should point at '{' or first hex digit.
   // Returns the code point as Int.
-  fn parse_unicode_escape() -> Int raise Error {
+  fn parse_unicode_escape() -> Int32 raise Error {
     if offset < len && char_at(offset) == '{' {
       // \u{XXXXX} extended form
       offset += 1

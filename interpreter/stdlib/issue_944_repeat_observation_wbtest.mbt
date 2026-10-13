@@ -1,5 +1,5 @@
 ///|
-fn repeat_observation_probe(observations : Ref[Int]) -> Value {
+fn repeat_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -17,8 +17,8 @@ fn repeat_observation_probe(observations : Ref[Int]) -> Value {
 
 ///|
 fn call_repeat_with_observation_probe(
-  repetitions : Int,
-  observations : Ref[Int],
+  repetitions : Int32,
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -37,7 +37,7 @@ fn call_repeat_with_observation_probe(
 
 ///|
 test "String.repeat observes exactly one step per logical repetition" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_repeat_with_observation_probe(3, observations) {
     String_(value) => inspect(value, content="xxx")
     _ => fail("repeat(3) must return the repeated string")
@@ -47,7 +47,7 @@ test "String.repeat observes exactly one step per logical repetition" {
 
 ///|
 test "String.repeat zero count observes no repetition step" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_repeat_with_observation_probe(0, observations) {
     String_(value) => inspect(value, content="")
     _ => fail("repeat(0) must return the empty string")

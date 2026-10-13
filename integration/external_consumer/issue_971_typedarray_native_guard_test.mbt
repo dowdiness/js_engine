@@ -65,11 +65,7 @@ test "default TypedArray complex guards reject before native work" {
   )
   for
     function_name in [
-      "sortLarge",
-      "toSortLarge",
-      "fromEmptyIterator",
-      "constructFromArray",
-      "constructFromObject",
+      "sortLarge", "toSortLarge", "fromEmptyIterator", "constructFromArray", "constructFromObject",
     ] {
     expect_default_typedarray_guard_971(engine, function_name)
   }
@@ -179,10 +175,9 @@ test "default TypedArray iterator construction observes newTarget prototype befo
     Err(diagnostic) =>
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
   }
-  json_inspect(
-    engine.call_json("readEvents", []),
-    content=["prototype", "iterator-get", "iterator-call", "return"],
-  )
+  json_inspect(engine.call_json("readEvents", []), content=[
+    "prototype", "iterator-get", "iterator-call", "return",
+  ])
 }
 
 ///|
@@ -203,8 +198,7 @@ test "default TypedArray complex consumers preserve unbounded results" {
       #|}
     ),
   )
-  json_inspect(
-    engine.call_json("results", []),
-    content=["3,1,2", "4,5,6", "1,2,3"],
-  )
+  json_inspect(engine.call_json("results", []), content=[
+    "3,1,2", "4,5,6", "1,2,3",
+  ])
 }

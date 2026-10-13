@@ -18,12 +18,7 @@ test "JSON.parse stops bounded execution before native parsing" {
     "var issue976JsonText = '\"' + 'a'.repeat(100000) + '\"'; " +
     "function issue976ParseLarge() { return JSON.parse(issue976JsonText).length; }",
   )
-  match
-    engine.call_json_bounded(
-      "issue976ParseLarge",
-      [],
-      issue_976_policy(),
-    ) {
+  match engine.call_json_bounded("issue976ParseLarge", [], issue_976_policy()) {
     Ok(_) => fail("JSON.parse silently bypassed bounded execution control")
     Err(diagnostic) => {
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
@@ -41,11 +36,7 @@ test "JSON.stringify stops bounded execution before native escaping" {
     "return JSON.stringify(issue976StringValue).length; }",
   )
   match
-    engine.call_json_bounded(
-      "issue976StringifyLarge",
-      [],
-      issue_976_policy(),
-    ) {
+    engine.call_json_bounded("issue976StringifyLarge", [], issue_976_policy()) {
     Ok(_) => fail("JSON.stringify silently bypassed bounded execution control")
     Err(diagnostic) => {
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
@@ -68,11 +59,7 @@ test "JSON.parse coerces input before the execution-control boundary" {
     "function issue976ReadParseEvents() { return issue976ParseEvents; }",
   )
   let stopped = match
-    engine.call_json_bounded(
-      "issue976ParsePrelude",
-      [],
-      issue_976_policy(),
-    ) {
+    engine.call_json_bounded("issue976ParsePrelude", [], issue_976_policy()) {
     Ok(_) => false
     Err(diagnostic) => {
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
@@ -97,11 +84,7 @@ test "JSON.stringify runs root protocol before the execution-control boundary" {
     "function issue976ReadStringifyEvents() { return issue976StringifyEvents; }",
   )
   let stopped = match
-    engine.call_json_bounded(
-      "issue976StringifyPrelude",
-      [],
-      issue_976_policy(),
-    ) {
+    engine.call_json_bounded("issue976StringifyPrelude", [], issue_976_policy()) {
     Ok(_) => false
     Err(diagnostic) => {
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
@@ -203,11 +186,7 @@ test "JSON.stringify observes boxed String ToPrimitive before native escaping" {
     "return issue976FallbackBoxEvents; }",
   )
   match
-    engine.call_json_bounded(
-      "issue976StringifyBox",
-      [],
-      issue_976_policy(),
-    ) {
+    engine.call_json_bounded("issue976StringifyBox", [], issue_976_policy()) {
     Ok(_) => fail("boxed String replacement must reach execution control")
     Err(diagnostic) =>
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
@@ -220,7 +199,8 @@ test "JSON.stringify observes boxed String ToPrimitive before native escaping" {
       [],
       issue_976_policy(),
     ) {
-    Ok(_) => fail("boxed String conversion throw must precede execution control")
+    Ok(_) =>
+      fail("boxed String conversion throw must precede execution control")
     Err(diagnostic) =>
       inspect(diagnostic.failure_kind_code(), content="javascript-exception")
   }
@@ -254,11 +234,7 @@ test "JSON.stringify replacer list stops before first element Get" {
     "function issue976ReadListEvents() { return issue976ListEvents; }",
   )
   let stopped = match
-    engine.call_json_bounded(
-      "issue976StringifyList",
-      [],
-      issue_976_policy(),
-    ) {
+    engine.call_json_bounded("issue976StringifyList", [], issue_976_policy()) {
     Ok(_) => false
     Err(diagnostic) => {
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
@@ -272,13 +248,11 @@ test "JSON.stringify replacer list stops before first element Get" {
 ///|
 test "JSON.stringify trivial primitive remains bounded without native-progress control" {
   let engine = @js_engine.Engine()
-  engine.eval("function issue976StringifyNumber() { return JSON.stringify(1); }")
+  engine.eval(
+    "function issue976StringifyNumber() { return JSON.stringify(1); }",
+  )
   match
-    engine.call_json_bounded(
-      "issue976StringifyNumber",
-      [],
-      issue_976_policy(),
-    ) {
+    engine.call_json_bounded("issue976StringifyNumber", [], issue_976_policy()) {
     Ok(value) => json_inspect(value, content="1")
     Err(diagnostic) => fail(diagnostic.message())
   }
@@ -323,10 +297,7 @@ test "JSON.parse rejection leaves the Engine reusable" {
     Err(diagnostic) =>
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
   }
-  json_inspect(
-    engine.call_json("issue976ParseReusableSmall", []),
-    content=3,
-  )
+  json_inspect(engine.call_json("issue976ParseReusableSmall", []), content=3)
 }
 
 ///|
@@ -343,7 +314,10 @@ test "JSON.stringify root container stops bounded execution before traversal" {
       [],
       issue_976_policy(),
     ) {
-    Ok(_) => fail("JSON.stringify container traversal bypassed bounded execution control")
+    Ok(_) =>
+      fail(
+        "JSON.stringify container traversal bypassed bounded execution control",
+      )
     Err(diagnostic) =>
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
   }
@@ -369,8 +343,5 @@ test "JSON.stringify empty replacer list keeps its fast path" {
     Ok(value) => json_inspect(value, content="1")
     Err(diagnostic) => fail(diagnostic.message())
   }
-  json_inspect(
-    engine.call_json("issue976ReadEmptyListEvents", []),
-    content="t",
-  )
+  json_inspect(engine.call_json("issue976ReadEmptyListEvents", []), content="t")
 }

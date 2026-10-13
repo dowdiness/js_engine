@@ -594,7 +594,7 @@ fn TrustedMutualReceiverRecursionRegistry::require_call(
 fn TrustedMutualReceiverRecursionRegistry::require_body_statement(
   self : TrustedMutualReceiverRecursionRegistry,
   interp : Interpreter,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> MutualReceiverNode raise InvalidActivationDispatchShell {
   mutual_receiver_revalidate_registry(interp, self)

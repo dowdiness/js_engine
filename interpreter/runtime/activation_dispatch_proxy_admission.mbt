@@ -317,14 +317,14 @@ fn proxy_get_recursion_plan_is_dispatchable(
 ///|
 fn proxy_get_recursion_seal_statement_index(
   _plan : ProxyGetRecursionPlan,
-) -> Int {
+) -> Int32 {
   2
 }
 
 ///|
 fn proxy_get_recursion_root_statement_index(
   _plan : ProxyGetRecursionPlan,
-) -> Int {
+) -> Int32 {
   3
 }
 
@@ -332,7 +332,7 @@ fn proxy_get_recursion_root_statement_index(
 #warnings("-unused_value")
 fn proxy_get_recursion_root_statement_matches(
   plan : ProxyGetRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {
@@ -377,7 +377,7 @@ fn proxy_get_recursion_root_statement_matches(
 #warnings("-unused_value")
 fn proxy_get_recursion_body_statement_matches(
   plan : ProxyGetRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {

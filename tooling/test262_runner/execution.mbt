@@ -202,10 +202,10 @@ async fn run_single_test(
   engine_cmd : Array[String],
   test262_dir : String,
   test_path : String,
-  timeout : Int,
-  mode? : String = "non-strict",
+  timeout : Int32,
+  mode~ : String = "non-strict",
   skip_metadata~ : @metadata.SkipMetadata,
-  harness_options? : HarnessOptions = HarnessOptions(),
+  harness_options~ : HarnessOptions = HarnessOptions(),
 ) -> TestResult {
   let source = @fs.read_file_to_string(test_path) catch {
     err =>
@@ -335,7 +335,7 @@ fn discover_tests_in_dir(
 ///|
 fn discover_tests(
   test262_dir : String,
-  filter_pattern? : String = "",
+  filter_pattern~ : String = "",
 ) -> Array[String] raise {
   let test_dir = @path_utils.join_path(test262_dir, "test")
   let tests : Array[String] = []

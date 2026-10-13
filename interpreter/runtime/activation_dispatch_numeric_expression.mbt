@@ -6,13 +6,13 @@
 ///|
 #warnings("-unused_field")
 priv struct DispatchParameterBindingToken {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchParameterBindingToken::DispatchParameterBindingToken(
-  id~ : Int,
+  id~ : Int32,
 ) -> DispatchParameterBindingToken {
   { id, }
 }
@@ -20,13 +20,13 @@ fn DispatchParameterBindingToken::DispatchParameterBindingToken(
 ///|
 #warnings("-unused_field")
 priv struct DispatchRetainedParameterBindingToken {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchRetainedParameterBindingToken::DispatchRetainedParameterBindingToken(
-  id~ : Int,
+  id~ : Int32,
 ) -> DispatchRetainedParameterBindingToken {
   { id, }
 }
@@ -34,13 +34,13 @@ fn DispatchRetainedParameterBindingToken::DispatchRetainedParameterBindingToken(
 ///|
 #warnings("-unused_field")
 priv struct DispatchNumericCatchBindingToken {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchNumericCatchBindingToken::DispatchNumericCatchBindingToken(
-  id~ : Int,
+  id~ : Int32,
 ) -> DispatchNumericCatchBindingToken {
   { id, }
 }
@@ -48,13 +48,13 @@ fn DispatchNumericCatchBindingToken::DispatchNumericCatchBindingToken(
 ///|
 #warnings("-unused_field")
 priv struct DispatchCalleeCaptureToken {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchCalleeCaptureToken::DispatchCalleeCaptureToken(
-  id~ : Int,
+  id~ : Int32,
 ) -> DispatchCalleeCaptureToken {
   { id, }
 }
@@ -117,7 +117,7 @@ priv enum DispatchNumericExpressionContinuation {
     DispatchRetainedParameterBindingToken
   )
   DispatchAfterNumericCatchBindingRead(DispatchNumericCatchBindingToken)
-  DispatchAfterNumericClosedArgumentObservation(Double, Int)
+  DispatchAfterNumericClosedArgumentObservation(Double, Int32)
   DispatchAfterNumericBaseCondition(DispatchNumericCallStart)
   DispatchNumericBinaryLeft(
     DispatchNumericBinaryOperator,
@@ -188,7 +188,7 @@ fn numeric_recursion_base_condition_dispatch_expression(
 ///|
 #warnings("-unused_value")
 fn numeric_recursion_base_result_dispatch_expression(
-  retained_parameter? : DispatchRetainedParameterBindingToken? = None,
+  retained_parameter~ : DispatchRetainedParameterBindingToken? = None,
 ) -> DispatchNumericExpression {
   match retained_parameter {
     None => DispatchNumericNumber(NUMERIC_RECURSION_BASE)
@@ -202,7 +202,7 @@ fn numeric_recursion_recursive_result_dispatch_expression(
   recipe : NumericRecursionExpressionRecipe,
   parameter : DispatchParameterBindingToken,
   capture : DispatchCalleeCaptureToken,
-  retained_parameter? : DispatchRetainedParameterBindingToken? = None,
+  retained_parameter~ : DispatchRetainedParameterBindingToken? = None,
 ) -> DispatchNumericExpression {
   let recursive_argument = DispatchNumericBinary(
     DispatchNumericSubtract,

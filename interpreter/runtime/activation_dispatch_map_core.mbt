@@ -35,13 +35,13 @@ priv struct MapState {
 #warnings("-unused_value")
 fn MapState::MapState(
   length~ : Int64,
-  index? : Int64 = 0L,
+  index~ : Int64 = 0L,
   receiver~ : Value,
   result~ : Value,
   callback~ : Value,
   this_arg~ : Value,
   pending_result_consumer~ : DispatchContinuation,
-  phase? : MapPhase = MapReady,
+  phase~ : MapPhase = MapReady,
 ) -> MapState {
   {
     length,

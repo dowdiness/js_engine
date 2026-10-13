@@ -3,7 +3,7 @@ pub fn setup_builtins(
   env : Environment,
   output : Array[String],
   symbols : SymbolState,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> @runtime.RealmState {
   let realm_state = @runtime.RealmState::from_symbols(symbols)
   setup_builtins_with_realm_state(env, output, realm_state, annex_b~)
@@ -57,7 +57,7 @@ fn register_constructor_prototypes(
 fn stamp_realm_reachable_value(
   value : Value,
   realm_state : @runtime.RealmState,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   match value {
@@ -71,7 +71,7 @@ fn stamp_realm_reachable_value(
 fn stamp_realm_functions_in_bag(
   bag : @runtime.PropertyBag,
   realm_state : @runtime.RealmState,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   bag.properties.each(fn(_key, value) {
@@ -110,7 +110,7 @@ fn stamp_realm_functions_in_bag(
 ///|
 fn stamp_realm_object_seen_at_depth(
   data : @runtime.ObjectData,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Bool {
   let current_depth = depth.to_double()
@@ -151,7 +151,7 @@ fn clear_realm_stamp_markers(
 fn stamp_realm_functions_in_value(
   value : Value,
   realm_state : @runtime.RealmState,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   if depth == 0 {
@@ -246,7 +246,7 @@ pub fn setup_builtins_with_realm_state(
   env : Environment,
   output : Array[String],
   realm_state : @runtime.RealmState,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> Unit {
   env.realm_state = Some(realm_state)
   @runtime.with_active_realm_state_unit(realm_state, fn() {
@@ -1229,8 +1229,8 @@ fn setup_builtins_with_realm_state_active(
       regexp_proto_descs["toString"] = re_method_desc2
       regexp_proto_descs["compile"] = re_method_desc2
       // Install well-known symbol methods on RegExp.prototype (not on instances)
-      let regexp_sym_props : Map[Int, Value] = Map([])
-      let regexp_sym_descs : Map[Int, PropDescriptor] = Map([])
+      let regexp_sym_props : Map[Int32, Value] = Map([])
+      let regexp_sym_descs : Map[Int32, PropDescriptor] = Map([])
       let sym_method_desc = @runtime.builtin_method_desc()
       match regexp_proto_props.get("constructor") {
         Some(ctor) =>
@@ -1658,7 +1658,7 @@ fn is_uri_reserved(c : Char) -> Bool {
 
 ///|
 /// - Out-of-range (cp > U+10FFFF) → URIError
-fn validate_uri_code_point(cp : Int, min_cp : Int) -> Unit raise Error {
+fn validate_uri_code_point(cp : Int32, min_cp : Int32) -> Unit raise Error {
   if cp >= 0xD800 && cp <= 0xDFFF {
     raise @errors.URIError(message="URI malformed")
   }
@@ -1773,7 +1773,7 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
 }
 
 ///|
-fn hex_char_value(c : Char) -> Int {
+fn hex_char_value(c : Char) -> Int32 {
   let code = c.to_int()
   if code >= 48 && code <= 57 {
     code - 48
@@ -1787,7 +1787,7 @@ fn hex_char_value(c : Char) -> Int {
 }
 
 ///|
-fn decode_percent_byte(chars : Array[Char], pos : Int) -> Int {
+fn decode_percent_byte(chars : Array[Char], pos : Int32) -> Int32 {
   if chars[pos] == '%' {
     let h1 = hex_char_value(chars[pos + 1])
     let h2 = hex_char_value(chars[pos + 2])

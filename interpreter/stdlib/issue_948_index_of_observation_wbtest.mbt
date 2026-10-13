@@ -1,5 +1,5 @@
 ///|
-fn index_of_observation_probe(observations : Ref[Int]) -> Value {
+fn index_of_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -19,7 +19,7 @@ fn index_of_observation_probe(observations : Ref[Int]) -> Value {
 fn call_index_of_with_observation_probe(
   value : String,
   search : String,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -38,7 +38,7 @@ fn call_index_of_with_observation_probe(
 
 ///|
 test "String.indexOf observes each code-unit comparison" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_index_of_with_observation_probe("abc", "bc", observations) {
     Number(value) => inspect(value, content="1")
     _ => fail("indexOf must return a number")
@@ -48,7 +48,7 @@ test "String.indexOf observes each code-unit comparison" {
 
 ///|
 test "String.indexOf empty search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_index_of_with_observation_probe("abc", "", observations) {
     Number(value) => inspect(value, content="0")
     _ => fail("indexOf must return a number")
@@ -58,7 +58,7 @@ test "String.indexOf empty search observes no comparisons" {
 
 ///|
 test "String.indexOf impossible search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_index_of_with_observation_probe("abc", "abcd", observations) {
     Number(value) => inspect(value, content="-1")
     _ => fail("indexOf must return a number")
@@ -68,7 +68,7 @@ test "String.indexOf impossible search observes no comparisons" {
 
 ///|
 test "String.indexOf reports UTF-16 code-unit positions" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_index_of_with_observation_probe("😀x", "x", observations) {
     Number(value) => inspect(value, content="2")
     _ => fail("indexOf must return a number")
