@@ -1,8 +1,8 @@
 ///|
 pub(all) struct Loc {
-  line : Int
-  col : Int
-  offset : Int
+  line : Int32
+  col : Int32
+  offset : Int32
 } derive(Eq, Debug)
 
 ///|
@@ -225,7 +225,7 @@ pub(all) struct Token {
   loc : Loc
   raw : String
   lex_form : LexForm
-  end_offset : Int
+  end_offset : Int32
 } derive(Eq, Debug)
 
 ///|
@@ -253,8 +253,8 @@ pub fn Token::Token(
   kind : TokenKind,
   loc : Loc,
   raw : String,
-  lex_form? : LexForm = LexNormal,
-  end_offset? : Int = -1,
+  lex_form~ : LexForm = LexNormal,
+  end_offset~ : Int32 = -1,
 ) -> Token noraise {
   let end_offset = if end_offset == -1 {
     loc.offset + raw.length()
@@ -269,8 +269,8 @@ pub fn Token::new(
   kind : TokenKind,
   loc : Loc,
   raw : String,
-  lex_form? : LexForm = LexNormal,
-  end_offset? : Int = -1,
+  lex_form~ : LexForm = LexNormal,
+  end_offset~ : Int32 = -1,
 ) -> Token noraise {
   Token(kind, loc, raw, lex_form~, end_offset~)
 }

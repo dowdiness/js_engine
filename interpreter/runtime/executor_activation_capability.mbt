@@ -11,7 +11,7 @@ priv enum ExecutorActivationCallTarget {
 ///|
 priv struct ExecutorActivationDirectCallRequirement {
   target : ExecutorActivationCallTarget
-  argument_count : Int
+  argument_count : Int32
 }
 
 ///|
@@ -26,13 +26,13 @@ fn executor_activation_call_name(
 
 ///|
 pub struct ExecutorActivationCapabilitySummary {
-  priv parameter_count : Int
+  priv parameter_count : Int32
   priv direct_calls : Array[ExecutorActivationDirectCallRequirement]
 }
 
 ///|
 fn ExecutorActivationCapabilitySummary::ExecutorActivationCapabilitySummary(
-  parameter_count~ : Int,
+  parameter_count~ : Int32,
   direct_calls~ : Array[ExecutorActivationDirectCallRequirement],
 ) -> ExecutorActivationCapabilitySummary {
   { parameter_count, direct_calls: direct_calls.copy(), }
@@ -84,7 +84,7 @@ fn executor_activation_direct_call_target_name(expr : @ast.Expr) -> String? {
 ///|
 fn executor_activation_call_requirement(
   expr : @ast.Expr,
-  argument_count : Int,
+  argument_count : Int32,
 ) -> ExecutorActivationDirectCallRequirement? {
   match executor_activation_direct_call_target_name(expr) {
     Some(name) =>

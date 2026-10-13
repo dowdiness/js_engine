@@ -12,10 +12,10 @@ fn Interpreter::make_async_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  has_name_binding? : Bool = false,
-  is_method? : Bool = false,
-  source_text? : String? = None,
-  is_arrow? : Bool = false,
+  has_name_binding~ : Bool = false,
+  is_method~ : Bool = false,
+  source_text~ : String? = None,
+  is_arrow~ : Bool = false,
 ) -> Value {
   let func_name = match name {
     Some(n) => n
@@ -125,10 +125,10 @@ fn Interpreter::make_async_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  has_name_binding? : Bool = false,
-  is_method? : Bool = false,
-  source_text? : String? = None,
-  is_arrow? : Bool = false,
+  has_name_binding~ : Bool = false,
+  is_method~ : Bool = false,
+  source_text~ : String? = None,
+  is_arrow~ : Bool = false,
 ) -> Value {
   let func_name = match name {
     Some(n) => n
@@ -243,9 +243,9 @@ fn run_async_body(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  is_method? : Bool = false,
-  is_arrow? : Bool = false,
-  callee? : Value = Undefined,
+  is_method~ : Bool = false,
+  is_arrow~ : Bool = false,
+  callee~ : Value = Undefined,
 ) -> Value {
   let promise_data = new_promise_data()
   let promise_val = Promise(promise_data)
@@ -466,9 +466,9 @@ fn Interpreter::make_async_generator_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  has_name_binding? : Bool = false,
-  is_method? : Bool = false,
-  source_text? : String? = None,
+  has_name_binding~ : Bool = false,
+  is_method~ : Bool = false,
+  source_text~ : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
     self,
@@ -495,9 +495,9 @@ fn Interpreter::make_async_generator_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  has_name_binding? : Bool = false,
-  is_method? : Bool = false,
-  source_text? : String? = None,
+  has_name_binding~ : Bool = false,
+  is_method~ : Bool = false,
+  source_text~ : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
     self,
@@ -975,8 +975,8 @@ pub fn setup_async_function_constructor(
     Some(binding) => binding.value
     None => Null
   }
-  let af_sym_props : Map[Int, Value] = Map([])
-  let af_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let af_sym_props : Map[Int32, Value] = Map([])
+  let af_sym_descs : Map[Int32, PropDescriptor] = Map([])
   let tostringtag_sym = well_known_symbols.to_string_tag
   af_sym_props[tostringtag_sym.id] = String_("AsyncFunction")
   af_sym_descs[tostringtag_sym.id] = {
@@ -1166,8 +1166,8 @@ pub fn setup_async_generator_function_constructor(
   // Build %AsyncGeneratorFunction%.prototype first so it can be used as the
   // constructor value in %AsyncGeneratorPrototype%'s property map, ensuring
   // insertion order follows spec §27.4.3: constructor, prototype (string keys).
-  let agf_sym_props : Map[Int, Value] = Map([])
-  let agf_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let agf_sym_props : Map[Int32, Value] = Map([])
+  let agf_sym_descs : Map[Int32, PropDescriptor] = Map([])
   agf_sym_props[to_string_tag_sym.id] = String_("AsyncGeneratorFunction")
   agf_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
   let agf_proto : Value = Object({
@@ -1189,8 +1189,8 @@ pub fn setup_async_generator_function_constructor(
   // Build %AsyncIteratorPrototype% (§27.1.2) — owns Symbol.asyncIterator only.
   // %AsyncGeneratorPrototype% inherits from it; own-key checks on the latter
   // must not see Symbol.asyncIterator.
-  let aip_sym_props : Map[Int, Value] = Map([])
-  let aip_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let aip_sym_props : Map[Int32, Value] = Map([])
+  let aip_sym_descs : Map[Int32, PropDescriptor] = Map([])
   aip_sym_props[async_iter_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
@@ -1219,9 +1219,9 @@ pub fn setup_async_generator_function_constructor(
   // Own string keys follow spec §27.6: constructor, next, return, throw.
   // Own symbol keys: Symbol.toStringTag only — Symbol.asyncIterator is inherited.
   let agp_props : Map[String, Value] = Map([])
-  let agp_sym_props : Map[Int, Value] = Map([])
+  let agp_sym_props : Map[Int32, Value] = Map([])
   let agp_descs : Map[String, PropDescriptor] = Map([])
-  let agp_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let agp_sym_descs : Map[Int32, PropDescriptor] = Map([])
 
   agp_props["constructor"] = agf_proto
   agp_descs["constructor"] = non_enum_non_writable

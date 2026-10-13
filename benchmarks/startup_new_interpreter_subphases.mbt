@@ -281,7 +281,7 @@ fn startup_clear_realm_stamp_markers(
 fn startup_stamp_realm_reachable_value(
   value : Value,
   realm_state : RealmState,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   match value {
@@ -302,7 +302,7 @@ fn startup_stamp_realm_reachable_value(
 fn startup_stamp_realm_functions_in_bag(
   bag : @runtime.PropertyBag,
   realm_state : RealmState,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   bag.properties.each(fn(_key, value) {
@@ -342,7 +342,7 @@ fn startup_stamp_realm_functions_in_bag(
 ///|
 fn startup_stamp_realm_object_seen_at_depth(
   data : @runtime.ObjectData,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Bool {
   let current_depth = depth.to_double()
@@ -371,7 +371,7 @@ fn startup_stamp_realm_object_seen_at_depth(
 fn startup_stamp_realm_functions_in_value(
   value : Value,
   realm_state : RealmState,
-  depth : Int,
+  depth : Int32,
   visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   if depth == 0 {

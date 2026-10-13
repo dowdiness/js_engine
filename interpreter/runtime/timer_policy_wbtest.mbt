@@ -1,11 +1,11 @@
 ///|
 /// Test-only timer payload that never invokes JavaScript.
 fn timer_policy_test_task(
-  id : Int,
-  delay : Int,
-  insertion_order : Int,
-  period? : Int = 0,
-  is_interval? : Bool = false,
+  id : Int32,
+  delay : Int32,
+  insertion_order : Int32,
+  period~ : Int32 = 0,
+  is_interval~ : Bool = false,
 ) -> TimerTask {
   {
     id,
@@ -23,17 +23,17 @@ fn timer_policy_test_task(
 // run_timers_observed; this harness exercises the same pure policy decisions.
 priv struct TimerQueuePolicy {
   queue : @priority_queue.PriorityQueue[TimerTask]
-  cancelled_timer_ids : Map[Int, Bool]
-  insertion_counter : Ref[Int]
+  cancelled_timer_ids : Map[Int32, Bool]
+  insertion_counter : Ref[Int32]
   mut core : TimerQueuePolicyCore
 }
 
 ///|
 fn TimerQueuePolicy::TimerQueuePolicy(
   queue : @priority_queue.PriorityQueue[TimerTask],
-  cancelled_timer_ids : Map[Int, Bool],
-  insertion_counter : Ref[Int],
-  safety_limit : Int,
+  cancelled_timer_ids : Map[Int32, Bool],
+  insertion_counter : Ref[Int32],
+  safety_limit : Int32,
 ) -> TimerQueuePolicy {
   {
     queue,
@@ -128,7 +128,7 @@ fn TimerQueuePolicy::complete_run(self : TimerQueuePolicy) -> Unit raise {
 }
 
 ///|
-fn timer_policy_test_id(task : TimerTask?) -> Int raise {
+fn timer_policy_test_id(task : TimerTask?) -> Int32 raise {
   match task {
     Some(task) => task.id
     None => fail("expected a timer task")
@@ -177,7 +177,7 @@ test "timer policy selects smaller delays first" {
     timer_policy_test_task(3, 50, 2),
   ])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 3, }, 10)
-  let selected : Array[Int] = []
+  let selected : Array[Int32] = []
   for _ in 0..<3 {
     selected.push(timer_policy_test_id(timer_policy_test_next(policy)))
     policy.callback_succeeded()
@@ -196,7 +196,7 @@ test "timer policy preserves insertion order for equal delays" {
     timer_policy_test_task(3, 10, 1),
   ])
   let policy = TimerQueuePolicy(queue, Map([]), { val: 3, }, 10)
-  let selected : Array[Int] = []
+  let selected : Array[Int32] = []
   for _ in 0..<3 {
     selected.push(timer_policy_test_id(timer_policy_test_next(policy)))
     policy.callback_succeeded()
@@ -223,7 +223,7 @@ test "timer policy skips cancelled timers with lazy deletion" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let cancelled : Map[Int32, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 10)
   inspect(timer_policy_test_id(timer_policy_test_next(policy)), content="2")
   inspect(queue.length(), content="0")
@@ -254,7 +254,7 @@ test "timer policy re-registers intervals after callback and checkpoint success"
   let queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(1, 10, 0, period=5, is_interval=true),
   ])
-  let insertion_counter : Ref[Int] = { val: 7, }
+  let insertion_counter : Ref[Int32] = { val: 7, }
   let policy = TimerQueuePolicy(queue, Map([]), insertion_counter, 10)
   let _ = timer_policy_test_next(policy)
   policy.callback_succeeded()
@@ -304,7 +304,7 @@ test "timer policy does not re-register an interval cancelled in its callback" {
   let queue = @priority_queue.PriorityQueue([
     timer_policy_test_task(1, 0, 0, period=5, is_interval=true),
   ])
-  let cancelled : Map[Int, Bool] = Map([])
+  let cancelled : Map[Int32, Bool] = Map([])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 1, }, 10)
   let _ = timer_policy_test_next(policy)
   cancelled[1] = true
@@ -316,7 +316,7 @@ test "timer policy does not re-register an interval cancelled in its callback" {
 ///|
 test "timer policy clears cancellation bookkeeping only after a complete drain" {
   let queue = @priority_queue.PriorityQueue([timer_policy_test_task(1, 0, 0)])
-  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let cancelled : Map[Int32, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 1, }, 10)
   inspect(timer_policy_test_next(policy) is None, content="true")
   inspect(cancelled.contains(1), content="true")
@@ -330,7 +330,7 @@ test "timer policy preserves cancellation bookkeeping at the safety limit" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let cancelled : Map[Int32, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 1)
   inspect(timer_policy_test_next(policy) is None, content="true")
   inspect(queue.length(), content="1")
@@ -374,7 +374,7 @@ test "timer policy commit discards exactly one cancelled entry" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let cancelled : Map[Int32, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 10)
   let _ = policy.readiness()
   inspect(policy.commit_next() is None, content="true")
@@ -388,7 +388,7 @@ test "timer policy later rejection does not restore discarded cancellation" {
     timer_policy_test_task(1, 0, 0),
     timer_policy_test_task(2, 1, 1),
   ])
-  let cancelled : Map[Int, Bool] = Map([(1, true)])
+  let cancelled : Map[Int32, Bool] = Map([(1, true)])
   let policy = TimerQueuePolicy(queue, cancelled, { val: 2, }, 10)
   let _ = policy.readiness()
   inspect(policy.commit_next() is None, content="true")

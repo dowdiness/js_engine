@@ -3,18 +3,18 @@
 // produce numerically distinct handles; the owning program provides the
 // identity boundary, while every nested function shares this source unit.
 #warnings("-unused_value")
-priv struct SourceUnitHandle(Int) derive(Eq, Debug)
+priv struct SourceUnitHandle(Int32) derive(Eq, Debug)
 
 ///|
-const MAX_SOURCE_POINT_OWNER_ID : Int = 0x7FFFFFFF
+const MAX_SOURCE_POINT_OWNER_ID : Int32 = 0x7FFFFFFF
 
 ///|
 #warnings("-unused_value")
-priv struct SourcePointOwnerId(Int) derive(Eq, Debug)
+priv struct SourcePointOwnerId(Int32) derive(Eq, Debug)
 
 ///|
 priv struct SourcePointOwnerAllocator {
-  next_id : Int
+  next_id : Int32
   // A single opaque token marks one lowering run. Every root/child identity
   // copied from this allocator shares it, while a separate compilation does
   // not accidentally reuse the numeric source handles.
@@ -23,7 +23,7 @@ priv struct SourcePointOwnerAllocator {
 
 ///|
 priv suberror BytecodeSourcePointOwnerAllocationDefect {
-  BytecodeSourcePointOwnerAllocationDefect(Int)
+  BytecodeSourcePointOwnerAllocationDefect(Int32)
 }
 
 ///|
@@ -52,7 +52,7 @@ fn allocate_source_point_owner(
 // separate program identity remains the private facade boundary.
 
 ///|
-priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int) derive(Eq)
+priv struct SourcePointId(SourceUnitHandle, SourcePointOwnerId, Int32) derive(Eq)
 
 ///|
 #warnings("-unused_value")
@@ -116,7 +116,7 @@ priv struct BytecodeObservationContext {
 // checks these edge facts against the actual instruction transfer and target
 // context; snapshots alone cannot authorize a retargeted edge.
 priv struct BytecodeObservationEdgeContext {
-  successor : Int
+  successor : Int32
   context : BytecodeObservationContext
 }
 
@@ -138,7 +138,7 @@ priv enum BytecodeObservationAuthorityContextEntries {
 priv enum BytecodeObservationAuthoritySuccessors {
   EmptyObservationAuthoritySuccessors
   MoreObservationAuthoritySuccessors(
-    Int,
+    Int32,
     BytecodeObservationAuthoritySuccessors
   )
 }
@@ -162,7 +162,7 @@ priv enum BytecodeObservationAuthorityInstructions {
 priv struct BytecodeObservationAuthority {
   program_identity : Ref[Unit]
   source_point_owner : SourcePointOwnerId
-  code_length : Int
+  code_length : Int32
   instructions : BytecodeObservationAuthorityInstructions
 }
 
@@ -190,8 +190,8 @@ fn bytecode_observation_authority_context_entries(
 ///|
 fn bytecode_observation_authority_successors(
   transfer : BytecodeInstructionTransfer,
-  instruction_index : Int,
-  exceptional? : Array[Int] = [],
+  instruction_index : Int32,
+  exceptional~ : Array[Int32] = [],
 ) -> BytecodeObservationAuthoritySuccessors {
   let mut successors = match transfer {
     Fallthrough(_) =>
@@ -382,9 +382,9 @@ priv enum BytecodeHandlerKind {
 
 ///|
 priv enum BytecodeInstr {
-  EnterHandler(BytecodeHandlerKind, Int, Int)
-  LeaveHandler(Int)
-  ResumeCompletion(Int)
+  EnterHandler(BytecodeHandlerKind, Int32, Int32)
+  LeaveHandler(Int32)
+  ResumeCompletion(Int32)
   CreatePerIterationEnvironment
   ReturnThroughHandler
   ObserveStatement(SourcePointId)
@@ -402,13 +402,13 @@ priv enum BytecodeInstr {
   GetNameReference
   StoreNameReference
   DropNameReference
-  LoadLocal(Int)
-  StoreLocal(Int)
-  LoadEnvSlot(Int)
-  StoreEnvSlot(Int)
+  LoadLocal(Int32)
+  StoreLocal(Int32)
+  LoadEnvSlot(Int32)
+  StoreEnvSlot(Int32)
   DefineBinding(@ast.VarKind, String, Bool) // kind, name, initializer-present
-  DefineLocal(Int, Bool) // slot, initializer-present
-  DefineEnvSlot(Int, Bool) // slot, initializer-present
+  DefineLocal(Int32, Bool) // slot, initializer-present
+  DefineEnvSlot(Int32, Bool) // slot, initializer-present
   SetCompletion
   SetCompletionValue(Value) // direct completion update for constants/empty statements
   Pop
@@ -424,24 +424,24 @@ priv enum BytecodeInstr {
   MakeRegExp(String, String)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
-  UpdateLocal(Int, @ast.UpdateOp, Bool, @token.Loc) // slot, op, prefix, loc
-  UpdateEnvSlot(Int, @ast.UpdateOp, Bool) // slot, op, prefix
+  UpdateLocal(Int32, @ast.UpdateOp, Bool, @token.Loc) // slot, op, prefix, loc
+  UpdateEnvSlot(Int32, @ast.UpdateOp, Bool) // slot, op, prefix
   UpdateProperty(String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) // prop, op, prefix, member loc, op loc
   UpdateComputed(@ast.UpdateOp, Bool, @token.Loc, @token.Loc) // op, prefix, member loc, op loc
-  Jump(Int)
-  JumpIfFalse(Int)
-  JumpIfFalseKeep(Int)
-  JumpIfTrueKeep(Int)
-  JumpIfNotNullishKeep(Int)
+  Jump(Int32)
+  JumpIfFalse(Int32)
+  JumpIfFalseKeep(Int32)
+  JumpIfTrueKeep(Int32)
+  JumpIfNotNullishKeep(Int32)
   BeginOptionalChain
   MarkOptionalChainShortCircuit
-  JumpIfNotOptionalChainShortCircuitKeep(Int)
+  JumpIfNotOptionalChainShortCircuitKeep(Int32)
   EndOptionalChain
   StartForIn
-  ForInNext(Int)
+  ForInNext(Int32)
   EndForIn
-  MakeArray(Int)
-  MakeArrayWithHoles(Int, Array[Int])
+  MakeArray(Int32)
+  MakeArrayWithHoles(Int32, Array[Int32])
   StartArray
   ArrayPushValue
   ArrayPushSpread(@token.Loc)
@@ -460,12 +460,12 @@ priv enum BytecodeInstr {
   ObjectSetComputed
   ObjectSpread(@token.Loc)
   ObjectSetProto
-  MakeFunction(Int)
-  MakeNamedFunction(Int, String)
-  MakeMethodFunction(Int)
-  MakeComputedMethodFunction(Int)
-  MakeArrowFunction(Int)
-  DeclareFunction(String, Int)
+  MakeFunction(Int32)
+  MakeNamedFunction(Int32, String)
+  MakeMethodFunction(Int32)
+  MakeComputedMethodFunction(Int32)
+  MakeArrowFunction(Int32)
+  DeclareFunction(String, Int32)
   GetProperty(String, @token.Loc)
   GetComputed(@token.Loc)
   ReadPropertyForAssign(String, @token.Loc)
@@ -483,11 +483,11 @@ priv enum BytecodeInstr {
   PrepareSuperPropertyCall(String, @token.Loc)
   PrepareSuperComputedCall(@token.Loc)
   CallDirectEval(@token.Loc)
-  Call(Int, @token.Loc)
-  CallWithReceiver(Int, @token.Loc)
+  Call(Int32, @token.Loc)
+  CallWithReceiver(Int32, @token.Loc)
   CallSpread(@token.Loc)
   CallSpreadWithReceiver(@token.Loc)
-  Construct(Int, @token.Loc)
+  Construct(Int32, @token.Loc)
   ConstructSpread(@token.Loc)
   Return
   Throw
@@ -811,7 +811,7 @@ priv struct BytecodeLexicalBinding {
 ///|
 priv struct BytecodeFunctionDeclaration {
   name : String
-  child_index : Int
+  child_index : Int32
   loc : @token.Loc
   source_identity : BytecodeSourceIdentity
 }
@@ -839,7 +839,7 @@ priv struct BytecodeSourceIdentity {
   source_unit : SourceUnitHandle
   source_point_owner : SourcePointOwnerId
   parent_source_point_owner : SourcePointOwnerId?
-  child_index : Int?
+  child_index : Int32?
   consumer_form : BytecodeFunctionConsumerForm?
 }
 
@@ -860,7 +860,7 @@ fn bytecode_source_identity_equal(
 fn BytecodeSourceIdentity::root(
   source_unit : SourceUnitHandle,
   source_point_owner : SourcePointOwnerId,
-  program_identity? : Ref[Unit]? = None,
+  program_identity~ : Ref[Unit]? = None,
 ) -> BytecodeSourceIdentity {
   let program_identity = match program_identity {
     Some(identity) => identity
@@ -882,7 +882,7 @@ fn BytecodeSourceIdentity::child(
   source_unit : SourceUnitHandle,
   source_point_owner : SourcePointOwnerId,
   parent_source_point_owner : SourcePointOwnerId,
-  child_index : Int,
+  child_index : Int32,
   consumer_form : BytecodeFunctionConsumerForm,
 ) -> BytecodeSourceIdentity {
   {
@@ -908,7 +908,7 @@ priv struct BytecodeHeaderProvenance {
   rest_param : String?
   enclosing_strict : Bool
   parent_source_point_owner : SourcePointOwnerId
-  child_index : Int
+  child_index : Int32
   consumer_form : BytecodeFunctionConsumerForm
   exact_source_text : String?
   child_source_identity : BytecodeSourceIdentity?
@@ -924,7 +924,7 @@ fn BytecodeHeaderProvenance::BytecodeHeaderProvenance(
   rest_param : String?,
   enclosing_strict : Bool,
   parent_source_point_owner : SourcePointOwnerId,
-  child_index : Int,
+  child_index : Int32,
   consumer_form : BytecodeFunctionConsumerForm,
   exact_source_text : String?,
 ) -> BytecodeHeaderProvenance {
@@ -994,10 +994,10 @@ priv struct BytecodePreparation {
 
 ///|
 fn BytecodePreparation::BytecodePreparation(
-  lexical_bindings? : Array[BytecodeLexicalBinding] = [],
-  function_declarations? : Array[BytecodeFunctionDeclaration] = [],
-  signature_validation? : BytecodeSignatureValidation? = None,
-  activation_capability? : @runtime.ExecutorActivationCapabilitySummary? = None,
+  lexical_bindings~ : Array[BytecodeLexicalBinding] = [],
+  function_declarations~ : Array[BytecodeFunctionDeclaration] = [],
+  signature_validation~ : BytecodeSignatureValidation? = None,
+  activation_capability~ : @runtime.ExecutorActivationCapabilitySummary? = None,
 ) -> BytecodePreparation {
   {
     lexical_bindings,
@@ -1063,10 +1063,10 @@ priv struct BytecodeFunction {
   local_names : Array[String]
   // Local slots include private lowering temporaries in addition to source
   // bindings. The frame capacity is separate from source metadata.
-  local_slot_count : Int
+  local_slot_count : Int32
   // O(1) slot lookup — same data as local_names but indexed; computed once at
   // lower time so BytecodeFrame avoids O(N) linear scans.
-  local_indices : Map[String, Int]
+  local_indices : Map[String, Int32]
   env_slot_names : Array[String]
   // Var-declared names that are NOT local slots, in source order with duplicates
   // preserved — precomputed at lowering so the VM hoists them without re-walking
@@ -1092,30 +1092,30 @@ fn BytecodeFunction::BytecodeFunction(
   enclosing_strict~ : Bool,
   params~ : Array[String],
   rest_param~ : String?,
-  source_text? : String? = None,
-  source_identity? : BytecodeSourceIdentity? = None,
-  activation_kind? : BytecodeActivationKind = FunctionActivation,
+  source_text~ : String? = None,
+  source_identity~ : BytecodeSourceIdentity? = None,
+  activation_kind~ : BytecodeActivationKind = FunctionActivation,
   preparation~ : BytecodePreparation,
   body_has_use_strict~ : Bool,
   call_self_name~ : Bool,
   needs_arguments_object~ : Bool,
   needs_own_env~ : Bool,
   local_names~ : Array[String],
-  local_slot_count? : Int? = None,
-  local_indices~ : Map[String, Int],
+  local_slot_count~ : Int32? = None,
+  local_indices~ : Map[String, Int32],
   env_slot_names~ : Array[String],
   env_var_hoist_names~ : Array[String],
   template_cache_key_prefix~ : String,
   code~ : Array[BytecodeInstr],
   source_point_owner~ : SourcePointOwnerId,
-  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
-  source_points? : Array[SourcePoint] = [],
-  instruction_sources? : Array[Array[SourcePointId]] = [],
-  observation_contexts? : Array[BytecodeObservationContext] = [],
-  observation_edge_contexts? : Array[Array[BytecodeObservationEdgeContext]] = [],
-  observation_authority? : BytecodeObservationAuthority? = None,
+  source_unit~ : SourceUnitHandle = SourceUnitHandle(0),
+  source_points~ : Array[SourcePoint] = [],
+  instruction_sources~ : Array[Array[SourcePointId]] = [],
+  observation_contexts~ : Array[BytecodeObservationContext] = [],
+  observation_edge_contexts~ : Array[Array[BytecodeObservationEdgeContext]] = [],
+  observation_authority~ : BytecodeObservationAuthority? = None,
   children~ : Array[BytecodeFunction],
-  header_provenance? : BytecodeHeaderProvenance? = None,
+  header_provenance~ : BytecodeHeaderProvenance? = None,
 ) -> BytecodeFunction {
   {
     name,
@@ -1184,7 +1184,7 @@ priv struct VerifiedBytecodeFunction {
 ///|
 fn VerifiedBytecodeFunction::child(
   self : VerifiedBytecodeFunction,
-  index : Int,
+  index : Int32,
 ) -> VerifiedBytecodeFunction {
   let function = self.function.children[index]
   { function, preparation: function.preparation, }
@@ -1204,10 +1204,10 @@ priv struct BytecodeBuilder {
   function_declarations : Array[BytecodeFunctionDeclaration]
   enclosing_strict : Bool
   local_names : Array[String]
-  local_indices : Map[String, Int]
-  mut local_slot_count : Int
+  local_indices : Map[String, Int32]
+  mut local_slot_count : Int32
   env_slot_names : Array[String]
-  env_slot_indices : Map[String, Int]
+  env_slot_indices : Map[String, Int32]
   template_cache_key_prefix : String
   loop_contexts : Array[LoopPatchContext]
   break_contexts : Array[BreakPatchContext]
@@ -1225,7 +1225,7 @@ priv struct BytecodeBuilder {
   candidate_mode : Bool
   // Candidate child indices include lowering-unsupported slots even though
   // those slots are intentionally absent from `children`.
-  mut candidate_child_slot_count : Int
+  mut candidate_child_slot_count : Int32
   // Extended-parameter rejection occurs before add_function receives the
   // child body; carry that typed skip to the next candidate child boundary.
   mut candidate_pending_unsupported_child : Bool
@@ -1234,21 +1234,21 @@ priv struct BytecodeBuilder {
 ///|
 priv struct LoopPatchContext {
   labels : Array[String]
-  break_jumps : Array[Int]
-  continue_jumps : Array[Int]
+  break_jumps : Array[Int32]
+  continue_jumps : Array[Int32]
   cleanup_for_in : Bool
 }
 
 ///|
 priv struct LabelPatchContext {
   label : String
-  break_jumps : Array[Int]
-  loop_depth : Int
+  break_jumps : Array[Int32]
+  loop_depth : Int32
 }
 
 ///|
 priv struct SwitchPatchContext {
-  break_jumps : Array[Int]
+  break_jumps : Array[Int32]
 }
 
 ///|
@@ -1260,9 +1260,9 @@ priv enum BreakPatchContext {
 ///|
 priv struct BytecodeLocalPlan {
   names : Array[String]
-  indices : Map[String, Int]
+  indices : Map[String, Int32]
   env_names : Array[String]
-  env_indices : Map[String, Int]
+  env_indices : Map[String, Int32]
 }
 
 ///|
@@ -1365,8 +1365,8 @@ priv enum BytecodeRunResult {
 ///|
 #warnings("-unused_field")
 priv struct BytecodeActivationUnsupported {
-  function_path : Array[Int]
-  instruction_index : Int
+  function_path : Array[Int32]
+  instruction_index : Int32
   reason : BytecodeActivationUnsupportedReason
 }
 
@@ -1377,7 +1377,7 @@ priv struct BytecodeActivationUnsupported {
 #warnings("-unused_value")
 fn select_bytecode_code_activation(
   code : Array[BytecodeInstr],
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Result[BytecodeActivationDisposition, BytecodeActivationUnsupported] {
   let mut has_managed_suspension = false
   for instruction_index, instruction in code {
@@ -1402,7 +1402,7 @@ fn select_bytecode_code_activation(
 #warnings("-unused_value")
 fn select_bytecode_function_activation(
   function : VerifiedBytecodeFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Result[BytecodeActivationDisposition, BytecodeActivationUnsupported] {
   select_bytecode_code_activation(function.function.code, function_path)
 }
@@ -1413,10 +1413,10 @@ fn BytecodeBuilder::BytecodeBuilder(
   template_cache_key_prefix : String,
   source_point_owner : SourcePointOwnerId,
   owner_allocator : Ref[SourcePointOwnerAllocator],
-  source_unit? : SourceUnitHandle = SourceUnitHandle(0),
-  enclosing_strict? : Bool = false,
-  candidate_identity_plan? : CandidateIdentityPlan? = None,
-  candidate_mode? : Bool = false,
+  source_unit~ : SourceUnitHandle = SourceUnitHandle(0),
+  enclosing_strict~ : Bool = false,
+  candidate_identity_plan~ : CandidateIdentityPlan? = None,
+  candidate_mode~ : Bool = false,
 ) -> BytecodeBuilder {
   {
     code: [],
@@ -1450,7 +1450,10 @@ fn BytecodeBuilder::BytecodeBuilder(
 }
 
 ///|
-fn BytecodeBuilder::emit(self : BytecodeBuilder, instr : BytecodeInstr) -> Int {
+fn BytecodeBuilder::emit(
+  self : BytecodeBuilder,
+  instr : BytecodeInstr,
+) -> Int32 {
   let idx = self.code.length()
   self.code.push(instr)
   self.instruction_sources.push([])
@@ -1480,7 +1483,7 @@ fn BytecodeBuilder::emit_with_sources(
   self : BytecodeBuilder,
   instr : BytecodeInstr,
   sources : Array[SourcePointId],
-) -> Int {
+) -> Int32 {
   let idx = self.emit(instr)
   self.instruction_sources[idx] = sources
   idx
@@ -1491,7 +1494,7 @@ fn BytecodeBuilder::emit_with_source_locations(
   self : BytecodeBuilder,
   instr : BytecodeInstr,
   source_locations : Array[(SourcePointRole, @token.Loc)],
-) -> Int raise Error {
+) -> Int32 raise Error {
   let required = bytecode_instruction_contract(instr).required_source_roles
   guard required.length() == source_locations.length() else {
     raise @errors.InternalError(
@@ -1541,24 +1544,24 @@ fn BytecodeBuilder::pop_observation(self : BytecodeBuilder) -> Unit {
 ///|
 fn BytecodeBuilder::patch(
   self : BytecodeBuilder,
-  idx : Int,
+  idx : Int32,
   instr : BytecodeInstr,
 ) -> Unit {
   self.code[idx] = instr
 }
 
 ///|
-fn BytecodeBuilder::local_slot(self : BytecodeBuilder, name : String) -> Int? {
+fn BytecodeBuilder::local_slot(self : BytecodeBuilder, name : String) -> Int32? {
   self.local_indices.get(name)
 }
 
 ///|
-fn BytecodeBuilder::env_slot(self : BytecodeBuilder, name : String) -> Int? {
+fn BytecodeBuilder::env_slot(self : BytecodeBuilder, name : String) -> Int32? {
   self.env_slot_indices.get(name)
 }
 
 ///|
-fn BytecodeBuilder::allocate_local_slot(self : BytecodeBuilder) -> Int {
+fn BytecodeBuilder::allocate_local_slot(self : BytecodeBuilder) -> Int32 {
   let slot = self.local_slot_count
   self.local_slot_count += 1
   slot
@@ -1602,7 +1605,7 @@ fn BytecodeBuilder::restore_pending_loop_labels(
 fn BytecodeBuilder::push_loop_context(
   self : BytecodeBuilder,
   labels : Array[String],
-  cleanup_for_in? : Bool = false,
+  cleanup_for_in~ : Bool = false,
 ) -> Unit {
   let ctx = { labels, break_jumps: [], continue_jumps: [], cleanup_for_in, }
   self.loop_contexts.push(ctx)
@@ -1694,7 +1697,7 @@ fn BytecodeBuilder::find_label_context(
 fn BytecodeBuilder::find_labeled_loop_context_index(
   self : BytecodeBuilder,
   label : String,
-) -> Int? {
+) -> Int32? {
   for i = self.loop_contexts.length() - 1; i >= 0; i = i - 1 {
     let ctx = self.loop_contexts[i]
     if string_array_contains(ctx.labels, label) {
@@ -1707,7 +1710,7 @@ fn BytecodeBuilder::find_labeled_loop_context_index(
 ///|
 fn BytecodeBuilder::emit_for_in_cleanups_after_loop_index(
   self : BytecodeBuilder,
-  loop_index : Int,
+  loop_index : Int32,
 ) -> Unit {
   for i = self.loop_contexts.length() - 1; i > loop_index; i = i - 1 {
     if self.loop_contexts[i].cleanup_for_in {
@@ -1787,8 +1790,8 @@ fn BytecodeBuilder::emit_loop_continue(
 ///|
 fn BytecodeBuilder::patch_loop_jumps(
   self : BytecodeBuilder,
-  jumps : Array[Int],
-  target : Int,
+  jumps : Array[Int32],
+  target : Int32,
 ) -> Unit {
   for jump in jumps {
     self.patch(jump, Jump(target))
@@ -1796,7 +1799,7 @@ fn BytecodeBuilder::patch_loop_jumps(
 }
 
 ///|
-fn local_index_from_names(xs : Array[String], name : String) -> Int? {
+fn local_index_from_names(xs : Array[String], name : String) -> Int32? {
   for i, x in xs {
     if x == name {
       return Some(i)
@@ -1817,8 +1820,8 @@ fn string_array_contains(xs : Array[String], name : String) -> Bool {
 // a return/throw. Terminal completions need no successor instruction.
 fn bytecode_exception_successor_table(
   code : Array[BytecodeInstr],
-) -> Array[Array[Int]] {
-  let edges : Array[Array[Int]] = Array::makei(code.length(), _ => [])
+) -> Array[Array[Int32]] {
+  let edges : Array[Array[Int32]] = Array::makei(code.length(), _ => [])
   for enter, instruction in code {
     match instruction {
       EnterHandler(kind, target, end) if enter + 1 < target &&

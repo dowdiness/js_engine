@@ -17,7 +17,7 @@ fn eprintln(line : String) -> Unit {
 }
 
 ///|
-fn exit_with_code(code : Int) -> Unit {
+fn exit_with_code(code : Int32) -> Unit {
   if code != 0 {
     @sys.exit(code)
   }

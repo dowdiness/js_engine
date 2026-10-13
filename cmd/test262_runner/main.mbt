@@ -40,14 +40,14 @@ fn flag_value(flags : Map[String, Bool], key : String) -> Bool {
 }
 
 ///|
-fn parse_int_arg(raw : String, label : String) -> Int raise {
+fn parse_int_arg(raw : String, label : String) -> Int32 raise {
   @string.parse_int(raw) catch {
     _ => fail("argument \{label}: invalid int value: '\{raw}'")
   }
 }
 
 ///|
-fn optional_int_arg(raw : String?, label : String) -> Int? raise {
+fn optional_int_arg(raw : String?, label : String) -> Int32? raise {
   match raw {
     None => None
     Some(value) => Some(parse_int_arg(value, label))
@@ -63,7 +63,7 @@ fn argv0(args : Array[String]) -> String {
 }
 
 ///|
-fn exit_with_code(code : Int) -> Unit {
+fn exit_with_code(code : Int32) -> Unit {
   if code != 0 {
     @sys.exit(code)
   }

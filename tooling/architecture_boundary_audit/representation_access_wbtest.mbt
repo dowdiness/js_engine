@@ -37,7 +37,7 @@ fn base_representation_json(allowlisted : String) -> String {
 ///|
 fn representation_debt_json(
   pattern_id : String,
-  allowed_count : Int,
+  allowed_count : Int32,
   fingerprint : String,
   reason : String,
 ) -> String {

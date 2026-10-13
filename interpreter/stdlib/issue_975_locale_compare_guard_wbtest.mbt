@@ -1,5 +1,5 @@
 ///|
-fn locale_compare_observation_probe(observations : Ref[Int]) -> Value {
+fn locale_compare_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -19,7 +19,7 @@ fn locale_compare_observation_probe(observations : Ref[Int]) -> Value {
 fn call_locale_compare_with_observation_probe(
   value : String,
   other : String,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -42,7 +42,7 @@ fn call_locale_compare_with_observation_probe(
 
 ///|
 test "String.localeCompare observes before opaque comparison" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_locale_compare_with_observation_probe("a", "b", observations) {
     Number(value) => inspect(value, content="-1")
     _ => fail("localeCompare must return a number")
@@ -52,7 +52,7 @@ test "String.localeCompare observes before opaque comparison" {
 
 ///|
 test "String.normalize uses the normalization library" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   let interp = @runtime.Interpreter::new()
   interp.global.def(
     "[[ExecutionControl]]",

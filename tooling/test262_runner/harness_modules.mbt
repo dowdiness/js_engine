@@ -18,8 +18,8 @@ fn load_harness(
   test262_dir : String,
   includes : Array[String],
   is_raw : Bool,
-  is_async? : Bool = false,
-  harness_options? : HarnessOptions = HarnessOptions(),
+  is_async~ : Bool = false,
+  harness_options~ : HarnessOptions = HarnessOptions(),
 ) -> String {
   guard !is_raw else { return "" }
   let harness_dir = @path_utils.join_path(test262_dir, "harness")
@@ -55,7 +55,7 @@ fn is_space_code(ch : UInt16) -> Bool {
 fn collect_import_after_keyword(
   source : String,
   keyword : String,
-  specs : Array[(Int, String)],
+  specs : Array[(Int32, String)],
 ) -> Unit {
   let mut offset = 0
   let keyword_len = keyword.length()
@@ -94,7 +94,7 @@ fn collect_import_after_keyword(
 
 ///|
 fn import_relative_specifiers(source : String) -> Array[String] {
-  let matches : Array[(Int, String)] = []
+  let matches : Array[(Int32, String)] = []
   collect_import_after_keyword(source, "from", matches)
   collect_import_after_keyword(source, "import", matches)
   matches.sort_by(fn(a, b) { a.0.compare(b.0) })
@@ -168,8 +168,8 @@ fn visit_fixture(
 fn resolve_fixtures(
   test_path : String,
   source : String,
-  test262_dir? : String = "",
-  harness_options? : HarnessOptions = HarnessOptions(),
+  test262_dir~ : String = "",
+  harness_options~ : HarnessOptions = HarnessOptions(),
 ) -> Array[(String, String)] raise {
   let test_abs = @path_utils.absolute_path(test_path)
   let test_dir = @path_utils.dirname(test_abs)
@@ -191,8 +191,8 @@ fn append_engine_flags(
   source : String,
   is_module : Bool,
   is_annex_b : Bool,
-  test262_dir? : String = "",
-  harness_options? : HarnessOptions = HarnessOptions(),
+  test262_dir~ : String = "",
+  harness_options~ : HarnessOptions = HarnessOptions(),
 ) -> Array[String] raise {
   let trailing_source_option = if engine_cmd.length() > 0 &&
     (

@@ -181,7 +181,7 @@ fn category_analysis() -> Map[String, CategoryInfo] {
 }
 
 ///|
-fn map_get_count(map : Map[String, Int], key : String) -> Int {
+fn map_get_count(map : Map[String, Int32], key : String) -> Int32 {
   match map.get(key) {
     Some(value) => value
     None => 0
@@ -189,12 +189,12 @@ fn map_get_count(map : Map[String, Int], key : String) -> Int {
 }
 
 ///|
-fn increment_count(map : Map[String, Int], key : String) -> Unit {
+fn increment_count(map : Map[String, Int32], key : String) -> Unit {
   map[key] = map_get_count(map, key) + 1
 }
 
 ///|
-fn sorted_count_keys_desc(map : Map[String, Int]) -> Array[String] {
+fn sorted_count_keys_desc(map : Map[String, Int32]) -> Array[String] {
   let keys : Array[String] = []
   for key, _ in map {
     keys.push(key)
@@ -211,7 +211,7 @@ fn sorted_count_keys_desc(map : Map[String, Int]) -> Array[String] {
 }
 
 ///|
-fn pad_left(value : String, width : Int) -> String {
+fn pad_left(value : String, width : Int32) -> String {
   if value.length() >= width {
     value
   } else {
@@ -220,7 +220,7 @@ fn pad_left(value : String, width : Int) -> String {
 }
 
 ///|
-fn pad_left_zero(value : String, width : Int) -> String {
+fn pad_left_zero(value : String, width : Int32) -> String {
   if value.length() >= width {
     value
   } else {
@@ -229,7 +229,7 @@ fn pad_left_zero(value : String, width : Int) -> String {
 }
 
 ///|
-fn pad_right(value : String, width : Int) -> String {
+fn pad_right(value : String, width : Int32) -> String {
   if value.length() >= width {
     value
   } else {
@@ -238,7 +238,7 @@ fn pad_right(value : String, width : Int) -> String {
 }
 
 ///|
-fn comma_int(value : Int) -> String {
+fn comma_int(value : Int32) -> String {
   let raw = value.to_string()
   let len = raw.length()
   if len <= 3 {
@@ -256,7 +256,7 @@ fn comma_int(value : Int) -> String {
 }
 
 ///|
-fn pow10(places : Int) -> Int {
+fn pow10(places : Int32) -> Int32 {
   let mut out = 1
   for _ in 0..<places {
     out *= 10
@@ -265,7 +265,7 @@ fn pow10(places : Int) -> Int {
 }
 
 ///|
-fn pct_string(numerator : Int, denominator : Int, places : Int) -> String {
+fn pct_string(numerator : Int32, denominator : Int32, places : Int32) -> String {
   guard denominator > 0 else {
     if places == 0 {
       return "0"
@@ -284,12 +284,12 @@ fn pct_string(numerator : Int, denominator : Int, places : Int) -> String {
 }
 
 ///|
-fn json_int(value : Int) -> Json {
+fn json_int(value : Int32) -> Json {
   Json::number(Double::from_int(value), repr=value.to_string())
 }
 
 ///|
-fn json_percent(numerator : Int, denominator : Int) -> Json {
+fn json_percent(numerator : Int32, denominator : Int32) -> Json {
   let repr = pct_string(numerator, denominator, 2)
   Json::number(0.0, repr~)
 }
@@ -519,11 +519,11 @@ fn discover_analyzer_tests(
 fn append_analysis_counts(
   analysis : StaticAnalysis,
   metadata : @metadata.SkipMetadata,
-  by_classification : Map[String, Int],
-  by_complexity : Map[String, Int],
-  applicable_by_category : Map[String, Int],
-  total_by_category : Map[String, Int],
-  feature_gaps : Map[String, Int],
+  by_classification : Map[String, Int32],
+  by_complexity : Map[String, Int32],
+  applicable_by_category : Map[String, Int32],
+  total_by_category : Map[String, Int32],
+  feature_gaps : Map[String, Int32],
 ) -> Unit {
   increment_count(by_classification, analysis.classification)
   increment_count(total_by_category, analysis.category)
@@ -541,7 +541,7 @@ fn append_analysis_counts(
 }
 
 ///|
-fn json_int_map(keys : Array[String], values : Map[String, Int]) -> Json {
+fn json_int_map(keys : Array[String], values : Map[String, Int32]) -> Json {
   let out : Map[String, Json] = Map([])
   for key in keys {
     out[key] = json_int(map_get_count(values, key))
@@ -551,15 +551,15 @@ fn json_int_map(keys : Array[String], values : Map[String, Int]) -> Json {
 
 ///|
 fn analysis_json_report(
-  total : Int,
-  applicable : Int,
-  skipped_feature : Int,
-  skipped_flag : Int,
-  skipped_fixture : Int,
-  by_complexity : Map[String, Int],
-  applicable_by_category : Map[String, Int],
-  total_by_category : Map[String, Int],
-  feature_gaps : Map[String, Int],
+  total : Int32,
+  applicable : Int32,
+  skipped_feature : Int32,
+  skipped_flag : Int32,
+  skipped_fixture : Int32,
+  by_complexity : Map[String, Int32],
+  applicable_by_category : Map[String, Int32],
+  total_by_category : Map[String, Int32],
+  feature_gaps : Map[String, Int32],
 ) -> Json {
   let summary : Map[String, Json] = {
     "total_tests": json_int(total),
@@ -610,11 +610,11 @@ fn render_analysis_report(
   metadata : @metadata.SkipMetadata,
 ) -> (Array[String], Json) {
   let total = analyses.length()
-  let by_classification : Map[String, Int] = Map([])
-  let by_complexity : Map[String, Int] = Map([])
-  let applicable_by_category : Map[String, Int] = Map([])
-  let total_by_category : Map[String, Int] = Map([])
-  let feature_gaps : Map[String, Int] = Map([])
+  let by_classification : Map[String, Int32] = Map([])
+  let by_complexity : Map[String, Int32] = Map([])
+  let applicable_by_category : Map[String, Int32] = Map([])
+  let total_by_category : Map[String, Int32] = Map([])
+  let feature_gaps : Map[String, Int32] = Map([])
   for analysis in analyses {
     append_analysis_counts(
       analysis, metadata, by_classification, by_complexity, applicable_by_category,
@@ -850,9 +850,9 @@ fn render_analysis_report(
 /// This scans Test262 metadata only. It does not run the engine and does not
 /// produce authoritative conformance numbers.
 pub fn run_analyze(
-  repo_root? : String = ".",
-  test262_root? : String = "./test262",
-  output? : String = "test262-analysis.moonbit-shadow.json",
+  repo_root~ : String = ".",
+  test262_root~ : String = "./test262",
+  output~ : String = "test262-analysis.moonbit-shadow.json",
 ) -> ToolRun raise {
   let test262_dir = @path_utils.absolute_path(test262_root)
   guard @fs.path_exists(test262_root) && @fs.is_dir(test262_root) else {

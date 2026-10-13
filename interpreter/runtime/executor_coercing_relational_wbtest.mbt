@@ -369,7 +369,7 @@ test "coercing less-than-or-equal uses object Number and ordinary fallback" {
 ///|
 test "coercing less-than-or-equal leaves right untouched on left ToPrimitive throw" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="right @@toPrimitive",
     realm_state=Some(interp.realm_state),
@@ -411,7 +411,7 @@ test "coercing less-than-or-equal leaves right untouched on left ToPrimitive thr
 ///|
 test "coercing less-than-or-equal converts right before left Symbol numeric failure" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="right @@toPrimitive",
     realm_state=Some(interp.realm_state),

@@ -87,13 +87,13 @@ fn[T] located_syntax_error(
 pub(all) struct Parser {
   tokens : Array[@token.Token]
   source : String
-  mut pos : Int
-  mut last_end : Int
+  mut pos : Int32
+  mut last_end : Int32
   mut allow_import_export : Bool // true at module top-level, false in nested blocks
   generator_depth : Array[Bool] // Stack: true when inside a generator function body
   async_depth : Array[Bool] // Stack: true when inside an async function body
   yield_identifier_depth : Array[Bool] // Stack: false where `yield` cannot be an IdentifierReference
-  mut class_body_depth : Int // 0 = outside class body, >0 = inside class body
+  mut class_body_depth : Int32 // 0 = outside class body, >0 = inside class body
 }
 
 ///|
@@ -175,7 +175,7 @@ fn Parser::advance(self : Parser) -> @token.Token {
 }
 
 ///|
-fn Parser::consume_source_text(self : Parser, start_offset : Int) -> String? {
+fn Parser::consume_source_text(self : Parser, start_offset : Int32) -> String? {
   if self.source == "" ||
     start_offset < 0 ||
     self.last_end > self.source.length() ||
@@ -348,7 +348,7 @@ fn Parser::expect_ident_name(self : Parser) -> String raise Error {
 }
 
 ///|
-fn Parser::peek_kind_at(self : Parser, offset : Int) -> @token.TokenKind {
+fn Parser::peek_kind_at(self : Parser, offset : Int32) -> @token.TokenKind {
   let idx = self.pos + offset
   if idx < self.tokens.length() {
     self.tokens[idx].kind
@@ -399,7 +399,7 @@ fn Parser::is_async_generator(self : Parser) -> Bool {
 ///|
 fn parse_tokens_located(
   tokens : Array[@token.Token],
-  source? : String = "",
+  source~ : String = "",
 ) -> @ast.Program raise Error {
   let parser = Parser::new(tokens, source)
   let stmts : Array[@ast.Stmt] = []
@@ -412,7 +412,7 @@ fn parse_tokens_located(
 ///|
 pub fn parse_tokens(
   tokens : Array[@token.Token],
-  source? : String = "",
+  source~ : String = "",
 ) -> @ast.Program raise Error {
   parse_tokens_located(tokens, source~) catch {
     LocatedSyntaxError(message~, token=_) => raise @errors.SyntaxError(message~)

@@ -69,7 +69,7 @@ priv struct ActivationObservationAttemptHooks {
 
 ///|
 fn ActivationObservationAttemptHooks::ActivationObservationAttemptHooks(
-  acquired? : () -> Unit = () => (),
+  acquired~ : () -> Unit = () => (),
   accepted~ : () -> Unit,
   rejected~ : () -> Unit,
   released~ : () -> Unit,

@@ -37,7 +37,7 @@ fn install_marker(
 ///|
 fn install_symbol_marker(
   proto : Value,
-  sym_id : Int,
+  sym_id : Int32,
   marker_value : String,
 ) -> Unit raise Error {
   match proto {

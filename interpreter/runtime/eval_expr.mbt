@@ -1473,9 +1473,9 @@ fn Interpreter::eval_expr(
       self.eval_yield(ctx, argument, delegate, env)
     ObjectLit(props, obj_loc) => {
       let properties : Map[String, Value] = Map([])
-      let symbol_properties : Map[Int, Value] = Map([])
+      let symbol_properties : Map[Int32, Value] = Map([])
       let descriptors : Map[String, PropDescriptor] = Map([])
-      let symbol_descriptors : Map[Int, PropDescriptor] = Map([])
+      let symbol_descriptors : Map[Int32, PropDescriptor] = Map([])
       // Build the object eagerly so methods captured during the prop loop can
       // reference it as [[HomeObject]] (ES2022 §13.2.5.5). The bag's Maps are
       // shared by reference, so later inserts populate the live object; the
@@ -1616,7 +1616,7 @@ fn Interpreter::eval_expr(
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
-      let hole_idxs : Array[Int] = []
+      let hole_idxs : Array[Int32] = []
       for e in elements {
         match e {
           SpreadExpr(inner, spread_loc) => {
@@ -2363,7 +2363,7 @@ pub fn eval_unary_value_op(
   op : @ast.UnaryOp,
   value : Value,
   loc : @token.Loc,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match op {
     Neg => Number(-to_number(value, interp~))
@@ -2386,7 +2386,7 @@ fn finish_subtraction(
   left : Value,
   right : Value,
   _loc : @token.Loc,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   Number(to_number(left, interp~) - to_number(right, interp~))
 }
@@ -2423,7 +2423,7 @@ fn relational_string_less_than(left : String, right : String) -> Bool {
 ///|
 fn relational_to_primitive(
   value : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   match interp {
     Some(ip) => ip.to_primitive_value(value, "number")
@@ -2442,7 +2442,7 @@ fn relational_to_primitive(
 fn relational_is_less_than_primitives(
   left : Value,
   right : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> RelationalLessThanResult raise Error {
   match (left, right) {
     (String_(left_string), String_(right_string)) =>
@@ -2472,7 +2472,7 @@ fn relational_is_less_than(
   left : Value,
   right : Value,
   left_first : Bool,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> RelationalLessThanResult raise Error {
   if left_first {
     let left_primitive = relational_to_primitive(left, interp~)
@@ -2490,7 +2490,7 @@ fn finish_less_than_or_equal(
   left : Value,
   right : Value,
   _loc : @token.Loc,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   // ECMAScript specifies x <= y as IsLessThan(y, x, false). With the
   // semantic operands reversed, false makes ToPrimitive visit source x
@@ -2508,7 +2508,7 @@ pub fn eval_binary_op(
   left : Value,
   right : Value,
   _loc : @token.Loc,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   fn n(v : Value) -> Double raise Error {
     to_number(v, interp~)
@@ -2631,7 +2631,7 @@ pub fn eval_binary_op(
         }
       } else {
         let shifted = a >> shift
-        let all_bits : Int = 0x7FFFFFFF
+        let all_bits : Int32 = 0x7FFFFFFF
         let mask = all_bits >> (shift - 1)
         Number((shifted & mask).to_double())
       }
@@ -2746,7 +2746,7 @@ pub fn strict_equal(a : Value, b : Value) -> Bool {
 fn loose_equal(
   a : Value,
   b : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Bool raise Error {
   // Abstract Equality Comparison Algorithm (ES spec §7.2.14)
   match (a, b) {
@@ -2830,7 +2830,7 @@ fn delete_string_property_from_bag(
 ///|
 fn delete_symbol_property_from_bag(
   bag : PropertyBag,
-  sym_id : Int,
+  sym_id : Int32,
   strict : Bool,
 ) -> Bool raise Error {
   match bag.symbol_descriptors.get(sym_id) {
@@ -2888,7 +2888,7 @@ pub fn Interpreter::delete_property_key(
   self : Interpreter,
   obj : Value,
   key : Value,
-  strict? : Bool = false,
+  strict~ : Bool = false,
 ) -> Bool raise Error {
   let prop_key = to_property_key(key, interp=Some(self))
   match obj {

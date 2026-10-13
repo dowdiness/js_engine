@@ -74,7 +74,7 @@ pub fn revoke_proxy(proxy_data : ProxyData) -> Unit {
 }
 
 ///|
-fn typedarray_declared_length(data : ObjectData) -> Int {
+fn typedarray_declared_length(data : ObjectData) -> Int32 {
   guard is_typedarray_class(data.class_name) else { return 0 }
   match data.bag.internal_slots.get(ArrayLength) {
     Some(Value::Number(n)) => n.to_int()
@@ -83,7 +83,7 @@ fn typedarray_declared_length(data : ObjectData) -> Int {
 }
 
 ///|
-fn is_typedarray_own_index_key(key : String, length : Int) -> Bool {
+fn is_typedarray_own_index_key(key : String, length : Int32) -> Bool {
   guard length > 0 else { return false }
   let idx = @string.parse_int(key) catch { _ => -1 }
   idx >= 0 && idx < length && idx.to_string() == key
@@ -787,7 +787,7 @@ pub fn proxy_own_property_keys(
   }
   // Step 9: If trapResult contains any duplicate entries, throw TypeError
   let seen_strings : @set.Set[String] = Default::default()
-  let seen_symbols : Map[Int, Bool] = Map([])
+  let seen_symbols : Map[Int32, Bool] = Map([])
   for key in trap_keys {
     interp.observe_execution_step()
     match key {
@@ -835,8 +835,8 @@ pub fn proxy_own_property_keys(
     return make_array(trap_keys)
   }
   // Step 16: Let uncheckedResultKeys be a copy of trapResult
-  let unchecked : Map[String, Int] = Map([]) // string key -> count
-  let unchecked_sym : Map[Int, Int] = Map([]) // symbol id -> count
+  let unchecked : Map[String, Int32] = Map([]) // string key -> count
+  let unchecked_sym : Map[Int32, Int32] = Map([]) // symbol id -> count
   for key in trap_keys {
     interp.observe_execution_step()
     match key {

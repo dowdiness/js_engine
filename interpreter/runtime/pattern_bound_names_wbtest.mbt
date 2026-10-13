@@ -1,5 +1,5 @@
 ///|
-fn deeply_nested_binding_pattern(name : String, depth : Int) -> @ast.Pattern {
+fn deeply_nested_binding_pattern(name : String, depth : Int32) -> @ast.Pattern {
   let mut pattern = @ast.Pattern::IdentPat(name)
   for _ in 0..<depth {
     pattern = @ast.Pattern::ArrayPat([Some(pattern)], None)

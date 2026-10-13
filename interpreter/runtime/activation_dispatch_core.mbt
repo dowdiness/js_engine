@@ -25,7 +25,7 @@ priv struct DispatchStatementCursor {
   ctx : ExecContext
   stmts : Array[@ast.Stmt]
   env : Environment
-  index : Int
+  index : Int32
   last_value : Value
   production : Bool
 }
@@ -36,9 +36,9 @@ fn DispatchStatementCursor::DispatchStatementCursor(
   ctx~ : ExecContext,
   stmts~ : Array[@ast.Stmt],
   env~ : Environment,
-  index? : Int = 0,
-  last_value? : Value = Undefined,
-  production? : Bool = false,
+  index~ : Int32 = 0,
+  last_value~ : Value = Undefined,
+  production~ : Bool = false,
 ) -> DispatchStatementCursor {
   { ctx, stmts: stmts.copy(), env, index, last_value, production, }
 }
@@ -49,7 +49,7 @@ priv struct DispatchStatementStep {
   ctx : ExecContext
   stmt : @ast.Stmt
   env : Environment
-  index : Int
+  index : Int32
 }
 
 ///|
@@ -290,8 +290,8 @@ fn DispatchProxyGetTrapLookupResume::DispatchProxyGetTrapLookupResume(
 #warnings("-unused_field")
 priv struct DispatchParameterDefaultResume {
   params : Array[@ast.Param]
-  next_index : Int
-  effective_param_count : Int
+  next_index : Int32
+  effective_param_count : Int32
   args : Array[Value]
   rest_param : String?
   is_arrow : Bool
@@ -304,8 +304,8 @@ priv struct DispatchParameterDefaultResume {
 #warnings("-unused_value")
 fn DispatchParameterDefaultResume::DispatchParameterDefaultResume(
   params~ : Array[@ast.Param],
-  next_index~ : Int,
-  effective_param_count~ : Int,
+  next_index~ : Int32,
+  effective_param_count~ : Int32,
   args~ : Array[Value],
   rest_param~ : String?,
   is_arrow~ : Bool,
@@ -340,10 +340,10 @@ priv struct DispatchNumericCallStart {
 #warnings("-unused_value")
 fn DispatchNumericCallStart::DispatchNumericCallStart(
   parameter~ : DispatchParameterBindingToken,
-  retained_parameter? : DispatchRetainedParameterBindingToken? = None,
+  retained_parameter~ : DispatchRetainedParameterBindingToken? = None,
   recursive_callee~ : DispatchCalleeCaptureToken,
   recipe~ : NumericRecursionExpressionRecipe,
-  return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
+  return_recipe~ : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> DispatchNumericCallStart {
   { parameter, retained_parameter, recursive_callee, recipe, return_recipe, }
 }
@@ -435,7 +435,7 @@ fn DispatchNumericCatchResume::DispatchNumericCatchResume(
 ///|
 #warnings("-unused_field")
 priv struct DispatchNumericProgramStart {
-  declaration_count : Int
+  declaration_count : Int32
   expression : DispatchNumericExpression
   root_control : NumericRecursionRootControlRecipe
   catch_binding : DispatchNumericCatchBindingToken
@@ -444,7 +444,7 @@ priv struct DispatchNumericProgramStart {
 ///|
 #warnings("-unused_value")
 fn DispatchNumericProgramStart::DispatchNumericProgramStart(
-  declaration_count~ : Int,
+  declaration_count~ : Int32,
   expression~ : DispatchNumericExpression,
   root_control~ : NumericRecursionRootControlRecipe,
   catch_binding~ : DispatchNumericCatchBindingToken,
@@ -473,7 +473,7 @@ fn numeric_recursion_program_dispatch_start(
 ///|
 #warnings("-unused_constructor-unused_field")
 priv enum DispatchNumericStatementObservation {
-  DispatchNumericObserveRootDeclaration(Int)
+  DispatchNumericObserveRootDeclaration(Int32)
   DispatchNumericObserveRootExpressionStatement
   DispatchNumericObserveRootTryStatement
   DispatchNumericObserveFunctionTryStatement
@@ -488,8 +488,8 @@ priv enum DispatchNumericStatementObservation {
 ///|
 #warnings("-unused_field")
 priv struct DispatchNumericRootDeclarationResume {
-  next_index : Int
-  remaining : Int
+  next_index : Int32
+  remaining : Int32
   expression : DispatchNumericExpression
   root_control : NumericRecursionRootControlRecipe
   catch_binding : DispatchNumericCatchBindingToken
@@ -498,8 +498,8 @@ priv struct DispatchNumericRootDeclarationResume {
 ///|
 #warnings("-unused_value")
 fn DispatchNumericRootDeclarationResume::DispatchNumericRootDeclarationResume(
-  next_index~ : Int,
-  remaining~ : Int,
+  next_index~ : Int32,
+  remaining~ : Int32,
   expression~ : DispatchNumericExpression,
   root_control~ : NumericRecursionRootControlRecipe,
   catch_binding~ : DispatchNumericCatchBindingToken,
@@ -585,7 +585,7 @@ fn DispatchLoopResume::DispatchLoopResume(
   ctx~ : ExecContext,
   label~ : String?,
   completion~ : Value,
-  production? : Bool = false,
+  production~ : Bool = false,
 ) -> DispatchLoopResume {
   { kind, ctx, label, completion, production, }
 }
@@ -800,13 +800,13 @@ fn snapshot_dispatch_continuation(
 ///|
 #warnings("-unused_field")
 priv struct DispatchActivationCleanup {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchActivationCleanup::DispatchActivationCleanup(
-  id : Int,
+  id : Int32,
 ) -> DispatchActivationCleanup {
   { id, }
 }
@@ -814,13 +814,13 @@ fn DispatchActivationCleanup::DispatchActivationCleanup(
 ///|
 #warnings("-unused_field")
 priv struct DispatchPropertyCleanup {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchPropertyCleanup::DispatchPropertyCleanup(
-  id : Int,
+  id : Int32,
 ) -> DispatchPropertyCleanup {
   { id, }
 }
@@ -828,13 +828,13 @@ fn DispatchPropertyCleanup::DispatchPropertyCleanup(
 ///|
 #warnings("-unused_field")
 priv struct DispatchRejectedEntryCleanup {
-  id : Int
+  id : Int32
 }
 
 ///|
 #warnings("-unused_value")
 fn DispatchRejectedEntryCleanup::DispatchRejectedEntryCleanup(
-  id : Int,
+  id : Int32,
 ) -> DispatchRejectedEntryCleanup {
   { id, }
 }

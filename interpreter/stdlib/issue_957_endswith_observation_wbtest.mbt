@@ -1,5 +1,5 @@
 ///|
-fn ends_with_observation_probe(observations : Ref[Int]) -> Value {
+fn ends_with_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -19,7 +19,7 @@ fn ends_with_observation_probe(observations : Ref[Int]) -> Value {
 fn call_ends_with_with_observation_probe(
   value : String,
   search : String,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -41,7 +41,7 @@ fn call_ends_with_with_position_and_observation_probe(
   value : String,
   search : String,
   end_position : Value,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -60,7 +60,7 @@ fn call_ends_with_with_position_and_observation_probe(
 
 ///|
 test "String.endsWith observes each actual comparison" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_ends_with_with_observation_probe("abc", "bc", observations) {
     Bool(value) => inspect(value, content="true")
     _ => fail("endsWith must return a boolean")
@@ -70,7 +70,7 @@ test "String.endsWith observes each actual comparison" {
 
 ///|
 test "String.endsWith observes the first mismatch before returning" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_ends_with_with_observation_probe("abc", "zc", observations) {
     Bool(value) => inspect(value, content="false")
     _ => fail("endsWith must return a boolean")
@@ -80,7 +80,7 @@ test "String.endsWith observes the first mismatch before returning" {
 
 ///|
 test "String.endsWith empty search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_ends_with_with_observation_probe("abc", "", observations) {
     Bool(value) => inspect(value, content="true")
     _ => fail("endsWith must return a boolean")
@@ -90,7 +90,7 @@ test "String.endsWith empty search observes no comparisons" {
 
 ///|
 test "String.endsWith impossible search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_ends_with_with_observation_probe("abc", "abcd", observations) {
     Bool(value) => inspect(value, content="false")
     _ => fail("endsWith must return a boolean")
@@ -100,13 +100,13 @@ test "String.endsWith impossible search observes no comparisons" {
 
 ///|
 test "String.endsWith compares UTF-16 code units" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_ends_with_with_observation_probe("😀x", "😀", observations) {
     Bool(value) => inspect(value, content="false")
     _ => fail("endsWith must return a boolean")
   }
   inspect(observations.val, content="1")
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match
     call_ends_with_with_position_and_observation_probe(
       "😀x",

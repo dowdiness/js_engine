@@ -2,8 +2,8 @@
 /// Convert a MoonBit string (sequence of Unicode code points) to an array
 /// of UTF-16 code units.  Supplementary characters (code point > 0xFFFF) are
 /// split into a surrogate pair (high surrogate + low surrogate).
-pub fn string_to_utf16(s : String) -> Array[Int] {
-  let units : Array[Int] = []
+pub fn string_to_utf16(s : String) -> Array[Int32] {
+  let units : Array[Int32] = []
   let cps = s.to_array()
   for ch in cps {
     let cp = ch.to_int()
@@ -23,7 +23,7 @@ pub fn string_to_utf16(s : String) -> Array[Int] {
 
 ///|
 /// Get the UTF-16 length of a string (counting code units, not code points).
-pub fn utf16_length(s : String) -> Int {
+pub fn utf16_length(s : String) -> Int32 {
   let cps = s.to_array()
   let mut len = 0
   for ch in cps {
@@ -79,7 +79,7 @@ pub fn is_typedarray_class(name : String) -> Bool {
 /// The ASCII digit / `-` / `N` / `I` prefix gate short-circuits non-numeric
 /// keys before invoking `@string.parse_double`, whose error path on
 /// non-numeric input is throw-and-catch and was a hot-path allocation source.
-fn classify_typedarray_string_key(s : String) -> Int? {
+fn classify_typedarray_string_key(s : String) -> Int32? {
   if s.length() == 0 {
     return None
   }

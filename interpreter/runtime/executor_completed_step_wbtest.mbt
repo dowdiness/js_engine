@@ -8,7 +8,7 @@ priv struct CompletedStepProbe {
 ///|
 fn CompletedStepProbe::CompletedStepProbe(
   step : ExecutorActivationStep,
-  events? : Array[String] = [],
+  events~ : Array[String] = [],
 ) -> CompletedStepProbe {
   { step, delivered: [], events, }
 }

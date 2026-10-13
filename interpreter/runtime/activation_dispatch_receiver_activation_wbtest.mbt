@@ -78,7 +78,7 @@ fn receiver_activation_test_release(
 ///|
 fn receiver_activation_test_cleanup_completion(
   completion : DispatchCompletion,
-  sentinel : Int,
+  sentinel : Int32,
 ) -> Unit raise {
   let (interp, shell, _, plan, callee, receiver) = receiver_activation_test_fixture()
   dispatch_shell_test_install_realm_sentinel(interp, sentinel)

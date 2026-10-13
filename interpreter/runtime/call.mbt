@@ -148,7 +148,7 @@ pub fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
 fn collect_param_default_eval_var_conflicts(
   params : Array[@ast.Param],
   rest_param : String?,
-  implicit_arguments? : Bool = false,
+  implicit_arguments~ : Bool = false,
 ) -> @set.Set[String] {
   let conflicts : @set.Set[String] = Default::default()
   if implicit_arguments {
@@ -194,7 +194,7 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
   args : Array[Value],
   param_env : Environment,
   func_ctx : ExecContext,
-  is_arrow? : Bool = false,
+  is_arrow~ : Bool = false,
 ) -> Signal raise Error {
   // §19.2.1.3 (#A.6): save on entry, reset to false so nested function
   // invocations in param defaults (IIFE, arrow, recursive call) do not
@@ -369,7 +369,7 @@ fn Interpreter::bind_ext_params_and_exec_body(
   args : Array[Value],
   param_env : Environment,
   func_ctx : ExecContext,
-  is_arrow? : Bool = false,
+  is_arrow~ : Bool = false,
 ) -> Value raise Error {
   match
     self.bind_ext_params_and_exec_body_signal(
@@ -431,7 +431,7 @@ pub fn Interpreter::perform_eval(
   code : String,
   caller_env : Environment,
   direct : Bool,
-  caller_strict? : Bool = false,
+  caller_strict~ : Bool = false,
 ) -> Value raise Error {
   self.with_function_materializer(None, fn() raise {
     self.perform_eval_unscoped(code, caller_env, direct, caller_strict~)
@@ -444,7 +444,7 @@ fn Interpreter::perform_eval_unscoped(
   code : String,
   caller_env : Environment,
   direct : Bool,
-  caller_strict? : Bool = false,
+  caller_strict~ : Bool = false,
 ) -> Value raise Error {
   // Parse the code — syntax errors propagate as SyntaxError
   let prog = @parser.parse(code)
@@ -1359,7 +1359,7 @@ fn Interpreter::prepare_user_func_activation(
   this_val : Value,
   args : Array[Value],
   data : FuncData,
-  throw_type_error_source? : UserFuncThrowTypeErrorSource = ResolveInheritedThrowTypeError,
+  throw_type_error_source~ : UserFuncThrowTypeErrorSource = ResolveInheritedThrowTypeError,
 ) -> PreparedUserFuncActivation raise Error {
   let func_env = Environment::new(parent=Some(data.closure))
   func_env.is_var_scope = true

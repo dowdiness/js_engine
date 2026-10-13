@@ -954,7 +954,7 @@ test "array map direct accessor drift preserves guest abrupt identity" {
 fn map_observation_control_run_for_source(
   source : String,
   remaining_steps : Int64,
-) -> (DispatchCompletion, Int64, Int, Int, Int) raise Error {
+) -> (DispatchCompletion, Int64, Int32, Int32, Int32) raise Error {
   let (interp, stmts, preflight) = map_observation_test_fixture_for_source(
     source,
   )
@@ -992,7 +992,7 @@ fn map_observation_control_run_for_source(
 ///|
 fn map_observation_control_run(
   remaining_steps : Int64,
-) -> (DispatchCompletion, Int64, Int, Int, Int) raise Error {
+) -> (DispatchCompletion, Int64, Int32, Int32, Int32) raise Error {
   map_observation_control_run_for_source(
     MAP_OBSERVATION_SOURCE,
     remaining_steps,

@@ -148,8 +148,8 @@ test "Array.lastIndexOf observation interrupts before indexed property work" {
 ///|
 test "Array.lastIndexOf observation interrupts before Proxy has and get" {
   let trace : Ref[Array[String]] = { val: [], }
-  let has_calls : Ref[Int] = { val: 0, }
-  let get_calls : Ref[Int] = { val: 0, }
+  let has_calls : Ref[Int32] = { val: 0, }
+  let get_calls : Ref[Int32] = { val: 0, }
   let interp = @runtime.Interpreter::new(setup_builtins=fn(env, args, rs, ab) {
     setup_builtins_with_realm_state(env, args, rs, annex_b=ab)
   })

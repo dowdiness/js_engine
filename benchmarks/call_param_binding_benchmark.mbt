@@ -26,7 +26,7 @@ const CALL_5PARAM_100K_SRC : String =
 ///|
 /// Replicates local_index_from_names (compiler/bytecode_ir.mbt:617) used by
 /// string_array_contains inside BytecodeFrame::BytecodeFrame (bytecode_vm.mbt:28).
-fn find_param_index(params : Array[String], name : String) -> Int? {
+fn find_param_index(params : Array[String], name : String) -> Int32? {
   for i, p in params {
     if p == name {
       return Some(i)

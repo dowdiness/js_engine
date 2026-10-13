@@ -363,9 +363,9 @@ fn compile_object_lit(
   }
   fn(interp, ctx, env) raise {
     let properties : Map[String, Value] = Map([])
-    let symbol_properties : Map[Int, Value] = Map([])
+    let symbol_properties : Map[Int32, Value] = Map([])
     let descriptors : Map[String, PropDescriptor] = Map([])
-    let symbol_descriptors : Map[Int, PropDescriptor] = Map([])
+    let symbol_descriptors : Map[Int32, PropDescriptor] = Map([])
     let mut proto_override : Value? = None
     let default_obj_proto = env.get("[[ObjectPrototype]]") catch {
       _ => Value::Null
@@ -1346,8 +1346,8 @@ fn make_compiled_func(
   params : Array[String],
   closure : Environment,
   strict : Bool,
-  body? : CompiledBody? = None,
-  constructable? : Bool = true,
+  body~ : CompiledBody? = None,
+  constructable~ : Bool = true,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1543,9 +1543,9 @@ fn call_compiled_func(
   params : Array[String],
   closure : Environment,
   strict : Bool,
-  body? : CompiledBody? = None,
-  new_target? : Value? = None,
-  is_method? : Bool = false,
+  body~ : CompiledBody? = None,
+  new_target~ : Value? = None,
+  is_method~ : Bool = false,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
@@ -1854,7 +1854,7 @@ fn ordinary_compiled_instanceof(
 }
 
 ///|
-fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
+fn make_arrow_func_ext(data : FuncDataExt, length : Int32) -> Value {
   let nf_desc = non_writable_function_descriptor()
   let realm_state = match data.closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1896,7 +1896,7 @@ fn non_writable_function_descriptor() -> PropDescriptor {
 }
 
 ///|
-fn arrow_ext_length(params : Array[@ast.Param]) -> Int {
+fn arrow_ext_length(params : Array[@ast.Param]) -> Int32 {
   let mut length = 0
   for param in params {
     if param.default_val is Some(_) {

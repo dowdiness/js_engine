@@ -1,5 +1,5 @@
 ///|
-fn regexp_hex_digit_value(char : Char) -> Int {
+fn regexp_hex_digit_value(char : Char) -> Int32 {
   if char >= '0' && char <= '9' {
     char.to_int() - '0'.to_int()
   } else if char >= 'a' && char <= 'f' {
@@ -50,10 +50,10 @@ fn is_regexp_syntax_character(char : Char) -> Bool {
 ///|
 fn parse_unicode_mode_group_name(
   pattern : Array[Char],
-  start : Int,
+  start : Int32,
   is_identifier_start : (Char) -> Bool,
   is_identifier_continue : (Char) -> Bool,
-) -> (String, Int) raise Error {
+) -> (String, Int32) raise Error {
   guard start >= 0 && start < pattern.length() && pattern[start] == '<' else {
     raise @errors.SyntaxError(
       message="Invalid regex: invalid named group syntax in Unicode mode",
@@ -115,7 +115,7 @@ fn collect_unicode_mode_regexp_metadata(
   pattern : Array[Char],
   is_identifier_start : (Char) -> Bool,
   is_identifier_continue : (Char) -> Bool,
-) -> (Int, Array[String], Array[String]) raise Error {
+) -> (Int32, Array[String], Array[String]) raise Error {
   let mut count = 0
   let group_names : Array[String] = []
   let backreference_names : Array[String] = []
@@ -183,8 +183,8 @@ fn collect_unicode_mode_regexp_metadata(
 /// The returned index points to the first unconsumed pattern character.
 pub fn parse_unicode_mode_decimal_escape(
   pattern : Array[Char],
-  start : Int,
-) -> (Int, Int) raise Error {
+  start : Int32,
+) -> (Int32, Int32) raise Error {
   guard start >= 0 &&
     start < pattern.length() &&
     pattern[start] >= '1' &&
@@ -221,12 +221,12 @@ pub fn parse_unicode_mode_decimal_escape(
 ///|
 fn validate_unicode_mode_escape(
   pattern : Array[Char],
-  start : Int,
+  start : Int32,
   in_character_class : Bool,
-  capturing_group_count : Int,
+  capturing_group_count : Int32,
   is_identifier_start : (Char) -> Bool,
   is_identifier_continue : (Char) -> Bool,
-) -> Int raise Error {
+) -> Int32 raise Error {
   guard start < pattern.length() else {
     raise @errors.SyntaxError(message="Invalid regex: trailing backslash")
   }
@@ -243,7 +243,7 @@ fn validate_unicode_mode_escape(
       } else {
         next
       }
-    '1'..='9' =>
+    '1'..<='9' =>
       if in_character_class {
         raise @errors.SyntaxError(
           message="Invalid regex: invalid decimal escape in character class",
@@ -290,11 +290,11 @@ fn validate_unicode_mode_escape(
 ///|
 fn validate_unicode_mode_character_class(
   pattern : Array[Char],
-  start : Int,
-  capturing_group_count : Int,
+  start : Int32,
+  capturing_group_count : Int32,
   is_identifier_start : (Char) -> Bool,
   is_identifier_continue : (Char) -> Bool,
-) -> Int raise Error {
+) -> Int32 raise Error {
   let mut position = start
   if position < pattern.length() && pattern[position] == '^' {
     position += 1
@@ -422,7 +422,7 @@ pub fn validate_unicode_mode_regexp_escapes(
 
 ///|
 /// Whether `start` begins an exactly four-digit Unicode escape payload.
-pub fn has_fixed_unicode_escape(pattern : Array[Char], start : Int) -> Bool {
+pub fn has_fixed_unicode_escape(pattern : Array[Char], start : Int32) -> Bool {
   guard start >= 0 && start + 3 < pattern.length() else { return false }
   for index in start..<(start + 4) {
     if !is_regexp_hex_digit(pattern[index]) {
@@ -438,10 +438,10 @@ pub fn has_fixed_unicode_escape(pattern : Array[Char], start : Int) -> Bool {
 /// The returned index points to the first unconsumed pattern character.
 pub fn parse_unicode_escape(
   pattern : Array[Char],
-  start : Int,
-  allow_braced? : Bool = true,
-  combine_surrogate_pair? : Bool = true,
-) -> (Char, Int) raise Error {
+  start : Int32,
+  allow_braced~ : Bool = true,
+  combine_surrogate_pair~ : Bool = true,
+) -> (Char, Int32) raise Error {
   guard start >= 0 else {
     raise @errors.SyntaxError(message="Invalid regex: invalid Unicode escape")
   }
@@ -504,9 +504,9 @@ pub fn parse_unicode_escape(
 /// context flag; assertions and CharacterClassEscape forms stay with callers.
 pub fn parse_unicode_mode_character_escape(
   pattern : Array[Char],
-  start : Int,
-  in_character_class? : Bool = false,
-) -> (Char, Int) raise Error {
+  start : Int32,
+  in_character_class~ : Bool = false,
+) -> (Char, Int32) raise Error {
   guard start >= 0 && start < pattern.length() else {
     raise @errors.SyntaxError(message="Invalid regex: trailing backslash")
   }

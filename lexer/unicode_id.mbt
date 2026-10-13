@@ -4,7 +4,7 @@
 
 ///|
 /// 684 ranges, sorted and coalesced.
-let id_start_ranges : Array[(Int, Int)] = [
+let id_start_ranges : Array[(Int32, Int32)] = [
   (0x0041, 0x005A),
   (0x0061, 0x007A),
   (0x00AA, 0x00AA),
@@ -693,7 +693,7 @@ let id_start_ranges : Array[(Int, Int)] = [
 
 ///|
 /// 799 ranges, sorted and coalesced.
-let id_continue_ranges : Array[(Int, Int)] = [
+let id_continue_ranges : Array[(Int32, Int32)] = [
   (0x0030, 0x0039),
   (0x0041, 0x005A),
   (0x005F, 0x005F),
@@ -1497,7 +1497,7 @@ let id_continue_ranges : Array[(Int, Int)] = [
 
 ///|
 /// Binary search across sorted, non-overlapping `(lo, hi)` ranges.
-fn in_ranges(table : ArrayView[(Int, Int)], cp : Int) -> Bool {
+fn in_ranges(table : ArrayView[(Int32, Int32)], cp : Int32) -> Bool {
   let mut lo = 0
   let mut hi = table.length()
   while lo < hi {
@@ -1516,12 +1516,12 @@ fn in_ranges(table : ArrayView[(Int, Int)], cp : Int) -> Bool {
 
 ///|
 /// Returns true if `cp` has the Unicode `ID_Start` property (UAX #31 / ES262 §11.6).
-fn is_id_start(cp : Int) -> Bool {
+fn is_id_start(cp : Int32) -> Bool {
   in_ranges(id_start_ranges[:], cp)
 }
 
 ///|
 /// Returns true if `cp` has the Unicode `ID_Continue` property.
-fn is_id_continue(cp : Int) -> Bool {
+fn is_id_continue(cp : Int32) -> Bool {
   in_ranges(id_continue_ranges[:], cp)
 }

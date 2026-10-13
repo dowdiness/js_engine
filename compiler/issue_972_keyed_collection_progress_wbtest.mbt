@@ -225,7 +225,7 @@ test "Map and Set forEach callbacks preserve a bounded monotonic prefix" {
 ///|
 test "candidate Map and Set forEach charge native callback traversal" {
   let interp = @interpreter.new_interpreter()
-  let trace : Ref[Array[Int]] = { val: [], }
+  let trace : Ref[Array[Int32]] = { val: [], }
   interp.global.def_builtin(
     "issue972NativeCallback",
     @runtime.make_native_func(name="issue972NativeCallback", args => {

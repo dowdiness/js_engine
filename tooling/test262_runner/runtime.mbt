@@ -7,7 +7,7 @@ fn parse_engine_command(engine : String) -> Array[String] raise {
 }
 
 ///|
-async fn auto_thread_count() -> Int {
+async fn auto_thread_count() -> Int32 {
   let detected = @async.with_timeout_opt(1000, () => {
     collect_output_hard("getconf", ["_NPROCESSORS_ONLN"])
   }) catch {
@@ -88,13 +88,13 @@ async fn run_test_tasks(
   engine_cmd : Array[String],
   test262_dir : String,
   test_tasks : Array[(String, String)],
-  timeout : Int,
-  threads : Int,
+  timeout : Int32,
+  threads : Int32,
   skip_metadata : @metadata.SkipMetadata,
   harness_options : HarnessOptions,
   progress_log : String,
   merged_log : String,
-  on_progress : async (Int, Int, Double) -> Unit,
+  on_progress : async (Int32, Int32, Double) -> Unit,
 ) -> (Array[TestResult], Double) {
   let done_count = Ref(0)
   let total = test_tasks.length()
@@ -131,7 +131,7 @@ fn is_interactive() -> Bool {
 }
 
 ///|
-fn render_progress_bar(done : Int, total : Int) -> String {
+fn render_progress_bar(done : Int32, total : Int32) -> String {
   let pct = if total == 0 { 100 } else { done * 100 / total }
   let width = 30
   let filled = if total == 0 { width } else { done * width / total }
@@ -152,7 +152,7 @@ fn render_progress_bar(done : Int, total : Int) -> String {
 }
 
 ///|
-fn format_eta(elapsed_s : Double, done : Int, total : Int) -> String {
+fn format_eta(elapsed_s : Double, done : Int32, total : Int32) -> String {
   guard done > 0 && done < total else { return "" }
   let eta_s = (elapsed_s / done.to_double() * (total - done).to_double()).to_int()
   if eta_s < 60 {
@@ -287,7 +287,11 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   }
   let interactive = is_interactive()
   let last_pct_bucket = Ref(-1)
-  let on_progress : async (Int, Int, Double) -> Unit = (done, total, elapsed_s) => {
+  let on_progress : async (Int32, Int32, Double) -> Unit = (
+    done,
+    total,
+    elapsed_s,
+  ) => {
     if interactive {
       let line = render_progress_bar(done, total) +
         format_eta(elapsed_s, done, total)

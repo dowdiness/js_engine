@@ -101,7 +101,7 @@ fn callable_source_text(data : @runtime.ObjectData) -> String? {
 }
 
 ///|
-fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int {
+fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int32 {
   for p in params; count = 0 {
     if p.default_val is Some(_) || p.is_rest_pattern {
       break count

@@ -3,10 +3,10 @@
 // Map[String, Binding]::get. Setup and correctness checks stay outside timing.
 
 ///|
-const BINDING_READ_NAME_COUNT : Int = 64
+const BINDING_READ_NAME_COUNT : Int32 = 64
 
 ///|
-const BINDING_READ_ROUNDS : Int = 16
+const BINDING_READ_ROUNDS : Int32 = 16
 
 ///|
 test "isolate/runtime/binding_read" (b : @bench.T) {

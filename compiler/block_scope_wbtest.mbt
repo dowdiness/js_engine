@@ -97,7 +97,7 @@ test "block verifier rejects bypassed entry and sibling scope transfers" {
   let function = prepare_candidate_program(
       @parser.parse("function probe(){ { let x=1; x; } { let x=2; x; } }").stmts,
     ).root.children[0].bytecode.unwrap().function
-  let scopes : Array[Int] = []
+  let scopes : Array[Int32] = []
   for index, instruction in function.code {
     if instruction is EnterHandler(LexicalScope(_), _, _) {
       scopes.push(index)

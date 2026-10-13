@@ -649,7 +649,7 @@ fn ExecutorPropertyGetRequest::ExecutorPropertyGetRequest(
   receiver~ : Value,
   loc~ : @token.Loc,
   manage_proxy~ : Bool,
-  admission? : ExecutorPropertyGetAdmission? = None,
+  admission~ : ExecutorPropertyGetAdmission? = None,
 ) -> ExecutorPropertyGetRequest {
   { target, key, receiver, loc, manage_proxy, admission, }
 }
@@ -754,7 +754,7 @@ fn ExecutorPropertySetRequest::ExecutorPropertySetRequest(
   receiver~ : Value,
   loc~ : @token.Loc,
   strict~ : Bool,
-  manage_proxy? : Bool = false,
+  manage_proxy~ : Bool = false,
 ) -> ExecutorPropertySetRequest {
   { target, key, value, receiver, loc, strict, manage_proxy, }
 }
@@ -1946,7 +1946,7 @@ pub fn ExecutorCallableData::name(self : ExecutorCallableData) -> String {
 }
 
 ///|
-pub fn ExecutorCallableData::length(self : ExecutorCallableData) -> Int {
+pub fn ExecutorCallableData::length(self : ExecutorCallableData) -> Int32 {
   self.params.length()
 }
 
@@ -2410,7 +2410,7 @@ fn Interpreter::start_executor_activation(
   executable : ExecutorCallableData,
   start : ExecutorActivationStart,
   property_scope : ClearedActiveCalleeRealmScope?,
-  graph_cursor? : TreeExecutorGraphCursor? = None,
+  graph_cursor~ : TreeExecutorGraphCursor? = None,
 ) -> ExecutorActivationStackEntry raise Error {
   let callee = match start {
     ExecutorStartCall(request) => request.callee
@@ -2678,7 +2678,7 @@ fn executor_copy_data_properties_completion(
 fn Interpreter::deliver_executor_activation_error(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
-  index : Int,
+  index : Int32,
   error : Error,
 ) -> Unit raise Error {
   if index == 0 {
@@ -2853,7 +2853,7 @@ fn direct_executor_property_setter(
 ///|
 fn direct_executor_symbol_property_setter_in_plain_chain(
   target : Value,
-  symbol_id : Int,
+  symbol_id : Int32,
 ) -> (Value, ExecutorCallableData)? {
   for current = target {
     match current {
@@ -2891,7 +2891,7 @@ fn direct_executor_symbol_property_setter_in_plain_chain(
 // ordinary prototype chain. The original target remains the receiver.
 fn direct_executor_symbol_property_getter_in_plain_chain(
   target : Value,
-  symbol_id : Int,
+  symbol_id : Int32,
 ) -> (Value, ExecutorCallableData)? {
   for current = target {
     match current {
@@ -2974,7 +2974,7 @@ fn Interpreter::executor_activation_fallback_call(
 fn Interpreter::handle_executor_activation_step(
   self : Interpreter,
   stack : Array[ExecutorActivationStackEntry],
-  index : Int,
+  index : Int32,
   step : ExecutorActivationStep,
 ) -> ExecutorCompletedStep? raise Error {
   let frame = stack[index].frame
@@ -3738,7 +3738,7 @@ fn bind_executor_parameters(
 ///|
 fn bind_executor_rest_parameter(
   env : Environment,
-  positional_count : Int,
+  positional_count : Int32,
   rest_param : String?,
   args : Array[Value],
 ) -> Unit raise Error {
@@ -4052,7 +4052,7 @@ fn make_executor_callable_with_capability(
   kind : ExecutorCallableKind,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
   source_text : String?,
-  needs_own_environment? : Bool = true,
+  needs_own_environment~ : Bool = true,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -4123,10 +4123,10 @@ pub fn[T : ExecutorCode] make_executor_function(
   closure : Environment,
   strict : Bool,
   code : T,
-  rest_param? : String? = None,
-  constructable? : Bool = true,
-  call_self_name? : Bool = false,
-  define_arguments_object? : Bool = true,
+  rest_param~ : String? = None,
+  constructable~ : Bool = true,
+  call_self_name~ : Bool = false,
+  define_arguments_object~ : Bool = true,
 ) -> Value {
   let function_name = name.unwrap_or("")
   let self_name = if call_self_name { name } else { None }
@@ -4156,10 +4156,10 @@ pub fn[T : ExecutorCode] make_classified_executor_function(
   strict : Bool,
   code : T,
   source_body : Array[@ast.Stmt],
-  rest_param? : String? = None,
-  constructable? : Bool = true,
-  call_self_name? : Bool = false,
-  define_arguments_object? : Bool = true,
+  rest_param~ : String? = None,
+  constructable~ : Bool = true,
+  call_self_name~ : Bool = false,
+  define_arguments_object~ : Bool = true,
 ) -> Value {
   let function_name = name.unwrap_or("")
   let self_name = if call_self_name { name } else { None }
@@ -4191,12 +4191,12 @@ pub fn[T : ExecutorCode] make_prepared_executor_function(
   strict : Bool,
   code : T,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
-  source_text? : String? = None,
-  rest_param? : String? = None,
-  constructable? : Bool = true,
-  call_self_name? : Bool = false,
-  define_arguments_object? : Bool = true,
-  needs_own_environment? : Bool = true,
+  source_text~ : String? = None,
+  rest_param~ : String? = None,
+  constructable~ : Bool = true,
+  call_self_name~ : Bool = false,
+  define_arguments_object~ : Bool = true,
+  needs_own_environment~ : Bool = true,
 ) -> Value {
   let function_name = name.unwrap_or("")
   let self_name = if call_self_name { name } else { None }
@@ -4223,7 +4223,7 @@ pub fn[T : ExecutorCode] make_executor_arrow_function(
   closure : Environment,
   strict : Bool,
   code : T,
-  rest_param? : String? = None,
+  rest_param~ : String? = None,
 ) -> Value {
   make_executor_callable_with_capability(
     "",
@@ -4250,7 +4250,7 @@ pub fn[T : ExecutorCode] make_classified_executor_arrow_function(
   strict : Bool,
   code : T,
   source_body : Array[@ast.Stmt],
-  rest_param? : String? = None,
+  rest_param~ : String? = None,
 ) -> Value {
   make_executor_callable_with_capability(
     "",
@@ -4277,8 +4277,8 @@ pub fn[T : ExecutorCode] make_prepared_executor_arrow_function(
   strict : Bool,
   code : T,
   activation_capability_summary : ExecutorActivationCapabilitySummary?,
-  source_text? : String? = None,
-  rest_param? : String? = None,
+  source_text~ : String? = None,
+  rest_param~ : String? = None,
 ) -> Value {
   make_executor_callable_with_capability(
     "",

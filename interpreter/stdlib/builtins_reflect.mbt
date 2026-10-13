@@ -348,7 +348,7 @@ fn setup_reflect_builtins(
 
   // Create the Reflect object
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let reflect_sym_props : Map[Int, Value] = Map([])
+  let reflect_sym_props : Map[Int32, Value] = Map([])
   reflect_sym_props[tostringtag_sym.id] = Value::String_("Reflect")
   let method_desc = @runtime.builtin_method_desc()
   let reflect_descs : Map[String, PropDescriptor] = Map([])
@@ -365,7 +365,7 @@ fn setup_reflect_builtins(
   reflect_descs["preventExtensions"] = method_desc
   reflect_descs["set"] = method_desc
   reflect_descs["setPrototypeOf"] = method_desc
-  let reflect_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let reflect_sym_descs : Map[Int32, PropDescriptor] = Map([])
   reflect_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,

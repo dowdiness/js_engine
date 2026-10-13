@@ -3,7 +3,7 @@
 // the correctness check all happen before b.bench starts.
 
 ///|
-const ISSUE886_UNROLL_COUNT : Int = 10000
+const ISSUE886_UNROLL_COUNT : Int32 = 10000
 
 ///|
 fn issue886_unrolled_body() -> String {

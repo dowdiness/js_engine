@@ -9,14 +9,14 @@ priv struct DispatchResultPipelineCalleeToken(Value)
 priv struct DispatchResultPipelineStage {
   request : DispatchCallRequest
   callee_token : DispatchResultPipelineCalleeToken
-  result_argument_index : Int
+  result_argument_index : Int32
 }
 
 ///|
 fn validate_dispatch_result_pipeline_stage(
   request~ : DispatchCallRequest,
   callee_token~ : DispatchResultPipelineCalleeToken,
-  result_argument_index~ : Int,
+  result_argument_index~ : Int32,
 ) -> DispatchResultPipelineStage? {
   guard result_argument_index >= 0 &&
     result_argument_index < request.args.length() else {
@@ -80,7 +80,7 @@ fn DispatchResultPipeline::start(
 ///|
 priv struct DispatchResultPipelineCursor {
   pipeline : DispatchResultPipeline
-  next_index : Int
+  next_index : Int32
 }
 
 ///|

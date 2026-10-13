@@ -510,7 +510,7 @@ fn PrimitiveProgramDispatchShell::execute_array_map_root_statement(
 ///|
 fn array_map_step_statement_matches(
   plan : ArrayMapRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match plan.callback_family {

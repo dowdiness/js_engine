@@ -904,7 +904,7 @@ test "candidate compound addition evidence starts TreeWalker before effects" {
 fn assert_candidate_tree_route_evidence_for_wb(
   source : String,
   expected_value : String,
-  child? : Bool = false,
+  child~ : Bool = false,
 ) -> Unit raise Error {
   let root = prepare_candidate_program(@parser.parse(source).stmts).root
   let function = if child { root.children[0] } else { root }
@@ -915,7 +915,7 @@ fn assert_candidate_tree_route_evidence_for_wb(
   let mut tree_starts = 0
   let mut bytecode_starts = 0
   let mut completed_count = 0
-  let activation_ids : Array[Int] = []
+  let activation_ids : Array[Int32] = []
   for event in evidence.val.events {
     match event {
       CandidateRoutePreparedEvent(prepared) =>

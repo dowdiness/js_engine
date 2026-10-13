@@ -16,7 +16,7 @@ fn candidate_last_index_of_guardrail_policy(
 ///|
 fn expect_candidate_last_index_of_result(
   result : Result[Json, @js_engine.EngineDiagnostic],
-  expected : Int,
+  expected : Int32,
 ) -> Unit raise Error {
   match result {
     Ok(value) => json_inspect(value, content=Json::number(expected.to_double()))

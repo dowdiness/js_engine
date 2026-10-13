@@ -52,8 +52,8 @@ priv enum QueuePolicy {
 ///|
 priv struct QueueObservation {
   policy : QueuePolicy
-  microtasks : Int
-  timers : Int
+  microtasks : Int32
+  timers : Int32
 }
 
 ///|
@@ -637,7 +637,7 @@ fn execution_policy_for_equivalence_wb(
 fn structured_execution_policy_comparison_for_wb(
   src : String,
   step_budget : Int64,
-  interrupted? : Bool = false,
+  interrupted~ : Bool = false,
 ) -> EquivalenceResult raise Error {
   let bytecode_interp = @interpreter.new_interpreter()
   let actual = bytecode_interp.with_execution_policy(

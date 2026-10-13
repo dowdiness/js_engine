@@ -9,7 +9,7 @@ fn program_args(args : Array[String]) -> ArrayView[String] {
 }
 
 ///|
-fn wasm_exit(code : Int) -> Unit = "__moonbit_sys_unstable" "exit"
+fn wasm_exit(code : Int32) -> Unit = "__moonbit_sys_unstable" "exit"
 
 ///|
 /// Exit the process with a non-zero exit code (WASM-GC target).

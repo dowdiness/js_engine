@@ -1,5 +1,5 @@
 ///|
-fn dispatch_stack_safety_statement_frames(count : Int) -> DispatchFrameStack {
+fn dispatch_stack_safety_statement_frames(count : Int32) -> DispatchFrameStack {
   let mut frames = DispatchFrameStackEmpty
   for id in 0..<count {
     frames = DispatchFrameStackNode(

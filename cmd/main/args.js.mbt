@@ -5,7 +5,7 @@ fn exit_with_error() -> Unit {
 }
 
 ///|
-extern "js" fn js_process_exit(code : Int) -> Unit =
+extern "js" fn js_process_exit(code : Int32) -> Unit =
   #|(code) => { process.exit(code); }
 
 ///|

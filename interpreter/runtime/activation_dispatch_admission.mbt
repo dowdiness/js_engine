@@ -23,7 +23,7 @@ priv struct NumericRecursionExpressionRecipe {
 #warnings("-unused_field")
 priv struct NumericRecursionClosedArgumentRecipe {
   value : Double
-  observation_count : Int
+  observation_count : Int32
   root_loc : @token.Loc
   final_loc : @token.Loc
 }
@@ -31,7 +31,7 @@ priv struct NumericRecursionClosedArgumentRecipe {
 ///|
 fn NumericRecursionClosedArgumentRecipe::NumericRecursionClosedArgumentRecipe(
   value~ : Double,
-  observation_count~ : Int,
+  observation_count~ : Int32,
   root_loc~ : @token.Loc,
   final_loc~ : @token.Loc,
 ) -> NumericRecursionClosedArgumentRecipe {
@@ -77,11 +77,11 @@ priv struct NumericRecursionFunctionSyntax {
 fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
   name~ : String,
   parameter~ : String,
-  retained_parameter? : String? = None,
+  retained_parameter~ : String? = None,
   recursive_callee~ : String,
-  invocation_recipe? : NumericRecursionInvocationRecipe = NumericRecursionDirectCall,
+  invocation_recipe~ : NumericRecursionInvocationRecipe = NumericRecursionDirectCall,
   expression_recipe~ : NumericRecursionExpressionRecipe,
-  return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
+  return_recipe~ : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> NumericRecursionFunctionSyntax {
   {
     name,
@@ -98,13 +98,13 @@ fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
 #warnings("-unused_field")
 priv struct NumericRecursionFunctionPlan {
   syntax : NumericRecursionFunctionSyntax
-  declaration_index : Int
+  declaration_index : Int32
 }
 
 ///|
 fn NumericRecursionFunctionPlan::NumericRecursionFunctionPlan(
   syntax~ : NumericRecursionFunctionSyntax,
-  declaration_index~ : Int,
+  declaration_index~ : Int32,
 ) -> NumericRecursionFunctionPlan {
   { syntax, declaration_index, }
 }
@@ -187,7 +187,7 @@ fn NumericRecursionPlan::NumericRecursionPlan(
   entry~ : NumericRecursionFunctionPlan,
   peer~ : NumericRecursionFunctionPlan?,
   initial_argument~ : Double,
-  retained_argument? : NumericRecursionClosedArgumentRecipe? = None,
+  retained_argument~ : NumericRecursionClosedArgumentRecipe? = None,
   root_call_loc~ : @token.Loc,
   root_control~ : NumericRecursionRootControlRecipe,
 ) -> NumericRecursionPlan {
@@ -219,7 +219,7 @@ fn numeric_recursion_identifier_is_safe(name : String) -> Bool {
 fn numeric_recursion_base_condition_loc(
   stmt : @ast.Stmt,
   parameter : String,
-  retained_parameter? : String? = None,
+  retained_parameter~ : String? = None,
 ) -> @token.Loc? {
   match stmt {
     @ast.IfStmt(
@@ -267,7 +267,7 @@ priv struct NumericRecursionStepClassification {
 ///|
 fn NumericRecursionStepClassification::NumericRecursionStepClassification(
   recursive_callee~ : String,
-  invocation_recipe? : NumericRecursionInvocationRecipe = NumericRecursionDirectCall,
+  invocation_recipe~ : NumericRecursionInvocationRecipe = NumericRecursionDirectCall,
   recursive_add_loc~ : @token.Loc,
   recursive_call_loc~ : @token.Loc,
   recursive_subtract_loc~ : @token.Loc,
@@ -285,7 +285,7 @@ fn NumericRecursionStepClassification::NumericRecursionStepClassification(
 fn classify_numeric_recursion_step_detail(
   stmt : @ast.Stmt,
   parameter : String,
-  retained_parameter? : String? = None,
+  retained_parameter~ : String? = None,
 ) -> NumericRecursionStepClassification? {
   match stmt {
     @ast.ReturnStmt(
@@ -378,7 +378,7 @@ fn classify_numeric_recursion_step_detail(
 fn classify_numeric_recursion_function_return(
   stmt : @ast.Stmt,
   parameter : String,
-  retained_parameter? : String? = None,
+  retained_parameter~ : String? = None,
 ) -> (NumericRecursionStepClassification, NumericRecursionFunctionReturnRecipe)? {
   match
     classify_numeric_recursion_step_detail(stmt, parameter, retained_parameter~) {
@@ -562,7 +562,7 @@ fn classify_numeric_recursion_function_syntax(
 ///|
 fn classify_numeric_recursion_function(
   stmt : @ast.Stmt,
-  declaration_index : Int,
+  declaration_index : Int32,
 ) -> NumericRecursionFunctionPlan? {
   match stmt {
     @ast.FuncDecl(name, params, body, _, _) =>

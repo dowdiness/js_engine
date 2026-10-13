@@ -116,7 +116,7 @@ fn setup_math_builtins(
     }
     Value::Number(result)
   })
-  let rng_state : Array[Int] = [123456789]
+  let rng_state : Array[Int32] = [123456789]
   math_props["random"] = @runtime.make_native_func(name="random", length=0, fn(
     _args,
   ) {
@@ -337,7 +337,7 @@ fn setup_math_builtins(
       }
       let uint = int_val.reinterpret_as_uint()
       let mut count = 0
-      let mut mask : UInt = 2147483648 // 0x80000000
+      let mut mask : UInt32 = 2147483648 // 0x80000000
       while mask > 0 && (uint & mask) == 0 {
         count = count + 1
         mask = mask >> 1
@@ -479,10 +479,10 @@ fn setup_math_builtins(
     math_descs[m] = method_desc
   }
   // Set up Symbol.toStringTag for Math
-  let math_symbol_props : Map[Int, Value] = Map([])
+  let math_symbol_props : Map[Int32, Value] = Map([])
   let tostringtag_sym = well_known_symbols.to_string_tag
   math_symbol_props[tostringtag_sym.id] = Value::String_("Math")
-  let math_symbol_descs : Map[Int, PropDescriptor] = Map([])
+  let math_symbol_descs : Map[Int32, PropDescriptor] = Map([])
   math_symbol_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,

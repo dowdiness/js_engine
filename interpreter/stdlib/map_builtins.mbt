@@ -15,7 +15,7 @@ const MAP_ITERATOR_KIND_ENTRY = 2
 
 ///|
 fn map_iterator_result_value(
-  kind : Int,
+  kind : Int32,
   key : Value,
   value : Value,
 ) -> Value raise Error {
@@ -75,7 +75,7 @@ fn map_iterator_next(
 fn make_map_iterator(
   realm_state : @runtime.RealmState,
   map_data : MapData,
-  kind : Int,
+  kind : Int32,
 ) -> Value {
   make_keyed_collection_iterator(
     get_map_iterator_proto(realm_state),

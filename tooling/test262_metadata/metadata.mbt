@@ -64,7 +64,7 @@ fn validate_schema_keys(data : Map[String, Json], path : String) -> Unit raise {
 ///|
 fn decode_schema_version(data : Map[String, Json], path : String) -> Unit raise {
   let raw = require_field(data, "schema_version", path)
-  let version : Int = @json.from_json(raw) catch {
+  let version : Int32 = @json.from_json(raw) catch {
     _ => schema_error(path, "schema_version must be an integer")
   }
   if version != SKIP_METADATA_SCHEMA_VERSION {

@@ -49,13 +49,13 @@ pub struct BenchResult {
   category : Category
   stage : BenchStage
   /// Discarded warmup iterations (JIT / cache warm-up).
-  warmup : Int
+  warmup : Int32
   /// Measured outer iterations used for statistics.
-  iterations : Int
+  iterations : Int32
   /// Inner repetitions per outer iteration.
   /// For sub-millisecond operations use group_size > 1 to reduce
   /// timer-resolution noise. Reported timing is always per-call.
-  group_size : Int
+  group_size : Int32
   /// Per-call timing statistics in milliseconds.
   mean_ms : Double
   min_ms : Double
@@ -71,9 +71,9 @@ pub struct BenchResult {
 ///|
 /// Parameters that control how a benchmark is measured.
 pub struct BenchConfig {
-  warmup : Int
-  iterations : Int
-  group_size : Int
+  warmup : Int32
+  iterations : Int32
+  group_size : Int32
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ pub fn run_bench(
   category : Category,
   config : BenchConfig,
   f : () -> Unit raise,
-  stage? : BenchStage = Execution,
+  stage~ : BenchStage = Execution,
 ) -> BenchResult raise {
   if config.iterations <= 0 {
     abort("run_bench: iterations must be > 0")
@@ -183,7 +183,7 @@ pub fn run_bench(
 
 ///|
 /// Right-align an integer to width 5.
-fn pad5(n : Int) -> String {
+fn pad5(n : Int32) -> String {
   if n >= 10000 {
     "\{n}"
   } else if n >= 1000 {

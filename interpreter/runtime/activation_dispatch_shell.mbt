@@ -97,7 +97,7 @@ priv struct DispatchNumericActivationCapabilities {
 ///|
 fn DispatchNumericActivationCapabilities::DispatchNumericActivationCapabilities(
   parameter~ : DispatchNumericParameterCapability?,
-  retained_parameter? : DispatchNumericParameterCapability? = None,
+  retained_parameter~ : DispatchNumericParameterCapability? = None,
   recursive_callee~ : DispatchNumericCalleeCaptureState,
   catch_binding~ : DispatchNumericCatchBindingState,
 ) -> DispatchNumericActivationCapabilities {
@@ -270,7 +270,7 @@ priv enum DispatchShellCleanupResources {
 
 ///|
 priv struct ProgramRealmCleanup {
-  id : Int
+  id : Int32
   owner : ProgramCleanupOwner
   resources : DispatchShellCleanupResources
   capabilities : DispatchNumericActivationCapabilities?
@@ -319,44 +319,44 @@ priv struct PrimitiveProgramDispatchShell {
   array_map_states : Array[MapState]
   array_map_activation_envs : Array[Environment]
   activation_observation_port : ActivationObservationPort
-  mut next_cleanup_id : Int
+  mut next_cleanup_id : Int32
 }
 
 ///|
 fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   interp : Interpreter,
-  control_root_preflight? : ControlLifecyclePreflight? = None,
-  direct_return_root_preflight? : DirectReturnRecursionPreflight? = None,
-  direct_return_root_stmts? : Array[@ast.Stmt]? = None,
-  direct_return_program? : SealedDirectReturnProgram? = None,
-  numeric_root_preflight? : NumericRecursionPreflight? = None,
-  numeric_registry? : TrustedNumericRecursionRegistry? = None,
-  getter_root_preflight? : GetterRecursionPreflight? = None,
-  getter_root_stmts? : Array[@ast.Stmt]? = None,
-  getter_registry? : TrustedGetterRecursionRegistry? = None,
-  proxy_root_preflight? : ProxyGetRecursionPreflight? = None,
-  proxy_root_stmts? : Array[@ast.Stmt]? = None,
-  proxy_registry? : TrustedProxyGetRecursionRegistry? = None,
-  receiver_root_preflight? : ReceiverRecursionPreflight? = None,
-  receiver_root_stmts? : Array[@ast.Stmt]? = None,
-  owned_receiver_call? : OwnedReceiverCall? = None,
-  mutual_receiver_root_preflight? : MutualReceiverRecursionPreflight? = None,
-  mutual_receiver_root_stmts? : Array[@ast.Stmt]? = None,
-  constructor_root_preflight? : ConstructorRecursionPreflight? = None,
-  constructor_root_stmts? : Array[@ast.Stmt]? = None,
-  constructor_registry? : TrustedConstructorRecursionRegistry? = None,
-  array_map_root_preflight? : ArrayMapRecursionPreflight? = None,
-  array_map_root_stmts? : Array[@ast.Stmt]? = None,
-  array_map_registry? : TrustedArrayMapRecursionRegistry? = None,
-  expression_root_preflight? : NumericMapExpressionPreflight? = None,
-  expression_root_stmts? : Array[@ast.Stmt]? = None,
-  expression_plan? : DispatchExpressionPlan? = None,
-  composition_root_preflight? : NumericMapCompositionPreflight? = None,
-  composition_root_stmts? : Array[@ast.Stmt]? = None,
-  managed_user_func_catalog? : DispatchManagedUserFuncCatalog? = None,
+  control_root_preflight~ : ControlLifecyclePreflight? = None,
+  direct_return_root_preflight~ : DirectReturnRecursionPreflight? = None,
+  direct_return_root_stmts~ : Array[@ast.Stmt]? = None,
+  direct_return_program~ : SealedDirectReturnProgram? = None,
+  numeric_root_preflight~ : NumericRecursionPreflight? = None,
+  numeric_registry~ : TrustedNumericRecursionRegistry? = None,
+  getter_root_preflight~ : GetterRecursionPreflight? = None,
+  getter_root_stmts~ : Array[@ast.Stmt]? = None,
+  getter_registry~ : TrustedGetterRecursionRegistry? = None,
+  proxy_root_preflight~ : ProxyGetRecursionPreflight? = None,
+  proxy_root_stmts~ : Array[@ast.Stmt]? = None,
+  proxy_registry~ : TrustedProxyGetRecursionRegistry? = None,
+  receiver_root_preflight~ : ReceiverRecursionPreflight? = None,
+  receiver_root_stmts~ : Array[@ast.Stmt]? = None,
+  owned_receiver_call~ : OwnedReceiverCall? = None,
+  mutual_receiver_root_preflight~ : MutualReceiverRecursionPreflight? = None,
+  mutual_receiver_root_stmts~ : Array[@ast.Stmt]? = None,
+  constructor_root_preflight~ : ConstructorRecursionPreflight? = None,
+  constructor_root_stmts~ : Array[@ast.Stmt]? = None,
+  constructor_registry~ : TrustedConstructorRecursionRegistry? = None,
+  array_map_root_preflight~ : ArrayMapRecursionPreflight? = None,
+  array_map_root_stmts~ : Array[@ast.Stmt]? = None,
+  array_map_registry~ : TrustedArrayMapRecursionRegistry? = None,
+  expression_root_preflight~ : NumericMapExpressionPreflight? = None,
+  expression_root_stmts~ : Array[@ast.Stmt]? = None,
+  expression_plan~ : DispatchExpressionPlan? = None,
+  composition_root_preflight~ : NumericMapCompositionPreflight? = None,
+  composition_root_stmts~ : Array[@ast.Stmt]? = None,
+  managed_user_func_catalog~ : DispatchManagedUserFuncCatalog? = None,
   // The shell lifecycle is policy-free; admitted production roots inject the
   // execution-control port explicitly below.
-  activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
+  activation_observation_port~ : ActivationObservationPort = allow_all_activation_observation_port(),
 ) -> PrimitiveProgramDispatchShell {
   {
     interp,
@@ -534,7 +534,7 @@ fn activation_cleanup_owner_matches(
 ///|
 fn PrimitiveProgramDispatchShell::reserve_program_cleanup_id(
   self : PrimitiveProgramDispatchShell,
-) -> Int raise InvalidActivationDispatchShell {
+) -> Int32 raise InvalidActivationDispatchShell {
   guard self.next_cleanup_id >= 0 &&
     self.next_cleanup_id < MAX_DISPATCH_CLEANUP_ID else {
     invalid_activation_dispatch_shell("cleanup generation is exhausted")
@@ -592,7 +592,7 @@ fn release_managed_activation_observation(
 ///|
 fn PrimitiveProgramDispatchShell::reject_denied_managed_activation(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   error : Error,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
@@ -625,7 +625,7 @@ fn PrimitiveProgramDispatchShell::reject_denied_managed_activation(
 ///|
 fn PrimitiveProgramDispatchShell::push_program_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
@@ -641,7 +641,7 @@ fn PrimitiveProgramDispatchShell::push_program_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_control_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -656,7 +656,7 @@ fn PrimitiveProgramDispatchShell::push_control_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_numeric_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
   capabilities : DispatchNumericActivationCapabilities,
 ) -> Unit {
@@ -672,7 +672,7 @@ fn PrimitiveProgramDispatchShell::push_numeric_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_direct_return_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -687,7 +687,7 @@ fn PrimitiveProgramDispatchShell::push_direct_return_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchNumericCallRealmCleanup,
   capabilities : DispatchNumericActivationCapabilities?,
@@ -705,7 +705,7 @@ fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_ordinary_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchOrdinaryCallRealmCleanup,
   observation : DispatchActivationObservation?,
@@ -722,7 +722,7 @@ fn PrimitiveProgramDispatchShell::push_ordinary_call_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_getter_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -737,7 +737,7 @@ fn PrimitiveProgramDispatchShell::push_getter_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_getter_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchGetterCallRealmCleanup,
   observation : DispatchActivationObservation?,
@@ -754,7 +754,7 @@ fn PrimitiveProgramDispatchShell::push_getter_call_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_proxy_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -769,7 +769,7 @@ fn PrimitiveProgramDispatchShell::push_proxy_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_proxy_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchProxyCallRealmCleanup,
   observation : DispatchActivationObservation?,
@@ -786,7 +786,7 @@ fn PrimitiveProgramDispatchShell::push_proxy_call_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_receiver_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -801,7 +801,7 @@ fn PrimitiveProgramDispatchShell::push_receiver_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_receiver_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchReceiverCallRealmCleanup,
   observation : DispatchActivationObservation?,
@@ -818,7 +818,7 @@ fn PrimitiveProgramDispatchShell::push_receiver_call_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_constructor_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -834,7 +834,7 @@ fn PrimitiveProgramDispatchShell::push_constructor_root_cleanup(
 #warnings("-unused_value")
 fn PrimitiveProgramDispatchShell::push_array_map_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -849,7 +849,7 @@ fn PrimitiveProgramDispatchShell::push_array_map_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_numeric_map_composition_root_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -866,7 +866,7 @@ fn PrimitiveProgramDispatchShell::push_numeric_map_composition_root_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_constructor_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchConstructorCallRealmCleanup,
   observation : DispatchActivationObservation?,
@@ -884,7 +884,7 @@ fn PrimitiveProgramDispatchShell::push_constructor_call_cleanup(
 #warnings("-unused_value")
 fn PrimitiveProgramDispatchShell::push_array_map_call_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   owner : ProgramCleanupOwner,
   resources : DispatchReceiverCallRealmCleanup,
   observation : DispatchActivationObservation?,
@@ -901,7 +901,7 @@ fn PrimitiveProgramDispatchShell::push_array_map_call_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::push_property_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   scope : ClearedActiveCalleeRealmScope,
 ) -> Unit {
   self.cleanup_stack.push({
@@ -1264,7 +1264,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
 ///|
 fn PrimitiveProgramDispatchShell::consume_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   accepted : Bool,
   completion : DispatchCompletion,
 ) -> Unit raise InvalidActivationDispatchShell {
@@ -1289,7 +1289,7 @@ fn PrimitiveProgramDispatchShell::consume_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::consume_property_cleanup(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
 ) -> Unit raise InvalidActivationDispatchShell {
   guard !self.cleanup_stack.is_empty() else {
     invalid_activation_dispatch_shell(
@@ -1314,7 +1314,7 @@ fn PrimitiveProgramDispatchShell::consume_property_cleanup(
 ///|
 fn PrimitiveProgramDispatchShell::restore_all_cleanup(
   self : PrimitiveProgramDispatchShell,
-  failure? : Error? = None,
+  failure~ : Error? = None,
 ) -> Unit raise InvalidActivationDispatchShell {
   while !self.cleanup_stack.is_empty() {
     match self.cleanup_stack.pop() {
@@ -1470,7 +1470,7 @@ fn PrimitiveProgramDispatchShell::constructor_root_stmts_or_fail(
 ///|
 fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
 ) -> DispatchNumericActivationCapabilities raise InvalidActivationDispatchShell {
   guard !self.cleanup_stack.is_empty() else {
     invalid_activation_dispatch_shell(
@@ -1495,7 +1495,7 @@ fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
 ///|
 fn PrimitiveProgramDispatchShell::complete_control_root_preparation(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   cursor : DispatchStatementCursor,
   previous_realm_protos : FunctionRealmProtos,
   preflight : ControlLifecyclePreflight,
@@ -1511,7 +1511,7 @@ fn PrimitiveProgramDispatchShell::complete_control_root_preparation(
 ///|
 fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   cursor : DispatchStatementCursor,
   previous_realm_protos : FunctionRealmProtos,
   preflight : NumericRecursionPreflight,
@@ -1547,7 +1547,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 ///|
 fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   cursor : DispatchStatementCursor,
   previous_realm_protos : FunctionRealmProtos,
   preflight : DirectReturnRecursionPreflight,
@@ -1561,7 +1561,7 @@ fn PrimitiveProgramDispatchShell::complete_direct_return_root_preparation(
 ///|
 fn PrimitiveProgramDispatchShell::complete_constructor_root_preparation(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   cursor : DispatchStatementCursor,
   previous_realm_protos : FunctionRealmProtos,
   preflight : ConstructorRecursionPreflight,
@@ -2738,7 +2738,7 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
 // preparation gains another fallible step.
 fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
   self : PrimitiveProgramDispatchShell,
-  id : Int,
+  id : Int32,
   syntax : NumericRecursionFunctionSyntax,
   resources : DispatchNumericCallRealmCleanup,
   observation : ActivationEntryAttempt,
@@ -3247,7 +3247,7 @@ fn PrimitiveProgramDispatchShell::execute_numeric_map_expression_root_statement(
 ///|
 fn PrimitiveProgramDispatchShell::observe_managed_execution_steps(
   self : PrimitiveProgramDispatchShell,
-  count : Int,
+  count : Int32,
 ) -> DispatchCompletion? {
   for _ in 0..<count {
     let observed : Result[Unit, Error] = Ok(

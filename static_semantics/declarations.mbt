@@ -162,8 +162,8 @@ fn collect_var_declared_names_iterative(
 /// should leave this at the default `false` and let the traversal manage it.
 pub fn collect_var_declared_names(
   stmts : Array[@ast.Stmt],
-  include_funcs? : Bool = true,
-  in_block? : Bool = false,
+  include_funcs~ : Bool = true,
+  in_block~ : Bool = false,
 ) -> Array[String] {
   let out : Array[String] = []
   collect_var_declared_names_iterative(stmts, out, include_funcs~, in_block~)

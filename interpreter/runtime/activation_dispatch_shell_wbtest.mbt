@@ -35,7 +35,7 @@ fn dispatch_shell_test_structural_completion(
 ///|
 fn dispatch_shell_test_install_realm_sentinel(
   interp : Interpreter,
-  id : Int,
+  id : Int32,
 ) -> Unit {
   apply_active_realm_protos(
     interp.realm_state,
@@ -48,7 +48,7 @@ fn dispatch_shell_test_install_realm_sentinel(
 ///|
 fn dispatch_shell_test_expect_realm_sentinel(
   interp : Interpreter,
-  id : Int,
+  id : Int32,
 ) -> Unit raise {
   match active_realm_protos(interp.realm_state).object_proto {
     Some(String_(value)) => inspect(value, content="sentinel:" + id.to_string())
@@ -291,10 +291,10 @@ test "structural shell preserves exact statement and condition step counts" {
 ///|
 fn install_one_shot_control_step_failure(
   interp : Interpreter,
-  failure_ordinal : Int,
+  failure_ordinal : Int32,
   runtime_failure : Error,
-) -> Ref[Int] {
-  let calls : Ref[Int] = { val: 0, }
+) -> Ref[Int32] {
+  let calls : Ref[Int32] = { val: 0, }
   let observer = make_object(
     Map([]),
     Null,
@@ -723,7 +723,7 @@ test "rejected entry rollback capability cannot consume a later rejection" {
 fn dispatch_shell_test_expect_exhausted_entry_preserves_realm(
   source : String,
   strict : Bool,
-  sentinel : Int,
+  sentinel : Int32,
 ) -> Unit raise {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, sentinel)
@@ -810,7 +810,7 @@ test "program cleanup capabilities enforce nested LIFO ownership" {
 ///|
 fn dispatch_shell_test_route_property_completion(
   completion : DispatchCompletion,
-  sentinel : Int,
+  sentinel : Int32,
 ) -> DispatchCompletion raise {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, sentinel)
@@ -1041,7 +1041,7 @@ fn dispatch_shell_test_restore_property(
 test "ordinary own accessor work suspends without invoking its getter" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 16)
-  let calls : Ref[Int] = { val: 0, }
+  let calls : Ref[Int32] = { val: 0, }
   let getter = make_native_func(name="x getter", _args => {
     calls.val += 1
     Number(99.0)

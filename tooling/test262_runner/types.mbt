@@ -112,7 +112,7 @@ fn atomics_timeout_profile_preamble(profile : String) -> String {
 pub struct ToolRun {
   stdout : String
   stderr : String
-  code : Int
+  code : Int32
 } derive(Debug)
 
 ///|
@@ -120,7 +120,7 @@ pub extend ToolRun with @debug.Debug::{to_repr}
 
 ///|
 struct ProcessCapture {
-  code : Int
+  code : Int32
   stdout : String
   stderr : String
 } derive(Debug)
@@ -139,8 +139,8 @@ pub extend HarnessOptions with @debug.Debug::{to_repr}
 
 ///|
 fn HarnessOptions::HarnessOptions(
-  helpers? : Array[String] = [],
-  atomics_timeout_profile? : String = ATOMICS_TIMEOUT_PROFILE_DEFAULT,
+  helpers~ : Array[String] = [],
+  atomics_timeout_profile~ : String = ATOMICS_TIMEOUT_PROFILE_DEFAULT,
 ) -> HarnessOptions {
   { helpers, atomics_timeout_profile, }
 }
@@ -292,14 +292,14 @@ pub struct RunnerConfig {
   priv test262 : String
   priv filter : String
   priv tests_file : String
-  priv start : Int
-  priv count : Int?
-  priv shard : (Int, Int)?
+  priv start : Int32
+  priv count : Int32?
+  priv shard : (Int32, Int32)?
   priv resume_from : String
   priv log : String
   priv merged_log : String
-  priv timeout : Int
-  priv threads : Int?
+  priv timeout : Int32
+  priv threads : Int32?
   priv output : String
   priv summary : Bool
   priv verbose : Bool
@@ -314,23 +314,23 @@ pub extend RunnerConfig with @debug.Debug::{to_repr}
 ///|
 pub fn RunnerConfig::RunnerConfig(
   engine~ : String?,
-  test262? : String = DEFAULT_TEST262_DIR,
-  filter? : String = "",
-  tests_file? : String = "",
-  start? : Int = 0,
-  count? : Int? = None,
-  shard? : (Int, Int)? = None,
-  resume_from? : String = "",
-  log? : String = "",
-  merged_log? : String = "",
-  timeout? : Int = DEFAULT_TIMEOUT_SECONDS,
-  threads? : Int? = None,
-  output? : String = "",
-  summary? : Bool = false,
-  verbose? : Bool = false,
-  mode? : String = "both",
-  harness_options? : HarnessOptions = HarnessOptions(),
-  repo_root? : String = ".",
+  test262~ : String = DEFAULT_TEST262_DIR,
+  filter~ : String = "",
+  tests_file~ : String = "",
+  start~ : Int32 = 0,
+  count~ : Int32? = None,
+  shard~ : (Int32, Int32)? = None,
+  resume_from~ : String = "",
+  log~ : String = "",
+  merged_log~ : String = "",
+  timeout~ : Int32 = DEFAULT_TIMEOUT_SECONDS,
+  threads~ : Int32? = None,
+  output~ : String = "",
+  summary~ : Bool = false,
+  verbose~ : Bool = false,
+  mode~ : String = "both",
+  harness_options~ : HarnessOptions = HarnessOptions(),
+  repo_root~ : String = ".",
 ) -> RunnerConfig {
   {
     engine,
@@ -387,21 +387,21 @@ pub extend TestResult with @debug.Debug::{to_repr}
 fn TestResult::TestResult(
   path~ : String,
   status~ : String,
-  reason? : String = "",
-  duration_ms? : Double = 0.0,
-  mode? : String = "non-strict",
+  reason~ : String = "",
+  duration_ms~ : Double = 0.0,
+  mode~ : String = "non-strict",
 ) -> TestResult {
   { path, status, reason, duration_ms, mode, }
 }
 
 ///|
 struct CategoryStats {
-  mut total : Int
-  mut passed : Int
-  mut failed : Int
-  mut skipped : Int
-  mut timeout : Int
-  mut error : Int
+  mut total : Int32
+  mut passed : Int32
+  mut failed : Int32
+  mut skipped : Int32
+  mut timeout : Int32
+  mut error : Int32
 } derive(Debug)
 
 ///|

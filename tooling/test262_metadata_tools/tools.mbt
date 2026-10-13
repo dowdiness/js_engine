@@ -2,7 +2,7 @@
 pub struct ToolRun {
   stdout_lines : Array[String]
   stderr_lines : Array[String]
-  code : Int
+  code : Int32
 } derive(Debug)
 
 ///|
@@ -19,7 +19,7 @@ pub extend TestFile with @debug.Debug::{to_repr}
 
 ///|
 struct SuiteMetadata {
-  files_scanned : Int
+  files_scanned : Int32
   features : @set.Set[String]
   flags : @set.Set[String]
   paths : Array[String]
@@ -236,8 +236,8 @@ fn render_validation_result(
 /// This only checks metadata coherence against a checked-out Test262 corpus; it
 /// does not run tests or produce conformance numbers.
 pub fn run_validate_skips(
-  repo_root? : String = ".",
-  test262_root? : String = "./test262",
+  repo_root~ : String = ".",
+  test262_root~ : String = "./test262",
 ) -> ToolRun raise {
   let metadata = @metadata.load_skip_metadata(root=repo_root)
   let test_root = @path_utils.join_path(test262_root, "test")

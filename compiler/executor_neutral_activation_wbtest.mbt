@@ -224,7 +224,7 @@ fn assert_plain_member_call_lowering(
 }
 
 ///|
-fn legacy_property_prepare_count(code : Array[BytecodeInstr]) -> Int {
+fn legacy_property_prepare_count(code : Array[BytecodeInstr]) -> Int32 {
   let mut count = 0
   for instr in code {
     match instr {
@@ -1426,7 +1426,7 @@ test "bytecode static own setter recursion completes deeply" {
 }
 
 ///|
-fn static_update_getter_reentry_source_for_wb(depth : Int) -> String {
+fn static_update_getter_reentry_source_for_wb(depth : Int32) -> String {
   "var remaining = " +
   depth.to_string() +
   ";" +
@@ -1481,7 +1481,7 @@ test "bytecode static update getter reentry completes deeply" {
 
 ///|
 fn runtime_string_computed_update_getter_reentry_source_for_wb(
-  depth : Int,
+  depth : Int32,
 ) -> String {
   "var remaining = " +
   depth.to_string() +
@@ -1576,7 +1576,7 @@ test "runtime-string computed update getter throw preserves identity and interpr
 }
 
 ///|
-fn static_update_coercion_reentry_source_for_wb(depth : Int) -> String {
+fn static_update_coercion_reentry_source_for_wb(depth : Int32) -> String {
   "var remaining = " +
   depth.to_string() +
   ";" +
@@ -1707,7 +1707,7 @@ test "bytecode static update coercion throw preserves identity and reuse" {
 }
 
 ///|
-fn static_update_to_string_reentry_source_for_wb(depth : Int) -> String {
+fn static_update_to_string_reentry_source_for_wb(depth : Int32) -> String {
   "var remaining = " +
   depth.to_string() +
   "; var calls = 0; var receiver = {}; var numeric = {};" +
@@ -1769,7 +1769,7 @@ test "bytecode static update inherited toString accessor reentry completes deepl
 }
 
 ///|
-fn static_update_to_primitive_reentry_source_for_wb(depth : Int) -> String {
+fn static_update_to_primitive_reentry_source_for_wb(depth : Int32) -> String {
   "var remaining = " +
   depth.to_string() +
   "; var calls = 0; var receiver = {}; var numeric = {};" +
@@ -1793,7 +1793,7 @@ test "bytecode static update toPrimitive reentry completes deeply" {
 
 ///|
 fn static_update_to_primitive_accessor_reentry_source_for_wb(
-  depth : Int,
+  depth : Int32,
 ) -> String {
   "var remaining = " +
   depth.to_string() +
@@ -1823,7 +1823,7 @@ test "bytecode static update toPrimitive accessor reentry completes deeply" {
 
 ///|
 fn static_update_proxy_to_primitive_reentry_source_for_wb(
-  depth : Int,
+  depth : Int32,
 ) -> String {
   "var remaining = " +
   depth.to_string() +
@@ -1854,7 +1854,7 @@ test "bytecode static update Proxy toPrimitive reentry completes deeply" {
 
 ///|
 fn static_update_inherited_proxy_to_primitive_reentry_source_for_wb(
-  depth : Int,
+  depth : Int32,
 ) -> String {
   "var remaining = " +
   depth.to_string() +
@@ -1885,7 +1885,9 @@ test "bytecode static update inherited Proxy toPrimitive reentry completes deepl
 }
 
 ///|
-fn static_update_inherited_setter_reentry_source_for_wb(depth : Int) -> String {
+fn static_update_inherited_setter_reentry_source_for_wb(
+  depth : Int32,
+) -> String {
   "var remaining = " +
   depth.to_string() +
   "; var receiver = {};" +

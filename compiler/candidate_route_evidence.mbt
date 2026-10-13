@@ -9,14 +9,14 @@ priv enum CandidateRouteExecutor {
 
 ///|
 priv struct CandidateRoutePrepared {
-  activation_id : Int
+  activation_id : Int32
   source_identity : BytecodeSourceIdentity
   decision : CandidateSelection
 }
 
 ///|
 fn CandidateRoutePrepared::CandidateRoutePrepared(
-  activation_id : Int,
+  activation_id : Int32,
   source_identity : BytecodeSourceIdentity,
   decision : CandidateSelection,
 ) -> CandidateRoutePrepared {
@@ -25,14 +25,14 @@ fn CandidateRoutePrepared::CandidateRoutePrepared(
 
 ///|
 priv struct CandidateRouteStarted {
-  activation_id : Int
+  activation_id : Int32
   source_identity : BytecodeSourceIdentity
   executor : CandidateRouteExecutor
 }
 
 ///|
 fn CandidateRouteStarted::CandidateRouteStarted(
-  activation_id : Int,
+  activation_id : Int32,
   source_identity : BytecodeSourceIdentity,
   executor : CandidateRouteExecutor,
 ) -> CandidateRouteStarted {
@@ -41,14 +41,14 @@ fn CandidateRouteStarted::CandidateRouteStarted(
 
 ///|
 priv struct CandidateRouteCompleted {
-  activation_id : Int
+  activation_id : Int32
   source_identity : BytecodeSourceIdentity
   completion : CandidateRouteCompletion
 }
 
 ///|
 fn CandidateRouteCompleted::CandidateRouteCompleted(
-  activation_id : Int,
+  activation_id : Int32,
   source_identity : BytecodeSourceIdentity,
   completion : CandidateRouteCompletion,
 ) -> CandidateRouteCompleted {
@@ -78,17 +78,17 @@ priv enum CandidateRouteLifecycle {
 ///|
 #warnings("-unused_field")
 priv struct CandidateRouteSummary {
-  mut verified_decisions : Int
-  mut bytecode_starts : Int
-  mut tree_starts : Int
-  mut normal_completions : Int
-  mut abrupt_completions : Int
-  mut lowering_unsupported : Int
-  mut activation_unsupported : Int
-  mut active_activations : Int
-  mut maximum_concurrent_activations : Int
-  mut fallback_violations : Int
-  mut replay_violations : Int
+  mut verified_decisions : Int32
+  mut bytecode_starts : Int32
+  mut tree_starts : Int32
+  mut normal_completions : Int32
+  mut abrupt_completions : Int32
+  mut lowering_unsupported : Int32
+  mut activation_unsupported : Int32
+  mut active_activations : Int32
+  mut maximum_concurrent_activations : Int32
+  mut fallback_violations : Int32
+  mut replay_violations : Int32
 }
 
 ///|
@@ -110,18 +110,18 @@ fn CandidateRouteSummary::CandidateRouteSummary() -> CandidateRouteSummary {
 
 ///|
 priv struct CandidateRouteEvidence {
-  mut next_activation_id : Int
+  mut next_activation_id : Int32
   trace_enabled : Bool
   summary : CandidateRouteSummary
   // These collections are diagnostic trace storage only. Aggregate-only
   // production recorders never append or insert into them.
   events : Array[CandidateRouteEvent]
-  lifecycles : Map[Int, CandidateRouteLifecycle]
+  lifecycles : Map[Int32, CandidateRouteLifecycle]
 }
 
 ///|
 fn CandidateRouteEvidence::CandidateRouteEvidence(
-  trace? : Bool = false,
+  trace~ : Bool = false,
 ) -> CandidateRouteEvidence {
   {
     next_activation_id: 0,
@@ -168,7 +168,7 @@ fn candidate_route_record_event(
 ///|
 fn candidate_route_record_lifecycle(
   evidence : Ref[CandidateRouteEvidence],
-  activation_id : Int,
+  activation_id : Int32,
   lifecycle : CandidateRouteLifecycle,
 ) -> Unit {
   if evidence.val.trace_enabled {
@@ -178,7 +178,9 @@ fn candidate_route_record_lifecycle(
 
 ///|
 #warnings("-unused_value")
-fn candidate_route_trace_length(evidence : Ref[CandidateRouteEvidence]) -> Int {
+fn candidate_route_trace_length(
+  evidence : Ref[CandidateRouteEvidence],
+) -> Int32 {
   evidence.val.events.length()
 }
 

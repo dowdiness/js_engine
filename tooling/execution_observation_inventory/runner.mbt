@@ -102,7 +102,7 @@ fn validate_source_evidence(
 }
 
 ///|
-pub fn run(root~ : String) -> (Array[String], Array[String], Int) {
+pub fn run(root~ : String) -> (Array[String], Array[String], Int32) {
   let path = inventory_path(root)
   let source = @fs.read_file_to_string(path) catch {
     _ =>

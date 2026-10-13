@@ -9,7 +9,7 @@ fn array_index_of_key(key : String) -> Int64? {
 }
 
 ///|
-fn compare_array_index_keys(a : String, b : String) -> Int {
+fn compare_array_index_keys(a : String, b : String) -> Int32 {
   let na = array_index_of_key(a).unwrap_or(0L)
   let nb = array_index_of_key(b).unwrap_or(0L)
   if na < nb {
@@ -705,7 +705,7 @@ pub fn Interpreter::partial_descriptor_from_attrs(
 pub fn descriptor_to_value(
   desc : PropDescriptor,
   value : Value,
-  realm_state? : RealmState? = None,
+  realm_state~ : RealmState? = None,
 ) -> Value {
   let props : Map[String, Value] = Map([])
   if desc.is_accessor {

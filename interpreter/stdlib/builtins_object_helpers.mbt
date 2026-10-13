@@ -4,7 +4,7 @@
 fn to_object(
   val : Value,
   interp : Interpreter,
-  realm_state? : @runtime.RealmState? = None,
+  realm_state~ : @runtime.RealmState? = None,
 ) -> Value raise Error {
   match val {
     Null | Undefined =>
@@ -137,7 +137,7 @@ pub fn make_data_desc_obj(
   writable : Bool,
   enumerable : Bool,
   configurable : Bool,
-  realm_state? : @runtime.RealmState? = None,
+  realm_state~ : @runtime.RealmState? = None,
 ) -> Value {
   Value::Object({
     bag: {
@@ -168,7 +168,7 @@ pub fn make_accessor_desc_obj(
   setter_val : Value,
   enumerable : Bool,
   configurable : Bool,
-  realm_state? : @runtime.RealmState? = None,
+  realm_state~ : @runtime.RealmState? = None,
 ) -> Value {
   Value::Object({
     bag: {

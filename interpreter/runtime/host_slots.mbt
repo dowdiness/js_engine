@@ -1,12 +1,12 @@
 ///| Embedder-owned host slots (#518). Separate from engine `internal_slots`.
 
 ///|
-let host_slot_id_counter : Ref[Int] = { val: 0, }
+let host_slot_id_counter : Ref[Int32] = { val: 0, }
 
 ///|
 /// Embedder-owned slot identity. Construct only via `HostSlotKey::reserve`.
 pub(all) struct HostSlotKey {
-  priv id : Int
+  priv id : Int32
 } derive(Eq, Hash, Debug)
 
 ///|
