@@ -236,3 +236,32 @@ test "finally yield preserves the injected generator return" {
     #|[cleanup.value, cleanup.done, result.value, result.done].join(',');
   assert_try_result(source, "cleanup,false,returned,true")
 }
+
+///|
+test "catch pattern defaults reject outer bindings before finally" {
+  for
+    source in [
+      "var later = 99, trace = []; try { try { throw {}; } catch ({ first = later, later }) { trace.push('body'); } finally { trace.push('finally'); } } catch (error) { trace.push(error.name + ':' + later); } trace.join(',')",
+      "var later = 99, trace = []; try { try { throw []; } catch ([first = later, later]) { trace.push('body'); } finally { trace.push('finally'); } } catch (error) { trace.push(error.name + ':' + later); } trace.join(',')",
+    ] {
+    assert_try_result(source, "finally,ReferenceError:99")
+  }
+}
+
+///|
+test "catch pattern defaults retain a closure across initialization" {
+  let source =
+    #|var later = 99, reader, observed;
+    #|try { throw 0; }
+    #|catch ({
+    #|  first = (() => {
+    #|    reader = () => later;
+    #|    try { reader(); } catch (error) { return error.name; }
+    #|  })(),
+    #|  later = 7
+    #|}) {
+    #|  observed = first + ':' + reader();
+    #|}
+    #|observed + ':' + later;
+  assert_try_result(source, "ReferenceError:7:99")
+}
