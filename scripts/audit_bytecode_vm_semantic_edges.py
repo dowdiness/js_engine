@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import json
 import os
@@ -38,6 +38,31 @@ BASELINE = Path("scripts/bytecode_vm_semantic_edges.json")
 
 RUNTIME_PACKAGE = "dowdiness/js_engine/interpreter/runtime"
 MOON_IDE_CALLABLE_TAGS = {"0x1000", "0x1001", "0x4000", "0x4001"}
+MOON_IDE_VALUE_TAGS = {
+    "0x10",
+    "0x11",
+    "0x18",
+    "0x51",
+    "0x53",
+    "0x58",
+    "0x61",
+    "0x63",
+    "0x68",
+    "0x110",
+    "0x111",
+    "0x113",
+    "0x118",
+    "0x210",
+    "0x400",
+    "0x401",
+    "0x800",
+    "0x801",
+    "0xd1",
+    "0xd3",
+    "0xd8",
+    "0x2000",
+    "0x2005",
+}
 
 
 class CandidateCallSyntax(Enum):
@@ -106,6 +131,13 @@ class IntentionallyIgnored:
 
 
 @dataclass(frozen=True)
+class CallableValue:
+    """A callable value whose lexical binding still needs resolving."""
+
+    candidate: Candidate
+
+
+@dataclass(frozen=True)
 class UnresolvedCandidate:
     diagnostic: ResolutionDiagnostic
 
@@ -127,6 +159,7 @@ ResolutionOutcome = (
     | UnresolvedCandidate
     | AmbiguousCandidate
 )
+HoverOutcome = ResolutionOutcome | CallableValue
 
 
 class SemanticResolutionError(RuntimeError):
@@ -173,6 +206,12 @@ fn semantic_edge_audit_fixture_root(interp : Interpreter) -> String raise Error 
 #warnings("-unused_value")
 fn semantic_edge_audit_startup_fixture_root(interp : Interpreter) -> Unit raise Error {
   semantic_edge_audit_cross_file_wrapper(interp)
+}
+
+///|
+#warnings("-unused_value")
+fn complete() -> Unit {
+  ()
 }
 
 ///|
@@ -401,7 +440,7 @@ def _callable_identity(contents: list[str]) -> str | None:
     return match.group(1) if match else None
 
 
-def _hover_is_value_type(contents: list[str]) -> bool:
+def _hover_first_line(contents: list[str]) -> str:
     first = contents[0].strip() if contents else ""
     if first.startswith("```moonbit"):
         first = first[len("```moonbit") :].lstrip("\n ")
@@ -413,6 +452,11 @@ def _hover_is_value_type(contents: list[str]) -> bool:
             ),
             "",
         )
+    return first
+
+
+def _hover_is_value_type(contents: list[str]) -> bool:
+    first = _hover_first_line(contents)
     return bool(
         re.match(r"^(?:\([^\n]*\)|[A-Za-z_@][^\n]*)\s*->", first)
         or re.match(r"^(?:enum|struct|trait|type)\b", first)
@@ -420,6 +464,13 @@ def _hover_is_value_type(contents: list[str]) -> bool:
             r"[A-Za-z_@][A-Za-z0-9_@./]*(?:\[[^\n]+\])?\??",
             first,
         )
+    )
+
+
+def _hover_is_function_type(contents: list[str]) -> bool:
+    first = _hover_first_line(contents)
+    return bool(
+        re.match(r"^(?:\([^\n]*\)|[A-Za-z_@][^\n]*)\s*->", first)
     )
 
 
@@ -433,7 +484,7 @@ def classify_hover_result(
     compiler_symbols: dict[str, dict[str, Any]] | None = None,
     symbols: dict[str, dict[str, Any]] | None = None,
     symbols_by_name: dict[str, list[tuple[str, dict[str, Any]]]] | None = None,
-) -> ResolutionOutcome:
+) -> HoverOutcome:
     if compiler_symbols is None:
         compiler_symbols = symbols or {}
     if symbols_by_name is None:
@@ -484,12 +535,12 @@ def classify_hover_result(
         )
     identity = _callable_identity(contents)
     if identity is None:
-        if (
-            not candidate.executable_hint
-            or (
-                _hover_is_value_type(contents)
-                and (not candidate.call_syntax or not candidate.known_callable)
-            )
+        if not candidate.executable_hint:
+            return IntentionallyIgnored(candidate, "non_callable_reference")
+        if _hover_is_function_type(contents):
+            return CallableValue(candidate)
+        if _hover_is_value_type(contents) and (
+            not candidate.call_syntax or not candidate.known_callable
         ):
             return IntentionallyIgnored(candidate, "non_callable_reference")
         return UnresolvedCandidate(
@@ -602,20 +653,39 @@ def _symbol_entry_is_callable(entry: dict[str, Any]) -> bool:
     return entry.get("tag") in MOON_IDE_CALLABLE_TAGS
 
 
+def _symbol_entry_is_value(entry: dict[str, Any]) -> bool:
+    return entry.get("tag") in MOON_IDE_VALUE_TAGS
+
+
 def load_symbols(
     root: Path,
-) -> tuple[dict[str, dict[str, Any]], dict[str, list[tuple[str, dict[str, Any]]]]]:
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, list[tuple[str, dict[str, Any]]]],
+    ValueDefinitions,
+]:
     symbols_path = root / "symbols.jsonl"
     try:
         run(root, "moon", "ide", "gen-symbols", "--no-check")
         compiler_symbols: dict[str, dict[str, Any]] = {}
         by_simple_name: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        non_callable_names: set[SourceLocation] = set()
+        suberror_ranges: set[SourceLocation] = set()
         for line in symbols_path.read_text().splitlines():
             entry = json.loads(line)
             identity = symbol_identity(entry)
             if identity is None:
                 continue
             package = entry.get("pkg")
+            if _symbol_entry_is_value(entry):
+                name_location = _location_from_symbol_range(root, entry, "name_range")
+                if name_location is not None and _location_is_valid(root, name_location):
+                    non_callable_names.add(name_location)
+                    if _is_suberror_declaration(root, name_location):
+                        declaration = _location_from_symbol_range(root, entry, "range")
+                        if declaration is not None and _location_is_valid(root, declaration):
+                            suberror_ranges.add(declaration)
+                continue
             if not _symbol_entry_is_callable(entry):
                 continue
             imported_runtime_alias = _imported_runtime_alias(root, entry, identity)
@@ -630,7 +700,14 @@ def load_symbols(
                 continue
             simple_name = identity.split("::")[-1]
             by_simple_name.setdefault(simple_name, []).append((query, entry))
-        return compiler_symbols, by_simple_name
+        return (
+            compiler_symbols,
+            by_simple_name,
+            ValueDefinitions(
+                frozenset(non_callable_names),
+                tuple(sorted(suberror_ranges, key=lambda item: item.render())),
+            ),
+        )
     finally:
         symbols_path.unlink(missing_ok=True)
 
@@ -920,38 +997,147 @@ def _dollar_source_lines(root: Path, entry: dict[str, Any]) -> set[int]:
     }
 
 
+def _rebind_outcome(
+    outcome: ResolutionOutcome,
+    candidate: Candidate,
+) -> ResolutionOutcome:
+    if isinstance(outcome, ResolvedCompiler):
+        return ResolvedCompiler(candidate, outcome.target)
+    if isinstance(outcome, ResolvedRuntime):
+        return ResolvedRuntime(candidate, outcome.target)
+    if isinstance(outcome, ResolvedOutOfScope):
+        return ResolvedOutOfScope(candidate, outcome.identity)
+    if isinstance(outcome, IntentionallyIgnored):
+        return IntentionallyIgnored(candidate, outcome.reason)
+    if isinstance(outcome, (UnresolvedCandidate, AmbiguousCandidate)):
+        diagnostic_candidate = replace(
+            candidate,
+            resolver_phase=outcome.diagnostic.candidate.resolver_phase,
+        )
+        return type(outcome)(
+            replace(outcome.diagnostic, candidate=diagnostic_candidate)
+        )
+    return outcome
+
+
 def resolve_hover(
     root: Path,
     candidate: Candidate,
     compiler_symbols: dict[str, dict[str, Any]],
     symbols_by_name: dict[str, list[tuple[str, dict[str, Any]]]],
+    value_definitions: ValueDefinitions | None = None,
 ) -> ResolutionOutcome:
-    path = candidate.path
-    line = candidate.line
-    col = candidate.column
-    command = (
-        "moon",
-        "ide",
-        "hover",
-        "--loc",
-        f"{path}:{line}:{col}",
-        "--output-json",
-        "--no-check",
-    )
-    result = run(
-        root,
-        *command,
-        check=False,
-    )
-    return classify_hover_result(
-        candidate,
-        returncode=result.returncode,
-        stdout=result.stdout,
-        stderr=result.stderr,
-        command=command,
-        compiler_symbols=compiler_symbols,
-        symbols_by_name=symbols_by_name,
-    )
+    if value_definitions is None:
+        value_definitions = ValueDefinitions(frozenset(), ())
+    origin = candidate
+    current = candidate
+    visited: set[SourceLocation] = set()
+    while True:
+        command = (
+            "moon",
+            "ide",
+            "hover",
+            "--loc",
+            f"{current.path}:{current.line}:{current.column}",
+            "--output-json",
+            "--no-check",
+        )
+        result = run(root, *command, check=False)
+        outcome = classify_hover_result(
+            current,
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            command=command,
+            compiler_symbols=compiler_symbols,
+            symbols_by_name=symbols_by_name,
+        )
+        if not isinstance(outcome, CallableValue):
+            return _rebind_outcome(outcome, origin)
+        peek_command = (
+            "moon",
+            "ide",
+            "peek-def",
+            "--loc",
+            f"{current.path}:{current.line}:{current.column}",
+            "--json",
+            "--no-check",
+        )
+        definition = _peek_definition(root, current)
+        if isinstance(definition, (UnresolvedCandidate, AmbiguousCandidate)):
+            return _rebind_outcome(definition, origin)
+        if isinstance(definition, BuiltinConstructor):
+            return IntentionallyIgnored(origin, "non_callable_reference")
+        if definition in visited:
+            return UnresolvedCandidate(
+                _diagnostic(
+                    replace(origin, resolver_phase="peek-def"),
+                    "alias_cycle",
+                    detail="immutable callable alias resolution revisited a definition",
+                    command=peek_command,
+                    identity=current.spelling,
+                )
+            )
+        visited.add(definition)
+        targets = _known_definition_targets(
+            root,
+            definition,
+            compiler_symbols,
+            symbols_by_name,
+        )
+        if len(targets) > 1:
+            return AmbiguousCandidate(
+                _diagnostic(
+                    replace(origin, resolver_phase="peek-def"),
+                    "ambiguous_mapping",
+                    detail="definition coordinates matched multiple known callable identities",
+                    command=peek_command,
+                    identity=current.spelling,
+                    candidates=tuple(target for _, target in targets),
+                )
+            )
+        if targets:
+            kind, target = targets[0]
+            return (
+                ResolvedCompiler(origin, target)
+                if kind == "compiler"
+                else ResolvedRuntime(origin, target)
+            )
+        if definition in value_definitions.non_callable_names or any(
+            _location_within(definition, declaration)
+            for declaration in value_definitions.suberror_ranges
+        ):
+            return IntentionallyIgnored(origin, "non_callable_reference")
+        enclosing = compiler_symbols.get(origin.enclosing)
+        enclosing_location = (
+            _location_from_symbol_range(root, enclosing, "range")
+            if enclosing is not None
+            else None
+        )
+        source_lines = (root / definition.path).read_text().splitlines()
+        binding = _source_token(source_lines, definition)
+        if (
+            enclosing_location is None
+            or not _location_within(definition, enclosing_location)
+            or binding is None
+            or binding[1] != current.spelling
+        ):
+            return UnresolvedCandidate(
+                _diagnostic(
+                    replace(origin, resolver_phase="peek-def"),
+                    "peek_def_unverified_local",
+                    detail=(
+                        "definition coordinates are neither a known symbol name nor "
+                        "a verified local binding"
+                    ),
+                    command=peek_command,
+                    identity=current.spelling,
+                )
+            )
+        alias = _immutable_alias_target(source_lines, definition, origin.enclosing)
+        if alias is None:
+            return IntentionallyIgnored(origin, "indirect_callable_reference")
+        current = alias
 
 
 def local_target(identity: str, symbols: dict[str, dict[str, Any]]) -> str | None:
@@ -974,6 +1160,388 @@ class ReferenceLookup:
     command: tuple[str, ...]
     stdout: str
     stderr: str
+
+
+@dataclass(frozen=True)
+class SourceLocation:
+    path: str
+    start_line: int
+    start_column: int
+    end_line: int
+    end_column: int
+
+    def render(self) -> str:
+        return (
+            f"{self.path}:{self.start_line}:{self.start_column}-"
+            f"{self.end_line}:{self.end_column}"
+        )
+
+
+@dataclass(frozen=True)
+class BuiltinConstructor:
+    name: str
+
+    def render(self) -> str:
+        return self.name
+
+
+@dataclass(frozen=True)
+class ValueDefinitions:
+    non_callable_names: frozenset[SourceLocation]
+    suberror_ranges: tuple[SourceLocation, ...]
+
+
+SOURCE_RANGE = re.compile(r"^(\d+):(\d+)-(\d+):(\d+)$")
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+DIRECT_CALLABLE_REFERENCE = re.compile(
+    r"(?:@[A-Za-z0-9_./-]+\.)?[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*"
+    r"|@[A-Za-z0-9_./-]+\.[A-Za-z_][A-Za-z0-9_]*"
+    r"|[A-Za-z_][A-Za-z0-9_]*"
+)
+
+
+def _normalised_source_path(root: Path, raw_path: object) -> str | None:
+    if not isinstance(raw_path, str) or not raw_path:
+        return None
+    root_path = root.resolve()
+    source_path = Path(raw_path)
+    resolved = (source_path if source_path.is_absolute() else root_path / source_path).resolve()
+    try:
+        relative = resolved.relative_to(root_path)
+    except ValueError:
+        return None
+    return os.path.normpath(str(relative))
+
+
+def _location_from_entry(
+    root: Path,
+    entry: object,
+) -> SourceLocation | None:
+    if not isinstance(entry, dict):
+        return None
+    path = _normalised_source_path(root, entry.get("path"))
+    raw_range = entry.get("range")
+    if path is None or not isinstance(raw_range, str):
+        return None
+    match = SOURCE_RANGE.fullmatch(raw_range)
+    if match is None:
+        return None
+    start_line, start_column, end_line, end_column = (
+        int(value) for value in match.groups()
+    )
+    return SourceLocation(
+        path,
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+    )
+
+
+def _location_from_symbol_range(
+    root: Path,
+    entry: dict[str, Any],
+    field: str,
+) -> SourceLocation | None:
+    path = _normalised_source_path(root, entry.get("path"))
+    raw_range = entry.get(field)
+    if path is None or not isinstance(raw_range, list) or len(raw_range) != 4:
+        return None
+    if not all(isinstance(value, int) for value in raw_range):
+        return None
+    return SourceLocation(path, *(int(value) for value in raw_range))
+
+
+def _location_is_valid(root: Path, location: SourceLocation) -> bool:
+    path = root / location.path
+    if not path.is_file():
+        return False
+    lines = path.read_text().splitlines()
+    if not lines:
+        return False
+    start = (location.start_line, location.start_column)
+    end = (location.end_line, location.end_column)
+    if start[0] < 1 or end[0] < start[0] or end < start:
+        return False
+    if location.start_line > len(lines) or location.end_line > len(lines):
+        return False
+    if location.start_column < 1 or location.end_column < 1:
+        return False
+    if location.start_column > len(lines[location.start_line - 1]) + 1:
+        return False
+    if location.end_column > len(lines[location.end_line - 1]) + 1:
+        return False
+    return True
+
+
+def _is_suberror_declaration(root: Path, name_location: SourceLocation) -> bool:
+    lines = (root / name_location.path).read_text().splitlines()
+    line = lines[name_location.start_line - 1]
+    return re.match(
+        r"^\s*(?:(?:pub(?:\([^)]*\))?|priv)\s+)?suberror\b",
+        line,
+    ) is not None
+
+
+def _location_within(location: SourceLocation, enclosing: SourceLocation) -> bool:
+    if location.path != enclosing.path:
+        return False
+    return (
+        (enclosing.start_line, enclosing.start_column)
+        <= (location.start_line, location.start_column)
+        and (location.end_line, location.end_column)
+        <= (enclosing.end_line, enclosing.end_column)
+    )
+
+
+def _peek_definition(
+    root: Path,
+    candidate: Candidate,
+) -> SourceLocation | BuiltinConstructor | UnresolvedCandidate | AmbiguousCandidate:
+    command = (
+        "moon",
+        "ide",
+        "peek-def",
+        "--loc",
+        f"{candidate.path}:{candidate.line}:{candidate.column}",
+        "--json",
+        "--no-check",
+    )
+    result = run(root, *command, check=False)
+    diagnostic_candidate = replace(candidate, resolver_phase="peek-def")
+    if result.returncode != 0:
+        return UnresolvedCandidate(
+            _diagnostic(
+                diagnostic_candidate,
+                "moon_ide_nonzero",
+                detail=result.stderr.strip(),
+                command=command,
+            )
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        return UnresolvedCandidate(
+            _diagnostic(
+                diagnostic_candidate,
+                "invalid_json",
+                detail=str(error),
+                command=command,
+                json_detail=result.stdout,
+            )
+        )
+    if not isinstance(payload, list):
+        return UnresolvedCandidate(
+            _diagnostic(
+                diagnostic_candidate,
+                "missing_json_field",
+                detail="peek-def JSON must be an array of definition locations",
+                command=command,
+                json_detail=result.stdout,
+            )
+        )
+    definitions: list[SourceLocation | BuiltinConstructor] = []
+    for item in payload:
+        if (
+            candidate.spelling == "Some"
+            and isinstance(item, dict)
+            and set(item) == {"path", "range"}
+            and item["path"] == ""
+            and item["range"] == "0:0-0:0"
+        ):
+            definitions.append(BuiltinConstructor("Some"))
+            continue
+        location = _location_from_entry(root, item)
+        if location is None or not _location_is_valid(root, location):
+            return UnresolvedCandidate(
+                _diagnostic(
+                    diagnostic_candidate,
+                    "invalid_source_location",
+                    detail="peek-def returned a malformed or out-of-root source range",
+                    command=command,
+                    json_detail=result.stdout,
+                )
+            )
+        definitions.append(location)
+    if not definitions:
+        return UnresolvedCandidate(
+            _diagnostic(
+                diagnostic_candidate,
+                "peek_def_no_definition",
+                detail="peek-def returned no definitions",
+                command=command,
+            )
+        )
+    if len(definitions) > 1:
+        return AmbiguousCandidate(
+            _diagnostic(
+                diagnostic_candidate,
+                "peek_def_ambiguous_definition",
+                detail="peek-def returned multiple definitions",
+                command=command,
+                candidates=tuple(definition.render() for definition in definitions),
+            )
+        )
+    return definitions[0]
+
+
+def _known_definition_targets(
+    root: Path,
+    location: SourceLocation,
+    compiler_symbols: dict[str, dict[str, Any]],
+    symbols_by_name: dict[str, list[tuple[str, dict[str, Any]]]],
+) -> list[tuple[str, str]]:
+    targets: set[tuple[str, str]] = set()
+    for identity, entry in compiler_symbols.items():
+        name_location = _location_from_symbol_range(root, entry, "name_range")
+        if name_location is not None and location == name_location:
+            targets.add(("compiler", identity))
+    for entries in symbols_by_name.values():
+        for query, entry in entries:
+            name_location = _location_from_symbol_range(root, entry, "name_range")
+            if name_location is None or location != name_location:
+                continue
+            recorded = _recorded_target(query, entry)
+            if recorded is not None:
+                targets.add(recorded)
+    return sorted(targets)
+
+
+def _source_token(
+    lines: list[str],
+    location: SourceLocation,
+    *,
+    identifier: bool = True,
+) -> tuple[str, str, list[bool]] | None:
+    if location.start_line != location.end_line:
+        return None
+    if location.start_line < 1 or location.start_line > len(lines):
+        return None
+    line = lines[location.start_line - 1]
+    if location.start_column < 1 or location.end_column > len(line) + 1:
+        return None
+    value = line[location.start_column - 1 : location.end_column - 1]
+    mask = _executable_mask(line)
+    start = location.start_column - 1
+    end = location.end_column - 1
+    if (identifier and not IDENTIFIER.fullmatch(value)) or not all(mask[start:end]):
+        return None
+    return line, value, mask
+
+
+def _immutable_alias_target(
+    lines: list[str],
+    location: SourceLocation,
+    enclosing: str,
+) -> Candidate | None:
+    token = _source_token(lines, location)
+    if token is None:
+        return None
+    line, name, _ = token
+    prefix = line[: location.start_column - 1]
+    matches = list(
+        re.finditer(
+            r"\blet\s+(?P<mut>mut\s+)?(?P<name>[A-Za-z_]\w*)",
+            prefix + name,
+        )
+    )
+    binding = next(
+        (
+            match
+            for match in matches
+            if match.group("name") == name
+            and match.start("name") + 1 == location.start_column
+        ),
+        None,
+    )
+    if binding is None:
+        return None
+    if binding.group("mut") is not None:
+        return None
+    equals_line = location.start_line - 1
+    search_start = location.end_column - 1
+    block_comment = False
+    rhs_line = None
+    rhs_start = None
+    rhs_text = None
+    while equals_line < len(lines):
+        source_line = lines[equals_line]
+        mask, block_comment = _executable_mask_with_state(source_line, block_comment)
+        masked_line = "".join(
+            character if mask[index] else " "
+            for index, character in enumerate(source_line)
+        )
+        equals_match = next(
+            (
+                match
+                for match in re.finditer(
+                    r"(?<![=!<>])=(?![=])",
+                    source_line[search_start:],
+                )
+                if all(
+                    mask[search_start + match.start() : search_start + match.end()]
+                )
+                and (
+                    equals_line == location.start_line - 1
+                    or not masked_line[: search_start + match.start()].strip()
+                )
+            ),
+            None,
+        )
+        if equals_match is not None:
+            equals_column = search_start + equals_match.end()
+            rhs_line = equals_line + 1
+            rhs_start = equals_column
+            rhs_text = masked_line[rhs_start:]
+            break
+        if equals_line > location.start_line - 1 and masked_line.strip():
+            return None
+        equals_line += 1
+        search_start = 0
+    if rhs_line is None or rhs_start is None or rhs_text is None:
+        return None
+    while not rhs_text.strip() and rhs_line < len(lines):
+        source_line = lines[rhs_line]
+        mask, block_comment = _executable_mask_with_state(source_line, block_comment)
+        rhs_text = "".join(
+            character if mask[index] else " "
+            for index, character in enumerate(source_line)
+        )
+        rhs_line += 1
+        rhs_start = 0
+    if not rhs_text.strip():
+        return None
+    rhs = rhs_text.strip()
+    match = DIRECT_CALLABLE_REFERENCE.fullmatch(rhs)
+    if match is None:
+        return None
+    reference_column = rhs_start + len(rhs_text) - len(rhs_text.lstrip()) + 1
+    qualified_name_start = max(
+        rhs.rfind("::") + 2 if "::" in rhs else 0,
+        rhs.rfind(".") + 1 if "." in rhs else 0,
+    )
+    reference_column += qualified_name_start
+    callable_name = rhs[qualified_name_start:]
+    reference_location = SourceLocation(
+        location.path,
+        rhs_line,
+        reference_column,
+        rhs_line,
+        reference_column + len(callable_name),
+    )
+    if _source_token(lines, reference_location, identifier=False) is None:
+        return None
+    return Candidate(
+        path=location.path,
+        line=rhs_line,
+        column=reference_column,
+        enclosing=enclosing,
+        spelling=rhs,
+        resolver_phase="hover",
+        executable_hint=True,
+        call_syntax=False,
+        known_callable=True,
+    )
 
 
 def semantic_references(
@@ -1107,7 +1675,7 @@ def collect_semantic_edges(
     root: Path,
     root_symbols: tuple[str, ...],
 ) -> tuple[list[dict[str, Any]], list[ResolutionOutcome]]:
-    symbols, symbols_by_name = load_symbols(root)
+    symbols, symbols_by_name, value_definitions = load_symbols(root)
     missing_roots = [symbol for symbol in root_symbols if symbol not in symbols]
     if missing_roots:
         raise RuntimeError(f"semantic audit roots not found: {missing_roots}")
@@ -1147,6 +1715,7 @@ def collect_semantic_edges(
                     candidate_outcome,
                     symbols,
                     symbols_by_name,
+                    value_definitions,
                 )
                 _append_outcome(outcomes, seen_outcomes, outcome)
                 _add_resolved_edge(
@@ -1544,6 +2113,10 @@ def _main() -> int:
                         "runtime",
                         "@dowdiness/js_engine/interpreter/runtime.make_array",
                     ),
+                    (
+                        "runtime",
+                        "@dowdiness/js_engine/interpreter/runtime.make_array",
+                    ),
                 ],
             )
             if sorted(ordinary_runtime) != expected_ordinary:
@@ -1587,6 +2160,21 @@ def _main() -> int:
                 "@dowdiness/js_engine/interpreter/runtime.make_array",
             ),
         }
+        completion_call_line, completion_call_column = next(
+            (line_number, line.index("complete") + 1)
+            for line_number, line in enumerate(COMBINED_FIXTURE.splitlines(), start=1)
+            if "ignore(complete([]))" in line
+        )
+        completion_alias_edges = [
+            edge
+            for edge in fixture_edges
+            if edge["enclosing"] == "semantic_edge_audit_completion_fixture_root"
+            and edge["kind"] == "runtime"
+            and edge["target"]
+            == "@dowdiness/js_engine/interpreter/runtime.make_array"
+            and edge["line"] == completion_call_line
+            and edge["column"] == completion_call_column
+        ]
         missing = sorted(required - set(observed))
         root_observe = sum(
             enclosing == "semantic_edge_audit_fixture_root"
@@ -1607,10 +2195,17 @@ def _main() -> int:
             if item[0] == "semantic_edge_audit_fixture_root"
             and item[2] == "@runtime.Interpreter::get_console_member"
         ]
-        if missing or root_observe != 3 or root_arrays != 2 or forbidden_literal_edges:
+        if (
+            missing
+            or not completion_alias_edges
+            or root_observe != 3
+            or root_arrays != 2
+            or forbidden_literal_edges
+        ):
             print(
                 "semantic edge self-test failed: "
-                f"missing={missing}, observe={root_observe}, arrays={root_arrays}, "
+                f"missing={missing}, completion_alias_edges={completion_alias_edges}, "
+                f"observe={root_observe}, arrays={root_arrays}, "
                 f"literal_edges={forbidden_literal_edges}",
                 file=sys.stderr,
             )
