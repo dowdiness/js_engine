@@ -10,7 +10,7 @@ fn expect_dispatch_number(
 }
 
 ///|
-fn dispatch_test_statement_work(id : Int) -> DispatchStatementCursor {
+fn dispatch_test_statement_work(id : Int32) -> DispatchStatementCursor {
   let loc = @token.Loc::default()
   let ctx : ExecContext = { strict: false, current_generator: None, }
   DispatchStatementCursor(
@@ -37,16 +37,16 @@ fn dispatch_test_step_label(step : DispatchStatementStep) -> String raise {
 }
 
 ///|
-fn dispatch_test_statement_step(id : Int) -> DispatchStatementStep {
+fn dispatch_test_statement_step(id : Int32) -> DispatchStatementStep {
   let cursor = dispatch_test_statement_work(id)
   { ctx: cursor.ctx, stmt: cursor.stmts[0], env: cursor.env, index: 0, }
 }
 
 ///|
 fn dispatch_test_statement_resume(
-  id : Int,
-  last_value? : Value = Undefined,
-  updates_last_value? : Bool = true,
+  id : Int32,
+  last_value~ : Value = Undefined,
+  updates_last_value~ : Bool = true,
 ) -> DispatchStatementResume {
   DispatchStatementResume(
     cursor=DispatchStatementCursor(
@@ -61,12 +61,12 @@ fn dispatch_test_statement_resume(
 }
 
 ///|
-fn dispatch_test_program_request(id : Int) -> DispatchActivationRequest {
+fn dispatch_test_program_request(id : Int32) -> DispatchActivationRequest {
   DispatchProgramActivation(dispatch_test_statement_work(id))
 }
 
 ///|
-fn dispatch_test_call_work(id : Int) -> DispatchCallRequest {
+fn dispatch_test_call_work(id : Int32) -> DispatchCallRequest {
   DispatchCallRequest(
     callee=String_("callee:" + id.to_string()),
     this_value=Undefined,
@@ -76,7 +76,7 @@ fn dispatch_test_call_work(id : Int) -> DispatchCallRequest {
 }
 
 ///|
-fn dispatch_test_call_request(id : Int) -> DispatchActivationRequest {
+fn dispatch_test_call_request(id : Int32) -> DispatchActivationRequest {
   DispatchCallActivation(dispatch_test_call_work(id))
 }
 
@@ -93,7 +93,7 @@ fn dispatch_test_request_tag(
 }
 
 ///|
-fn dispatch_test_property_resume(id : Int) -> DispatchPropertyGetResume {
+fn dispatch_test_property_resume(id : Int32) -> DispatchPropertyGetResume {
   DispatchPropertyGetResume(
     target=String_("target:" + id.to_string()),
     property_key=String_("key:" + id.to_string()),
@@ -103,7 +103,7 @@ fn dispatch_test_property_resume(id : Int) -> DispatchPropertyGetResume {
 }
 
 ///|
-fn dispatch_test_proxy_resume(id : Int) -> DispatchProxyGetResume {
+fn dispatch_test_proxy_resume(id : Int32) -> DispatchProxyGetResume {
   DispatchProxyGetResume(
     target=String_("target:" + id.to_string()),
     property_key=String_("key:" + id.to_string()),
@@ -114,7 +114,7 @@ fn dispatch_test_proxy_resume(id : Int) -> DispatchProxyGetResume {
 
 ///|
 fn dispatch_test_proxy_trap_lookup_resume(
-  id : Int,
+  id : Int32,
 ) -> DispatchProxyGetTrapLookupResume {
   DispatchProxyGetTrapLookupResume(
     proxy=String_("proxy:" + id.to_string()),
@@ -132,7 +132,7 @@ fn dispatch_test_property_key(value : Value) -> String raise {
 }
 
 ///|
-fn dispatch_test_catch_resume(id : Int) -> DispatchCatchResume {
+fn dispatch_test_catch_resume(id : Int32) -> DispatchCatchResume {
   DispatchCatchResume(
     parameter=Some(@ast.Pattern::IdentPat("caught:" + id.to_string())),
     body=dispatch_test_statement_work(id),
@@ -141,8 +141,8 @@ fn dispatch_test_catch_resume(id : Int) -> DispatchCatchResume {
 
 ///|
 fn dispatch_test_parameter_progress(
-  id : Int,
-  next_index : Int,
+  id : Int32,
+  next_index : Int32,
 ) -> DispatchParameterDefaultResume {
   let loc = @token.Loc::default()
   DispatchParameterDefaultResume(
@@ -172,7 +172,7 @@ fn dispatch_test_parameter_progress(
 }
 
 ///|
-fn dispatch_test_loop_resume(id : Int, label : String?) -> DispatchLoopResume {
+fn dispatch_test_loop_resume(id : Int32, label : String?) -> DispatchLoopResume {
   let loc = @token.Loc::default()
   let env = Environment::new()
   DispatchLoopResume(
@@ -752,7 +752,7 @@ fn dispatch_completion_tag(completion : DispatchCompletion) -> String {
 
 ///|
 fn start_accepted_dispatch_root(
-  id : Int,
+  id : Int32,
 ) -> (ActivationDispatchState, DispatchTicket) raise {
   let initial = ActivationDispatchState::ActivationDispatchState()
   let (waiting_entry, enter_decision) = reduce_activation_dispatch(
@@ -782,7 +782,7 @@ fn start_accepted_dispatch_root(
 
 ///|
 fn run_dispatch_completion_through_finally(
-  id : Int,
+  id : Int32,
   saved : DispatchCompletion,
   finalizer_result : DispatchCompletion,
 ) -> String raise {
@@ -2146,7 +2146,7 @@ test "throw-value continuation consumes one normal value" {
 
 ///|
 fn start_proxy_invariant_dispatch(
-  id : Int,
+  id : Int32,
   post_trap : DispatchProxyGetResume,
   trap_result : Value,
 ) -> (
@@ -2255,7 +2255,7 @@ fn start_proxy_invariant_dispatch(
 
 ///|
 fn expect_proxy_invariant_error_route(
-  id : Int,
+  id : Int32,
   target : Value,
   trap_result : Value,
   expected_message : String,
@@ -2745,7 +2745,7 @@ test "abrupt property work restores its scope before activation release" {
 
 ///|
 fn run_escaped_function_control(
-  id : Int,
+  id : Int32,
   escaped : DispatchCompletion,
   normalized_error : Error,
 ) -> (String, String) raise {
@@ -3191,7 +3191,7 @@ test "finally routes break and continue through structural control frames" {
 
 ///|
 fn run_structural_statement_suspension(
-  id : Int,
+  id : Int32,
   suspension : DispatchSuspension,
   body_completion : DispatchCompletion,
 ) -> DispatchCompletion raise {
@@ -3502,7 +3502,7 @@ test "semantic payload constructors defensively copy mutable arrays" {
 
 ///|
 fn request_test_continuation_resume(
-  id : Int,
+  id : Int32,
   continuation : DispatchContinuation,
   value : Value,
 ) -> DispatchEffect raise {
@@ -3538,7 +3538,7 @@ fn request_test_continuation_resume(
 
 ///|
 fn request_test_production_continuation_resume(
-  id : Int,
+  id : Int32,
   continuation : DispatchContinuation,
   work : DispatchProductionWork,
   value : Value,

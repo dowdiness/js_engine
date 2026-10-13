@@ -6,9 +6,7 @@ fn bounded_microtask_policy(
 ) -> @js_engine.ExecutionPolicy raise Error {
   match
     @js_engine.ExecutionPolicy::new(
-      step_budget,
-      stack_depth_limit,
-      interruption,
+      step_budget, stack_depth_limit, interruption,
     ) {
     Ok(policy) => policy
     Err(_) => fail("expected a valid bounded microtask policy")
@@ -119,12 +117,12 @@ test "activation rejection consumes the selected microtask" {
     is Ok(_),
   )
   let diagnostic = expect_microtask_guardrail(
-      engine.run_microtask_checkpoint_bounded(
-        bounded_microtask_policy(1000L, 0L, @js_engine.InterruptionHandle()),
-      ),
-      "stack-depth-limit",
-      @js_engine.PendingJobs::None,
-    )
+    engine.run_microtask_checkpoint_bounded(
+      bounded_microtask_policy(1000L, 0L, @js_engine.InterruptionHandle()),
+    ),
+    "stack-depth-limit",
+    @js_engine.PendingJobs::None,
+  )
   assert_true(diagnostic.source_identity() == Some("activation-rejection.js"))
   assert_false(engine.has_pending_microtasks())
 }
@@ -232,11 +230,7 @@ test "bounded microtask checkpoint drains appended jobs in FIFO order" {
   )
   match
     engine.run_microtask_checkpoint_bounded(
-      bounded_microtask_policy(
-        10000L,
-        100L,
-        @js_engine.InterruptionHandle(),
-      ),
+      bounded_microtask_policy(10000L, 100L, @js_engine.InterruptionHandle()),
     ) {
     Ok(has_more) => assert_false(has_more)
     Err(diagnostic) => fail(diagnostic.message())
@@ -265,11 +259,7 @@ test "failing callback retains unstarted and appended jobs in FIFO order" {
   )
   let diagnostic = expect_microtask_guardrail(
     engine.run_microtask_checkpoint_bounded(
-      bounded_microtask_policy(
-        10000L,
-        100L,
-        @js_engine.InterruptionHandle(),
-      ),
+      bounded_microtask_policy(10000L, 100L, @js_engine.InterruptionHandle()),
     ),
     "javascript-exception",
     @js_engine.PendingJobs::Present,

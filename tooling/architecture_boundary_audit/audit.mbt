@@ -169,7 +169,7 @@ fn validate_schema_version(
   data : Map[String, Json],
   path : String,
 ) -> Unit raise {
-  let version : Int = @json.from_json(require_field(data, "version", path)) catch {
+  let version : Int32 = @json.from_json(require_field(data, "version", path)) catch {
     _ => schema_error(path, "version must be an integer")
   }
   if version != BOUNDARY_RULES_SCHEMA_VERSION {
@@ -630,7 +630,7 @@ fn render_import_report(
   edges : Array[ImportEdge],
   rules : BoundaryRules,
   list_imports~ : Bool,
-) -> (Array[String], Array[String], Int) {
+) -> (Array[String], Array[String], Int32) {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
   if list_imports {
@@ -685,7 +685,7 @@ const DIRECT_RETURN_RESULT_PIPELINE_REL_PATH = "interpreter/runtime/activation_d
 ///|
 fn run_direct_return_result_pipeline_boundary(
   root : String,
-) -> (Array[String], Array[String], Int) raise {
+) -> (Array[String], Array[String], Int32) raise {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
   let path = @path_utils.join_path(root, DIRECT_RETURN_RESULT_PIPELINE_REL_PATH)
@@ -715,9 +715,9 @@ fn run_direct_return_result_pipeline_boundary(
 pub fn run(
   root~ : String,
   list_imports~ : Bool,
-  list_representation? : Bool = false,
-  list_surfaces? : Bool = false,
-) -> (Array[String], Array[String], Int) raise {
+  list_representation~ : Bool = false,
+  list_surfaces~ : Bool = false,
+) -> (Array[String], Array[String], Int32) raise {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
   let (import_stdout, import_stderr, import_code) = run_import_boundary(

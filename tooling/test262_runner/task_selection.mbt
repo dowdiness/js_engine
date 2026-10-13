@@ -98,8 +98,8 @@ fn load_tests_file(
 ///|
 fn slice_tasks(
   tasks : Array[(String, String)],
-  start? : Int = 0,
-  count? : Int? = None,
+  start~ : Int32 = 0,
+  count~ : Int32? = None,
 ) -> Array[(String, String)] raise {
   if start < 0 {
     fail("task slice start must be >= 0")
@@ -122,7 +122,7 @@ fn slice_tasks(
 }
 
 ///|
-pub fn parse_shard_spec(spec : String) -> (Int, Int) raise {
+pub fn parse_shard_spec(spec : String) -> (Int32, Int32) raise {
   let parts = spec.split("/").map(part => part.trim().to_owned()).to_array()
   guard parts.length() == 2 else {
     fail("shard must use i/n syntax, for example 2/8")
@@ -144,10 +144,10 @@ pub fn parse_shard_spec(spec : String) -> (Int, Int) raise {
 
 ///|
 fn shard_bounds(
-  total_tasks : Int,
-  shard_index : Int,
-  shard_total : Int,
-) -> (Int, Int) raise {
+  total_tasks : Int32,
+  shard_index : Int32,
+  shard_total : Int32,
+) -> (Int32, Int32) raise {
   if total_tasks < 0 {
     fail("total task count must be >= 0")
   }
@@ -173,15 +173,15 @@ fn shard_bounds(
 ///|
 fn shard_tasks(
   tasks : Array[(String, String)],
-  shard_index : Int,
-  shard_total : Int,
+  shard_index : Int32,
+  shard_total : Int32,
 ) -> Array[(String, String)] raise {
   let (start, end) = shard_bounds(tasks.length(), shard_index, shard_total)
   slice_tasks(tasks, start~, count=Some(end - start))
 }
 
 ///|
-fn normalize_test262_path(path : String, test262_dir? : String = "") -> String {
+fn normalize_test262_path(path : String, test262_dir~ : String = "") -> String {
   let mut normalized = @path_utils.normalize_path(path.trim().to_owned())
   if normalized == "" {
     return ""
@@ -227,7 +227,7 @@ fn task_key(task : (String, String), test262_dir : String) -> (String, String) {
 ///|
 fn load_completed_task_keys(
   results_file : String,
-  test262_dir? : String = "",
+  test262_dir~ : String = "",
 ) -> @set.Set[String] raise {
   let raw = @json.parse(@fs.read_file_to_string(results_file))
   let root : Map[String, Json] = @json.from_json(raw) catch { _ => {} }
@@ -262,7 +262,7 @@ fn load_completed_task_keys(
 fn filter_completed_tasks(
   tasks : Array[(String, String)],
   completed_keys : @set.Set[String],
-  test262_dir? : String = "",
+  test262_dir~ : String = "",
 ) -> Array[(String, String)] {
   let out : Array[(String, String)] = []
   for task in tasks {
@@ -346,11 +346,11 @@ fn build_test_tasks(
 ///|
 fn apply_task_selection(
   test_tasks : Array[(String, String)],
-  shard_spec? : (Int, Int)? = None,
-  start? : Int = 0,
-  count? : Int? = None,
-  resume_from? : String = "",
-  test262_dir? : String = "",
+  shard_spec~ : (Int32, Int32)? = None,
+  start~ : Int32 = 0,
+  count~ : Int32? = None,
+  resume_from~ : String = "",
+  test262_dir~ : String = "",
 ) -> (Array[(String, String)], Array[String]) raise {
   let mut selected_tasks = test_tasks
   let messages : Array[String] = []

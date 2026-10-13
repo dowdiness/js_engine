@@ -44,14 +44,14 @@ fn TreeExecutorCode::TreeExecutorCode(
 
 ///|
 priv enum TreeExecutorWork {
-  TreeExecuteStatements(Array[@ast.Stmt], Int)
+  TreeExecuteStatements(Array[@ast.Stmt], Int32)
   TreeExecuteStatement(@ast.Stmt)
   TreeEvaluateExpression(@ast.Expr)
   TreeApplyBinary(@ast.BinOp)
   TreeSelectBranch(@ast.Stmt, @ast.Stmt?)
   TreeDiscardValue
   TreeReturnValue
-  TreeFinishCall(Int, @token.Loc)
+  TreeFinishCall(Int32, @token.Loc)
 }
 
 ///|
@@ -232,7 +232,7 @@ priv struct TreeExecutorCallableProof {
   callable : TreeExecutorGraphCallable
   object_data : ObjectData
   summary : ExecutorActivationCapabilitySummary
-  parameter_count : Int
+  parameter_count : Int32
   closure : Environment
 }
 
@@ -241,7 +241,7 @@ fn TreeExecutorCallableProof::TreeExecutorCallableProof(
   callable~ : TreeExecutorGraphCallable,
   object_data~ : ObjectData,
   summary~ : ExecutorActivationCapabilitySummary,
-  parameter_count~ : Int,
+  parameter_count~ : Int32,
   closure~ : Environment,
 ) -> TreeExecutorCallableProof {
   { callable, object_data, summary, parameter_count, closure, }
@@ -253,8 +253,8 @@ priv struct TreeExecutorGraphEdge {
   target : Value
   this_value : Value
   target_object_data : ObjectData
-  argument_count : Int
-  target_node_index : Int
+  argument_count : Int32
+  target_node_index : Int32
 }
 
 ///|
@@ -263,8 +263,8 @@ fn TreeExecutorGraphEdge::TreeExecutorGraphEdge(
   target~ : Value,
   this_value~ : Value,
   target_object_data~ : ObjectData,
-  argument_count~ : Int,
-  target_node_index~ : Int,
+  argument_count~ : Int32,
+  target_node_index~ : Int32,
 ) -> TreeExecutorGraphEdge {
   {
     call_key,
@@ -280,7 +280,7 @@ fn TreeExecutorGraphEdge::TreeExecutorGraphEdge(
 priv struct TreeExecutorGraphBuildNode {
   callable : TreeExecutorGraphCallable
   object_data : ObjectData
-  parameter_count : Int
+  parameter_count : Int32
   mut edges : Array[TreeExecutorGraphEdge]
 }
 
@@ -288,7 +288,7 @@ priv struct TreeExecutorGraphBuildNode {
 fn TreeExecutorGraphBuildNode::TreeExecutorGraphBuildNode(
   callable~ : TreeExecutorGraphCallable,
   object_data~ : ObjectData,
-  parameter_count~ : Int,
+  parameter_count~ : Int32,
 ) -> TreeExecutorGraphBuildNode {
   { callable, object_data, parameter_count, edges: [], }
 }
@@ -297,7 +297,7 @@ fn TreeExecutorGraphBuildNode::TreeExecutorGraphBuildNode(
 priv struct TreeExecutorGraphNode {
   callable : TreeExecutorGraphCallable
   object_data : ObjectData
-  parameter_count : Int
+  parameter_count : Int32
   edges : Array[TreeExecutorGraphEdge]
 }
 
@@ -305,7 +305,7 @@ priv struct TreeExecutorGraphNode {
 fn TreeExecutorGraphNode::TreeExecutorGraphNode(
   callable~ : TreeExecutorGraphCallable,
   object_data~ : ObjectData,
-  parameter_count~ : Int,
+  parameter_count~ : Int32,
   edges~ : Array[TreeExecutorGraphEdge],
 ) -> TreeExecutorGraphNode {
   { callable, object_data, parameter_count, edges: edges.copy(), }
@@ -337,13 +337,13 @@ fn TreeExecutorGraphArena::TreeExecutorGraphArena(
 ///|
 priv struct TreeExecutorGraphCursor {
   arena : TreeExecutorGraphArena
-  node_index : Int
+  node_index : Int32
 }
 
 ///|
 fn TreeExecutorGraphCursor::TreeExecutorGraphCursor(
   arena~ : TreeExecutorGraphArena,
-  node_index~ : Int,
+  node_index~ : Int32,
 ) -> TreeExecutorGraphCursor {
   { arena, node_index, }
 }
@@ -351,13 +351,13 @@ fn TreeExecutorGraphCursor::TreeExecutorGraphCursor(
 ///|
 priv struct TreeExecutorGraphAdmission {
   arena : TreeExecutorGraphArena
-  root_node_index : Int
+  root_node_index : Int32
 }
 
 ///|
 fn TreeExecutorGraphAdmission::TreeExecutorGraphAdmission(
   arena~ : TreeExecutorGraphArena,
-  root_node_index~ : Int,
+  root_node_index~ : Int32,
 ) -> TreeExecutorGraphAdmission {
   { arena, root_node_index, }
 }
@@ -415,7 +415,7 @@ priv enum TreeExecutorGraphAdmissionNodeDecision {
 ///|
 fn tree_executor_graph_admission_node_decision(
   proof : TreeExecutorCallableProof,
-  arg_count : Int,
+  arg_count : Int32,
   visited : Array[ObjectData],
 ) -> TreeExecutorGraphAdmissionNodeDecision {
   guard proof.summary.parameter_count == proof.parameter_count &&
@@ -435,15 +435,15 @@ fn tree_executor_graph_admission_node_decision(
 ///|
 priv struct TreeExecutorGraphAdmissionWork {
   proof : TreeExecutorCallableProof
-  arg_count : Int
-  node_index : Int
+  arg_count : Int32
+  node_index : Int32
 }
 
 ///|
 fn TreeExecutorGraphAdmissionWork::TreeExecutorGraphAdmissionWork(
   proof~ : TreeExecutorCallableProof,
-  arg_count~ : Int,
-  node_index~ : Int,
+  arg_count~ : Int32,
+  node_index~ : Int32,
 ) -> TreeExecutorGraphAdmissionWork {
   { proof, arg_count, node_index, }
 }
@@ -452,7 +452,7 @@ fn TreeExecutorGraphAdmissionWork::TreeExecutorGraphAdmissionWork(
 fn tree_executor_graph_find_node(
   nodes : Array[TreeExecutorGraphBuildNode],
   object_data : ObjectData,
-) -> Int? {
+) -> Int32? {
   for index = 0; index < nodes.length(); index = index + 1 {
     if physical_equal(nodes[index].object_data, object_data) {
       return Some(index)
@@ -466,7 +466,7 @@ fn tree_executor_graph_append_node(
   nodes : Array[TreeExecutorGraphBuildNode],
   scheduled : Array[Bool],
   proof : TreeExecutorCallableProof,
-) -> Int {
+) -> Int32 {
   let node_index = nodes.length()
   nodes.push(
     TreeExecutorGraphBuildNode(
@@ -487,7 +487,7 @@ fn tree_executor_graph_append_node(
 // resolved, validated, and received a stable node index.
 fn tree_executor_callable_graph_admission(
   proof : TreeExecutorCallableProof,
-  arg_count : Int,
+  arg_count : Int32,
 ) -> TreeExecutorGraphAdmission? {
   let visited : Array[ObjectData] = []
   let nodes : Array[TreeExecutorGraphBuildNode] = []
@@ -587,7 +587,7 @@ fn tree_executor_callable_graph_admission(
 fn tree_executor_graph_select_edge(
   cursor : TreeExecutorGraphCursor,
   callee : Value,
-  argument_count : Int,
+  argument_count : Int32,
 ) -> TreeExecutorGraphEdge? {
   guard callee is Object(object_data) else { return None }
   guard cursor.node_index >= 0 &&

@@ -16,7 +16,7 @@ fn last_index_of_guardrail_policy(
 ///|
 fn expect_last_index_of_result(
   result : Result[Json, @js_engine.EngineDiagnostic],
-  expected : Int,
+  expected : Int32,
 ) -> Unit raise Error {
   match result {
     Ok(value) => json_inspect(value, content=Json::number(expected.to_double()))
@@ -63,11 +63,19 @@ test "default String.lastIndexOf preserves search boundaries and UTF-16 position
     "function utf16Position() { return \"😀x\".lastIndexOf(\"x\"); }",
   )
   expect_last_index_of_result(
-    engine.call_json_bounded("firstHit", [], last_index_of_guardrail_policy(1000L)),
+    engine.call_json_bounded(
+      "firstHit",
+      [],
+      last_index_of_guardrail_policy(1000L),
+    ),
     0,
   )
   expect_last_index_of_result(
-    engine.call_json_bounded("nearEndHit", [], last_index_of_guardrail_policy(1000L)),
+    engine.call_json_bounded(
+      "nearEndHit",
+      [],
+      last_index_of_guardrail_policy(1000L),
+    ),
     4,
   )
   expect_last_index_of_result(

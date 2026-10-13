@@ -49,7 +49,7 @@ priv enum ModuleResolutionRequest {
 ///|
 priv enum ModuleResolutionContinuation {
   AfterExplicit(ModuleRunRecord, String)
-  AfterStarSource(Array[String], String, Int, ModuleExportResolution)
+  AfterStarSource(Array[String], String, Int32, ModuleExportResolution)
 }
 
 ///|
@@ -669,7 +669,7 @@ priv struct ModuleExportedNamesContinuation {
   names : Array[String]
   seen_names : @set.Set[String]
   sources : Array[String]
-  next_index : Int
+  next_index : Int32
 }
 
 ///|
@@ -1070,7 +1070,7 @@ fn Interpreter::visit_module_dependencies_first(
   self : Interpreter,
   record : ModuleRunRecord,
   records_by_specifier : Map[String, ModuleRunRecord],
-  state : Map[String, Int],
+  state : Map[String, Int32],
   action : (Interpreter, ModuleRunRecord) -> Unit raise Error,
 ) -> Unit raise Error {
   match state.get(record.specifier) {
@@ -1232,7 +1232,7 @@ pub fn Interpreter::run_modules(
   for record in records {
     records_by_specifier[record.specifier] = record
   }
-  let indirect_state : Map[String, Int] = Map([])
+  let indirect_state : Map[String, Int32] = Map([])
   for record in records {
     self.visit_module_dependencies_first(
       record,
@@ -1246,7 +1246,7 @@ pub fn Interpreter::run_modules(
   for record in records {
     self.instantiate_module_imports(record)
   }
-  let evaluation_state : Map[String, Int] = Map([])
+  let evaluation_state : Map[String, Int32] = Map([])
   for record in records {
     self.visit_module_dependencies_first(
       record,

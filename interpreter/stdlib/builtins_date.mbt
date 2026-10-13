@@ -40,7 +40,7 @@ fn time_within_day(t : Double) -> Double {
 
 ///|
 /// Number of days in a year
-fn days_in_year(y : Int) -> Int {
+fn days_in_year(y : Int32) -> Int32 {
   if y % 4 != 0 {
     365
   } else if y % 100 != 0 {
@@ -54,7 +54,7 @@ fn days_in_year(y : Int) -> Int {
 
 ///|
 /// Day number of the first day of year y
-fn day_from_year(y : Int) -> Double {
+fn day_from_year(y : Int32) -> Double {
   // Division must use floor (not truncation) per ES spec, so compute in
   // floating-point where .floor() gives correct results for negative values.
   let yd = (y - 1970).to_double()
@@ -66,7 +66,7 @@ fn day_from_year(y : Int) -> Double {
 
 ///|
 /// Year from time value
-fn year_from_time(t : Double) -> Int {
+fn year_from_time(t : Double) -> Int32 {
   let d = day(t)
   // Approximate year from average days per year
   let mut y = (d / 365.2425 + 1970.0).to_int()
@@ -83,20 +83,20 @@ fn year_from_time(t : Double) -> Int {
 
 ///|
 /// Whether a year is a leap year
-fn is_leap_year(y : Int) -> Bool {
+fn is_leap_year(y : Int32) -> Bool {
   days_in_year(y) == 366
 }
 
 ///|
 /// Day within the year (0-based)
-fn day_within_year(t : Double) -> Int {
+fn day_within_year(t : Double) -> Int32 {
   let y = year_from_time(t)
   (day(t) - day_from_year(y)).to_int()
 }
 
 ///|
 /// Month from time (0-based: 0=Jan, 11=Dec)
-fn month_from_time(t : Double) -> Int {
+fn month_from_time(t : Double) -> Int32 {
   let dwy = day_within_year(t)
   let y = year_from_time(t)
   let leap = if is_leap_year(y) { 1 } else { 0 }
@@ -129,7 +129,7 @@ fn month_from_time(t : Double) -> Int {
 
 ///|
 /// Day of month from time (1-based)
-fn date_from_time(t : Double) -> Int {
+fn date_from_time(t : Double) -> Int32 {
   let dwy = day_within_year(t)
   let y = year_from_time(t)
   let leap = if is_leap_year(y) { 1 } else { 0 }
@@ -152,7 +152,7 @@ fn date_from_time(t : Double) -> Int {
 
 ///|
 /// Day of week (0=Sun, 6=Sat)
-fn week_day(t : Double) -> Int {
+fn week_day(t : Double) -> Int32 {
   let r = (day(t) + 4.0) % 7.0
   let d = if r < 0.0 { r + 7.0 } else { r }
   d.to_int()
@@ -160,28 +160,28 @@ fn week_day(t : Double) -> Int {
 
 ///|
 /// Hours from time
-fn hours_from_time(t : Double) -> Int {
+fn hours_from_time(t : Double) -> Int32 {
   let r = (time_within_day(t) / MS_PER_HOUR).floor()
   r.to_int()
 }
 
 ///|
 /// Minutes from time
-fn minutes_from_time(t : Double) -> Int {
+fn minutes_from_time(t : Double) -> Int32 {
   let r = (time_within_day(t) / MS_PER_MINUTE).floor() % 60.0
   r.to_int()
 }
 
 ///|
 /// Seconds from time
-fn seconds_from_time(t : Double) -> Int {
+fn seconds_from_time(t : Double) -> Int32 {
   let r = (time_within_day(t) / MS_PER_SECOND).floor() % 60.0
   r.to_int()
 }
 
 ///|
 /// Milliseconds from time
-fn millis_from_time(t : Double) -> Int {
+fn millis_from_time(t : Double) -> Int32 {
   let r = time_within_day(t) % MS_PER_SECOND
   r.to_int()
 }
@@ -201,7 +201,7 @@ fn make_time(hour : Double, min : Double, sec : Double, ms : Double) -> Double {
 
 ///|
 /// Cumulative days before month (0-based month, accounting for leap year)
-fn day_of_month_start(month : Int, leap : Bool) -> Int {
+fn day_of_month_start(month : Int32, leap : Bool) -> Int32 {
   let leap_offset = if leap { 1 } else { 0 }
   match month {
     0 => 0
@@ -268,7 +268,7 @@ fn time_clip(time : Double) -> Double {
 
 ///|
 /// Zero-pad a number to specified width
-fn pad_number(n : Int, width : Int) -> String {
+fn pad_number(n : Int32, width : Int32) -> String {
   let s = n.abs().to_string()
   let buf = StringBuilder()
   if n < 0 {
@@ -283,7 +283,7 @@ fn pad_number(n : Int, width : Int) -> String {
 
 ///|
 /// Day-of-week name abbreviation
-fn day_name(wd : Int) -> String {
+fn day_name(wd : Int32) -> String {
   match wd {
     0 => "Sun"
     1 => "Mon"
@@ -297,7 +297,7 @@ fn day_name(wd : Int) -> String {
 
 ///|
 /// Month name abbreviation
-fn month_name(m : Int) -> String {
+fn month_name(m : Int32) -> String {
   match m {
     0 => "Jan"
     1 => "Feb"
@@ -506,7 +506,7 @@ fn parse_date_string(s : String) -> Double {
 
 ///|
 /// Parse ISO 8601 date format
-fn parse_iso_date(chars : Array[Char], len : Int) -> Double {
+fn parse_iso_date(chars : Array[Char], len : Int32) -> Double {
   // Minimum: YYYY (4 chars)
   if len < 4 {
     return 0.0 / 0.0
@@ -667,7 +667,11 @@ fn parse_iso_date(chars : Array[Char], len : Int) -> Double {
 
 ///|
 /// Parse integer from char array slice
-fn parse_int_from_chars(chars : Array[Char], start : Int, end : Int) -> Int {
+fn parse_int_from_chars(
+  chars : Array[Char],
+  start : Int32,
+  end : Int32,
+) -> Int32 {
   let mut result = 0
   for i = start; i < end; i = i + 1 {
     result = result * 10 + (chars[i].to_int() - '0'.to_int())

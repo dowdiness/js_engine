@@ -4,6 +4,7 @@
 // Bundler: esbuild 0.27.7 --bundle --format=iife --platform=neutral --target=esnext
 // Bundle bytes: 65441
 // Bundle SHA-256: 124d47855cb3c634399e04819f8bdeb5da8848b17d989d9099b98bd3e2f16603
+
 ///|
 pub const HONO_4_12_31_BUNDLE =
   #|(() => {

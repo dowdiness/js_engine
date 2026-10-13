@@ -10,8 +10,8 @@ fn write_text(path : String, text : String) -> Unit raise {
 ///|
 fn write_test_file(
   path : String,
-  frontmatter? : String = "description: test",
-  body? : String = "",
+  frontmatter~ : String = "description: test",
+  body~ : String = "",
 ) -> Unit raise {
   write_text(path, "/*---\n" + frontmatter + "\n---*/\n" + body + "\n")
 }
@@ -682,7 +682,7 @@ async test "run_single_test preserves external subprocess status semantics" {
   write_test_file(crlf_error_test, body="BODY_CRLF_ERROR")
   let null_source = StringBuilder()
   null_source.write_string("const payload = \"")
-  null_source.write_char(Int::unsafe_to_char(0))
+  null_source.write_char(Int32::unsafe_to_char(0))
   null_source.write_string("\";\n")
   write_text(null_test, null_source.to_string())
   let metadata = @metadata.load_skip_metadata(root=".")

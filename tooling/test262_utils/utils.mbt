@@ -40,7 +40,7 @@ fn split_lines(text : String) -> Array[String] {
 }
 
 ///|
-fn leading_spaces(line : String) -> Int {
+fn leading_spaces(line : String) -> Int32 {
   let mut count = 0
   for ch in line {
     if ch == ' ' {
@@ -63,7 +63,7 @@ fn string_from_chars(chars : ArrayView[Char]) -> String {
 }
 
 ///|
-fn suffix_from_or_empty(s : String, start : Int) -> String {
+fn suffix_from_or_empty(s : String, start : Int32) -> String {
   if start >= s.length() {
     ""
   } else {
@@ -92,7 +92,7 @@ fn double_quote_escape(ch : Char) -> Char? {
 }
 
 ///|
-fn hex_digit_value(ch : Char) -> Int? {
+fn hex_digit_value(ch : Char) -> Int32? {
   if ch >= '0' && ch <= '9' {
     Some(ch.to_int() - '0'.to_int())
   } else if ch >= 'a' && ch <= 'f' {
@@ -105,7 +105,11 @@ fn hex_digit_value(ch : Char) -> Int? {
 }
 
 ///|
-fn parse_hex_digits(chars : Array[Char], start : Int, count : Int) -> Int? {
+fn parse_hex_digits(
+  chars : Array[Char],
+  start : Int32,
+  count : Int32,
+) -> Int32? {
   let mut value = 0
   for offset in 0..<count {
     match hex_digit_value(chars[start + offset]) {
@@ -349,10 +353,10 @@ fn parse_inline_dict(value : String) -> Map[String, Json]? {
 ///|
 fn parse_block_scalar(
   lines : Array[String],
-  start : Int,
-  parent_indent : Int,
+  start : Int32,
+  parent_indent : Int32,
   folded : Bool,
-) -> (Json, Int) {
+) -> (Json, Int32) {
   let block_lines : Array[String] = []
   let mut block_indent = -1
   let mut j = start
@@ -399,9 +403,9 @@ fn parse_block_scalar(
 ///|
 fn parse_indented_block(
   lines : Array[String],
-  start : Int,
-  parent_indent : Int,
-) -> (Json, Int) {
+  start : Int32,
+  parent_indent : Int32,
+) -> (Json, Int32) {
   let block_lines : Array[String] = []
   let mut j = start
   while j < lines.length() {
@@ -459,10 +463,10 @@ fn parse_indented_block(
 ///|
 fn parse_remainder_value(
   lines : Array[String],
-  line_index : Int,
-  indent : Int,
+  line_index : Int32,
+  indent : Int32,
   remainder : String,
-) -> (Json, Int?) {
+) -> (Json, Int32?) {
   match parse_inline_list(remainder) {
     Some(values) => (Json::array(values), None)
     None =>

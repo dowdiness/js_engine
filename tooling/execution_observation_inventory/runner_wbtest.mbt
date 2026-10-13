@@ -1,6 +1,6 @@
 ///|
 #borrow(target, link)
-extern "c" fn create_runner_test_symlink(target : Bytes, link : Bytes) -> Int = "moonbit_execution_observation_inventory_create_symlink"
+extern "c" fn create_runner_test_symlink(target : Bytes, link : Bytes) -> Int32 = "moonbit_execution_observation_inventory_create_symlink"
 
 ///|
 fn ensure_runner_test_dir(path : String) -> Unit raise {

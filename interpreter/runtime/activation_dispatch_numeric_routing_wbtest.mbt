@@ -48,7 +48,7 @@ fn numeric_routing_test_protected_function_plan() -> NumericRecursionPlan raise 
 ///|
 fn numeric_routing_test_call_start(
   plan : NumericRecursionPlan,
-  id : Int,
+  id : Int32,
 ) -> DispatchNumericCallStart {
   DispatchNumericCallStart(
     parameter=DispatchParameterBindingToken(id~),

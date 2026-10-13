@@ -103,7 +103,7 @@ pub fn install_builtin_frozen_data(
 /// Install a built-in symbol-keyed method and its standard method descriptor.
 pub fn install_builtin_symbol_method(
   data : ObjectData,
-  sym_id : Int,
+  sym_id : Int32,
   func : Value,
 ) -> Unit {
   data.bag.symbol_properties[sym_id] = func
@@ -114,7 +114,7 @@ pub fn install_builtin_symbol_method(
 /// Install a built-in symbol-keyed non-writable non-configurable data property.
 pub fn install_builtin_symbol_frozen_data(
   data : ObjectData,
-  sym_id : Int,
+  sym_id : Int32,
   value : Value,
 ) -> Unit {
   data.bag.symbol_properties[sym_id] = value
@@ -125,7 +125,7 @@ pub fn install_builtin_symbol_frozen_data(
 /// Install a built-in symbol-keyed accessor property with no setter.
 pub fn install_builtin_symbol_accessor(
   data : ObjectData,
-  sym_id : Int,
+  sym_id : Int32,
   getter : Value,
 ) -> Unit {
   data.bag.symbol_properties[sym_id] = Undefined
@@ -139,7 +139,7 @@ pub fn install_builtin_symbol_accessor(
 /// Install a built-in symbol-keyed non-writable configurable string data property.
 pub fn install_builtin_symbol_string(
   data : ObjectData,
-  sym_id : Int,
+  sym_id : Int32,
   tag : String,
 ) -> Unit {
   data.bag.symbol_properties[sym_id] = Value::String_(tag)
@@ -290,8 +290,8 @@ pub fn install_realm_pinned_builtin_constructor(
   ctor_name : String,
   ctor : Value,
   proto : Value,
-  prototype_install? : BuiltinCtorPrototypeInstall = FrozenAtInstall,
-  wire_proto_constructor? : Bool = false,
+  prototype_install~ : BuiltinCtorPrototypeInstall = FrozenAtInstall,
+  wire_proto_constructor~ : Bool = false,
 ) -> Unit {
   apply_ctor_prototype_install(ctor, ctor_name, proto, prototype_install)
   pin_realm_cache_and_register_builtin(

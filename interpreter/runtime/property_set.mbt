@@ -140,8 +140,8 @@ pub fn Interpreter::set_property(
   prop : String,
   value : Value,
   loc : @token.Loc,
-  strict? : Bool = false,
-  receiver? : Value = obj,
+  strict~ : Bool = false,
+  receiver~ : Value = obj,
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) =>
@@ -1078,7 +1078,7 @@ fn Interpreter::typedarray_set_dispatch(
   obj : Value,
   receiver : Value,
   key : Value,
-  idx : Int,
+  idx : Int32,
   value : Value,
   loc : @token.Loc,
   strict : Bool,
@@ -1331,8 +1331,8 @@ pub fn Interpreter::set_computed_property(
   key : Value,
   value : Value,
   loc : @token.Loc,
-  strict? : Bool = false,
-  receiver? : Value = obj,
+  strict~ : Bool = false,
+  receiver~ : Value = obj,
 ) -> Value raise Error {
   match obj {
     Proxy(proxy_data) => {
@@ -2145,7 +2145,7 @@ pub fn get_bound_func_name(target : Value) -> String {
 }
 
 ///|
-pub fn get_func_length(callable : Callable) -> Int {
+pub fn get_func_length(callable : Callable) -> Int32 {
   match callable {
     UserFunc(func_data) => func_data.params.length()
     UserFuncExt(func_data) => {
@@ -2201,7 +2201,7 @@ pub fn get_func_length(callable : Callable) -> Int {
 /// Return the observable function length used by Function.prototype.bind.
 /// Prefer an own numeric `length` property, falling back to callable metadata
 /// for older function objects that synthesize length from their Callable tag.
-pub fn get_function_length(target : Value) -> Int {
+pub fn get_function_length(target : Value) -> Int32 {
   match target {
     Object(data) =>
       match data.bag.properties.get("length") {

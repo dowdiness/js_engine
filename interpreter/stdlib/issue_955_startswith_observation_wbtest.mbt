@@ -1,5 +1,5 @@
 ///|
-fn starts_with_observation_probe(observations : Ref[Int]) -> Value {
+fn starts_with_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -19,7 +19,7 @@ fn starts_with_observation_probe(observations : Ref[Int]) -> Value {
 fn call_starts_with_with_observation_probe(
   value : String,
   search : String,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -38,7 +38,7 @@ fn call_starts_with_with_observation_probe(
 
 ///|
 test "String.startsWith observes each actual comparison" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_starts_with_with_observation_probe("abc", "ab", observations) {
     Bool(value) => inspect(value, content="true")
     _ => fail("startsWith must return a boolean")
@@ -48,7 +48,7 @@ test "String.startsWith observes each actual comparison" {
 
 ///|
 test "String.startsWith observes the first mismatch before returning" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_starts_with_with_observation_probe("abc", "z", observations) {
     Bool(value) => inspect(value, content="false")
     _ => fail("startsWith must return a boolean")
@@ -58,7 +58,7 @@ test "String.startsWith observes the first mismatch before returning" {
 
 ///|
 test "String.startsWith empty search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_starts_with_with_observation_probe("abc", "", observations) {
     Bool(value) => inspect(value, content="true")
     _ => fail("startsWith must return a boolean")
@@ -68,7 +68,7 @@ test "String.startsWith empty search observes no comparisons" {
 
 ///|
 test "String.startsWith impossible search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_starts_with_with_observation_probe("abc", "abcd", observations) {
     Bool(value) => inspect(value, content="false")
     _ => fail("startsWith must return a boolean")

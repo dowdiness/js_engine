@@ -27,7 +27,7 @@ fn source_point_id_for_role_for_wb(
 fn instruction_index_for_roles_for_wb(
   function : BytecodeFunction,
   roles : Array[SourcePointRole],
-) -> Int {
+) -> Int32 {
   for index, instruction in function.code {
     if bytecode_instruction_contract(instruction).required_source_roles == roles {
       return index
@@ -75,7 +75,7 @@ fn function_contains_property_preparation_for_wb(
 }
 
 ///|
-fn observe_statement_index_for_wb(function : BytecodeFunction) -> Int {
+fn observe_statement_index_for_wb(function : BytecodeFunction) -> Int32 {
   for index, instruction in function.code {
     match instruction {
       ObserveStatement(_) => return index
@@ -86,7 +86,7 @@ fn observe_statement_index_for_wb(function : BytecodeFunction) -> Int {
 }
 
 ///|
-fn observe_expression_index_for_wb(function : BytecodeFunction) -> Int {
+fn observe_expression_index_for_wb(function : BytecodeFunction) -> Int32 {
   for index, instruction in function.code {
     match instruction {
       ObserveExpression(_) => return index
@@ -195,7 +195,7 @@ fn bytecode_function_with_source_unit_for_wb(
 ///|
 fn bytecode_function_with_local_slot_capacity_for_wb(
   function : BytecodeFunction,
-  local_slot_count : Int,
+  local_slot_count : Int32,
 ) -> BytecodeFunction {
   BytecodeFunction(
     name=function.name,
@@ -327,8 +327,8 @@ fn source_point_id_with_different_index_for_wb(
 fn expect_source_metadata_defect_for_wb(
   program : BytecodeUnverifiedProgram,
   expected_invariant : BytecodeSourceMetadataInvariant,
-  expected_path : Array[Int],
-  expected_instruction : Int?,
+  expected_path : Array[Int32],
+  expected_instruction : Int32?,
 ) -> BytecodeSourceMetadataDefect raise Error {
   try {
     let _ = finalize_bytecode_program(program)
@@ -644,7 +644,7 @@ test "RED: same-handle cross-function source owner aliases are rejected" {
     abort("expected child source point")
   }
   let child_role = child.source_points[0].role
-  let mut root_source_slot : (Int, Int)? = None
+  let mut root_source_slot : (Int32, Int32)? = None
   for instruction_index, instruction in program.main.code {
     let required_roles = bytecode_instruction_contract(instruction).required_source_roles
     for
@@ -878,7 +878,7 @@ test "source owner allocation is deterministic across compilations" {
 ///|
 test "RED: finalization rejects an unpatched control-flow target" {
   let program = unverified_source_program_for_wb("if (true) 1; else 2;")
-  let mut jump_index : Int? = None
+  let mut jump_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       JumpIfFalse(target) => {
@@ -905,7 +905,7 @@ test "RED: finalization rejects an out-of-range child operand" {
   let program = unverified_source_program_for_wb("var f = function() {};")
   let child_count = program.main.children.length()
   guard child_count > 0 else { abort("expected one child function") }
-  let mut found_instruction_index : Int? = None
+  let mut found_instruction_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       MakeFunction(_) => {
@@ -954,7 +954,7 @@ fn indexed_operand_family_equal_for_wb(
 ///|
 fn bytecode_instruction_with_indexed_operand_for_wb(
   instruction : BytecodeInstr,
-  operand : Int,
+  operand : Int32,
 ) -> BytecodeInstr {
   match instruction {
     MakeFunction(_) => MakeFunction(operand)
@@ -979,8 +979,8 @@ fn bytecode_instruction_with_indexed_operand_for_wb(
 fn mutate_first_indexed_operand_for_wb(
   function : BytecodeFunction,
   family : BytecodeIndexedOperandFamily,
-  operand : Int,
-) -> Int {
+  operand : Int32,
+) -> Int32 {
   for instruction_index, instruction in function.code {
     match bytecode_indexed_operand(instruction) {
       Some((actual_family, _)) =>
@@ -999,8 +999,8 @@ fn mutate_first_indexed_operand_for_wb(
 ///|
 fn expect_indexed_operand_defect_for_wb(
   program : BytecodeUnverifiedProgram,
-  expected_path : Array[Int],
-  expected_instruction : Int,
+  expected_path : Array[Int32],
+  expected_instruction : Int32,
 ) -> BytecodeIndexedOperandTargetDefect raise Error {
   try {
     let _ = finalize_bytecode_program(program)
@@ -1286,8 +1286,8 @@ test "indexed operand verifier reports nested function path" {
 ///|
 fn expect_shape_operand_defect_for_wb(
   program : BytecodeUnverifiedProgram,
-  expected_path : Array[Int],
-  expected_instruction : Int,
+  expected_path : Array[Int32],
+  expected_instruction : Int32,
 ) -> BytecodeShapeOperandTargetDefect raise Error {
   try {
     let _ = finalize_bytecode_program(program)
@@ -1305,7 +1305,7 @@ fn expect_shape_operand_defect_for_wb(
 ///|
 test "shape operand verifier rejects negative fixed array element counts" {
   let program = unverified_source_program_for_wb("[1];")
-  let mut instruction_index : Int? = None
+  let mut instruction_index : Int32? = None
   for index, instruction in program.main.code {
     match instruction {
       MakeArray(_) => {
@@ -1337,7 +1337,7 @@ test "shape operand verifier rejects negative fixed array element counts" {
 ///|
 test "RED: shape operand verifier rejects negative holey array counts" {
   let program = unverified_source_program_for_wb("[1,,3];")
-  let mut instruction_index : Int? = None
+  let mut instruction_index : Int32? = None
   for index, instruction in program.main.code {
     match instruction {
       MakeArrayWithHoles(_, hole_indices) => {
@@ -1368,7 +1368,7 @@ test "RED: shape operand verifier rejects negative holey array counts" {
 test "RED: shape operand verifier rejects hole indices outside the array" {
   for invalid_hole in [-1, 3] {
     let program = unverified_source_program_for_wb("[1,,3];")
-    let mut instruction_index : Int? = None
+    let mut instruction_index : Int32? = None
     for index, instruction in program.main.code {
       match instruction {
         MakeArrayWithHoles(count, _) => {
@@ -1409,8 +1409,8 @@ priv enum FixedCallOpcodeForWb {
 fn mutate_fixed_call_count_for_wb(
   function : BytecodeFunction,
   opcode : FixedCallOpcodeForWb,
-  count : Int,
-) -> Int {
+  count : Int32,
+) -> Int32 {
   for instruction_index, instruction in function.code {
     match (instruction, opcode) {
       (Call(_, loc), PlainCall) => {
@@ -1526,8 +1526,8 @@ test "shape operand verifier accepts valid boundary and lowering operands" {
 ///|
 fn expect_frame_shape_defect_for_wb(
   program : BytecodeUnverifiedProgram,
-  expected_path : Array[Int],
-  expected_instruction : Int,
+  expected_path : Array[Int32],
+  expected_instruction : Int32,
 ) -> BytecodeFrameShapeDefect raise Error {
   try {
     let _ = finalize_bytecode_program(program)
@@ -1545,7 +1545,7 @@ fn expect_frame_shape_defect_for_wb(
 ///|
 test "frame-shape verifier rejects reachable operand stack underflow" {
   let program = unverified_source_program_for_wb("var value = 1;")
-  let mut load_index : Int? = None
+  let mut load_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       LoadConst(_) => {
@@ -1575,7 +1575,7 @@ test "frame-shape verifier rejects reachable operand stack underflow" {
 ///|
 test "frame-shape verifier rejects argument-list underflow" {
   let program = unverified_source_program_for_wb("f(...values);")
-  let mut start_index : Int? = None
+  let mut start_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       StartArgs => {
@@ -1592,7 +1592,7 @@ test "frame-shape verifier rejects argument-list underflow" {
     Some(index) => index
     None => abort("expected StartArgs instruction")
   }
-  let mut push_index : Int? = None
+  let mut push_index : Int32? = None
   for instruction_index = start_index + 1
       instruction_index < program.main.code.length()
       instruction_index = instruction_index + 1 {
@@ -1649,7 +1649,7 @@ test "frame-shape verifier rejects unequal control-flow joins" {
   let program = unverified_source_program_for_wb(
     "if (condition) { value = 1; } else { value = 2; }",
   )
-  let mut mutated_index : Int? = None
+  let mut mutated_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       SetCompletion => {
@@ -1721,7 +1721,7 @@ test "frame-shape verifier rejects unequal binding-reference joins" {
 ///|
 test "frame-shape verifier rejects terminal auxiliary-state residue" {
   let program = unverified_source_program_for_wb("f(...values);")
-  let mut call_index : Int? = None
+  let mut call_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       CallSpread(loc) => {
@@ -1774,7 +1774,7 @@ test "observation authority rejects a mutated ForInNext topology" {
   let program = unverified_source_program_for_wb(
     "var key; for (key in object) { value = key; }",
   )
-  let mut branch_index : Int? = None
+  let mut branch_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       ForInNext(target) => {
@@ -1804,7 +1804,7 @@ test "frame-shape verifier reports nested function provenance" {
     abort("expected one child function")
   }
   let child = program.main.children[0]
-  let mut load_index : Int? = None
+  let mut load_index : Int32? = None
   for instruction_index, instruction in child.code {
     match instruction {
       LoadConst(_) => {
@@ -1897,8 +1897,8 @@ test "frame-shape verifier still rejects residual operands at throw" {
 ///|
 fn expect_control_flow_defect_for_wb(
   program : BytecodeUnverifiedProgram,
-  expected_path : Array[Int],
-  expected_instruction : Int,
+  expected_path : Array[Int32],
+  expected_instruction : Int32,
 ) -> BytecodeControlFlowTargetDefect raise Error {
   try {
     let _ = finalize_bytecode_program(program)
@@ -1947,7 +1947,7 @@ fn is_control_flow_opcode_for_wb(
 ///|
 fn bytecode_instruction_with_target_for_wb(
   instruction : BytecodeInstr,
-  target : Int,
+  target : Int32,
 ) -> BytecodeInstr {
   match instruction {
     Jump(_) => Jump(target)
@@ -1966,8 +1966,8 @@ fn bytecode_instruction_with_target_for_wb(
 fn mutate_first_control_flow_target_for_wb(
   function : BytecodeFunction,
   opcode : ControlFlowOpcodeForWb,
-  target : Int,
-) -> Int {
+  target : Int32,
+) -> Int32 {
   for instruction_index, instruction in function.code {
     if is_control_flow_opcode_for_wb(instruction, opcode) {
       function.code[instruction_index] = bytecode_instruction_with_target_for_wb(
@@ -1982,9 +1982,9 @@ fn mutate_first_control_flow_target_for_wb(
 ///|
 fn mutate_for_in_fallthrough_back_edge_for_wb(
   function : BytecodeFunction,
-  target : Int,
-) -> Int {
-  let mut for_in_index : Int? = None
+  target : Int32,
+) -> Int32 {
+  let mut for_in_index : Int32? = None
   for instruction_index, instruction in function.code {
     match instruction {
       ForInNext(_) => {
@@ -2171,7 +2171,7 @@ test "control-flow verifier accepts representative valid programs" {
 test "observation verifier rejects terminal target that skips a statement" {
   let program = unverified_source_program_for_wb("1; if (false) 2;")
   let code_length = program.main.code.length()
-  let mut jump_index : Int? = None
+  let mut jump_index : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       JumpIfFalse(_) => {
@@ -2192,7 +2192,7 @@ test "observation verifier rejects terminal target that skips a statement" {
 }
 
 ///|
-fn load_name_index_for_wb(function : BytecodeFunction, name : String) -> Int {
+fn load_name_index_for_wb(function : BytecodeFunction, name : String) -> Int32 {
   for instruction_index, instruction in function.code {
     match instruction {
       LoadName(actual) if actual == name => return instruction_index
@@ -2203,7 +2203,10 @@ fn load_name_index_for_wb(function : BytecodeFunction, name : String) -> Int {
 }
 
 ///|
-fn get_property_index_for_wb(function : BytecodeFunction, name : String) -> Int {
+fn get_property_index_for_wb(
+  function : BytecodeFunction,
+  name : String,
+) -> Int32 {
   for instruction_index, instruction in function.code {
     match instruction {
       GetProperty(actual, _) if actual == name => return instruction_index
@@ -2334,8 +2337,8 @@ test "RED: coordinated target and observation facts bypass a statement" {
   let program = unverified_source_program_for_wb(
     "if (condition) first; else second;",
   )
-  let mut jump_index : Int? = None
-  let mut original_target : Int? = None
+  let mut jump_index : Int32? = None
+  let mut original_target : Int32? = None
   for instruction_index, instruction in program.main.code {
     match instruction {
       JumpIfFalse(target) => {

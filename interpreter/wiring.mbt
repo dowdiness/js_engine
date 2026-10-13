@@ -10,11 +10,11 @@ pub using @runtime {type Value, type Interpreter, type Environment}
 /// Create a new interpreter wired with the full standard library.
 /// This is the main entry point for creating a JavaScript interpreter.
 pub fn new_interpreter(
-  annex_b? : Bool = false,
-  module_loader? : @runtime.ModuleLoader? = None,
-  console_enabled? : Bool = true,
-  console_output_sink? : ((@runtime.ConsoleOutputKind, String) -> Unit raise Error)? = None,
-  setup_test262_harness? : Bool = true,
+  annex_b~ : Bool = false,
+  module_loader~ : @runtime.ModuleLoader? = None,
+  console_enabled~ : Bool = true,
+  console_output_sink~ : ((@runtime.ConsoleOutputKind, String) -> Unit raise Error)? = None,
+  setup_test262_harness~ : Bool = true,
 ) -> @runtime.Interpreter {
   @runtime.Interpreter::new(
     annex_b~,

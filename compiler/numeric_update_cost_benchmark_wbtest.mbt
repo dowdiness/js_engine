@@ -15,7 +15,7 @@ fn numeric_update_cost_function(body : String) -> VerifiedBytecodeFunction {
 fn numeric_update_cost_run(
   interp : Interpreter,
   function : VerifiedBytecodeFunction,
-  seed : Int,
+  seed : Int32,
 ) -> Double {
   let result = run_bytecode_function(
     interp,

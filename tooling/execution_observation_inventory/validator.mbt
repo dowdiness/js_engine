@@ -1,5 +1,5 @@
 ///|
-const SCHEMA_VERSION : Int = 1
+const SCHEMA_VERSION : Int32 = 1
 
 ///|
 const REQUIRED_CONTRACT = "docs/decisions/engine-execution-guardrail-contract.md"
@@ -342,7 +342,7 @@ fn validate_manifest_and_collect_evidence(
   let data : Map[String, Json] = @json.from_json(json) catch {
     _ => return Err(path + ": manifest must be a JSON object")
   }
-  let version : Int = match data.get("version") {
+  let version : Int32 = match data.get("version") {
     Some(value) =>
       @json.from_json(value) catch {
         _ => return Err(path + ": version must be an integer")

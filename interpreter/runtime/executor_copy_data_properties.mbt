@@ -35,7 +35,7 @@ priv struct ExecutorOwnPropertyKeysOperation {
   mut target_keys : Array[Value]
   mut target_nonconfigurable_keys : Array[Value]
   mut target_configurable_keys : Array[Value]
-  mut index : Int
+  mut index : Int32
   mut target_extensible : Bool
   mut current_key : Value?
   mut trap_result : Value?
@@ -214,7 +214,7 @@ fn ExecutorOwnPropertyKeysOperation::consume_target_descriptor(
 
 ///|
 fn executor_own_keys_decrement_string(
-  counts : Map[String, Int],
+  counts : Map[String, Int32],
   key : String,
 ) -> Unit raise Error {
   match counts.get(key) {
@@ -232,7 +232,7 @@ fn ExecutorOwnPropertyKeysOperation::validate_trap_keys(
   interp : Interpreter,
 ) -> Unit raise Error {
   let seen_strings : Map[String, Bool] = Map([])
-  let seen_symbols : Map[Int, Bool] = Map([])
+  let seen_symbols : Map[Int32, Bool] = Map([])
   for key in self.trap_keys {
     interp.observe_execution_step()
     match key {
@@ -270,8 +270,8 @@ fn ExecutorOwnPropertyKeysOperation::finish_invariants(
     self.phase = ExecutorOwnPropertyKeysComplete(trap_keys)
     return ExecutorActivationNormal(make_array(trap_keys.copy()))
   }
-  let unchecked : Map[String, Int] = Map([])
-  let unchecked_symbols : Map[Int, Int] = Map([])
+  let unchecked : Map[String, Int32] = Map([])
+  let unchecked_symbols : Map[Int32, Int32] = Map([])
   for key in trap_keys {
     interp.observe_execution_step()
     match key {
@@ -684,7 +684,7 @@ priv enum ExecutorCopyDataPropertiesPhase {
 priv struct ExecutorCopyDataPropertiesFrame {
   request : ExecutorCopyDataPropertiesRequest
   mut keys : Array[Value]
-  mut index : Int
+  mut index : Int32
   mut current_key : Value?
   mut phase : ExecutorCopyDataPropertiesPhase
 }

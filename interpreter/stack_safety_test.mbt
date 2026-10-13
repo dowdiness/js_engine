@@ -1,5 +1,5 @@
 ///|
-fn nested_comma_source(depth : Int, final_expression : String) -> String {
+fn nested_comma_source(depth : Int32, final_expression : String) -> String {
   let mut source = final_expression
   for _ in 0..<depth {
     source = "0," + source
@@ -8,7 +8,7 @@ fn nested_comma_source(depth : Int, final_expression : String) -> String {
 }
 
 ///|
-fn nested_array_pattern_source(depth : Int, inner : String) -> String {
+fn nested_array_pattern_source(depth : Int32, inner : String) -> String {
   let mut source = inner
   for _ in 0..<depth {
     source = "[" + source + "]"

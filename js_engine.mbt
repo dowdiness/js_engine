@@ -10,7 +10,7 @@ pub using @runtime {
 ///|
 pub fn run(
   source : String,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> (Array[String], String) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
   let prog = @parser.parse(source)
@@ -31,7 +31,7 @@ pub fn run(
 /// closures, then runs it with the same event-loop drain behavior as `run`.
 pub fn run_compiled(
   source : String,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> (Array[String], String) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
   let prog = @parser.parse(source)
@@ -47,7 +47,7 @@ pub fn run_compiled(
 /// This version allows the host to control microtask and timer execution timing
 pub fn run_with_event_loop(
   source : String,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> (@interpreter.Interpreter, @interpreter.Value) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
   let prog = @parser.parse(source)
@@ -125,7 +125,7 @@ pub struct Engine {
 }
 
 ///|
-pub fn Engine::Engine(annex_b? : Bool = false) -> Engine {
+pub fn Engine::Engine(annex_b~ : Bool = false) -> Engine {
   { interp: @interpreter.new_interpreter(annex_b~), }
 }
 
@@ -386,9 +386,9 @@ pub struct Shell {
 ///|
 pub fn Shell::Shell(
   load_source~ : (String, String?) -> LoadedScript raise,
-  read_bytes? : ((String, String?) -> Bytes raise)? = None,
-  now_millis? : (() -> Double)? = None,
-  annex_b? : Bool = false,
+  read_bytes~ : ((String, String?) -> Bytes raise)? = None,
+  now_millis~ : (() -> Double)? = None,
+  annex_b~ : Bool = false,
 ) -> Shell {
   let shell = {
     engine: Engine(annex_b~),
@@ -679,7 +679,7 @@ pub fn Shell::drain_jobs(self : Shell) -> Unit raise EngineError {
 /// The module is executed in strict mode and its exports are collected
 pub fn run_module(
   source : String,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
   let prog = @parser.parse(source)
@@ -696,7 +696,7 @@ pub fn run_module(
 /// dependency. Returns the exports of the last module.
 pub fn run_modules(
   modules : Array[(String, String)],
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
   let last_exports = interp.run_modules(modules)

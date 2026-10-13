@@ -4,9 +4,9 @@
 pub struct HostedSession {
   priv session : ExecutionSession
   priv policy : @runtime.ExecutionPolicy
-  priv mut next_frame : Int
-  priv mut current_frame : Int?
-  priv mut effects : Int
+  priv mut next_frame : Int32
+  priv mut current_frame : Int32?
+  priv mut effects : Int32
   priv mut terminal_cause : Error?
   // Failure-only retention for the admitted turn, not execution-control state.
   priv mut operation : String
@@ -26,7 +26,7 @@ pub struct HostedValue {
 ///|
 priv struct HostedFrame {
   owner : HostedSession
-  id : Int
+  id : Int32
   mut active : Bool
 }
 
@@ -261,7 +261,7 @@ fn HostedSession::require_owner(
 fn HostedSession::begin_nested(
   self : HostedSession,
   frame : HostedFrame,
-  nested? : Bool = false,
+  nested~ : Bool = false,
 ) -> Unit raise HostedError {
   let current_matches = match self.current_frame {
     Some(id) => id == frame.id
@@ -343,7 +343,7 @@ fn[T] HostedSession::public_turn(
   self : HostedSession,
   action : () -> T raise Error,
   operation~ : String,
-  checkpoint? : Bool = false,
+  checkpoint~ : Bool = false,
 ) -> T raise HostedError {
   self.require_available()
   self.operation = operation
@@ -452,7 +452,7 @@ fn HostedSession::runtime_diagnostic(
   message : String,
   source_identity : String?,
   integrity : EngineIntegrity,
-  phase? : String = self.failure_phase,
+  phase~ : String = self.failure_phase,
 ) -> EngineDiagnostic {
   make_engine_diagnostic(
     failure_kind_code=kind,
@@ -475,7 +475,7 @@ fn HostedSession::guest_diagnostic(
   self : HostedSession,
   error : Error,
   source_identity : String?,
-  phase? : String = self.failure_phase,
+  phase~ : String = self.failure_phase,
 ) -> EngineDiagnostic {
   match self.last_guest_failure {
     Some((original, diagnostic)) if physical_equal(original, error) =>
@@ -540,7 +540,7 @@ fn HostedSession::remember_secondary_error(
   self : HostedSession,
   error : Error,
   source_identity : String?,
-  host_failure? : Bool = false,
+  host_failure~ : Bool = false,
 ) -> Unit {
   match error {
     HostedGuestThrow(_, diagnostic)
@@ -697,8 +697,8 @@ fn HostedSession::classify_failure(
   self : HostedSession,
   error : Error,
   source_identity : String?,
-  snapshot? : Bool = true,
-  settled? : Bool = false,
+  snapshot~ : Bool = true,
+  settled~ : Bool = false,
 ) -> HostedError {
   match @runtime.hosted_execution_failure_cause(error) {
     Some(cause) =>
@@ -767,7 +767,7 @@ fn HostedSession::classify_failure(
 ///|
 fn HostedSession::check_control(
   self : HostedSession,
-  phase? : String = self.failure_phase,
+  phase~ : String = self.failure_phase,
 ) -> Unit raise HostedError {
   self.session.engine.interp.check_hosted_execution() catch {
     error => {
@@ -785,7 +785,7 @@ fn[T] HostedSession::observed_guest_action(
   self : HostedSession,
   phase : String,
   action : () -> T raise Error,
-  snapshot? : Bool = true,
+  snapshot~ : Bool = true,
 ) -> T raise HostedError {
   let previous = self.failure_phase
   self.failure_phase = phase
@@ -965,7 +965,7 @@ pub fn HostedSession::number(
 }
 
 ///|
-pub fn HostedSession::effect_count(self : HostedSession) -> Int {
+pub fn HostedSession::effect_count(self : HostedSession) -> Int32 {
   self.effects
 }
 

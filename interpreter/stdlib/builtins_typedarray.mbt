@@ -23,7 +23,7 @@ fn typedarray_collect_iterator_values(
 }
 
 ///|
-fn typedarray_stable_sort_tie_break(a_index : Int, b_index : Int) -> Int {
+fn typedarray_stable_sort_tie_break(a_index : Int32, b_index : Int32) -> Int32 {
   if a_index < b_index {
     -1
   } else if a_index > b_index {
@@ -37,8 +37,8 @@ fn typedarray_stable_sort_tie_break(a_index : Int, b_index : Int) -> Int {
 /// Read a typed element from an ArrayBuffer's byte array at the given byte offset.
 /// Returns the JS Number value.
 fn typed_array_get_element(
-  bytes : Array[Int],
-  byte_offset : Int,
+  bytes : Array[Int32],
+  byte_offset : Int32,
   type_name : String,
 ) -> Value {
   match type_name {
@@ -109,8 +109,8 @@ fn typed_array_get_element(
 ///|
 /// Write a typed element into an ArrayBuffer's byte array at the given byte offset.
 fn typed_array_set_element(
-  bytes : Array[Int],
-  byte_offset : Int,
+  bytes : Array[Int32],
+  byte_offset : Int32,
   type_name : String,
   value : Double,
 ) -> Unit {
@@ -184,7 +184,7 @@ fn typed_array_set_element(
 
 ///|
 /// Convert IEEE 754 single-precision bits (as int) to double.
-fn float32_bits_to_double(bits : Int) -> Double {
+fn float32_bits_to_double(bits : Int32) -> Double {
   let sign = if ((bits >> 31) & 1) == 1 { -1.0 } else { 1.0 }
   let exponent = (bits >> 23) & 0xFF
   let mantissa = bits & 0x7FFFFF
@@ -210,7 +210,7 @@ fn float32_bits_to_double(bits : Int) -> Double {
 
 ///|
 /// Convert double to IEEE 754 single-precision bits (as int).
-fn double_to_float32_bits(value : Double) -> Int {
+fn double_to_float32_bits(value : Double) -> Int32 {
   if value.is_nan() {
     return 0x7FC00000 // Canonical NaN
   }
@@ -274,7 +274,7 @@ fn double_to_float32_bits(value : Double) -> Int {
 
 ///|
 /// Simple ldexp: multiply by 2^exp
-fn ldexp(value : Double, exp : Int) -> Double {
+fn ldexp(value : Double, exp : Int32) -> Double {
   let mut result = value
   let mut e = exp
   if e > 0 {
@@ -295,7 +295,7 @@ fn ldexp(value : Double, exp : Int) -> Double {
 /// Create a TypedArray object with its own ArrayBuffer.
 pub fn make_typedarray_object(
   type_name : String,
-  length : Int,
+  length : Int32,
   proto : Value,
   env : Environment,
 ) -> Value raise Error {
@@ -453,8 +453,8 @@ fn install_shape_only_bigint_typedarray_constructor(
 fn make_typedarray_from_buffer(
   type_name : String,
   buffer : Value,
-  byte_offset : Int,
-  length : Int,
+  byte_offset : Int32,
+  length : Int32,
   proto : Value,
 ) -> Value {
   let buf_id = match get_buffer_id(buffer) {
@@ -492,7 +492,10 @@ fn make_typedarray_from_buffer(
 }
 
 ///|
-fn typedarray_index_to_int(index : Int64, message : String) -> Int raise Error {
+fn typedarray_index_to_int(
+  index : Int64,
+  message : String,
+) -> Int32 raise Error {
   if index > 0x7FFFFFFFL {
     raise @errors.RangeError(message~)
   }
@@ -503,7 +506,7 @@ fn typedarray_index_to_int(index : Int64, message : String) -> Int raise Error {
 fn typedarray_to_array_like_length(
   val : Value,
   interp : Interpreter,
-) -> Int raise {
+) -> Int32 raise {
   let length_val = interp.get_property(val, "length", @token.Loc::default())
   let length_num = @runtime.to_number(length_val, interp=Some(interp))
   if length_num.is_nan() || length_num < 0.0 {
@@ -549,7 +552,7 @@ fn typedarray_arraybuffer_state(
 /// returning Some(-1) for canonical-invalid forms.
 pub fn typedarray_is_valid_index(
   data : ObjectData,
-  index : Int,
+  index : Int32,
   realm_state : @runtime.RealmState,
 ) -> Bool {
   let length = match @runtime.get_typedarray_array_length(data) {
@@ -600,7 +603,7 @@ pub fn validate_typed_array(
   this_val : Value,
   method_name : String,
   realm_state : @runtime.RealmState,
-) -> (ObjectData, Int) raise Error {
+) -> (ObjectData, Int32) raise Error {
   let data = require_typed_array_object(this_val, method_name)
   let buf_id = match @runtime.get_typedarray_buffer_id(data) {
     Some(Value::Number(n)) => n.to_int()
@@ -617,7 +620,7 @@ pub fn validate_typed_array(
 }
 
 ///|
-fn typedarray_length(data : ObjectData) -> Int {
+fn typedarray_length(data : ObjectData) -> Int32 {
   match @runtime.get_typedarray_array_length(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
@@ -628,7 +631,7 @@ fn typedarray_length(data : ObjectData) -> Int {
 fn validate_typedarray_result_length(
   result : Value,
   method_name : String,
-  min_length : Int,
+  min_length : Int32,
   too_short_message : String,
   realm_state : @runtime.RealmState,
 ) -> Unit raise Error {
@@ -763,7 +766,7 @@ pub fn typed_array_species_create(
 /// Get a typed element from a TypedArray object at the given index.
 pub fn typedarray_get_index(
   data : ObjectData,
-  index : Int,
+  index : Int32,
   realm_state : @runtime.RealmState,
 ) -> Value {
   let length = match @runtime.get_typedarray_array_length(data) {
@@ -807,7 +810,7 @@ fn typedarray_includes_search_matches(search : Value, elem : Value) -> Bool {
 /// Set a typed element on a TypedArray object at the given index.
 pub fn typedarray_set_index(
   data : ObjectData,
-  index : Int,
+  index : Int32,
   value : Double,
   realm_state : @runtime.RealmState,
 ) -> Unit {
@@ -1699,7 +1702,7 @@ pub fn setup_typedarray_builtins(
       // Read all elements into a decorated temp array. MoonBit's Array::sort_by
       // is intentionally unstable, so the original index is the spec-required
       // stability tie-breaker whenever SortCompare returns +0/-0.
-      let temp : Array[(Double, Int)] = []
+      let temp : Array[(Double, Int32)] = []
       for i = 0; i < len; i = i + 1 {
         let val = typedarray_get_index(data, i, realm_state)
         match val {
@@ -1821,7 +1824,7 @@ pub fn setup_typedarray_builtins(
     length=0,
     fn(this_val, _args) raise {
       let (data, _) = validate_typed_array(this_val, "entries", realm_state)
-      let index_ref : Ref[Int] = { val: 0, }
+      let index_ref : Ref[Int32] = { val: 0, }
       let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
         // Re-check detachment and length on each next() call per spec
         let buf_id = match @runtime.get_typedarray_buffer_id(data) {
@@ -1914,7 +1917,7 @@ pub fn setup_typedarray_builtins(
     _args,
   ) raise {
     let (data, _) = validate_typed_array(this_val, "keys", realm_state)
-    let index_ref : Ref[Int] = { val: 0, }
+    let index_ref : Ref[Int32] = { val: 0, }
     let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
       // Re-check detachment and length on each next() call per spec
       let buf_id = match @runtime.get_typedarray_buffer_id(data) {
@@ -2004,7 +2007,7 @@ pub fn setup_typedarray_builtins(
     _args,
   ) raise {
     let (data, _) = validate_typed_array(this_val, "values", realm_state)
-    let index_ref : Ref[Int] = { val: 0, }
+    let index_ref : Ref[Int32] = { val: 0, }
     let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
       // Re-check detachment and length on each next() call per spec
       let buf_id = match @runtime.get_typedarray_buffer_id(data) {
@@ -2590,7 +2593,7 @@ pub fn setup_typedarray_builtins(
       }
       // Collect elements with original indices so toSorted remains stable even
       // though MoonBit's Array::sort_by is intentionally unstable.
-      let elements : Array[(Double, Int)] = []
+      let elements : Array[(Double, Int32)] = []
       for i = 0; i < len; i = i + 1 {
         let val = typedarray_get_index(data, i, realm_state)
         match val {
@@ -2771,11 +2774,11 @@ pub fn setup_typedarray_builtins(
   ta_proto_descs["with"] = method_desc
 
   // Create the shared %TypedArray%.prototype
-  let ta_proto_sym_props : Map[Int, Value] = Map([])
+  let ta_proto_sym_props : Map[Int32, Value] = Map([])
   ta_proto_sym_props[iterator_sym.id] = values_fn // [Symbol.iterator] = values
   // Symbol.toStringTag getter - returns the constructor name dynamically
   ta_proto_sym_props[tostringtag_sym.id] = Undefined // placeholder
-  let ta_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let ta_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   ta_proto_sym_descs[iterator_sym.id] = {
     writable: true,
     enumerable: false,

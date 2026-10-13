@@ -35,7 +35,7 @@ fn comma_test_record_call(label : String, loc : @token.Loc) -> @ast.Expr {
 fn comma_test_eval(
   interp : Interpreter,
   expr : @ast.Expr,
-  ctx? : ExecContext = { strict: false, current_generator: None, },
+  ctx~ : ExecContext = { strict: false, current_generator: None, },
 ) -> Value raise Error {
   interp.eval_expr(ctx, expr, interp.global)
 }

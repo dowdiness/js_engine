@@ -151,14 +151,14 @@ fn DirectReturnClosedArgument::DirectReturnClosedArgument(
 ///|
 priv struct DirectReturnBoundParameter {
   name : String
-  index : Int
+  index : Int32
   loc : @token.Loc
 }
 
 ///|
 fn DirectReturnBoundParameter::DirectReturnBoundParameter(
   name~ : String,
-  index~ : Int,
+  index~ : Int32,
   loc~ : @token.Loc,
 ) -> DirectReturnBoundParameter {
   { name, index, loc, }
@@ -233,7 +233,7 @@ fn DirectReturnFunctionSyntax::DirectReturnFunctionSyntax(
 ///|
 priv struct DirectReturnFunctionPlan {
   syntax : DirectReturnFunctionSyntax
-  declaration_index : Int
+  declaration_index : Int32
 }
 
 ///|
@@ -257,7 +257,7 @@ fn DirectReturnWrapperSyntax::DirectReturnWrapperSyntax(
 ///|
 priv struct DirectReturnWrapperPlan {
   syntax : DirectReturnWrapperSyntax
-  declaration_index : Int
+  declaration_index : Int32
   outer_call_loc : @token.Loc
   initial_argument : Double
 }
@@ -265,7 +265,7 @@ priv struct DirectReturnWrapperPlan {
 ///|
 fn DirectReturnWrapperPlan::DirectReturnWrapperPlan(
   syntax~ : DirectReturnWrapperSyntax,
-  declaration_index~ : Int,
+  declaration_index~ : Int32,
   outer_call_loc~ : @token.Loc,
   initial_argument~ : Double,
 ) -> DirectReturnWrapperPlan {
@@ -297,13 +297,13 @@ priv enum DirectReturnRootInvocation {
 ///|
 priv struct DirectReturnLeafPlan {
   syntax : DirectReturnLeafSyntax
-  declaration_index : Int
+  declaration_index : Int32
 }
 
 ///|
 fn DirectReturnLeafPlan::DirectReturnLeafPlan(
   syntax~ : DirectReturnLeafSyntax,
-  declaration_index~ : Int,
+  declaration_index~ : Int32,
 ) -> DirectReturnLeafPlan {
   { syntax, declaration_index, }
 }
@@ -311,7 +311,7 @@ fn DirectReturnLeafPlan::DirectReturnLeafPlan(
 ///|
 fn DirectReturnFunctionPlan::DirectReturnFunctionPlan(
   syntax~ : DirectReturnFunctionSyntax,
-  declaration_index~ : Int,
+  declaration_index~ : Int32,
 ) -> DirectReturnFunctionPlan {
   { syntax, declaration_index, }
 }
@@ -712,7 +712,7 @@ fn classify_direct_return_leaf_syntax(
 ///|
 fn classify_direct_return_leaf(
   stmt : @ast.Stmt,
-  declaration_index : Int,
+  declaration_index : Int32,
 ) -> DirectReturnLeafPlan? {
   match stmt {
     @ast.FuncDecl(name, params, body, _, _) =>
@@ -727,7 +727,7 @@ fn classify_direct_return_leaf(
 ///|
 fn classify_direct_return_function(
   stmt : @ast.Stmt,
-  declaration_index : Int,
+  declaration_index : Int32,
 ) -> DirectReturnFunctionPlan? {
   match stmt {
     @ast.FuncDecl(name, params, body, _, _) =>
@@ -752,7 +752,7 @@ fn direct_return_wrapper_name_is_distinct(
 ///|
 fn classify_direct_return_wrapper(
   stmt : @ast.Stmt,
-  declaration_index : Int,
+  declaration_index : Int32,
   entry : DirectReturnFunctionPlan,
   leaf : DirectReturnLeafPlan,
   outer_call_loc : @token.Loc,

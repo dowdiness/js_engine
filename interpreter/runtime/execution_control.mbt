@@ -222,7 +222,7 @@ fn ExecutionControl::ExecutionControl(
   remaining_steps~ : Int64,
   maximum_active_depth~ : Int64,
   interruption~ : ExecutionInterruptionRequest,
-  strict_hosted? : Bool = false,
+  strict_hosted~ : Bool = false,
 ) -> ExecutionControl raise ExecutionControlConfigurationError {
   let configuration = ExecutionControlConfiguration(
     remaining_steps~,

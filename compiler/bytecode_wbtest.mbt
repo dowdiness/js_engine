@@ -786,9 +786,9 @@ test "RED: finalization rejects duplicate function declaration identity swap" {
     loc: second.loc,
     source_identity: second.source_identity,
   }
-  let code_indices : Array[Int] = []
+  let code_indices : Array[Int32] = []
   let code_names : Array[String] = []
-  let code_child_indices : Array[Int] = []
+  let code_child_indices : Array[Int32] = []
   for index, instruction in program.main.code {
     match instruction {
       DeclareFunction(name, child_index) => {
@@ -1991,7 +1991,7 @@ test "RED: bytecode functions own typed source tables" {
 ///|
 fn instruction_source_roles_for_wb(
   function : BytecodeFunction,
-  instruction_index : Int,
+  instruction_index : Int32,
 ) -> Array[SourcePointRole] {
   function.instruction_sources[instruction_index].map(source_id => {
     function.resolve_source_point(source_id).role
@@ -2349,8 +2349,8 @@ fn assert_control_stopped_equivalently_for_wb(
 ///|
 fn exact_matching_completion_budget_for_wb(
   source : String,
-  maximum_budget : Int,
-) -> Int raise Error {
+  maximum_budget : Int32,
+) -> Int32 raise Error {
   for budget in 0..<=maximum_budget {
     match
       structured_execution_policy_comparison_for_wb(source, budget.to_int64()) {

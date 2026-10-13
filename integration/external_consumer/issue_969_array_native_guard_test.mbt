@@ -243,10 +243,9 @@ test "default Array complex consumers preserve unbounded results" {
       #|}
     ),
   )
-  json_inspect(
-    engine.call_json("results", []),
-    content=["1,2,3", "1,2,3", "1,2,3", "1,2"],
-  )
+  json_inspect(engine.call_json("results", []), content=[
+    "1,2,3", "1,2,3", "1,2,3", "1,2",
+  ])
 }
 
 ///|
@@ -305,7 +304,10 @@ test "default Array complex guards preserve prelude error precedence" {
       [],
       array_complex_guardrail_policy_969(1000L),
     ) {
-    Ok(value) => json_inspect(value, content=["TypeError", "TypeError", "depth", "TypeError", "TypeError", 0])
+    Ok(value) =>
+      json_inspect(value, content=[
+        "TypeError", "TypeError", "depth", "TypeError", "TypeError", 0,
+      ])
     Err(diagnostic) => fail(diagnostic.message())
   }
 }
@@ -325,10 +327,7 @@ test "default Array.flat snapshots generic length once" {
       #|}
     ),
   )
-  json_inspect(
-    engine.call_json("flattenLike", []),
-    content=["1,2", 1],
-  )
+  json_inspect(engine.call_json("flattenLike", []), content=["1,2", 1])
 }
 
 ///|

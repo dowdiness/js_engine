@@ -103,19 +103,9 @@ test "default keyed collection guards cover frozen consumers" {
   )
   for
     function_name in [
-      "mapConstructLarge",
-      "setConstructLarge",
-      "mapGroupLarge",
-      "unionLarge",
-      "intersectionHasLarge",
-      "intersectionKeysLarge",
-      "differenceHasLarge",
-      "differenceKeysLarge",
-      "symmetricLarge",
-      "subsetLarge",
-      "supersetLarge",
-      "disjointHasLarge",
-      "disjointKeysLarge",
+      "mapConstructLarge", "setConstructLarge", "mapGroupLarge", "unionLarge", "intersectionHasLarge",
+      "intersectionKeysLarge", "differenceHasLarge", "differenceKeysLarge", "symmetricLarge",
+      "subsetLarge", "supersetLarge", "disjointHasLarge", "disjointKeysLarge",
     ] {
     expect_keyed_collection_guard_973(engine, function_name)
   }
@@ -163,13 +153,17 @@ test "default keyed collection guards preserve prelude and reuse" {
       #|function readIteratorCounts() { return [iteratorNext, iteratorReturn]; }
     ),
   )
-  for function_name in [
-    "mapConstructIterator", "setConstructIterator", "mapGroupIterator",
-  ] {
+  for
+    function_name in [
+      "mapConstructIterator", "setConstructIterator", "mapGroupIterator",
+    ] {
     expect_keyed_collection_guard_973(engine, function_name)
   }
   json_inspect(engine.call_json("readIteratorCounts", []), content=[0, 3])
-  json_inspect(engine.call_json("invalidGroupCallback", []), content="TypeError")
+  json_inspect(
+    engine.call_json("invalidGroupCallback", []),
+    content="TypeError",
+  )
   json_inspect(engine.call_json("invalidSetRecord", []), content="RangeError")
   engine.eval(
     "function smallKeyedReuse() { " +
@@ -200,10 +194,9 @@ test "default keyed collection consumers preserve unbounded results" {
     "a.isDisjointFrom(new Set([4]))]; " +
     "}",
   )
-  json_inspect(
-    engine.call_json("keyedResults", []),
-    content=[2, 2, 2, 4, 2, 2, 3, true, true, true],
-  )
+  json_inspect(engine.call_json("keyedResults", []), content=[
+    2, 2, 2, 4, 2, 2, 3, true, true, true,
+  ])
 }
 
 ///|
@@ -242,5 +235,7 @@ test "default keyed collection prelude and empty decisions precede guards" {
   json_inspect(engine.call_json("invalidMapIterable", []), content="TypeError")
   json_inspect(engine.call_json("invalidSetReceiver", []), content="TypeError")
   json_inspect(engine.call_json("invalidKeysProtocol", []), content="TypeError")
-  json_inspect(engine.call_json("emptyDecisions", []), content=[0, 0, true, true])
+  json_inspect(engine.call_json("emptyDecisions", []), content=[
+    0, 0, true, true,
+  ])
 }

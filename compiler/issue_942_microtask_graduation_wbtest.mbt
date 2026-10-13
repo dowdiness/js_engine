@@ -9,7 +9,7 @@ fn issue942_assert_clean_route(
 }
 
 ///|
-fn issue942_activation_id(event : CandidateRouteEvent) -> Int {
+fn issue942_activation_id(event : CandidateRouteEvent) -> Int32 {
   match event {
     CandidateRoutePreparedEvent(event) => event.activation_id
     CandidateRouteStartedEvent(event) => event.activation_id
@@ -20,7 +20,7 @@ fn issue942_activation_id(event : CandidateRouteEvent) -> Int {
 ///|
 fn issue942_assert_complete_lifecycle(
   events : Array[CandidateRouteEvent],
-  activation_id : Int,
+  activation_id : Int32,
 ) -> Unit raise {
   let offset = activation_id * 3
   assert_true(events[offset] is CandidateRoutePreparedEvent(_))

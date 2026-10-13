@@ -43,7 +43,7 @@ pub fn profile_setup_builtins_with_realm_state(
   env : Environment,
   output : Array[String],
   realm_state : @runtime.RealmState,
-  annex_b? : Bool = false,
+  annex_b~ : Bool = false,
 ) -> Array[(String, Double)] {
   env.realm_state = Some(realm_state)
   let profile = BuiltinSetupProfiler()

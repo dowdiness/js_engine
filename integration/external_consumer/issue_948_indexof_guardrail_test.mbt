@@ -39,7 +39,7 @@ test "default String.indexOf observes the bounded execution budget" {
 ///|
 fn expect_index_of_result(
   result : Result[Json, @js_engine.EngineDiagnostic],
-  expected : Int,
+  expected : Int32,
 ) -> Unit raise Error {
   match result {
     Ok(value) => json_inspect(value, content=Json::number(expected.to_double()))
@@ -82,11 +82,7 @@ test "default String.indexOf preserves search boundaries and UTF-16 positions" {
     3,
   )
   expect_index_of_result(
-    engine.call_json_bounded(
-      "impossible",
-      [],
-      index_of_guardrail_policy(1000L),
-    ),
+    engine.call_json_bounded("impossible", [], index_of_guardrail_policy(1000L)),
     -1,
   )
   expect_index_of_result(

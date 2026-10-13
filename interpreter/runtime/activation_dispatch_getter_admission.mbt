@@ -75,7 +75,7 @@ fn getter_recursion_accessor_holder_name(plan : GetterRecursionPlan) -> String {
 }
 
 ///|
-fn getter_recursion_seal_statement_index(plan : GetterRecursionPlan) -> Int {
+fn getter_recursion_seal_statement_index(plan : GetterRecursionPlan) -> Int32 {
   match plan.placement {
     GetterOwnAccessor => 1
     GetterDirectPrototypeAccessor(_) => 2
@@ -83,7 +83,7 @@ fn getter_recursion_seal_statement_index(plan : GetterRecursionPlan) -> Int {
 }
 
 ///|
-fn getter_recursion_root_statement_index(plan : GetterRecursionPlan) -> Int {
+fn getter_recursion_root_statement_index(plan : GetterRecursionPlan) -> Int32 {
   getter_recursion_seal_statement_index(plan) + 1
 }
 
@@ -337,7 +337,7 @@ fn getter_recursion_plan_is_dispatchable(plan : GetterRecursionPlan) -> Bool {
 #warnings("-unused_value")
 fn getter_recursion_root_statement_matches(
   plan : GetterRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {
@@ -385,7 +385,7 @@ fn getter_recursion_root_statement_matches(
 #warnings("-unused_value")
 fn getter_recursion_body_statement_matches(
   plan : GetterRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {

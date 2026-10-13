@@ -16,7 +16,7 @@ fn run_failure_message(source : String) -> String raise Error {
 }
 
 ///|
-fn nested_comma_source(depth : Int, final_expression : String) -> String {
+fn nested_comma_source(depth : Int32, final_expression : String) -> String {
   let mut source = final_expression
   for _ in 0..<depth {
     source = "0," + source
@@ -102,8 +102,7 @@ const DIRECT_RETURN_TWO_HELPER_RESULT_FED_CALL_SOURCE =
   #|f(256);
 
 ///|
-const DIRECT_RETURN_THREE_HELPER_RESULT_FED_CALL_SOURCE =
-  "function inner(value) { return value; } function middle(value) { return value; } function outer(ignored, value) { return value; } function f(n) { if (n === 0) return \"done\"; return outer(\"ignored\", middle(inner(f(n - 1)))); } f(256);"
+const DIRECT_RETURN_THREE_HELPER_RESULT_FED_CALL_SOURCE = "function inner(value) { return value; } function middle(value) { return value; } function outer(ignored, value) { return value; } function f(n) { if (n === 0) return \"done\"; return outer(\"ignored\", middle(inner(f(n - 1)))); } f(256);"
 
 ///|
 const DIRECT_RETURN_MIXED_ARGUMENT_RESULT_FED_CALL_SOURCE =
@@ -229,8 +228,7 @@ const ABRUPT_FINALLY_SOURCE =
 const LABELLED_BREAK_SOURCE = "outer: try { break outer; } finally { 1; } 9;"
 
 ///|
-const BOUNDED_CONTINUE_SOURCE =
-  "do try { continue; } finally { 2; } while(false); 8;"
+const BOUNDED_CONTINUE_SOURCE = "do try { continue; } finally { 2; } while(false); 8;"
 
 ///|
 const GUEST_THROW_FINALLY_SOURCE =
@@ -268,7 +266,9 @@ fn retained_numeric_argument_source() -> String {
     argument = "0," + argument
   }
   "function step(n,x){if(n===0)return x;return 1+step(n-1,x);}" +
-  "step(256,(" + argument + "));"
+  "step(256,(" +
+  argument +
+  "));"
 }
 
 ///|
@@ -509,7 +509,9 @@ test "stack safety public facade: 512 comma expressions" {
 ///|
 test "stack safety public facade: post-parse first-error ordering" {
   inspect(
-    run_failure_message("\"use strict\"; (eval = 0, function() { let x; var x; })"),
+    run_failure_message(
+      "\"use strict\"; (eval = 0, function() { let x; var x; })",
+    ),
     content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
   inspect(
@@ -558,11 +560,12 @@ test "stack safety public facade: bounded production dispatcher stress" {
 // landed API directly instead of duplicating the bounded-eval-only coverage.
 test "stack safety public facade: bounded eval owns logical-depth exhaustion" {
   let engine = @js_engine.Engine()
-  let policy = match @js_engine.ExecutionPolicy::new(
-    100000L,
-    1L,
-    @js_engine.InterruptionHandle(),
-  ) {
+  let policy = match
+    @js_engine.ExecutionPolicy::new(
+      100000L,
+      1L,
+      @js_engine.InterruptionHandle(),
+    ) {
     Ok(value) => value
     Err(_) => fail("expected a valid bounded policy")
   }
@@ -572,7 +575,8 @@ test "stack safety public facade: bounded eval owns logical-depth exhaustion" {
       policy,
       source_id="stack-safety-direct.js",
     ) {
-    Ok(_) => fail("expected direct recursion to exhaust the logical depth limit")
+    Ok(_) =>
+      fail("expected direct recursion to exhaust the logical depth limit")
     Err(diagnostic) => {
       inspect(diagnostic.failure_kind_code(), content="stack-depth-limit")
       assert_true(diagnostic.message().length() > 0)

@@ -40,7 +40,7 @@ fn finish_multiplicative(
   left : Value,
   right : Value,
   _loc : @token.Loc,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise Error {
   let left_number = to_number(left, interp~)
   let right_number = to_number(right, interp~)

@@ -445,7 +445,7 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
 ///|
 fn numeric_activation_test_cleanup_completion(
   completion : DispatchCompletion,
-  sentinel : Int,
+  sentinel : Int32,
 ) -> Unit raise {
   let (interp, shell, registry, plan) = numeric_activation_test_fixture(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",

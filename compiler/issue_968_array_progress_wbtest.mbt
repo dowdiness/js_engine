@@ -106,7 +106,7 @@ test "candidate residual Array methods observe each logical unit" {
 
 ///|
 fn issue968_native_index_callback(
-  trace : Ref[Array[Int]],
+  trace : Ref[Array[Int32]],
   result : @runtime.Value,
 ) -> @runtime.Value {
   @runtime.make_native_func(name="issue968NativeIndexCallback", args => {
@@ -121,7 +121,7 @@ fn issue968_native_index_callback(
 }
 
 ///|
-fn issue968_native_reducer(trace : Ref[Array[Int]]) -> @runtime.Value {
+fn issue968_native_reducer(trace : Ref[Array[Int32]]) -> @runtime.Value {
   @runtime.make_native_func(name="issue968NativeReducer", args => {
     if args.length() > 2 {
       match args[2] {
@@ -135,7 +135,7 @@ fn issue968_native_reducer(trace : Ref[Array[Int]]) -> @runtime.Value {
 
 ///|
 fn issue968_assert_native_prefix(
-  trace : Ref[Array[Int]],
+  trace : Ref[Array[Int32]],
   reverse : Bool,
 ) -> Unit raise Error {
   assert_true(trace.val.length() > 0)
@@ -231,7 +231,7 @@ test "reverse observes upper index before its native getter" {
 ///|
 test "candidate Array callbacks charge native host calls without guest overhead" {
   let interp = @interpreter.new_interpreter()
-  let trace : Ref[Array[Int]] = { val: [], }
+  let trace : Ref[Array[Int32]] = { val: [], }
   interp.global.def_builtin(
     "issue968NativeIndexCallback",
     issue968_native_index_callback(trace, @runtime.Value::Bool(false)),

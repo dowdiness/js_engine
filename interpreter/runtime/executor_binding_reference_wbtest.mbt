@@ -423,7 +423,7 @@ fn Issue933ReferenceProbe::Issue933ReferenceProbe(
   value~ : Value,
   loc~ : @token.Loc,
   before_put~ : () -> Unit raise Error,
-  intervening? : Value? = None,
+  intervening~ : Value? = None,
 ) -> Issue933ReferenceProbe {
   {
     ctx,
@@ -1368,7 +1368,7 @@ test "issue 933 managed resolution preserves has get set and revoked errors" {
 ///|
 test "issue 933 preserves the selected with base when the recheck disappears" {
   let interp = Interpreter::new()
-  let has_count : Ref[Int] = { val: 0, }
+  let has_count : Ref[Int32] = { val: 0, }
   let has_toggle = make_native_func(
     name="hasToggle",
     realm_state=Some(interp.realm_state),
@@ -1388,7 +1388,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
       }
     },
   )
-  let set_count : Ref[Int] = { val: 0, }
+  let set_count : Ref[Int32] = { val: 0, }
   let set_trap = make_native_func(
     name="set",
     realm_state=Some(interp.realm_state),
@@ -1423,7 +1423,7 @@ test "issue 933 preserves the selected with base when the recheck disappears" {
     _ => fail("with binding must remain a Proxy")
   }
 
-  let strict_count : Ref[Int] = { val: 0, }
+  let strict_count : Ref[Int32] = { val: 0, }
   let strict_has = make_native_func(
     name="strictHasToggle",
     realm_state=Some(interp.realm_state),

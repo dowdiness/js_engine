@@ -1,5 +1,5 @@
 ///|
-fn last_index_of_observation_probe(observations : Ref[Int]) -> Value {
+fn last_index_of_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -19,7 +19,7 @@ fn last_index_of_observation_probe(observations : Ref[Int]) -> Value {
 fn call_last_index_of_with_observation_probe(
   value : String,
   search : String,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -42,7 +42,7 @@ fn call_last_index_of_with_observation_probe(
 
 ///|
 test "String.lastIndexOf observes each reverse code-unit comparison" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_last_index_of_with_observation_probe("abc", "z", observations) {
     Number(value) => inspect(value, content="-1")
     _ => fail("lastIndexOf must return a number")
@@ -52,7 +52,7 @@ test "String.lastIndexOf observes each reverse code-unit comparison" {
 
 ///|
 test "String.lastIndexOf empty search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_last_index_of_with_observation_probe("abc", "", observations) {
     Number(value) => inspect(value, content="3")
     _ => fail("lastIndexOf must return a number")
@@ -62,7 +62,7 @@ test "String.lastIndexOf empty search observes no comparisons" {
 
 ///|
 test "String.lastIndexOf impossible search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_last_index_of_with_observation_probe("abc", "abcd", observations) {
     Number(value) => inspect(value, content="-1")
     _ => fail("lastIndexOf must return a number")
@@ -72,7 +72,7 @@ test "String.lastIndexOf impossible search observes no comparisons" {
 
 ///|
 test "String.lastIndexOf reports UTF-16 code-unit positions" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_last_index_of_with_observation_probe("😀x", "x", observations) {
     Number(value) => inspect(value, content="2")
     _ => fail("lastIndexOf must return a number")

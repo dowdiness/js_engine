@@ -1,5 +1,5 @@
 ///|
-fn includes_observation_probe(observations : Ref[Int]) -> Value {
+fn includes_observation_probe(observations : Ref[Int32]) -> Value {
   @runtime.make_object(
     Map([]),
     Null,
@@ -19,7 +19,7 @@ fn includes_observation_probe(observations : Ref[Int]) -> Value {
 fn call_includes_with_observation_probe(
   value : String,
   search : String,
-  observations : Ref[Int],
+  observations : Ref[Int32],
 ) -> Value raise Error {
   let interp = @runtime.Interpreter::new()
   interp.global.def(
@@ -38,7 +38,7 @@ fn call_includes_with_observation_probe(
 
 ///|
 test "String.includes observes each code-unit comparison" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_includes_with_observation_probe("abc", "bc", observations) {
     Bool(value) => inspect(value, content="true")
     _ => fail("includes must return a boolean")
@@ -48,7 +48,7 @@ test "String.includes observes each code-unit comparison" {
 
 ///|
 test "String.includes empty search observes no comparisons" {
-  let observations : Ref[Int] = { val: 0, }
+  let observations : Ref[Int32] = { val: 0, }
   match call_includes_with_observation_probe("abc", "", observations) {
     Bool(value) => inspect(value, content="true")
     _ => fail("includes must return a boolean")

@@ -18,7 +18,7 @@ pub extend RepresentationPattern with @debug.Debug::{to_repr}
 struct RepresentationDebt {
   path : String
   pattern_id : String
-  allowed_count : Int
+  allowed_count : Int32
   fingerprint : String
   owner : String
   retire_by_stage : String
@@ -42,7 +42,7 @@ pub extend RepresentationRules with @debug.Debug::{to_repr}
 ///|
 struct RepresentationAccess {
   path : String
-  line : Int
+  line : Int32
   pattern_id : String
   kind : String
   reason : String
@@ -75,7 +75,7 @@ fn decode_int_field(
   data : Map[String, Json],
   key : String,
   path : String,
-) -> Int raise {
+) -> Int32 raise {
   @json.from_json(require_field(data, key, path)) catch {
     _ => schema_error(path, "\{key} must be an integer")
   }
@@ -86,7 +86,7 @@ fn validate_representation_schema_version(
   data : Map[String, Json],
   path : String,
 ) -> Unit raise {
-  let version : Int = @json.from_json(require_field(data, "version", path)) catch {
+  let version : Int32 = @json.from_json(require_field(data, "version", path)) catch {
     _ => schema_error(path, "version must be an integer")
   }
   if version != REPRESENTATION_ACCESS_SCHEMA_VERSION {
@@ -288,7 +288,7 @@ fn is_ascii_identifier_char(ch : UInt16) -> Bool {
 fn token_match_has_boundaries(
   line : String,
   token : String,
-  index : Int,
+  index : Int32,
 ) -> Bool {
   let left_ok = if is_ascii_identifier_char(token[0]) {
     index == 0 || !is_ascii_identifier_char(line[index - 1])
@@ -306,7 +306,7 @@ fn token_match_has_boundaries(
 }
 
 ///|
-fn starts_with_at(line : String, token : String, index : Int) -> Bool {
+fn starts_with_at(line : String, token : String, index : Int32) -> Bool {
   let end = index + token.length()
   end <= line.length() && line[index:end].to_owned() == token
 }
@@ -318,7 +318,7 @@ fn is_multiline_string_content_line(line : String) -> Bool {
 }
 
 ///|
-fn find_block_comment_close(line : String, start : Int) -> Int? {
+fn find_block_comment_close(line : String, start : Int32) -> Int32? {
   let len = line.length()
   let mut index = start
   while index + 1 < len {
@@ -383,13 +383,13 @@ fn representation_signature_line(line : String) -> String {
 fn is_empty_core_map_literal_at(
   code : String,
   token : String,
-  index : Int,
+  index : Int32,
 ) -> Bool {
   token == "Map(" && starts_with_at(code, "Map([])", index)
 }
 
 ///|
-fn count_token_in_code_line(line : String, token : String) -> Int {
+fn count_token_in_code_line(line : String, token : String) -> Int32 {
   let code = code_without_comments(line)
   let len = code.length()
   let mut index = 0
@@ -578,8 +578,8 @@ fn representation_debt_for_key(
 ///|
 fn representation_access_counts(
   accesses : Array[RepresentationAccess],
-) -> Map[String, Int] {
-  let counts : Map[String, Int] = Map([])
+) -> Map[String, Int32] {
+  let counts : Map[String, Int32] = Map([])
   for access in accesses {
     let key = representation_access_key(access)
     let current = match counts.get(key) {
@@ -594,10 +594,10 @@ fn representation_access_counts(
 ///|
 fn fingerprint_hash_part(
   text : String,
-  initial : Int,
-  multiplier : Int,
-  modulo : Int,
-) -> Int {
+  initial : Int32,
+  multiplier : Int32,
+  modulo : Int32,
+) -> Int32 {
   let mut hash = initial
   for ch in text {
     hash = (hash * multiplier + ch.to_int()) % modulo
@@ -640,7 +640,7 @@ fn representation_access_fingerprints(
 ///|
 fn representation_fingerprint_matches(
   debt : RepresentationDebt,
-  access_counts : Map[String, Int],
+  access_counts : Map[String, Int32],
   access_fingerprints : Map[String, String],
 ) -> Bool {
   let key = representation_debt_key(debt)
@@ -676,13 +676,13 @@ fn render_representation_report(
   accesses : Array[RepresentationAccess],
   rules : RepresentationRules,
   list_representation~ : Bool,
-) -> (Array[String], Array[String], Int) {
+) -> (Array[String], Array[String], Int32) {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
   let unclassified : Array[RepresentationAccess] = []
   let access_counts = representation_access_counts(accesses)
   let access_fingerprints = representation_access_fingerprints(accesses)
-  let seen_counts : Map[String, Int] = Map([])
+  let seen_counts : Map[String, Int32] = Map([])
   for access in accesses {
     let key = representation_access_key(access)
     let ordinal = match seen_counts.get(key) {
@@ -766,7 +766,7 @@ fn render_representation_report(
 fn run_import_boundary(
   root~ : String,
   list_imports~ : Bool,
-) -> (Array[String], Array[String], Int) raise {
+) -> (Array[String], Array[String], Int32) raise {
   let rules = load_rules(root)
   let edges = discover_import_edges(root)
   render_import_report(edges, rules, list_imports~)
@@ -776,7 +776,7 @@ fn run_import_boundary(
 fn run_representation_access(
   root~ : String,
   list_representation~ : Bool,
-) -> (Array[String], Array[String], Int) raise {
+) -> (Array[String], Array[String], Int32) raise {
   let rules = load_representation_rules(root)
   let accesses = discover_representation_accesses(root, rules)
   render_representation_report(accesses, rules, list_representation~)

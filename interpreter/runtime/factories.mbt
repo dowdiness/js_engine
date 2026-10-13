@@ -67,17 +67,17 @@ pub(all) struct FunctionRealmProtos {
 
 ///|
 pub fn FunctionRealmProtos::FunctionRealmProtos(
-  function_proto? : Value? = None,
-  object_proto? : Value? = None,
-  string_proto? : Value? = None,
-  number_proto? : Value? = None,
-  boolean_proto? : Value? = None,
-  symbol_proto? : Value? = None,
-  array_proto? : Value? = None,
-  map_proto? : Value? = None,
-  set_proto? : Value? = None,
-  promise_proto? : Value? = None,
-  constructor_prototype_registry? : Value? = None,
+  function_proto~ : Value? = None,
+  object_proto~ : Value? = None,
+  string_proto~ : Value? = None,
+  number_proto~ : Value? = None,
+  boolean_proto~ : Value? = None,
+  symbol_proto~ : Value? = None,
+  array_proto~ : Value? = None,
+  map_proto~ : Value? = None,
+  set_proto~ : Value? = None,
+  promise_proto~ : Value? = None,
+  constructor_prototype_registry~ : Value? = None,
 ) -> FunctionRealmProtos {
   {
     function_proto,
@@ -203,7 +203,7 @@ pub fn make_func(data : FuncData) -> Value {
 ///|
 /// ES262 §10.2.4 ExpectedArgumentCount for extended parameter lists:
 /// count parameters before the first default initializer or rest parameter.
-fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int {
+fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int32 {
   for p in params; count = 0 {
     if p.default_val is Some(_) || p.is_rest_pattern {
       break count
@@ -360,7 +360,7 @@ pub fn mark_as_method(v : Value) -> Value {
 }
 
 ///|
-pub fn get_func_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_func_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -373,7 +373,7 @@ pub fn get_func_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_obj_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_obj_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -386,7 +386,7 @@ pub fn get_obj_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_string_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_string_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -399,7 +399,7 @@ pub fn get_string_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_number_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_number_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -412,7 +412,7 @@ pub fn get_number_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_boolean_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_boolean_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -425,7 +425,7 @@ pub fn get_boolean_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_symbol_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_symbol_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -438,7 +438,7 @@ pub fn get_symbol_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_array_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_array_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -451,7 +451,7 @@ pub fn get_array_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_map_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_map_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -464,7 +464,7 @@ pub fn get_map_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_set_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_set_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -477,7 +477,7 @@ pub fn get_set_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
-pub fn get_promise_proto(realm_state? : RealmState? = None) -> Value {
+pub fn get_promise_proto(realm_state~ : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
@@ -491,7 +491,7 @@ pub fn get_promise_proto(realm_state? : RealmState? = None) -> Value {
 
 ///|
 fn get_constructor_prototype_registry(
-  realm_state? : RealmState? = None,
+  realm_state~ : RealmState? = None,
 ) -> Value {
   match realm_state {
     Some(realm_state) =>
@@ -516,9 +516,9 @@ fn get_constructor_prototype_registry(
 /// pre-consolidation wrappers produced.
 fn build_func_object(
   name : String,
-  length : Int,
+  length : Int32,
   callable : Callable,
-  realm_state? : RealmState? = None,
+  realm_state~ : RealmState? = None,
 ) -> Value {
   let function_proto = get_func_proto(realm_state~)
   let realm_protos = function_realm_protos_from_state(realm_state~)
@@ -566,7 +566,7 @@ pub fn make_bound_func(
   prototype~ : Value,
   name~ : String,
   length~ : Double,
-  realm_state? : RealmState? = None,
+  realm_state~ : RealmState? = None,
 ) -> Value {
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -600,7 +600,7 @@ pub fn make_bound_func(
 
 ///|
 fn function_realm_protos_from_state(
-  realm_state? : RealmState? = None,
+  realm_state~ : RealmState? = None,
 ) -> FunctionRealmProtos {
   match realm_state {
     Some(realm_state) =>
@@ -667,7 +667,7 @@ fn function_realm_protos_from_realm_state(
 ///|
 fn make_realm_protos_packed_array(
   protos : FunctionRealmProtos,
-  source_identity? : String? = None,
+  source_identity~ : String? = None,
 ) -> Value {
   let slot_count = match source_identity {
     Some(_) => FUNCTION_METADATA_SLOT_COUNT
@@ -732,7 +732,7 @@ fn make_realm_protos_packed_array(
 }
 
 ///|
-fn source_identity_from_state(realm_state? : RealmState? = None) -> String? {
+fn source_identity_from_state(realm_state~ : RealmState? = None) -> String? {
   match realm_state {
     Some(state) => state.active_source_identity.val
     None => None
@@ -743,8 +743,8 @@ fn source_identity_from_state(realm_state? : RealmState? = None) -> String? {
 fn function_realm_symbol_props(
   protos : FunctionRealmProtos,
   source_identity : String?,
-) -> Map[Int, Value] {
-  let props : Map[Int, Value] = Map([])
+) -> Map[Int32, Value] {
+  let props : Map[Int32, Value] = Map([])
   props[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
     protos,
     source_identity~,
@@ -765,8 +765,8 @@ fn function_realm_symbol_desc() -> PropDescriptor {
 }
 
 ///|
-fn function_realm_symbol_descs() -> Map[Int, PropDescriptor] {
-  let descs : Map[Int, PropDescriptor] = Map([])
+fn function_realm_symbol_descs() -> Map[Int32, PropDescriptor] {
+  let descs : Map[Int32, PropDescriptor] = Map([])
   descs[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
   descs
 }
@@ -993,7 +993,7 @@ fn stamp_function_realm_impl(
 ///|
 pub fn stamp_function_realm(
   value : Value,
-  realm_state? : RealmState? = None,
+  realm_state~ : RealmState? = None,
 ) -> Value {
   stamp_function_realm_impl(
     value,
@@ -1008,14 +1008,14 @@ pub fn stamp_function_realm_with(
   value : Value,
   function_proto : Value,
   object_proto : Value,
-  string_proto? : Value = Null,
-  number_proto? : Value = Null,
-  boolean_proto? : Value = Null,
-  symbol_proto? : Value = Null,
-  array_proto? : Value = Null,
-  map_proto? : Value = Null,
-  set_proto? : Value = Null,
-  promise_proto? : Value = Null,
+  string_proto~ : Value = Null,
+  number_proto~ : Value = Null,
+  boolean_proto~ : Value = Null,
+  symbol_proto~ : Value = Null,
+  array_proto~ : Value = Null,
+  map_proto~ : Value = Null,
+  set_proto~ : Value = Null,
+  promise_proto~ : Value = Null,
 ) -> Value {
   stamp_function_realm_with_protos(
     value,
@@ -1039,9 +1039,9 @@ pub fn stamp_function_realm_with(
 ///|
 fn stamp_realm_proto(
   data : ObjectData,
-  idx : Int,
+  idx : Int32,
   proto : Value?,
-  set_function_prototype? : Bool = false,
+  set_function_prototype~ : Bool = false,
 ) -> Unit {
   match proto {
     Some(proto) => {
@@ -1079,9 +1079,9 @@ fn stamp_realm_proto(
 ///|
 fn stamp_realm_proto_if_unstamped(
   data : ObjectData,
-  idx : Int,
+  idx : Int32,
   proto : Value?,
-  set_function_prototype? : Bool = false,
+  set_function_prototype~ : Bool = false,
 ) -> Unit {
   match proto {
     None => ()
@@ -1351,14 +1351,14 @@ fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
     None => inherited_function_source_identity(callee) is None
     Some(e) => {
       guard e.length() == FUNCTION_REALM_PROTO_SLOT_COUNT else { return false }
-      fn same(idx : Int, main_ref : Ref[Value?]) -> Bool {
+      fn same(idx : Int32, main_ref : Ref[Value?]) -> Bool {
         match (e[idx], main_ref.val) {
           (Null, _) => true // absent slot — inherits same-realm semantics
           (Object(c), Some(Object(m))) => physical_equal(c, m)
           _ => false // conservative: any mismatch forces slow path
         }
       }
-      fn same_value(idx : Int, main : Value) -> Bool {
+      fn same_value(idx : Int32, main : Value) -> Bool {
         match (e[idx], main) {
           (Null, _) => true
           (Object(c), Object(m)) => physical_equal(c, m)
@@ -1574,8 +1574,8 @@ pub fn with_active_realm_state_unit(
 /// Use for built-in free functions and static methods.
 pub fn make_native_func(
   name~ : String,
-  length? : Int = 0,
-  realm_state? : RealmState? = None,
+  length~ : Int32 = 0,
+  realm_state~ : RealmState? = None,
   func : (Array[Value]) -> Value raise Error,
 ) -> Value {
   build_func_object(
@@ -1591,8 +1591,8 @@ pub fn make_native_func(
 /// `(Value, Array[Value]) -> Value raise Error`.
 pub fn make_method_func(
   name~ : String,
-  length? : Int = 0,
-  realm_state? : RealmState? = None,
+  length~ : Int32 = 0,
+  realm_state~ : RealmState? = None,
   func : (Value, Array[Value]) -> Value raise Error,
 ) -> Value {
   build_func_object(name, length, MethodCallable(name, func), realm_state~)
@@ -1603,8 +1603,8 @@ pub fn make_method_func(
 /// Signature `(Interpreter, Value, Array[Value]) -> Value raise Error`.
 pub fn make_interp_method_func(
   name~ : String,
-  length? : Int = 0,
-  realm_state? : RealmState? = None,
+  length~ : Int32 = 0,
+  realm_state~ : RealmState? = None,
   func : (Interpreter, Value, Array[Value]) -> Value raise Error,
 ) -> Value {
   build_func_object(name, length, InterpreterCallable(name, func), realm_state~)
@@ -1614,7 +1614,7 @@ pub fn make_interp_method_func(
 /// Interpreter-aware method function with explicit call/construct context.
 pub fn make_interp_method_func_with_context(
   name~ : String,
-  length? : Int = 0,
+  length~ : Int32 = 0,
   func : (Interpreter, CallContext, Value, Array[Value]) -> Value raise Error,
 ) -> Value {
   build_func_object(name, length, InterpreterCallableWithContext(name, func))
@@ -1625,7 +1625,7 @@ pub fn make_interp_method_func_with_context(
 /// Signature `(Interpreter, Array[Value]) -> Value raise Error`.
 pub fn make_interp_static_func(
   name~ : String,
-  length? : Int = 0,
+  length~ : Int32 = 0,
   func : (Interpreter, Array[Value]) -> Value raise Error,
 ) -> Value {
   build_func_object(
@@ -1685,13 +1685,13 @@ pub fn make_object(
 /// including overwriting a `frozen` key).
 pub fn make_host_object(
   name~ : String,
-  proto? : Value = Null,
-  methods? : Map[String, Value] = Map([]),
-  accessors? : Map[String, (Value?, Value?)] = Map([]),
-  non_writable? : Map[String, Value] = Map([]),
-  frozen? : Map[String, Value] = Map([]),
-  host_slots? : Map[HostSlotKey, Value] = Map([]),
-  extensible? : Bool = true,
+  proto~ : Value = Null,
+  methods~ : Map[String, Value] = Map([]),
+  accessors~ : Map[String, (Value?, Value?)] = Map([]),
+  non_writable~ : Map[String, Value] = Map([]),
+  frozen~ : Map[String, Value] = Map([]),
+  host_slots~ : Map[HostSlotKey, Value] = Map([]),
+  extensible~ : Bool = true,
 ) -> Value {
   let obj = make_object(Map([]), proto, None, name, Map([]), extensible)
   guard obj is Object(data) else {
@@ -1780,7 +1780,7 @@ pub fn make_array_with_prototype(
 /// Wrap an Array[Value] and mark selected indices as array holes.
 pub fn make_array_with_holes(
   elements : Array[Value],
-  hole_indices : Array[Int],
+  hole_indices : Array[Int32],
 ) -> Value {
   let arr = make_array(elements)
   match arr {

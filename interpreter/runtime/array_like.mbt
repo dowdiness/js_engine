@@ -31,7 +31,7 @@ priv enum ArrayIndexHit {
 /// walking the prototype chain. Caller decides what to do with each
 /// case (see `get_array_like_element_interp`, `has_array_like_element`,
 /// and `Interpreter::get_property`).
-fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
+fn array_index_lookup_result(data : ArrayData, i : Int32) -> ArrayIndexHit {
   let key = i.to_string()
   match data.bag.descriptors.get(key) {
     Some(desc) =>
@@ -109,7 +109,7 @@ fn array_index_lookup_result64(
 ///|
 pub fn flatten_array_val(
   elements : Array[Value],
-  depth : Int,
+  depth : Int32,
   result : Array[Value],
 ) -> Unit {
   for el in elements {
@@ -234,7 +234,7 @@ fn to_length_number(n : Double) -> Int64 {
 ///|
 fn to_length_from_value(
   v : Value?,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Int64 raise {
   match v {
     Some(Number(n)) => to_length_number(n)
@@ -461,14 +461,14 @@ pub fn has_array_like_element(
 /// in-range hole can be out-of-range, so the cleanup is a no-op — we
 /// skip it to avoid an overflowing Int64→Int cast.
 pub fn cleanup_holes_above_length(
-  holes : Map[Int, Unit],
+  holes : Map[Int32, Unit],
   new_len : Int64,
 ) -> Unit {
   if new_len > 0x7FFFFFFFL {
     return
   }
   let new_len_int = new_len.to_int()
-  let stale : Array[Int] = []
+  let stale : Array[Int32] = []
   holes.each(fn(k, _) { if k >= new_len_int { stale.push(k) } })
   for k in stale {
     holes.remove(k)
@@ -566,7 +566,7 @@ pub fn set_array_like_length(val : Value, len : Int64) -> Unit {
 
 ///|
 /// Delete indexed element from array-like value
-pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
+pub fn delete_array_like_element(val : Value, index : Int32) -> Unit {
   let key = index.to_string()
   match val {
     Object(data) => data.bag.properties.remove(key) |> ignore

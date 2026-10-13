@@ -53,13 +53,13 @@ pub(all) struct Microtask {
 /// Timer task for setTimeout/setInterval (task queue per WHATWG spec)
 /// Timers are processed one at a time with microtask checkpoints between each
 pub(all) struct TimerTask {
-  id : Int // Unique timer ID for clearTimeout/clearInterval
+  id : Int32 // Unique timer ID for clearTimeout/clearInterval
   callback : Value // The function to call
   args : Array[Value] // Additional arguments to pass to the callback
-  delay : Int // Absolute fire-at time in virtual ms (used for ordering)
-  period : Int // Interval repeat period (0 for setTimeout)
+  delay : Int32 // Absolute fire-at time in virtual ms (used for ordering)
+  period : Int32 // Interval repeat period (0 for setTimeout)
   is_interval : Bool // Whether this is a setInterval (repeats)
-  insertion_order : Int // Stable sort tiebreaker for equal delays
+  insertion_order : Int32 // Stable sort tiebreaker for equal delays
 }
 
 ///|
@@ -90,9 +90,9 @@ pub(all) struct HostEnv {
   console_output_sink : ((ConsoleOutputKind, String) -> Unit raise Error)?
   microtask_queue : Array[Microtask] // Promise microtask queue (WHATWG spec)
   timer_queue : @priority_queue.PriorityQueue[TimerTask] // setTimeout / setInterval task queue
-  timer_id_counter : Ref[Int] // Next timer ID (monotonically increasing)
-  timer_insertion_counter : Ref[Int] // Stable-sort tiebreaker for equal delays
-  cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during an active callback
+  timer_id_counter : Ref[Int32] // Next timer ID (monotonically increasing)
+  timer_insertion_counter : Ref[Int32] // Stable-sort tiebreaker for equal delays
+  cancelled_timer_ids : Map[Int32, Bool] // IDs cancelled during an active callback
   module_loader : ModuleLoader? // Optional host-provided module resolver
 }
 
@@ -122,8 +122,8 @@ pub(all) struct Interpreter {
   mut module_exports : Map[String, Value] // current module's exports being built
   mut module_export_bindings : Array[(String, String)] // deferred: (export_name, local_binding_name)
   // Generator runtime state
-  generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
-  gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
+  generator_objects : Map[Int32, GeneratorObject] // live generator instances keyed by ID
+  gen_id_counter : Ref[Int32] // monotonically increasing ID for new generator instances
   // Compatibility access to realm_state.symbols for existing runtime/stdlib code.
   // This is an alias, not a second symbol-state owner.
   symbols : SymbolState
@@ -224,11 +224,11 @@ fn Interpreter::install_console_global(self : Interpreter) -> Unit {
 
 ///|
 pub fn Interpreter::new(
-  annex_b? : Bool = false,
-  module_loader? : ModuleLoader? = None,
-  console_enabled? : Bool = true,
-  console_output_sink? : ((ConsoleOutputKind, String) -> Unit raise Error)? = None,
-  setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit = fn(
+  annex_b~ : Bool = false,
+  module_loader~ : ModuleLoader? = None,
+  console_enabled~ : Bool = true,
+  console_output_sink~ : ((ConsoleOutputKind, String) -> Unit raise Error)? = None,
+  setup_builtins~ : (Environment, Array[String], RealmState, Bool) -> Unit = fn(
     _,
     _,
     _,
@@ -236,10 +236,10 @@ pub fn Interpreter::new(
   ) {
 
   },
-  setup_harness? : (Environment, Array[String], Value) -> Unit = fn(_, _, _) {
+  setup_harness~ : (Environment, Array[String], Value) -> Unit = fn(_, _, _) {
 
   },
-  stdlib_hooks? : StdlibHooks = default_stdlib_hooks(),
+  stdlib_hooks~ : StdlibHooks = default_stdlib_hooks(),
 ) -> Interpreter {
   let global = Environment::new()
   global.is_var_scope = true
@@ -750,7 +750,7 @@ fn Interpreter::mirror_to_global(
   self : Interpreter,
   name : String,
   value : Value,
-  configurable? : Bool = false,
+  configurable~ : Bool = false,
 ) -> Unit {
   match self.global_this {
     Object(data) => {

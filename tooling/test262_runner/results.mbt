@@ -42,7 +42,7 @@ fn aggregate_results(
 }
 
 ///|
-fn pow10(places : Int) -> Int {
+fn pow10(places : Int32) -> Int32 {
   let mut scale = 1
   for _ in 0..<places {
     scale *= 10
@@ -51,7 +51,7 @@ fn pow10(places : Int) -> Int {
 }
 
 ///|
-fn pad_left_zero(value : String, width : Int) -> String {
+fn pad_left_zero(value : String, width : Int32) -> String {
   let buf = StringBuilder()
   for _ in value.length()..<width {
     buf.write_char('0')
@@ -61,7 +61,7 @@ fn pad_left_zero(value : String, width : Int) -> String {
 }
 
 ///|
-fn format_decimal(value : Double, places : Int) -> String {
+fn format_decimal(value : Double, places : Int32) -> String {
   let scale = pow10(places)
   let mut scaled = (value * scale.to_double()).round().to_int()
   let sign = if scaled < 0 {
@@ -80,18 +80,18 @@ fn format_decimal(value : Double, places : Int) -> String {
 }
 
 ///|
-fn rounded_double(value : Double, places : Int) -> Double {
+fn rounded_double(value : Double, places : Int32) -> Double {
   let scale = pow10(places)
   (value * scale.to_double()).round() / scale.to_double()
 }
 
 ///|
-fn json_int(value : Int) -> Json {
+fn json_int(value : Int32) -> Json {
   Json::number(value.to_double(), repr=value.to_string())
 }
 
 ///|
-fn json_double(value : Double, places : Int) -> Json {
+fn json_double(value : Double, places : Int32) -> Json {
   Json::number(
     rounded_double(value, places),
     repr=format_decimal(value, places),
@@ -125,7 +125,7 @@ fn[V] sorted_keys(map : Map[String, V]) -> Array[String] {
 fn results_artifact(
   results : Array[TestResult],
   agg : AggregatedResults,
-  harness_options? : HarnessOptions = HarnessOptions(),
+  harness_options~ : HarnessOptions = HarnessOptions(),
 ) -> Json {
   let overall = agg.overall
   let summary : Map[String, Json] = {
@@ -173,7 +173,7 @@ fn save_results(
   results : Array[TestResult],
   agg : AggregatedResults,
   output_file : String,
-  harness_options? : HarnessOptions = HarnessOptions(),
+  harness_options~ : HarnessOptions = HarnessOptions(),
 ) -> Unit raise {
   ensure_parent_dir(output_file)
   let data = results_artifact(results, agg, harness_options~)
@@ -232,7 +232,7 @@ async fn write_result_logs(
 }
 
 ///|
-fn pad_right(value : String, width : Int) -> String {
+fn pad_right(value : String, width : Int32) -> String {
   if value.length() >= width {
     value
   } else {
@@ -246,7 +246,7 @@ fn pad_right(value : String, width : Int) -> String {
 }
 
 ///|
-fn pad_left(value : String, width : Int) -> String {
+fn pad_left(value : String, width : Int32) -> String {
   if value.length() >= width {
     value
   } else {

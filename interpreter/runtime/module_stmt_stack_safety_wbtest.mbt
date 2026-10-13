@@ -4,7 +4,7 @@ fn module_test_stmt(source : String) -> @ast.Stmt raise Error {
 }
 
 ///|
-fn nest_module_stmt_lists(stmt : @ast.Stmt, depth : Int) -> @ast.Stmt {
+fn nest_module_stmt_lists(stmt : @ast.Stmt, depth : Int32) -> @ast.Stmt {
   let loc = @token.Loc::default()
   let mut nested = stmt
   for _ in 0..<depth {
@@ -27,7 +27,7 @@ fn module_test_record_at(
 }
 
 ///|
-fn deep_exported_destructure(depth : Int) -> @ast.Stmt {
+fn deep_exported_destructure(depth : Int32) -> @ast.Stmt {
   let loc = @token.Loc::default()
   let mut pattern = @ast.Pattern::IdentPat("deep_name")
   for _ in 0..<depth {
@@ -246,7 +246,7 @@ test "Task 6A: deep declaration carriers append all names in source order" {
 
 ///|
 fn module_dependency_chain(
-  length : Int,
+  length : Int32,
 ) -> Map[String, ModuleRunRecord] raise Error {
   let records : Map[String, ModuleRunRecord] = Map([])
   let import_stmt = module_test_stmt("import './next';")
@@ -273,7 +273,7 @@ test "Task 6B: dependency walker handles a 4096-record chain in exact postorder"
   let length = 4096
   let records = module_dependency_chain(length)
   let order : Array[String] = []
-  let state : Map[String, Int] = Map([])
+  let state : Map[String, Int32] = Map([])
   Interpreter::new().visit_module_dependencies_first(
     records["0"],
     records,
@@ -320,7 +320,7 @@ test "Task 6B: weak re-export ring visits each record once in established order"
     @parser.parse("export * from 'a';").stmts,
   )
   let order : Array[String] = []
-  let state : Map[String, Int] = Map([])
+  let state : Map[String, Int32] = Map([])
   let interp = Interpreter::new()
   for specifier in ["a", "b", "c"] {
     interp.visit_module_dependencies_first(records[specifier], records, state, (
@@ -338,7 +338,7 @@ test "Task 6B: missing dependencies are ignored and action errors leave visiting
     @parser.parse("import 'absent';").stmts,
   )
   let records : Map[String, ModuleRunRecord] = Map([("main", missing)])
-  let state : Map[String, Int] = Map([])
+  let state : Map[String, Int32] = Map([])
   let result : Result[Unit, Error] = Ok(
     Interpreter::new().visit_module_dependencies_first(
       missing,
@@ -410,7 +410,7 @@ test "Task 6A: deep named re-export keeps original missing diagnostic location" 
 
 ///|
 fn module_resolution_chain(
-  length : Int,
+  length : Int32,
   kind : String,
 ) -> Map[String, ModuleRunRecord] raise Error {
   let records : Map[String, ModuleRunRecord] = Map([])
@@ -708,7 +708,7 @@ test "Task 6C: ImportedNamespace preserves identity cache and resolve set" {
 
 ///|
 fn module_exported_names_chain(
-  length : Int,
+  length : Int32,
 ) -> Map[String, ModuleRunRecord] raise Error {
   let records : Map[String, ModuleRunRecord] = Map([])
   let star = module_test_stmt("export * from 'next';")

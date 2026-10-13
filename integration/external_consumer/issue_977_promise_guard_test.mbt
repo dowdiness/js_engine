@@ -54,12 +54,10 @@ test "default Promise combinators fail closed before native iteration" {
     "return Promise.allSettled(issue977LargeArray); } " +
     "function issue977AnyLarge() { return Promise.any(issue977LargeArray); }",
   )
-  for function_name in [
-    "issue977AllLarge",
-    "issue977RaceLarge",
-    "issue977AllSettledLarge",
-    "issue977AnyLarge",
-  ] {
+  for
+    function_name in [
+      "issue977AllLarge", "issue977RaceLarge", "issue977AllSettledLarge", "issue977AnyLarge",
+    ] {
     match
       engine.call_json_bounded(
         function_name,
@@ -98,10 +96,9 @@ test "default Promise combinators do not close iterator-step abrupt completion" 
   json_inspect(engine.call_json("issue977OrdinaryAbrupt", []), content=1)
   json_inspect(engine.call_json("issue977OrdinaryCounts", []), content=[1, 0])
   inspect(engine.run_microtask_checkpoint(), content="false")
-  json_inspect(
-    engine.call_json("issue977OrdinarySnapshot", []),
-    content=["rejected"],
-  )
+  json_inspect(engine.call_json("issue977OrdinarySnapshot", []), content=[
+    "rejected",
+  ])
 }
 
 ///|
@@ -122,12 +119,10 @@ test "default Promise combinators close each acquired iterator once" {
     "function issue977GuardCounts() { " +
     "return [issue977GuardNextCalls, issue977GuardCloseCalls]; }",
   )
-  for function_name in [
-    "issue977GuardAll",
-    "issue977GuardRace",
-    "issue977GuardAllSettled",
-    "issue977GuardAny",
-  ] {
+  for
+    function_name in [
+      "issue977GuardAll", "issue977GuardRace", "issue977GuardAllSettled", "issue977GuardAny",
+    ] {
     match
       engine.call_json_bounded(
         function_name,
@@ -169,23 +164,17 @@ test "default Promise combinators reject iterator abrupt completion without clos
     "return [issue977AbruptNextCalls, issue977AbruptCloseCalls]; } " +
     "function issue977AbruptSnapshot() { return issue977AbruptEvents; }",
   )
-  for function_name in [
-    "issue977AbruptAll",
-    "issue977AbruptRace",
-    "issue977AbruptAllSettled",
-    "issue977AbruptAny",
-  ] {
+  for
+    function_name in [
+      "issue977AbruptAll", "issue977AbruptRace", "issue977AbruptAllSettled", "issue977AbruptAny",
+    ] {
     json_inspect(engine.call_json(function_name, []), content=1)
   }
-  json_inspect(
-    engine.call_json("issue977AbruptCounts", []),
-    content=[4, 0],
-  )
+  json_inspect(engine.call_json("issue977AbruptCounts", []), content=[4, 0])
   inspect(engine.run_microtask_checkpoint(), content="false")
-  json_inspect(
-    engine.call_json("issue977AbruptSnapshot", []),
-    content=["all-rejected", "race-rejected", "settled-rejected", "any-rejected"],
-  )
+  json_inspect(engine.call_json("issue977AbruptSnapshot", []), content=[
+    "all-rejected", "race-rejected", "settled-rejected", "any-rejected",
+  ])
 }
 
 ///|
@@ -264,14 +253,10 @@ test "default Promise combinators preserve pre-iterator errors without close" {
   json_inspect(engine.call_json("issue977BadResolve", []), content=1)
   json_inspect(engine.call_json("issue977BadNext", []), content=1)
   inspect(engine.run_microtask_checkpoint(), content="false")
-  json_inspect(
-    engine.call_json("issue977PreIteratorSnapshot", []),
-    content=["resolve-type", "next-type"],
-  )
-  json_inspect(
-    engine.call_json("issue977PreIteratorCounts", []),
-    content=[0, 0],
-  )
+  json_inspect(engine.call_json("issue977PreIteratorSnapshot", []), content=[
+    "resolve-type", "next-type",
+  ])
+  json_inspect(engine.call_json("issue977PreIteratorCounts", []), content=[0, 0])
 }
 
 ///|
@@ -296,10 +281,7 @@ test "default Promise guard preserves control failure when IteratorClose throws"
     Err(diagnostic) =>
       inspect(diagnostic.failure_kind_code(), content="execution-limit")
   }
-  json_inspect(
-    engine.call_json("issue977CloseThrowSnapshot", []),
-    content="gR",
-  )
+  json_inspect(engine.call_json("issue977CloseThrowSnapshot", []), content="gR")
 }
 
 ///|
@@ -327,15 +309,17 @@ test "default Promise combinators close on PromiseResolve and then abrupt comple
     "issue977ResolveThenEvents]; }",
   )
   json_inspect(engine.call_json("issue977ResolveAbrupt", []), content=1)
-  json_inspect(
-    engine.call_json("issue977ResolveThenSnapshot", []),
-    content=[1, 1, ["resolve"]],
-  )
+  json_inspect(engine.call_json("issue977ResolveThenSnapshot", []), content=[
+    1,
+    1,
+    ["resolve"],
+  ])
   inspect(engine.run_microtask_checkpoint(), content="false")
-  json_inspect(
-    engine.call_json("issue977ResolveThenSnapshot", []),
-    content=[1, 1, ["resolve", "all-rejected"]],
-  )
+  json_inspect(engine.call_json("issue977ResolveThenSnapshot", []), content=[
+    1,
+    1,
+    ["resolve", "all-rejected"],
+  ])
 
   engine.eval(
     "issue977ResolveThenConstructor.resolve = function(value) { " +
@@ -346,15 +330,17 @@ test "default Promise combinators close on PromiseResolve and then abrupt comple
     "undefined, () => issue977ResolveThenEvents.push('race-rejected')); return 1; }",
   )
   json_inspect(engine.call_json("issue977ThenAbrupt", []), content=1)
-  json_inspect(
-    engine.call_json("issue977ResolveThenSnapshot", []),
-    content=[2, 2, ["resolve", "all-rejected", "then"]],
-  )
+  json_inspect(engine.call_json("issue977ResolveThenSnapshot", []), content=[
+    2,
+    2,
+    ["resolve", "all-rejected", "then"],
+  ])
   inspect(engine.run_microtask_checkpoint(), content="false")
-  json_inspect(
-    engine.call_json("issue977ResolveThenSnapshot", []),
-    content=[2, 2, ["resolve", "all-rejected", "then", "race-rejected"]],
-  )
+  json_inspect(engine.call_json("issue977ResolveThenSnapshot", []), content=[
+    2,
+    2,
+    ["resolve", "all-rejected", "then", "race-rejected"],
+  ])
 }
 
 ///|
@@ -372,17 +358,14 @@ test "default Promise combinators preserve unbounded settlement behavior" {
     "issue977NormalEvents.push('any:' + v)); return 1; } " +
     "function issue977NormalSnapshot() { return issue977NormalEvents; }",
   )
-  for function_name in [
-    "issue977NormalAll",
-    "issue977NormalRace",
-    "issue977NormalAllSettled",
-    "issue977NormalAny",
-  ] {
+  for
+    function_name in [
+      "issue977NormalAll", "issue977NormalRace", "issue977NormalAllSettled", "issue977NormalAny",
+    ] {
     json_inspect(engine.call_json(function_name, []), content=1)
   }
   inspect(engine.run_microtask_checkpoint(), content="false")
-  json_inspect(
-    engine.call_json("issue977NormalSnapshot", []),
-    content=["all:2", "race:1", "settled:1", "any:1"],
-  )
+  json_inspect(engine.call_json("issue977NormalSnapshot", []), content=[
+    "all:2", "race:1", "settled:1", "any:1",
+  ])
 }
