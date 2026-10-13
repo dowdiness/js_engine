@@ -2651,8 +2651,12 @@ fn Interpreter::exec_try_catch(
       }
       result = try {
         match catch_param {
-          Some(param) =>
+          Some(param) => {
+            for name in @static_semantics.bound_names(param) {
+              catch_env.def_tdz(name, LetBinding)
+            }
             self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+          }
           None => ()
         }
         hoist_block_tdz(body, catch_env)
