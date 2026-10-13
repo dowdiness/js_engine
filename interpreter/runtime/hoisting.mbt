@@ -263,6 +263,49 @@ fn validate_for_pattern_early_errors(
 }
 
 ///|
+fn validate_catch_declaration_early_errors(
+  catch_param : @ast.Pattern,
+  catch_body : Array[@ast.Stmt],
+  strict_context : Bool,
+) -> Unit raise Error {
+  let catch_names : @set.Set[String] = Default::default()
+  collect_pattern_decl_names(catch_param, catch_names, lexical=true)
+  let body_lexical_names : @set.Set[String] = Default::default()
+  let block_function_kinds : Map[String, Int32] = Map([])
+  for stmt in catch_body {
+    collect_block_lexical_decl_names_from_stmt(
+      stmt,
+      body_lexical_names,
+      block_function_kinds,
+      include_block_functions=true,
+      allow_duplicate_block_functions=!strict_context,
+    )
+  }
+  for name in catch_names {
+    if body_lexical_names.contains(name) {
+      raise @errors.SyntaxError(
+        message="Identifier '\{name}' has already been declared",
+      )
+    }
+  }
+  match catch_param {
+    IdentPat(_) => ()
+    _ =>
+      for
+        name in @static_semantics.collect_var_declared_names(
+          catch_body,
+          include_funcs=false,
+        ) {
+        if catch_names.contains(name) {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
+        }
+      }
+  }
+}
+
+///|
 /// CaseBlock declarations share one lexical environment even though the AST
 /// stores each case body separately.
 fn flatten_case_block_statements(
@@ -744,7 +787,14 @@ pub fn validate_compiled_script_early_errors(
               None => ()
             }
             match catch_body {
-              Some(xs) => schedule_stmts_reverse(work, xs, strict)
+              Some(xs) => {
+                match catch_param {
+                  Some(pattern) =>
+                    validate_catch_declaration_early_errors(pattern, xs, strict)
+                  None => ()
+                }
+                schedule_stmts_reverse(work, xs, strict)
+              }
               None => ()
             }
             match catch_param {
