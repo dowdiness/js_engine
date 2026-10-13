@@ -10,7 +10,7 @@ fn bytecode_unsupported_reason_matches(
 fn assert_bytecode_unsupported(
   src : String,
   expected_reason : BytecodeUnsupportedReason,
-  expected_offset? : Int = -1,
+  expected_offset~ : Int32 = -1,
 ) -> Unit raise Error {
   let prog = @parser.parse(src)
   match lower_script_to_bytecode(prog.stmts) {

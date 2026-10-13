@@ -338,7 +338,7 @@ test "nested expression dispatches share one remaining counter" {
 
 ///|
 test "bounded loop termination is deterministic" {
-  let run_once = fn() -> (String, Int) raise Error {
+  let run_once = fn() -> (String, Int32) raise Error {
     let interp = Interpreter::new()
     interp.global.def("counter", Number(0.0), VarBinding)
     let control = ExecutionControl(

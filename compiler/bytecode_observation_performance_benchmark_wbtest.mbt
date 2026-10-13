@@ -11,7 +11,7 @@
 // =============================================================================
 
 ///|
-fn issue_896_flat_source(statement_count : Int) -> String {
+fn issue_896_flat_source(statement_count : Int32) -> String {
   let mut source = ""
   for _ in 0..<statement_count {
     source = source + "value;"
@@ -20,14 +20,14 @@ fn issue_896_flat_source(statement_count : Int) -> String {
 }
 
 ///|
-fn issue_896_parse_flat_source(statement_count : Int) -> Array[@ast.Stmt] {
+fn issue_896_parse_flat_source(statement_count : Int32) -> Array[@ast.Stmt] {
   @parser.parse(issue_896_flat_source(statement_count)).stmts catch {
     _ => abort("issue-896 benchmark: flat source failed to parse")
   }
 }
 
 ///|
-fn issue_896_lower_or_abort(stmts : Array[@ast.Stmt]) -> Int {
+fn issue_896_lower_or_abort(stmts : Array[@ast.Stmt]) -> Int32 {
   let program = build_script_bytecode(stmts) catch {
     _ => abort("issue-896 benchmark: lowering failed")
   }
@@ -36,7 +36,7 @@ fn issue_896_lower_or_abort(stmts : Array[@ast.Stmt]) -> Int {
 }
 
 ///|
-fn issue_896_finalize_or_abort(program : BytecodeUnverifiedProgram) -> Int {
+fn issue_896_finalize_or_abort(program : BytecodeUnverifiedProgram) -> Int32 {
   let finalized = finalize_bytecode_program(program) catch {
     _ => abort("issue-896 benchmark: finalization failed")
   }

@@ -1,5 +1,9 @@
 ///|
-fn expect_int(actual : Int, expected : Int, label : String) -> Unit raise Error {
+fn expect_int(
+  actual : Int32,
+  expected : Int32,
+  label : String,
+) -> Unit raise Error {
   guard actual == expected else {
     fail(
       label +
@@ -81,9 +85,9 @@ fn expect_bin_op(
 ///|
 fn expect_loc(
   actual : @token.Loc,
-  line : Int,
-  col : Int,
-  offset : Int,
+  line : Int32,
+  col : Int32,
+  offset : Int32,
   label : String,
 ) -> Unit raise Error {
   expect_int(actual.line, line, label + " line")
@@ -110,9 +114,9 @@ fn expect_lex_form(
 fn expect_number_lit(
   actual : @ast.Expr,
   expected : Double,
-  line : Int,
-  col : Int,
-  offset : Int,
+  line : Int32,
+  col : Int32,
+  offset : Int32,
   label : String,
 ) -> Unit raise Error {
   match actual {

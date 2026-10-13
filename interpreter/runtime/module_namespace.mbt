@@ -242,8 +242,8 @@ fn Interpreter::create_module_namespace_object(
       is_accessor: true,
     }
   })
-  let symbol_props : Map[Int, Value] = Map([])
-  let symbol_descs : Map[Int, PropDescriptor] = Map([])
+  let symbol_props : Map[Int32, Value] = Map([])
+  let symbol_descs : Map[Int32, PropDescriptor] = Map([])
   let tag_sym = self.symbols.well_known_symbols().to_string_tag
   symbol_props[tag_sym.id] = String_("Module")
   symbol_descs[tag_sym.id] = {

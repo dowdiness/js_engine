@@ -50,7 +50,7 @@ fn MapData::append_entry(self : MapData, key : Value, value : Value) -> Unit {
 }
 
 ///|
-fn MapData::remove_entry_at(self : MapData, index : Int) -> Unit {
+fn MapData::remove_entry_at(self : MapData, index : Int32) -> Unit {
   let _ = self.entries.remove(index)
   let _ = self.entry_ids.remove(index)
 }
@@ -69,7 +69,7 @@ fn[T] observed_array_search(
   interp : @runtime.Interpreter,
   values : Array[T],
   predicate : (T) -> Bool,
-) -> Int? raise Error {
+) -> Int32? raise Error {
   let mut index = 0
   while index < values.length() {
     interp.observe_execution_step()
@@ -99,7 +99,7 @@ fn observed_set_value_search(
   interp : @runtime.Interpreter,
   data : SetData,
   value : Value,
-) -> Int? raise Error {
+) -> Int32? raise Error {
   let mut index = 0
   while index < data.values.length() {
     interp.observe_execution_step()
@@ -121,8 +121,8 @@ fn observed_set_value_search(
 fn observed_set_live_index_from(
   interp : @runtime.Interpreter,
   data : SetData,
-  start : Int,
-) -> Int? raise Error {
+  start : Int32,
+) -> Int32? raise Error {
   let mut index = start
   while index < data.values.length() {
     interp.observe_execution_step()
@@ -178,9 +178,9 @@ pub fn setup_map_set_builtins(
 
 ///|
 priv struct KeyedCollectionIteratorSlots {
-  next_index : Int
-  target : Int
-  kind : Int
+  next_index : Int32
+  target : Int32
+  kind : Int32
 }
 
 ///|
@@ -227,7 +227,7 @@ fn keyed_collection_iterator_type_error(
 fn read_keyed_collection_iterator_state(
   data : ObjectData,
   slots : KeyedCollectionIteratorSlots,
-) -> (Int, Value, Int)? {
+) -> (Int32, Value, Int32)? {
   match
     (
       @runtime.get_keyed_collection_iterator_next_index(data, slots.next_index),
@@ -248,15 +248,15 @@ fn make_keyed_collection_iterator(
   iterator_name : String,
   slots : KeyedCollectionIteratorSlots,
   target : Value,
-  kind : Int,
-  before_create? : () -> Unit = () => (),
+  kind : Int32,
+  before_create~ : () -> Unit = () => (),
 ) -> Value {
   before_create()
-  let iter_sym_props : Map[Int, Value] = Map([])
+  let iter_sym_props : Map[Int32, Value] = Map([])
   iter_sym_props[slots.next_index] = Value::Number(0.0)
   iter_sym_props[slots.target] = target
   iter_sym_props[slots.kind] = Value::Number(kind.to_double())
-  let iter_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let iter_sym_descs : Map[Int32, PropDescriptor] = Map([])
   let slot_desc = keyed_collection_iterator_internal_slot_descriptor()
   iter_sym_descs[slots.next_index] = slot_desc
   iter_sym_descs[slots.target] = slot_desc
@@ -287,10 +287,10 @@ fn build_keyed_collection_iterator_proto(
 ) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let proto_sym_props : Map[Int, Value] = Map([])
+  let proto_sym_props : Map[Int32, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = Value::String_(iterator_name)
   let proto_props : Map[String, Value] = Map([])
-  let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,

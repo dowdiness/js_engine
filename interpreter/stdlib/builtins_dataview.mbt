@@ -1,21 +1,21 @@
 ///|
 /// Read bytes from an ArrayBuffer for DataView operations.
 /// Handles endianness (little_endian parameter).
-fn dataview_get_int8(bytes : Array[Int], offset : Int) -> Value {
+fn dataview_get_int8(bytes : Array[Int32], offset : Int32) -> Value {
   let v = bytes[offset]
   let signed = if v >= 128 { v - 256 } else { v }
   Value::Number(signed.to_double())
 }
 
 ///|
-fn dataview_get_uint8(bytes : Array[Int], offset : Int) -> Value {
+fn dataview_get_uint8(bytes : Array[Int32], offset : Int32) -> Value {
   Value::Number(bytes[offset].to_double())
 }
 
 ///|
 fn dataview_get_int16(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   little_endian : Bool,
 ) -> Value {
   let lo = if little_endian { bytes[offset] } else { bytes[offset + 1] }
@@ -27,8 +27,8 @@ fn dataview_get_int16(
 
 ///|
 fn dataview_get_uint16(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   little_endian : Bool,
 ) -> Value {
   let lo = if little_endian { bytes[offset] } else { bytes[offset + 1] }
@@ -38,8 +38,8 @@ fn dataview_get_uint16(
 
 ///|
 fn dataview_get_int32(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   little_endian : Bool,
 ) -> Value {
   let b0 = if little_endian { bytes[offset] } else { bytes[offset + 3] }
@@ -56,8 +56,8 @@ fn dataview_get_int32(
 
 ///|
 fn dataview_get_uint32(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   little_endian : Bool,
 ) -> Value {
   let b0 = if little_endian { bytes[offset] } else { bytes[offset + 3] }
@@ -73,8 +73,8 @@ fn dataview_get_uint32(
 
 ///|
 fn dataview_get_float32(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   little_endian : Bool,
 ) -> Value {
   let b0 = if little_endian { bytes[offset] } else { bytes[offset + 3] }
@@ -90,8 +90,8 @@ fn dataview_get_float32(
 
 ///|
 fn dataview_get_float64(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   little_endian : Bool,
 ) -> Value {
   let mut bits = 0L
@@ -109,21 +109,29 @@ fn dataview_get_float64(
 
 ///|
 /// Set bytes in an ArrayBuffer for DataView operations.
-fn dataview_set_int8(bytes : Array[Int], offset : Int, value : Double) -> Unit {
+fn dataview_set_int8(
+  bytes : Array[Int32],
+  offset : Int32,
+  value : Double,
+) -> Unit {
   let v = @runtime.to_int32(value) & 0xFF
   bytes[offset] = v
 }
 
 ///|
-fn dataview_set_uint8(bytes : Array[Int], offset : Int, value : Double) -> Unit {
+fn dataview_set_uint8(
+  bytes : Array[Int32],
+  offset : Int32,
+  value : Double,
+) -> Unit {
   let v = @runtime.to_int32(value) & 0xFF
   bytes[offset] = v
 }
 
 ///|
 fn dataview_set_int16(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   value : Double,
   little_endian : Bool,
 ) -> Unit {
@@ -139,8 +147,8 @@ fn dataview_set_int16(
 
 ///|
 fn dataview_set_uint16(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   value : Double,
   little_endian : Bool,
 ) -> Unit {
@@ -156,8 +164,8 @@ fn dataview_set_uint16(
 
 ///|
 fn dataview_set_int32(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   value : Double,
   little_endian : Bool,
 ) -> Unit {
@@ -177,8 +185,8 @@ fn dataview_set_int32(
 
 ///|
 fn dataview_set_uint32(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   value : Double,
   little_endian : Bool,
 ) -> Unit {
@@ -198,8 +206,8 @@ fn dataview_set_uint32(
 
 ///|
 fn dataview_set_float32(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   value : Double,
   little_endian : Bool,
 ) -> Unit {
@@ -219,8 +227,8 @@ fn dataview_set_float32(
 
 ///|
 fn dataview_set_float64(
-  bytes : Array[Int],
-  offset : Int,
+  bytes : Array[Int32],
+  offset : Int32,
   value : Double,
   little_endian : Bool,
 ) -> Unit {
@@ -238,7 +246,7 @@ fn dataview_set_float64(
 
 ///|
 /// Helper to get the littleEndian bool argument.
-fn get_little_endian(args : Array[Value], arg_index : Int) -> Bool {
+fn get_little_endian(args : Array[Value], arg_index : Int32) -> Bool {
   if args.length() > arg_index {
     @runtime.is_truthy(args[arg_index])
   } else {
@@ -251,9 +259,9 @@ fn get_little_endian(args : Array[Value], arg_index : Int) -> Bool {
 fn validate_dataview_access(
   data : ObjectData,
   byte_offset : Int64,
-  element_size : Int,
+  element_size : Int32,
   realm_state : @runtime.RealmState,
-) -> (Array[Int], Int) raise Error {
+) -> (Array[Int32], Int32) raise Error {
   if data.class_name != "DataView" {
     raise @errors.TypeError(
       message="Method called on incompatible receiver: not a DataView",
@@ -300,7 +308,7 @@ fn validate_dataview_access(
 ///|
 fn make_unimplemented_dataview_bigint_method(
   name : String,
-  length : Int,
+  length : Int32,
 ) -> Value {
   @runtime.make_method_func(name~, length~, fn(_this_val, _args) raise {
     raise @errors.TypeError(
@@ -313,7 +321,7 @@ fn make_unimplemented_dataview_bigint_method(
 fn install_unimplemented_dataview_bigint_methods(
   props : Map[String, Value],
 ) -> Unit {
-  let method_specs : Array[(String, Int)] = [
+  let method_specs : Array[(String, Int32)] = [
     ("getBigInt64", 1),
     ("getBigUint64", 1),
     ("setBigInt64", 2),
@@ -848,9 +856,9 @@ pub fn setup_dataview_builtins(
   dv_proto_descs["setBigUint64"] = method_desc
 
   // Symbol.toStringTag
-  let dv_proto_sym_props : Map[Int, Value] = Map([])
+  let dv_proto_sym_props : Map[Int32, Value] = Map([])
   dv_proto_sym_props[tostringtag_sym.id] = Value::String_("DataView")
-  let dv_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let dv_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   dv_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,

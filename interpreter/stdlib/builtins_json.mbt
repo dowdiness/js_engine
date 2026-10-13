@@ -178,8 +178,8 @@ fn setup_json_builtins(
   json_descs["stringify"] = ne_desc
   // Symbol.toStringTag = "JSON"
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let json_sym_props : Map[Int, Value] = Map([])
-  let json_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let json_sym_props : Map[Int32, Value] = Map([])
+  let json_sym_descs : Map[Int32, PropDescriptor] = Map([])
   json_sym_props[tostringtag_sym.id] = Value::String_("JSON")
   json_sym_descs[tostringtag_sym.id] = {
     writable: false,
@@ -218,7 +218,7 @@ fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
   let obj_proto = interp.realm_state.get_obj_proto()
   let chars = input.to_array()
   let len = chars.length()
-  let pos : Array[Int] = [0] // mutable position
+  let pos : Array[Int32] = [0] // mutable position
   fn skip_ws() -> Unit {
     while pos[0] < len {
       let c = chars[pos[0]]
@@ -581,7 +581,7 @@ fn json_write_element_separator(
   buf : StringBuilder,
   first : Bool,
   indent : String?,
-  depth : Int,
+  depth : Int32,
 ) -> Bool {
   if !first {
     buf.write_char(',')
@@ -605,7 +605,7 @@ fn json_write_close_indent(
   buf : StringBuilder,
   indent : String?,
   has_content : Bool,
-  depth : Int,
+  depth : Int32,
 ) -> Unit {
   match indent {
     Some(ind) =>
@@ -639,9 +639,9 @@ fn json_serialize_json_array(
   val : Value,
   seen : Array[Value],
   indent : String?,
-  depth : Int,
-  replacer? : Value? = None,
-  property_list? : Array[String]? = None,
+  depth : Int32,
+  replacer~ : Value? = None,
+  property_list~ : Array[String]? = None,
 ) -> Value raise Error {
   let loc = @token.Loc::default()
   // Cycle detection
@@ -694,9 +694,9 @@ fn json_serialize_json_object(
   val : Value,
   seen : Array[Value],
   indent : String?,
-  depth : Int,
-  replacer? : Value? = None,
-  property_list? : Array[String]? = None,
+  depth : Int32,
+  replacer~ : Value? = None,
+  property_list~ : Array[String]? = None,
 ) -> Value raise Error {
   let loc = @token.Loc::default()
   // Cycle detection
@@ -756,12 +756,12 @@ fn json_stringify_value(
   val : Value,
   seen : Array[Value],
   indent : String?,
-  depth : Int,
+  depth : Int32,
   interp : Interpreter?,
-  replacer? : Value? = None,
-  holder? : Value = Undefined,
-  key? : String = "",
-  property_list? : Array[String]? = None,
+  replacer~ : Value? = None,
+  holder~ : Value = Undefined,
+  key~ : String = "",
+  property_list~ : Array[String]? = None,
 ) -> Value raise Error {
   // Step 1: Check toJSON for Object values per SerializeJSONProperty §25.5.8.1 step 2.
   // This fires Proxy [[Get]] traps and must precede the replacer call (step 2c).

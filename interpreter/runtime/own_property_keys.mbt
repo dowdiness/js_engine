@@ -18,7 +18,7 @@
 fn append_resolved_symbol_keys_observed(
   interp : Interpreter,
   out : Array[Value],
-  symbol_props : Map[Int, Value],
+  symbol_props : Map[Int32, Value],
   sym_state : SymbolState,
 ) -> Unit raise Error {
   symbol_props.each(fn(sym_id, _raw) raise {

@@ -37,7 +37,7 @@ fn append_own_property_descriptor_result(
   source : Value,
   key : Value,
   string_props : Map[String, Value],
-  symbol_props : Map[Int, Value],
+  symbol_props : Map[Int32, Value],
 ) -> Unit raise Error {
   interp.observe_execution_step()
   match interp.get_own_property(source, key) {
@@ -58,7 +58,7 @@ fn append_own_property_descriptors_from_keys(
   source : Value,
   keys : Array[Value],
   string_props : Map[String, Value],
-  symbol_props : Map[Int, Value],
+  symbol_props : Map[Int32, Value],
 ) -> Unit raise Error {
   for key in keys {
     append_own_property_descriptor_result(
@@ -165,7 +165,7 @@ fn make_get_own_property_descriptors_func() -> Value {
       _ => to_object(raw, interp)
     }
     let descriptors_props : Map[String, Value] = Map([])
-    let symbol_descriptors_props : Map[Int, Value] = Map([])
+    let symbol_descriptors_props : Map[Int32, Value] = Map([])
     let keys = interp.own_property_keys(obj)
     append_own_property_descriptors_from_keys(
       interp, obj, keys, descriptors_props, symbol_descriptors_props,

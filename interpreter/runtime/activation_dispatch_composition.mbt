@@ -349,14 +349,14 @@ fn DispatchExpressionPlan::DispatchExpressionPlan(
 ///|
 priv struct DispatchExpressionPlanResume {
   plan : DispatchExpressionPlan
-  next_index : Int
+  next_index : Int32
   values : Array[Value]
 }
 
 ///|
 fn DispatchExpressionPlanResume::DispatchExpressionPlanResume(
   plan~ : DispatchExpressionPlan,
-  next_index~ : Int,
+  next_index~ : Int32,
   values~ : Array[Value],
 ) -> DispatchExpressionPlanResume {
   {
@@ -507,7 +507,7 @@ fn classify_expression_source_steps(
 ///|
 fn expression_source_step_is_call_named(
   steps : Array[DispatchExpressionSourceStep],
-  index : Int,
+  index : Int32,
   name : String,
 ) -> Bool {
   match steps[index] {
@@ -519,7 +519,7 @@ fn expression_source_step_is_call_named(
 ///|
 fn expression_source_step_is_add(
   steps : Array[DispatchExpressionSourceStep],
-  index : Int,
+  index : Int32,
 ) -> Bool {
   match steps[index] {
     DispatchExpressionAddSourceStep(_) => true

@@ -16,9 +16,7 @@ fn repeat_default_guardrail_policy(
 ///|
 test "default String.repeat observes the bounded execution budget" {
   let engine = @js_engine.Engine()
-  engine.eval(
-    "function repeatLength() { return \"x\".repeat(100000).length; }",
-  )
+  engine.eval("function repeatLength() { return \"x\".repeat(100000).length; }")
   match
     engine.call_json_bounded(
       "repeatLength",

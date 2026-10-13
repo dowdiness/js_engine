@@ -119,8 +119,8 @@ fn candidate_lower_function(
   enclosing_strict : Bool,
   is_method : Bool,
   activation_kind : BytecodeActivationKind,
-  function_form? : BytecodeFunctionForm = OrdinaryFunction,
-  function_form_loc? : @token.Loc? = None,
+  function_form~ : BytecodeFunctionForm = OrdinaryFunction,
+  function_form_loc~ : @token.Loc? = None,
 ) -> CandidateFunctionLowering raise Error {
   let allocator = new_source_point_owner_allocator()
   try {
@@ -186,8 +186,8 @@ fn candidate_prepare_plan(
   activation_kind : BytecodeActivationKind,
   children : Array[CandidateFunctionPlan],
   materialization_site : @token.Loc?,
-  function_form? : BytecodeFunctionForm = OrdinaryFunction,
-  function_form_loc? : @token.Loc? = None,
+  function_form~ : BytecodeFunctionForm = OrdinaryFunction,
+  function_form_loc~ : @token.Loc? = None,
 ) -> CandidateFunctionPlan raise Error {
   let strict = candidate_function_strict(enclosing_strict, body)
   let named_function_unsupported = match
@@ -473,7 +473,7 @@ fn candidate_collect_method_expr(
   consumer_form : BytecodeFunctionConsumerForm,
   enclosing_strict : Bool,
   plans : Array[CandidateFunctionPlan],
-  class_constructor? : Bool = false,
+  class_constructor~ : Bool = false,
 ) -> Unit raise Error {
   match expr {
     FuncExpr(name, params, body, loc, source_text) => {
@@ -1343,7 +1343,7 @@ fn candidate_bytecode_identity_plan(
 }
 
 ///|
-fn candidate_owner_number(owner : SourcePointOwnerId) -> Int {
+fn candidate_owner_number(owner : SourcePointOwnerId) -> Int32 {
   let SourcePointOwnerId(number) = owner
   number
 }
@@ -1379,7 +1379,7 @@ fn candidate_compile_function(
 fn candidate_source_identity(
   identity_plan : CandidateIdentityPlan,
   allocator : Ref[SourcePointOwnerAllocator],
-  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm, Bool)?,
+  parent : (SourcePointOwnerId, Int32, BytecodeFunctionConsumerForm, Bool)?,
 ) -> BytecodeSourceIdentity {
   match parent {
     Some((parent_owner, child_index, consumer_form, _)) =>
@@ -1417,7 +1417,7 @@ fn candidate_tree_walker_reason(
 fn candidate_build_identity_node(
   plan : CandidateFunctionPlan,
   allocator : Ref[SourcePointOwnerAllocator],
-  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm, Bool)?,
+  parent : (SourcePointOwnerId, Int32, BytecodeFunctionConsumerForm, Bool)?,
 ) -> CandidateIdentityNode raise Error {
   let identity_plan = plan.identity_plan.unwrap()
   let source_identity = candidate_source_identity(
@@ -1465,8 +1465,8 @@ fn candidate_build_identity_authority(
 fn candidate_materialize_function(
   plan : CandidateFunctionPlan,
   allocator : Ref[SourcePointOwnerAllocator],
-  parent : (SourcePointOwnerId, Int, BytecodeFunctionConsumerForm, Bool)?,
-  function_path : Array[Int],
+  parent : (SourcePointOwnerId, Int32, BytecodeFunctionConsumerForm, Bool)?,
+  function_path : Array[Int32],
 ) -> CandidateFunction raise Error {
   let identity_plan = plan.identity_plan.unwrap()
   let source_identity = candidate_source_identity(
@@ -1668,7 +1668,7 @@ fn candidate_verify_materialization_sites(
 fn candidate_verify_function_declarations(
   function : BytecodeFunction,
   children : Array[CandidateFunction],
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Unit raise Error {
   let consumer_scan = scan_bytecode_function_consumers_for_verification(
     function.code,
@@ -1736,7 +1736,7 @@ fn candidate_verify_function_declarations(
 ///|
 fn candidate_raw_child_for_slot(
   function : BytecodeFunction,
-  child_index : Int,
+  child_index : Int32,
 ) -> BytecodeFunction? {
   for child in function.children {
     if child.source_identity.child_index == Some(child_index) {
@@ -1750,7 +1750,7 @@ fn candidate_raw_child_for_slot(
 fn candidate_verify_bytecode_function(
   bytecode : CandidateVerifiedBytecodeFunction,
   candidate : CandidateFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Unit raise Error {
   let function = bytecode.function
   candidate_verify_local_function(
@@ -1841,8 +1841,8 @@ fn candidate_verify_bytecode_function(
 ///|
 fn candidate_verify_local_function(
   function : BytecodeFunction,
-  child_count : Int,
-  function_path : Array[Int],
+  child_count : Int32,
+  function_path : Array[Int32],
 ) -> Unit raise Error {
   let _ = verify_bytecode_function_source_metadata(
     function,

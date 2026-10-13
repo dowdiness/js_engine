@@ -77,7 +77,7 @@ pub struct FunctionMaterializer {
 pub fn FunctionMaterializer::FunctionMaterializer(
   begin~ : () -> FunctionMaterializer,
   materialize~ : (Interpreter, FunctionMaterializationRequest) -> Value raise Error,
-  hooks? : FunctionExecutionHooks? = None,
+  hooks~ : FunctionExecutionHooks? = None,
 ) -> FunctionMaterializer {
   { begin, materialize, hooks, }
 }

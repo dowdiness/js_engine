@@ -40,14 +40,14 @@ priv enum TimerQueueCheckpointDecision {
 
 ///|
 priv struct TimerQueuePolicyCore {
-  safety_limit : Int
-  iterations : Int
+  safety_limit : Int32
+  iterations : Int32
   phase : TimerQueueCorePhase
 }
 
 ///|
 fn TimerQueuePolicyCore::TimerQueuePolicyCore(
-  safety_limit : Int,
+  safety_limit : Int32,
 ) -> TimerQueuePolicyCore {
   { safety_limit, iterations: 0, phase: TimerQueueCoreReady, }
 }
@@ -160,7 +160,7 @@ fn TimerQueuePolicyCore::callback_failed(
 fn TimerQueuePolicyCore::checkpoint_succeeded(
   self : TimerQueuePolicyCore,
   cancelled : Bool,
-  insertion_order : Int,
+  insertion_order : Int32,
 ) -> (TimerQueuePolicyCore, TimerQueueCheckpointDecision) raise {
   let timer = match self.phase {
     TimerQueueCoreCallbackSucceeded(timer) => timer

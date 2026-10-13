@@ -325,7 +325,7 @@ fn classify_constructor_recursion_program(
 ///|
 fn constructor_recursion_root_statement_matches(
   plan : ConstructorRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   guard index >= 0 && index < plan.functions.length() else { return false }
@@ -374,8 +374,8 @@ fn constructor_recursion_root_expression_matches(
 ///|
 fn constructor_recursion_body_statement_matches(
   plan : ConstructorRecursionPlan,
-  function_index : Int,
-  index : Int,
+  function_index : Int32,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   guard function_index >= 0 && function_index < plan.functions.length() else {

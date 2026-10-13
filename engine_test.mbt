@@ -46,7 +46,7 @@ fn assert_engine_diagnostic(
   integrity : String,
   effects : String,
   jobs : String,
-  has_location? : Bool = false,
+  has_location~ : Bool = false,
 ) -> Unit raise {
   inspect(diagnostic.failure_kind_code(), content=kind)
   inspect(diagnostic.operation_code(), content=operation)
@@ -65,12 +65,12 @@ fn assert_engine_diagnostic(
 ///|
 fn assert_source_range(
   diagnostic : @js_engine.EngineDiagnostic,
-  start_line : Int,
-  start_column : Int,
-  start_offset : Int,
-  end_line : Int,
-  end_column : Int,
-  end_offset : Int,
+  start_line : Int32,
+  start_column : Int32,
+  start_offset : Int32,
+  end_line : Int32,
+  end_column : Int32,
+  end_offset : Int32,
 ) -> Unit raise {
   guard diagnostic.source_location() is Some(location) else {
     fail("expected parser source location")
@@ -582,7 +582,7 @@ test "loaded Script Resource errors remain JavaScript-catchable" {
 ///|
 test "application resumes an opaque Scheduled Turn exactly once" {
   let scheduled : Ref[@js_engine.ScheduledTurn?] = { val: None, }
-  let delays : Array[Int] = []
+  let delays : Array[Int32] = []
   let session = @js_engine.HostEnvironment(timers=true).create_session(
     bindings=@js_engine.SessionBindings(
       timer_scheduler=Some(schedule => {

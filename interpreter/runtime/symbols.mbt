@@ -66,10 +66,10 @@ pub fn is_object_value(v : Value) -> Bool {
 /// Passed through setup functions so that closures can capture it
 /// without needing an Interpreter reference.
 pub(all) struct SymbolState {
-  symbol_id_counter : Ref[Int]
-  all_symbols : Map[Int, SymbolData]
+  symbol_id_counter : Ref[Int32]
+  all_symbols : Map[Int32, SymbolData]
   global_symbol_registry : Map[String, SymbolData]
-  symbol_registry_reverse : Map[Int, String]
+  symbol_registry_reverse : Map[Int32, String]
   well_known_symbols_cache : Ref[WellKnownSymbols?]
 }
 
@@ -101,7 +101,7 @@ pub fn SymbolState::new_symbol(
 /// Get a symbol by its ID from this SymbolState.
 pub fn SymbolState::get_symbol_by_id(
   self : SymbolState,
-  id : Int,
+  id : Int32,
 ) -> SymbolData? {
   self.all_symbols.get(id)
 }

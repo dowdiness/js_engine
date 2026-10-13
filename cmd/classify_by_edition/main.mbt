@@ -17,7 +17,7 @@ fn eprintln(line : String) -> Unit {
 }
 
 ///|
-fn exit_with_code(code : Int) -> Unit {
+fn exit_with_code(code : Int32) -> Unit {
   if code != 0 {
     @sys.exit(code)
   }
@@ -49,7 +49,7 @@ fn flag_value(flags : Map[String, Bool], key : String) -> Bool {
 }
 
 ///|
-fn parse_top(raw : String) -> Int {
+fn parse_top(raw : String) -> Int32 {
   @string.parse_int(raw) catch {
     _ => 15
   }

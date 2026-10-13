@@ -442,8 +442,8 @@ pub fn setup_promise(
   promise_proto_descs["finally"] = pd_method_desc
   // Symbol.toStringTag = "Promise" per §27.2.3.6: {w:false, e:false, c:true}
   let to_string_tag_sym = realm_state.well_known_symbols.to_string_tag
-  let promise_proto_sym_props : Map[Int, Value] = Map([])
-  let promise_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let promise_proto_sym_props : Map[Int32, Value] = Map([])
+  let promise_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   promise_proto_sym_props[to_string_tag_sym.id] = Value::String_("Promise")
   promise_proto_sym_descs[to_string_tag_sym.id] = nf_desc
   let promise_proto = Value::Object({
@@ -612,7 +612,7 @@ pub fn setup_promise(
         interp, _this, loc,
       )
       let results : Array[Value] = []
-      let remaining : Ref[Int] = { val: 1, }
+      let remaining : Ref[Int32] = { val: 1, }
       let mut iterator : Value = Undefined
       let mut has_iterator = false
       let mut iterator_done = false
@@ -806,7 +806,7 @@ pub fn setup_promise(
         interp, _this, loc,
       )
       let results : Array[Value] = []
-      let remaining : Ref[Int] = { val: 1, }
+      let remaining : Ref[Int32] = { val: 1, }
       let mut iterator : Value = Undefined
       let mut has_iterator = false
       let mut iterator_done = false
@@ -981,7 +981,7 @@ pub fn setup_promise(
         interp, _this, loc,
       )
       let errors : Array[Value] = []
-      let remaining : Ref[Int] = { val: 1, }
+      let remaining : Ref[Int32] = { val: 1, }
       let mut iterator : Value = Undefined
       let mut has_iterator = false
       let mut iterator_done = false
@@ -1296,10 +1296,10 @@ fn Interpreter::schedule_timer(
   self : Interpreter,
   callback : Value,
   extra_args : Array[Value],
-  delay : Int,
-  period : Int,
+  delay : Int32,
+  period : Int32,
   is_interval : Bool,
-) -> Int {
+) -> Int32 {
   let id = self.host.timer_id_counter.val
   self.host.timer_id_counter.val = id + 1
   // Purge any stale cancellation for this ID before enqueuing.
@@ -1323,7 +1323,7 @@ fn Interpreter::schedule_timer(
 ///|
 /// Cancel a pending setTimeout or setInterval by ID.
 /// Uses lazy deletion: the ID is recorded here; run_timers skips it on pop.
-fn Interpreter::cancel_timer(self : Interpreter, id : Int) -> Unit {
+fn Interpreter::cancel_timer(self : Interpreter, id : Int32) -> Unit {
   self.host.cancelled_timer_ids[id] = true
 }
 

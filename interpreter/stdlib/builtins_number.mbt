@@ -20,7 +20,7 @@ fn trim_start(s : String) -> String {
 }
 
 ///|
-fn char_to_digit(c : Char, radix : Int) -> Int {
+fn char_to_digit(c : Char, radix : Int32) -> Int32 {
   let code = c.to_int()
   let digit = if code >= 48 && code <= 57 {
     // '0' - '9'
@@ -967,7 +967,7 @@ pub fn get_number_method(
 }
 
 ///|
-fn format_number_precision(n : Double, precision : Int) -> String {
+fn format_number_precision(n : Double, precision : Int32) -> String {
   // Format a number with exactly `precision` significant digits
   // Used for toPrecision and toExponential
   // Returns mantissa only (e.g., "1.23" for 1.23, NOT including exponent)

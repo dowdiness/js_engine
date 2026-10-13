@@ -9,7 +9,7 @@ fn program_args(args : Array[String]) -> ArrayView[String] {
 }
 
 ///|
-extern "c" fn native_exit(code : Int) -> Unit = "exit"
+extern "c" fn native_exit(code : Int32) -> Unit = "exit"
 
 ///|
 /// Exit the process with a non-zero exit code (native target).

@@ -12,7 +12,7 @@ fn mutable_type_constructors() -> Array[String] {
 struct MutableBinding {
   key : String
   path : String
-  line : Int
+  line : Int32
   name : String
   type_name : String
   is_public : Bool
@@ -116,7 +116,7 @@ fn parse_module_let_start(line : String) -> (Bool, String, String)? {
 }
 
 ///|
-fn parse_module_let(lines : Array[String], start : Int) -> MutableBinding? {
+fn parse_module_let(lines : Array[String], start : Int32) -> MutableBinding? {
   guard start >= 0 && start < lines.length() else { return None }
   guard parse_module_let_start(lines[start]) is Some((is_public, name, rest)) else {
     return None
@@ -242,7 +242,7 @@ fn render_report(
   bindings : Array[MutableBinding],
   classified : Map[String, String],
   list~ : Bool,
-) -> (Array[String], Array[String], Int) {
+) -> (Array[String], Array[String], Int32) {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
   if list {
@@ -315,7 +315,7 @@ fn render_report(
 pub fn run(
   root~ : String,
   list~ : Bool,
-) -> (Array[String], Array[String], Int) raise {
+) -> (Array[String], Array[String], Int32) raise {
   let bindings = discover_mutable_bindings(root)
   let classified = load_classified_mutable_state(root)
   render_report(bindings, classified, list~)

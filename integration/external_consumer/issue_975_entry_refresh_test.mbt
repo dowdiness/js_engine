@@ -131,7 +131,9 @@ test "default String.localeCompare conversion throws precede the guard" {
 ///|
 test "default String.normalize rejects unobserved native progress" {
   let engine = @js_engine.Engine()
-  engine.eval("function normalizeValue() { return ('a'.repeat(2000) + '\\u0301').normalize(); }")
+  engine.eval(
+    "function normalizeValue() { return ('a'.repeat(2000) + '\\u0301').normalize(); }",
+  )
   match
     engine.call_json_bounded(
       "normalizeValue",
@@ -157,7 +159,8 @@ test "default String.normalize validates form before bounded guard" {
       locale_compare_guardrail_policy(1000L),
     ) {
     Ok(_) => fail("invalid normalize form must reject")
-    Err(diagnostic) => inspect(diagnostic.failure_kind_code(), content="javascript-exception")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="javascript-exception")
   }
 }
 
@@ -177,7 +180,8 @@ test "default String.normalize receiver coercion precedes bounded guard" {
       locale_compare_guardrail_policy(1000L),
     ) {
     Ok(_) => fail("normalize must fail closed after receiver coercion")
-    Err(diagnostic) => inspect(diagnostic.failure_kind_code(), content="execution-limit")
+    Err(diagnostic) =>
+      inspect(diagnostic.failure_kind_code(), content="execution-limit")
   }
   json_inspect(engine.call_json("readEvents", []), content="r")
 }
@@ -194,8 +198,7 @@ test "default String RegExp symbol protocols remain custom-dispatchable" {
     "String.prototype.search.call('subject', custom)" +
     "]; }",
   )
-  json_inspect(
-    engine.call_json("customProtocols", []),
-    content=["custom:subject", "search:subject"],
-  )
+  json_inspect(engine.call_json("customProtocols", []), content=[
+    "custom:subject", "search:subject",
+  ])
 }

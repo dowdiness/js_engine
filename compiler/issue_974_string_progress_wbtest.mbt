@@ -1,7 +1,7 @@
 ///|
 fn issue974_native_string_object(
   name : String,
-  calls : Ref[Int],
+  calls : Ref[Int32],
   result : String,
 ) -> Value {
   let to_string : Value = Value::Object({
@@ -79,7 +79,7 @@ test "candidate String.concat observes output code units" {
 ///|
 test "candidate String.concat coerces a throwing first argument before output" {
   let interp = @interpreter.new_interpreter()
-  let first_calls : Ref[Int] = { val: 0, }
+  let first_calls : Ref[Int32] = { val: 0, }
   let throwing_to_string : Value = Value::Object({
     bag: PropertyBag::PropertyBag(),
     prototype: Value::Null,
@@ -156,8 +156,8 @@ test "candidate String.concat coerces a throwing first argument before output" {
 ///|
 test "candidate String.concat interleaves host coercion and output" {
   let interp = @interpreter.new_interpreter()
-  let first_calls : Ref[Int] = { val: 0, }
-  let later_calls : Ref[Int] = { val: 0, }
+  let first_calls : Ref[Int32] = { val: 0, }
+  let later_calls : Ref[Int32] = { val: 0, }
   interp.global.def_builtin(
     "issue974ConcatFirstHostArg",
     issue974_native_string_object(
@@ -375,7 +375,7 @@ test "candidate String selected access stays bounded on a huge input" {
 ///|
 test "candidate String replace observes native callback boundary" {
   let interp = @interpreter.new_interpreter()
-  let callback_calls : Ref[Int] = { val: 0, }
+  let callback_calls : Ref[Int32] = { val: 0, }
   let native_callback : Value = Value::Object({
     bag: PropertyBag::PropertyBag(),
     prototype: Value::Null,

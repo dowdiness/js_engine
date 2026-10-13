@@ -248,7 +248,7 @@ test "coercing multiplicative converts left before right exactly once" {
 ///|
 test "coercing multiplicative left Symbol failure leaves right untouched" {
   let interp = Interpreter::new()
-  let right_calls : Ref[Int] = { val: 0, }
+  let right_calls : Ref[Int32] = { val: 0, }
   let right_hook = make_method_func(
     name="multiplicative right hook",
     realm_state=Some(interp.realm_state),

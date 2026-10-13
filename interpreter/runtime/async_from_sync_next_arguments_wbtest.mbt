@@ -30,7 +30,7 @@ test "Async-from-Sync next omits an absent argument" {
   let interp = Interpreter::new()
   let iterator = async_from_sync_next_arguments_test_iterator()
   let receiver : Ref[Value] = { val: Undefined, }
-  let argument_count : Ref[Int] = { val: -1, }
+  let argument_count : Ref[Int32] = { val: -1, }
   let next = make_method_func(
     name="original next",
     realm_state=Some(interp.realm_state),
@@ -57,7 +57,7 @@ test "Async-from-Sync next forwards an explicit undefined argument" {
   let interp = Interpreter::new()
   let iterator = async_from_sync_next_arguments_test_iterator()
   let receiver : Ref[Value] = { val: Undefined, }
-  let argument_count : Ref[Int] = { val: -1, }
+  let argument_count : Ref[Int32] = { val: -1, }
   let first_argument : Ref[Value] = { val: Null, }
   let next = make_method_func(
     name="original next",
@@ -89,10 +89,10 @@ test "Async-from-Sync next forwards only its first argument to the saved method"
   let interp = Interpreter::new()
   let iterator = async_from_sync_next_arguments_test_iterator()
   let receiver : Ref[Value] = { val: Undefined, }
-  let argument_count : Ref[Int] = { val: -1, }
+  let argument_count : Ref[Int32] = { val: -1, }
   let first_argument : Ref[Value] = { val: Null, }
-  let original_calls : Ref[Int] = { val: 0, }
-  let replacement_calls : Ref[Int] = { val: 0, }
+  let original_calls : Ref[Int32] = { val: 0, }
+  let replacement_calls : Ref[Int32] = { val: 0, }
   let original_next = make_method_func(
     name="original next",
     realm_state=Some(interp.realm_state),

@@ -1,7 +1,7 @@
 ///|
 priv enum BytecodeActivationResumeDecision {
   BytecodeResumePushValue(Value)
-  BytecodeResumeUpdateLocal(Int, Value, Value)
+  BytecodeResumeUpdateLocal(Int32, Value, Value)
   BytecodeResumePushBindingReference(@runtime.ResolvedBindingReference)
   BytecodeResumePushReceiverAndValue(Value, Value)
   BytecodeResumeNoStackChange
@@ -47,7 +47,7 @@ fn plan_bytecode_local_update(
 
 ///|
 fn reduce_bytecode_local_update(
-  slot : Int,
+  slot : Int32,
   op : @ast.UpdateOp,
   prefix : Bool,
   converted : Value,

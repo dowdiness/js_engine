@@ -128,7 +128,7 @@ pub fn stack_depth_limit_message() -> String {
 ///|
 fn ExecutionPolicy::to_execution_control(
   self : ExecutionPolicy,
-  strict_hosted? : Bool = false,
+  strict_hosted~ : Bool = false,
 ) -> ExecutionControl raise Error {
   ExecutionControl(
     remaining_steps=self.step_budget_,

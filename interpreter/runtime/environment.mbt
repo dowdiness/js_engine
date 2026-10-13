@@ -94,7 +94,7 @@ pub fn EnvironmentSlot::initialize(
 pub fn EnvironmentSlot::assign(
   self : EnvironmentSlot,
   value : Value,
-  strict? : Bool = false,
+  strict~ : Bool = false,
 ) -> Unit raise Error {
   assign_binding_value(self.binding, self.name, value, strict)
 }
@@ -133,7 +133,7 @@ const EVAL_FUNCTION_RECONCILE_MARKER = "[[EvalFunctionReconcile]]"
 const THIS_INITIALIZED_BY_SUPER_MARKER = "[[ThisInitializedBySuper]]"
 
 ///|
-pub fn Environment::new(parent? : Environment? = None) -> Environment {
+pub fn Environment::new(parent~ : Environment? = None) -> Environment {
   let (realm_state, interpreter_context) = match parent {
     Some(parent) => (parent.realm_state, parent.interpreter_context)
     None => (None, None)
@@ -683,7 +683,7 @@ fn with_object_get(
   interp_context : Interpreter?,
   obj : Value,
   name : String,
-  strict? : Bool = false,
+  strict~ : Bool = false,
 ) -> Value? raise Error {
   match interp_context {
     Some(interp) => {
@@ -735,7 +735,7 @@ fn with_object_set(
   obj : Value,
   name : String,
   value : Value,
-  strict? : Bool = false,
+  strict~ : Bool = false,
 ) -> Unit raise Error {
   match interp_context {
     Some(interp) => {

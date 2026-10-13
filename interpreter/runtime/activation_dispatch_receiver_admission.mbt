@@ -457,7 +457,7 @@ fn classify_receiver_recursion_program(
 #warnings("-unused_value")
 fn receiver_recursion_root_statement_matches(
   plan : ReceiverRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {
@@ -542,7 +542,7 @@ fn receiver_recursion_root_statement_matches(
 #warnings("-unused_value")
 fn receiver_recursion_body_statement_matches(
   plan : ReceiverRecursionPlan,
-  index : Int,
+  index : Int32,
   stmt : @ast.Stmt,
 ) -> Bool {
   match index {

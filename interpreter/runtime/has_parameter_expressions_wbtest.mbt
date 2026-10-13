@@ -1,7 +1,7 @@
 ///|
 fn nested_parameter_pattern(
   terminal : @ast.Pattern,
-  depth : Int,
+  depth : Int32,
 ) -> @ast.Pattern {
   let loc = @token.Loc::default()
   let mut pattern = terminal

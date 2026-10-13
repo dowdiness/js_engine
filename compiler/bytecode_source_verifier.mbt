@@ -26,12 +26,12 @@ priv enum BytecodeObservationCoverageInvariant {
 ///|
 #warnings("-unused_constructor")
 priv enum BytecodeObservationCoverageFact {
-  CodeLength(Int)
-  ObservationContextsLength(Int)
-  ObservationEdgeContextsLength(Int)
-  ObservationContextDepth(Int)
-  ObservationAuthorityLength(Int)
-  ObservationAuthoritySuccessor(Int)
+  CodeLength(Int32)
+  ObservationContextsLength(Int32)
+  ObservationEdgeContextsLength(Int32)
+  ObservationContextDepth(Int32)
+  ObservationAuthorityLength(Int32)
+  ObservationAuthoritySuccessor(Int32)
 }
 
 ///|
@@ -54,13 +54,13 @@ priv struct BytecodeObservationBarrierIndex {
 ///|
 #warnings("-unused_constructor")
 priv enum BytecodeSourceMetadataFact {
-  CodeLength(Int)
-  InstructionSourcesLength(Int)
-  SourcePointIndex(Int)
-  SourcePointTableLength(Int)
+  CodeLength(Int32)
+  InstructionSourcesLength(Int32)
+  SourcePointIndex(Int32)
+  SourcePointTableLength(Int32)
   SourceUnit(SourceUnitHandle)
   SourcePointOwner(SourcePointOwnerId)
-  SourcePointIdentity(SourceUnitHandle, SourcePointOwnerId, Int)
+  SourcePointIdentity(SourceUnitHandle, SourcePointOwnerId, Int32)
   SourceRoles(Array[SourcePointRole])
   ObservationBarrierKind(BytecodeObservationBarrierKind)
 }
@@ -84,8 +84,8 @@ priv enum BytecodeShapeOperandFamily {
 ///|
 #warnings("-unused_field")
 priv struct BytecodeSourceMetadataDefect {
-  function_path : Array[Int]
-  instruction_index : Int?
+  function_path : Array[Int32]
+  instruction_index : Int32?
   invariant : BytecodeSourceMetadataInvariant
   expected : BytecodeSourceMetadataFact
   actual : BytecodeSourceMetadataFact
@@ -94,10 +94,10 @@ priv struct BytecodeSourceMetadataDefect {
 ///|
 #warnings("-unused_field")
 priv struct BytecodeObservationCoverageDefect {
-  function_path : Array[Int]
-  instruction_index : Int?
-  predecessor_index : Int?
-  target_index : Int?
+  function_path : Array[Int32]
+  instruction_index : Int32?
+  predecessor_index : Int32?
+  target_index : Int32?
   invariant : BytecodeObservationCoverageInvariant
   expected : BytecodeObservationCoverageFact
   actual : BytecodeObservationCoverageFact
@@ -117,20 +117,20 @@ priv suberror BytecodeVerifierDefect {
 ///|
 #warnings("-unused_field")
 priv struct BytecodeShapeOperandTargetDefect {
-  function_path : Array[Int]
-  instruction_index : Int
+  function_path : Array[Int32]
+  instruction_index : Int32
   family : BytecodeShapeOperandFamily
-  expected_lower_bound : Int
-  exclusive_upper_bound : Int?
-  actual_operand : Int
+  expected_lower_bound : Int32
+  exclusive_upper_bound : Int32?
+  actual_operand : Int32
 }
 
 ///|
 #warnings("-unused_field")
 priv struct BytecodeLocalSlotCapacityDefect {
-  function_path : Array[Int]
-  minimum_source_local_capacity : Int
-  actual_capacity : Int
+  function_path : Array[Int32]
+  minimum_source_local_capacity : Int32
+  actual_capacity : Int32
 }
 
 ///|
@@ -144,18 +144,18 @@ priv enum BytecodeFrameShapeInvariant {
 ///|
 #warnings("-unused_field")
 priv struct BytecodeAbstractFrameShape {
-  operand_stack_height : Int
-  argument_list_depth : Int
-  for_in_iterator_depth : Int
-  binding_reference_depth : Int
+  operand_stack_height : Int32
+  argument_list_depth : Int32
+  for_in_iterator_depth : Int32
+  binding_reference_depth : Int32
 }
 
 ///|
 #warnings("-unused_field")
 priv struct BytecodeFrameShapeDefect {
-  function_path : Array[Int]
-  instruction_index : Int
-  predecessor_index : Int?
+  function_path : Array[Int32]
+  instruction_index : Int32
+  predecessor_index : Int32?
   invariant : BytecodeFrameShapeInvariant
   expected : BytecodeAbstractFrameShape
   actual : BytecodeAbstractFrameShape
@@ -163,49 +163,49 @@ priv struct BytecodeFrameShapeDefect {
 
 ///|
 priv struct BytecodeResourceEffect {
-  required_stack_height : Int
-  stack_height_delta : Int
-  required_argument_list_depth : Int
-  argument_list_depth_delta : Int
-  required_for_in_iterator_depth : Int
-  for_in_iterator_depth_delta : Int
-  required_binding_reference_depth : Int
-  binding_reference_depth_delta : Int
+  required_stack_height : Int32
+  stack_height_delta : Int32
+  required_argument_list_depth : Int32
+  argument_list_depth_delta : Int32
+  required_for_in_iterator_depth : Int32
+  for_in_iterator_depth_delta : Int32
+  required_binding_reference_depth : Int32
+  binding_reference_depth_delta : Int32
 }
 
 ///|
 priv enum BytecodeInstructionTransfer {
   Fallthrough(BytecodeResourceEffect)
-  JumpTo(Int, BytecodeResourceEffect)
-  BranchTo(Int, BytecodeResourceEffect)
-  SplitTo(Int, BytecodeResourceEffect, BytecodeResourceEffect)
+  JumpTo(Int32, BytecodeResourceEffect)
+  BranchTo(Int32, BytecodeResourceEffect)
+  SplitTo(Int32, BytecodeResourceEffect, BytecodeResourceEffect)
   Terminate(BytecodeResourceEffect)
 }
 
 ///|
 #warnings("-unused_field")
 priv struct BytecodeIndexedOperandTargetDefect {
-  function_path : Array[Int]
-  instruction_index : Int
+  function_path : Array[Int32]
+  instruction_index : Int32
   family : BytecodeIndexedOperandFamily
-  exclusive_upper_bound : Int
-  actual_operand : Int
+  exclusive_upper_bound : Int32
+  actual_operand : Int32
 }
 
 ///|
 #warnings("-unused_field")
 priv struct BytecodeControlFlowTargetDefect {
-  function_path : Array[Int]
-  instruction_index : Int
-  expected_lower_bound : Int
-  expected_upper_bound : Int
-  actual_target : Int
+  function_path : Array[Int32]
+  instruction_index : Int32
+  expected_lower_bound : Int32
+  expected_upper_bound : Int32
+  actual_target : Int32
 }
 
 ///|
 fn bytecode_source_metadata_defect(
-  function_path : Array[Int],
-  instruction_index : Int?,
+  function_path : Array[Int32],
+  instruction_index : Int32?,
   invariant : BytecodeSourceMetadataInvariant,
   expected : BytecodeSourceMetadataFact,
   actual : BytecodeSourceMetadataFact,
@@ -233,8 +233,8 @@ fn verify_bytecode_source_metadata(
 
 ///|
 fn bytecode_stack_effect(
-  required_stack_height : Int,
-  stack_height_delta : Int,
+  required_stack_height : Int32,
+  stack_height_delta : Int32,
 ) -> BytecodeResourceEffect {
   {
     required_stack_height,
@@ -250,10 +250,10 @@ fn bytecode_stack_effect(
 
 ///|
 fn bytecode_argument_list_effect(
-  required_stack_height : Int,
-  stack_height_delta : Int,
-  required_argument_list_depth : Int,
-  argument_list_depth_delta : Int,
+  required_stack_height : Int32,
+  stack_height_delta : Int32,
+  required_argument_list_depth : Int32,
+  argument_list_depth_delta : Int32,
 ) -> BytecodeResourceEffect {
   {
     required_stack_height,
@@ -269,10 +269,10 @@ fn bytecode_argument_list_effect(
 
 ///|
 fn bytecode_for_in_effect(
-  required_stack_height : Int,
-  stack_height_delta : Int,
-  required_for_in_iterator_depth : Int,
-  for_in_iterator_depth_delta : Int,
+  required_stack_height : Int32,
+  stack_height_delta : Int32,
+  required_for_in_iterator_depth : Int32,
+  for_in_iterator_depth_delta : Int32,
 ) -> BytecodeResourceEffect {
   {
     required_stack_height,
@@ -288,10 +288,10 @@ fn bytecode_for_in_effect(
 
 ///|
 fn bytecode_binding_reference_effect(
-  required_stack_height : Int,
-  stack_height_delta : Int,
-  required_binding_reference_depth : Int,
-  binding_reference_depth_delta : Int,
+  required_stack_height : Int32,
+  stack_height_delta : Int32,
+  required_binding_reference_depth : Int32,
+  binding_reference_depth_delta : Int32,
 ) -> BytecodeResourceEffect {
   {
     required_stack_height,
@@ -504,7 +504,7 @@ fn bytecode_observation_authority_successors_equal(
 ///|
 fn verify_bytecode_observation_authority(
   function : BytecodeFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Unit raise Error {
   let exceptional = bytecode_exception_successor_table(function.code)
   let authority = function.observation_authority
@@ -676,8 +676,8 @@ fn bytecode_record_observation_barrier(
   expected_role : SourcePointRole,
   barrier_kind : BytecodeObservationBarrierKind,
   index_entry : BytecodeObservationBarrierIndexEntry,
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
 ) -> Unit raise Error {
   let _ = verify_source_point_reference(
     function,
@@ -708,7 +708,7 @@ fn bytecode_record_observation_barrier(
 ///|
 fn bytecode_build_observation_barrier_index(
   function : BytecodeFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> BytecodeObservationBarrierIndex raise Error {
   let entries : Array[BytecodeObservationBarrierIndexEntry?] = Array::makei(
     function.source_points.length(),
@@ -781,8 +781,8 @@ fn verify_bytecode_observation_entry(
   function : BytecodeFunction,
   barrier_index : BytecodeObservationBarrierIndex,
   entry : BytecodeObservationContextEntry,
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
 ) -> Unit raise Error {
   let source_id = bytecode_observation_entry_source_id(entry)
   let expected_role = bytecode_observation_entry_role(entry)
@@ -808,10 +808,10 @@ fn verify_bytecode_observation_entry(
 
 ///|
 fn bytecode_observation_coverage_defect(
-  function_path : Array[Int],
-  instruction_index : Int?,
-  predecessor_index : Int?,
-  target_index : Int?,
+  function_path : Array[Int32],
+  instruction_index : Int32?,
+  predecessor_index : Int32?,
+  target_index : Int32?,
   invariant : BytecodeObservationCoverageInvariant,
   expected : BytecodeObservationCoverageFact,
   actual : BytecodeObservationCoverageFact,
@@ -830,7 +830,7 @@ fn bytecode_observation_coverage_defect(
 ///|
 fn bytecode_observation_context_for_target(
   function : BytecodeFunction,
-  target : Int,
+  target : Int32,
 ) -> BytecodeObservationContext {
   if target == function.code.length() {
     bytecode_observation_context_empty()
@@ -842,8 +842,8 @@ fn bytecode_observation_context_for_target(
 ///|
 fn bytecode_observation_transfer_has_successor(
   transfer : BytecodeInstructionTransfer,
-  instruction_index : Int,
-  target : Int,
+  instruction_index : Int32,
+  target : Int32,
 ) -> Bool {
   match transfer {
     Fallthrough(_) => target == instruction_index + 1
@@ -857,8 +857,8 @@ fn bytecode_observation_transfer_has_successor(
 ///|
 fn bytecode_observation_edge_context_for_target(
   function : BytecodeFunction,
-  instruction_index : Int,
-  target : Int,
+  instruction_index : Int32,
+  target : Int32,
 ) -> BytecodeObservationContext? {
   let mut found : BytecodeObservationContext? = None
   for edge in function.observation_edge_contexts[instruction_index] {
@@ -875,10 +875,10 @@ fn bytecode_observation_edge_context_for_target(
 ///|
 fn require_bytecode_observation_edge_context(
   function : BytecodeFunction,
-  instruction_index : Int,
-  target : Int,
+  instruction_index : Int32,
+  target : Int32,
   source_post_context : BytecodeObservationContext,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> BytecodeObservationContext raise Error {
   match
     bytecode_observation_edge_context_for_target(
@@ -901,7 +901,7 @@ fn require_bytecode_observation_edge_context(
 ///|
 fn verify_bytecode_observation_edge_facts(
   function : BytecodeFunction,
-  function_path : Array[Int],
+  function_path : Array[Int32],
 ) -> Unit raise Error {
   let exceptional = bytecode_exception_successor_table(function.code)
   for instruction_index, edges in function.observation_edge_contexts {
@@ -959,12 +959,12 @@ fn verify_bytecode_observation_edge_facts(
 fn record_bytecode_observation_context(
   function : BytecodeFunction,
   states : Array[BytecodeObservationContext?],
-  worklist : Array[Int],
-  target : Int,
+  worklist : Array[Int32],
+  target : Int32,
   expected_context : BytecodeObservationContext,
   source_post_context : BytecodeObservationContext,
-  function_path : Array[Int],
-  predecessor_index : Int,
+  function_path : Array[Int32],
+  predecessor_index : Int32,
 ) -> Unit raise Error {
   let target_context = bytecode_observation_context_for_target(function, target)
   guard bytecode_observation_context_is_prefix(
@@ -1024,8 +1024,8 @@ fn verify_bytecode_observation_coverage(
 ///|
 fn verify_bytecode_function_observation_coverage(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  recurse? : Bool = true,
+  function_path : Array[Int32],
+  recurse~ : Bool = true,
 ) -> Unit raise Error {
   let exceptional = bytecode_exception_successor_table(function.code)
   let code_length = function.code.length()
@@ -1189,10 +1189,10 @@ fn verify_bytecode_function_observation_coverage(
 
 ///|
 fn bytecode_abstract_frame_shape(
-  operand_stack_height : Int,
-  argument_list_depth : Int,
-  for_in_iterator_depth : Int,
-  binding_reference_depth? : Int = 0,
+  operand_stack_height : Int32,
+  argument_list_depth : Int32,
+  for_in_iterator_depth : Int32,
+  binding_reference_depth~ : Int32 = 0,
 ) -> BytecodeAbstractFrameShape {
   {
     operand_stack_height,
@@ -1215,9 +1215,9 @@ fn bytecode_frame_shapes_equal(
 
 ///|
 fn bytecode_frame_shape_defect(
-  function_path : Array[Int],
-  instruction_index : Int,
-  predecessor_index : Int?,
+  function_path : Array[Int32],
+  instruction_index : Int32,
+  predecessor_index : Int32?,
   invariant : BytecodeFrameShapeInvariant,
   expected : BytecodeAbstractFrameShape,
   actual : BytecodeAbstractFrameShape,
@@ -1236,8 +1236,8 @@ fn bytecode_frame_shape_defect(
 fn apply_bytecode_resource_effect(
   state : BytecodeAbstractFrameShape,
   effect : BytecodeResourceEffect,
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
 ) -> BytecodeAbstractFrameShape raise Error {
   let required = bytecode_abstract_frame_shape(
     effect.required_stack_height,
@@ -1270,11 +1270,11 @@ fn apply_bytecode_resource_effect(
 ///|
 fn record_bytecode_frame_shape(
   states : Array[BytecodeAbstractFrameShape?],
-  worklist : Array[Int],
-  target : Int,
+  worklist : Array[Int32],
+  target : Int32,
   incoming : BytecodeAbstractFrameShape,
-  function_path : Array[Int],
-  predecessor_index : Int,
+  function_path : Array[Int32],
+  predecessor_index : Int32,
 ) -> Unit raise Error {
   match states[target] {
     None => {
@@ -1299,9 +1299,9 @@ fn record_bytecode_frame_shape(
 ///|
 fn verify_bytecode_terminal_shape(
   state : BytecodeAbstractFrameShape,
-  function_path : Array[Int],
-  instruction_index : Int,
-  predecessor_index : Int?,
+  function_path : Array[Int32],
+  instruction_index : Int32,
+  predecessor_index : Int32?,
 ) -> Unit raise Error {
   let expected = bytecode_abstract_frame_shape(0, 0, 0)
   guard bytecode_frame_shapes_equal(expected, state) else {
@@ -1319,8 +1319,8 @@ fn verify_bytecode_terminal_shape(
 ///|
 fn verify_bytecode_terminator_shape(
   state : BytecodeAbstractFrameShape,
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
 ) -> Unit raise Error {
   guard state.operand_stack_height == 0 && state.binding_reference_depth == 0 else {
     raise bytecode_frame_shape_defect(
@@ -1349,8 +1349,8 @@ fn verify_bytecode_frame_shapes(
 ///|
 fn verify_bytecode_function_frame_shapes(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  recurse? : Bool = true,
+  function_path : Array[Int32],
+  recurse~ : Bool = true,
 ) -> Unit raise Error {
   let code_length = function.code.length()
   let states : Array[BytecodeAbstractFrameShape?] = Array::make(
@@ -1653,11 +1653,11 @@ fn make_verified_bytecode_function(
 
 ///|
 fn bytecode_shape_operand_defect(
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
   family : BytecodeShapeOperandFamily,
-  exclusive_upper_bound : Int?,
-  actual_operand : Int,
+  exclusive_upper_bound : Int32?,
+  actual_operand : Int32,
 ) -> BytecodeVerifierDefect {
   BytecodeShapeOperandDefect({
     function_path: function_path.copy(),
@@ -1679,8 +1679,8 @@ fn verify_bytecode_shape_operands(
 ///|
 fn verify_bytecode_function_shape_operands(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  recurse? : Bool = true,
+  function_path : Array[Int32],
+  recurse~ : Bool = true,
 ) -> Unit raise Error {
   let maximum_shape_count = function.code.length()
   let shape_count_exclusive_upper_bound = maximum_shape_count + 1
@@ -1747,7 +1747,7 @@ fn verify_bytecode_function_shape_operands(
 ///|
 fn bytecode_indexed_operand(
   instruction : BytecodeInstr,
-) -> (BytecodeIndexedOperandFamily, Int)? {
+) -> (BytecodeIndexedOperandFamily, Int32)? {
   // Keep this match exhaustive so every new instruction must declare whether
   // it owns a verifier-checked table index.
   match instruction {
@@ -1865,11 +1865,11 @@ fn bytecode_indexed_operand(
 
 ///|
 fn bytecode_indexed_operand_defect(
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
   family : BytecodeIndexedOperandFamily,
-  exclusive_upper_bound : Int,
-  actual_operand : Int,
+  exclusive_upper_bound : Int32,
+  actual_operand : Int32,
 ) -> BytecodeVerifierDefect {
   let defect : BytecodeIndexedOperandTargetDefect = {
     function_path: function_path.copy(),
@@ -1883,9 +1883,9 @@ fn bytecode_indexed_operand_defect(
 
 ///|
 fn bytecode_local_slot_capacity_defect(
-  function_path : Array[Int],
-  minimum_source_local_capacity : Int,
-  actual_capacity : Int,
+  function_path : Array[Int32],
+  minimum_source_local_capacity : Int32,
+  actual_capacity : Int32,
 ) -> BytecodeVerifierDefect {
   BytecodeLocalSlotCapacityDefect({
     function_path: function_path.copy(),
@@ -1904,9 +1904,9 @@ fn verify_bytecode_indexed_operands(
 ///|
 fn verify_bytecode_function_indexed_operands(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  child_count? : Int? = None,
-  recurse? : Bool = true,
+  function_path : Array[Int32],
+  child_count~ : Int32? = None,
+  recurse~ : Bool = true,
 ) -> Unit raise Error {
   let minimum_source_local_capacity = function.local_names.length()
   guard function.local_slot_count >= minimum_source_local_capacity else {
@@ -1947,7 +1947,7 @@ fn verify_bytecode_function_indexed_operands(
 }
 
 ///|
-fn bytecode_control_flow_target(instruction : BytecodeInstr) -> Int? {
+fn bytecode_control_flow_target(instruction : BytecodeInstr) -> Int32? {
   match instruction {
     EnterHandler(_, target, _)
     | LeaveHandler(target)
@@ -1965,10 +1965,10 @@ fn bytecode_control_flow_target(instruction : BytecodeInstr) -> Int? {
 
 ///|
 fn bytecode_control_flow_target_defect(
-  function_path : Array[Int],
-  instruction_index : Int,
-  code_length : Int,
-  actual_target : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
+  code_length : Int32,
+  actual_target : Int32,
 ) -> BytecodeVerifierDefect {
   BytecodeControlFlowDefect({
     function_path: function_path.copy(),
@@ -1989,8 +1989,8 @@ fn verify_bytecode_control_flow(
 ///|
 fn verify_bytecode_function_control_flow(
   function : BytecodeFunction,
-  function_path : Array[Int],
-  recurse? : Bool = true,
+  function_path : Array[Int32],
+  recurse~ : Bool = true,
 ) -> Unit raise Error {
   verify_bytecode_exception_regions(function)
   let code_length = function.code.length()
@@ -2019,10 +2019,10 @@ fn verify_bytecode_function_control_flow(
 fn verify_bytecode_function_source_metadata(
   function : BytecodeFunction,
   root_source_unit : SourceUnitHandle,
-  function_path : Array[Int],
-  expected_owner_id : Int,
-  recurse? : Bool = true,
-) -> Int raise Error {
+  function_path : Array[Int32],
+  expected_owner_id : Int32,
+  recurse~ : Bool = true,
+) -> Int32 raise Error {
   guard expected_owner_id >= 0 && expected_owner_id < MAX_SOURCE_POINT_OWNER_ID else {
     raise BytecodeSourcePointOwnerAllocationDefect(expected_owner_id)
   }
@@ -2115,8 +2115,8 @@ fn verify_source_point_reference(
   function : BytecodeFunction,
   source_id : SourcePointId,
   expected_role : SourcePointRole?,
-  function_path : Array[Int],
-  instruction_index : Int?,
+  function_path : Array[Int32],
+  instruction_index : Int32?,
 ) -> SourcePointRole raise Error {
   let SourcePointId(source_unit, source_point_owner, source_point_index) = source_id
   guard source_unit == function.source_unit else {
@@ -2179,8 +2179,8 @@ fn verify_observation_source_point(
   source_id : SourcePointId,
   metadata_source_id : SourcePointId,
   required_role : SourcePointRole,
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
 ) -> Unit raise Error {
   let _ = verify_source_point_reference(
     function,
@@ -2216,8 +2216,8 @@ fn verify_observation_source_point(
 fn verify_observation_barrier_contract(
   instruction : BytecodeInstr,
   barrier : BytecodeObservationBarrierKind,
-  function_path : Array[Int],
-  instruction_index : Int,
+  function_path : Array[Int32],
+  instruction_index : Int32,
 ) -> Unit raise Error {
   match instruction {
     ObserveStatement(_) => {
@@ -2248,11 +2248,11 @@ fn verify_observation_barrier_contract(
 
 ///|
 fn bytecode_region_phase(
-  index : Int,
-  enter : Int,
-  target : Int,
-  end : Int,
-) -> Int {
+  index : Int32,
+  enter : Int32,
+  target : Int32,
+  end : Int32,
+) -> Int32 {
   if index <= enter || index >= end {
     0
   } else if index < target {
@@ -2268,7 +2268,7 @@ fn verify_bytecode_exception_regions(
   function : BytecodeFunction,
 ) -> Unit raise Error {
   let code = function.code
-  let regions : Array[(Int, BytecodeHandlerKind, Int, Int)] = []
+  let regions : Array[(Int32, BytecodeHandlerKind, Int32, Int32)] = []
   for index, instruction in code {
     match instruction {
       EnterHandler(kind, target, end) => {

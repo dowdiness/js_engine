@@ -22,7 +22,7 @@ fn array_sort_validate_comparefn(args : Array[Value]) -> Value raise Error {
 }
 
 ///|
-fn array_sort_default_compare(a : Value, b : Value) -> Int {
+fn array_sort_default_compare(a : Value, b : Value) -> Int32 {
   // ES SortCompare orders undefined after all defined values before either
   // the user comparefn or string comparison is considered.
   if a is Undefined && b is Undefined {

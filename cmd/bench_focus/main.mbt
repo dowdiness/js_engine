@@ -33,14 +33,14 @@ fn flag_value(flags : Map[String, Bool], key : String) -> Bool {
 }
 
 ///|
-fn parse_int_arg(raw : String, label : String) -> Int raise {
+fn parse_int_arg(raw : String, label : String) -> Int32 raise {
   @string.parse_int(raw) catch {
     _ => fail("error: " + label + " must be an integer")
   }
 }
 
 ///|
-fn exit_with_code(code : Int) -> Unit {
+fn exit_with_code(code : Int32) -> Unit {
   if code != 0 {
     @sys.exit(code)
   }

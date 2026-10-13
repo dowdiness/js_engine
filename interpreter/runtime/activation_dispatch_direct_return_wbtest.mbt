@@ -862,7 +862,7 @@ fn direct_return_observation_fixture(
 fn run_direct_return_shell_source_once(
   interp : Interpreter,
   source : String,
-  expected_count : Int,
+  expected_count : Int32,
 ) -> Value raise Error {
   let probe = DispatchObservationProbe()
   let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
@@ -930,7 +930,7 @@ fn expect_three_helper_result_fed_dispatch_observation_balanced(
 fn run_direct_return_result_fed_shell_once(
   interp : Interpreter,
   source : String,
-  expected_observations? : Int = 513,
+  expected_observations~ : Int32 = 513,
 ) -> Value raise Error {
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
   let (shell, stmts, ctx) = direct_return_observation_fixture_for_source(
@@ -2501,7 +2501,7 @@ test "direct-return cleanup permits same-interpreter reuse" {
 ///|
 fn expect_direct_return_leaf_cleanup_permits_reuse(
   source : String,
-  sentinel : Int,
+  sentinel : Int32,
 ) -> Unit raise {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, sentinel)
@@ -2580,8 +2580,8 @@ test "direct-return result-fed cleanup permits same-interpreter reuse" {
 ///|
 fn expect_direct_return_result_fed_one_short_budget(
   source : String,
-  sentinel : Int,
-  expected_observations : Int,
+  sentinel : Int32,
+  expected_observations : Int32,
 ) -> Unit raise {
   let exact_interp = Interpreter::new()
   let exact_probe = DispatchObservationProbe(observed_interp=Some(exact_interp))

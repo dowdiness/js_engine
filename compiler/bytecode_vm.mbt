@@ -4,13 +4,13 @@ using @runtime {type EnvironmentSlot}
 ///|
 priv struct BytecodeForInState {
   keys : Array[String]
-  mut index : Int
+  mut index : Int32
 }
 
 ///|
 priv enum BytecodeContinuation {
   PushValue
-  UpdateLocalAfterNumericConversion(Int, @ast.UpdateOp, Bool)
+  UpdateLocalAfterNumericConversion(Int32, @ast.UpdateOp, Bool)
   PushBindingReference
   PushReceiverAndValue(Value)
   NoStackChange
@@ -33,7 +33,7 @@ priv struct BytecodeFrame {
   mut env : Environment
   handlers : Array[BytecodeHandler]
   ctx : ExecContext
-  mut ip : Int
+  mut ip : Int32
   mut completion : Value
   mut optional_chain_short_circuited : Bool
   mut pending_continuation : BytecodeContinuation?
@@ -53,7 +53,7 @@ fn BytecodeFrame::BytecodeFrame(
   verified_func_def : VerifiedBytecodeFunction,
   env : Environment,
   ctx : ExecContext,
-  direct_args? : ArrayView[Value]? = None,
+  direct_args~ : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let func_def = verified_func_def.function
   let locals = Array::make(func_def.local_slot_count, Value::Undefined)
@@ -103,7 +103,7 @@ fn BytecodeFrame::candidate(
   env : Environment,
   ctx : ExecContext,
   route_activation : CandidateRouteActivation,
-  direct_args? : ArrayView[Value]? = None,
+  direct_args~ : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let func_def = execution.bytecode.function
   let locals = Array::make(func_def.local_slot_count, Value::Undefined)
@@ -364,7 +364,7 @@ fn BytecodeFrame::bind_env_slots(self : BytecodeFrame) -> Unit raise Error {
 ///|
 fn BytecodeFrame::read_env_slot(
   self : BytecodeFrame,
-  slot : Int,
+  slot : Int32,
 ) -> Value raise Error {
   self.env_slots[slot].read()
 }
@@ -372,7 +372,7 @@ fn BytecodeFrame::read_env_slot(
 ///|
 fn BytecodeFrame::initialize_env_slot(
   self : BytecodeFrame,
-  slot : Int,
+  slot : Int32,
   value : Value,
 ) -> Unit {
   self.env_slots[slot].initialize(value)
@@ -381,7 +381,7 @@ fn BytecodeFrame::initialize_env_slot(
 ///|
 fn BytecodeFrame::assign_env_slot(
   self : BytecodeFrame,
-  slot : Int,
+  slot : Int32,
   value : Value,
   strict : Bool,
 ) -> Unit raise Error {
@@ -405,7 +405,10 @@ fn BytecodeFrame::peek(self : BytecodeFrame) -> Value raise Error {
 }
 
 ///|
-fn pop_args(frame : BytecodeFrame, arg_count : Int) -> Array[Value] raise Error {
+fn pop_args(
+  frame : BytecodeFrame,
+  arg_count : Int32,
+) -> Array[Value] raise Error {
   let args = Array::make(arg_count, Value::Undefined)
   for i = arg_count - 1; i >= 0; i = i - 1 {
     args[i] = frame.pop()
@@ -474,7 +477,7 @@ fn BytecodeFrame::define_function_decl(
   self : BytecodeFrame,
   interp : Interpreter,
   name : String,
-  child_index : Int,
+  child_index : Int32,
 ) -> Unit raise Error {
   let func = match self.candidate_child_materializer {
     Some(_) => self.candidate_child_value(interp, child_index, self.env)
@@ -493,7 +496,7 @@ fn BytecodeFrame::define_function_decl(
 fn BytecodeFrame::candidate_child_value(
   self : BytecodeFrame,
   interp : Interpreter,
-  child_index : Int,
+  child_index : Int32,
   closure : Environment,
 ) -> Value raise Error {
   let child_materializer = match self.candidate_child_materializer {
@@ -622,7 +625,7 @@ fn run_bytecode_function(
   ctx : ExecContext,
   env : Environment,
   func_def : VerifiedBytecodeFunction,
-  direct_args? : ArrayView[Value]? = None,
+  direct_args~ : ArrayView[Value]? = None,
 ) -> BytecodeRunResult raise Error {
   let frame = start_bytecode_frame(interp, ctx, env, func_def, direct_args)
   match
@@ -1916,7 +1919,7 @@ fn BytecodeFrame::run_instructions(
 ///|
 // Each nested finalizer owns the completion that it may resume or replace.
 priv enum BytecodeCompletion {
-  JumpCompletion(Int, Value, Int)
+  JumpCompletion(Int32, Value, Int32)
   ReturnCompletion(Value)
   ThrowCompletion(Error)
 }
@@ -1924,13 +1927,13 @@ priv enum BytecodeCompletion {
 ///|
 priv struct BytecodeHandler {
   kind : BytecodeHandlerKind
-  start : Int
-  handler_ip : Int
-  end : Int
+  start : Int32
+  handler_ip : Int32
+  end : Int32
   env : Environment
-  stack_depth : Int
-  reference_depth : Int
-  args_depth : Int
+  stack_depth : Int32
+  reference_depth : Int32
+  args_depth : Int32
   for_in_snapshot : Array[BytecodeForInState]
   optional_chain_short_circuited : Bool
   mut phase : BytecodeHandlerPhase
@@ -1939,13 +1942,13 @@ priv struct BytecodeHandler {
 ///|
 fn BytecodeHandler::BytecodeHandler(
   kind : BytecodeHandlerKind,
-  start : Int,
-  handler_ip : Int,
-  end : Int,
+  start : Int32,
+  handler_ip : Int32,
+  end : Int32,
   env : Environment,
-  stack_depth : Int,
-  reference_depth : Int,
-  args_depth : Int,
+  stack_depth : Int32,
+  reference_depth : Int32,
+  args_depth : Int32,
   for_in_snapshot : Array[BytecodeForInState],
   optional_chain_short_circuited : Bool,
 ) -> BytecodeHandler {
@@ -2053,7 +2056,7 @@ priv enum BytecodeHandlerPhase {
 
 ///|
 priv enum BytecodeHandlerDecision {
-  Stay(Int, Value, Int)
+  Stay(Int32, Value, Int32)
   Catch(String?, Error)
   RunFinally(BytecodeCompletion)
   Unwind

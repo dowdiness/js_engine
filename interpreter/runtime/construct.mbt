@@ -281,7 +281,7 @@ fn Interpreter::install_private_fields(
     Object(d) => d
     _ => return // non-Object exotic types can't have private names
   }
-  let sym_id : Int = match brand {
+  let sym_id : Int32 = match brand {
     Symbol(s) => s.id
     _ => abort("brand must be a Symbol")
   }
@@ -353,7 +353,7 @@ pub fn get_private_field(
         message="Cannot read private member from non-object",
       )
   }
-  let sym_id : Int = match brand {
+  let sym_id : Int32 = match brand {
     Symbol(s) => s.id
     _ => abort("brand must be a Symbol")
   }
@@ -395,7 +395,7 @@ pub fn set_private_field(
     _ =>
       raise @errors.TypeError(message="Cannot set private member on non-object")
   }
-  let sym_id : Int = match brand {
+  let sym_id : Int32 = match brand {
     Symbol(s) => s.id
     _ => abort("brand must be a Symbol")
   }
@@ -431,7 +431,7 @@ pub fn has_brand(obj : Value, brand : Value) -> Bool {
     Object(d) => Some(d)
     _ => None
   }
-  let sym_id : Int = match brand {
+  let sym_id : Int32 = match brand {
     Symbol(s) => s.id
     _ => abort("brand must be a Symbol")
   }
@@ -599,9 +599,9 @@ fn make_arguments_object(
   args : Array[Value],
   ctor : Value,
   strict : Bool,
-  throw_type_error? : Value? = None,
-  mapped_names? : Array[String] = [],
-  mapped_env? : Environment? = None,
+  throw_type_error~ : Value? = None,
+  mapped_names~ : Array[String] = [],
+  mapped_env~ : Environment? = None,
 ) -> Value {
   let new_args_props : Map[String, Value] = Map([])
   let new_args_descs : Map[String, PropDescriptor] = Map([])
@@ -625,7 +625,7 @@ fn make_arguments_object(
   }
   // §10.4.4.7: walk backwards so only the last occurrence of each param name
   // gets an accessor; earlier occurrences of duplicates stay as data properties.
-  let mapped_indices : Map[Int, Bool] = Map([])
+  let mapped_indices : Map[Int32, Bool] = Map([])
   match mapped_env {
     Some(_) => {
       let mapped_set : @set.Set[String] = Default::default()
@@ -754,8 +754,8 @@ fn make_arguments_object(
   // Add Symbol.iterator using the realm's %ArrayProto_values% intrinsic;
   // each next() observes the live arguments object length and indexed props.
   let iter_sym = well_known_symbols.iterator
-  let new_args_sym_props : Map[Int, Value] = Map([])
-  let new_args_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let new_args_sym_props : Map[Int32, Value] = Map([])
+  let new_args_sym_descs : Map[Int32, PropDescriptor] = Map([])
   new_args_sym_props[iter_sym.id] = arguments_iterator_value(realm_state)
   new_args_sym_descs[iter_sym.id] = {
     writable: true,
@@ -931,8 +931,8 @@ pub fn Interpreter::construct_value(
   ctor : Value,
   args : Array[Value],
   loc : @token.Loc,
-  proto_override? : Value? = None,
-  new_target? : Value? = None,
+  proto_override~ : Value? = None,
+  new_target~ : Value? = None,
 ) -> Value raise Error {
   self.with_active_value(fn() raise {
     with_active_callee_realm_value(self.realm_state, ctor, fn() raise {
@@ -947,8 +947,8 @@ fn Interpreter::construct_value_impl(
   ctor : Value,
   args : Array[Value],
   loc : @token.Loc,
-  proto_override? : Value? = None,
-  new_target? : Value? = None,
+  proto_override~ : Value? = None,
+  new_target~ : Value? = None,
 ) -> Value raise Error {
   // Effective newTarget: explicit override (e.g. from Reflect.construct) or the
   // constructor itself (the normal `new Foo()` case, per §10.2.2 step 4).

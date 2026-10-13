@@ -26,7 +26,7 @@ pub(all) enum ResumeAction {
 ///|
 /// Generator object stored as internal data on an ObjectData
 pub(all) struct GeneratorObject {
-  id : Int // generator object ID for cleanup
+  id : Int32 // generator object ID for cleanup
   mut state : GenState
   // The interpreter, body, params, closure, etc. needed to execute
   body : Array[@ast.Stmt]
@@ -42,24 +42,24 @@ pub(all) struct GeneratorObject {
   this_val : Value // this value at call time
   // Step engine state
   mut env : Environment? // execution environment (created on first .next())
-  mut pc : Int // program counter: index into body
+  mut pc : Int32 // program counter: index into body
   mut yield_value : Value // value to be returned by yield expression on resume
   // Resume replay state
   mut resuming : Bool // true when replaying a statement to deliver resume value
   mut resume_action : ResumeAction // what to do when eval_yield is hit during replay
   // Try/catch/finally resume tracking
   // -1 = no saved phase, 0 = try body, 1 = catch body, 2 = finally body
-  mut try_resume_phase : Int
-  mut try_resume_yield_base : Int // yield index at the start of the resumed try/catch/finally phase
+  mut try_resume_phase : Int32
+  mut try_resume_yield_base : Int32 // yield index at the start of the resumed try/catch/finally phase
   mut try_resume_error : Value // saved error value when resuming in catch
   mut try_resume_result : Signal // saved try/catch result when resuming in finally
   mut try_resume_pending_error : Error? // saved non-catchable error for finally
   // Loop resume tracking — stack of saved loop envs (innermost first, outermost last)
   loop_env_stack : Array[Environment]
-  loop_yield_base_stack : Array[Int]
+  loop_yield_base_stack : Array[Int32]
   // Statement-list resume tracking. Frames are pushed while YieldSignal unwinds,
   // so the outermost frame is restored first and nested frames follow in LIFO order.
-  stmt_resume_index_stack : Array[Int]
+  stmt_resume_index_stack : Array[Int32]
   stmt_resume_env_stack : Array[Environment]
   stmt_resume_value_stack : Array[Value]
   // For-of resume state
@@ -80,9 +80,9 @@ pub(all) struct GeneratorObject {
   mut delegate_next : Value // the delegate's next method
   mut delegating : Bool // true if currently in yield* delegation
   // Yield index tracking for nested yields (e.g. yield yield 1)
-  mut yield_index : Int // counter incremented each time eval_yield is called
-  mut resume_at_yield : Int // index of the yield that was suspended
-  mut yield_resume_values : Map[Int, Value] // yield_index -> resume value for replay
+  mut yield_index : Int32 // counter incremented each time eval_yield is called
+  mut resume_at_yield : Int32 // index of the yield that was suspended
+  mut yield_resume_values : Map[Int32, Value] // yield_index -> resume value for replay
 }
 
 ///|
@@ -293,8 +293,8 @@ pub fn setup_generator_function_constructor(
   // %GeneratorFunction%.prototype — build shell first so it can serve as
   // the constructor value in %GeneratorPrototype%'s property map, ensuring
   // insertion order follows §27.3.3: constructor, prototype (string keys).
-  let gf_sym_props : Map[Int, Value] = Map([])
-  let gf_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let gf_sym_props : Map[Int32, Value] = Map([])
+  let gf_sym_descs : Map[Int32, PropDescriptor] = Map([])
   gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
   gf_sym_descs[tostringtag_sym.id] = non_enum_non_writable
   let gen_func_proto : Value = Object({
@@ -315,9 +315,9 @@ pub fn setup_generator_function_constructor(
   // %GeneratorPrototype% — shared singleton for all sync generator instances.
   // Own string keys follow §27.3.1: constructor, next, return, throw.
   let gp_props : Map[String, Value] = Map([])
-  let gp_sym_props : Map[Int, Value] = Map([])
+  let gp_sym_props : Map[Int32, Value] = Map([])
   let gp_descs : Map[String, PropDescriptor] = Map([])
-  let gp_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let gp_sym_descs : Map[Int32, PropDescriptor] = Map([])
   gp_props["constructor"] = gen_func_proto
   gp_descs["constructor"] = non_enum_non_writable
   gp_props["next"] = make_interp_method_func(
@@ -506,9 +506,9 @@ fn Interpreter::make_generator_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  has_name_binding? : Bool = false,
-  is_method? : Bool = false,
-  source_text? : String? = None,
+  has_name_binding~ : Bool = false,
+  is_method~ : Bool = false,
+  source_text~ : String? = None,
 ) -> Value {
   let interp = self
   let gen_proto : Value = match
@@ -639,9 +639,9 @@ fn Interpreter::make_generator_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
-  has_name_binding? : Bool = false,
-  is_method? : Bool = false,
-  source_text? : String? = None,
+  has_name_binding~ : Bool = false,
+  is_method~ : Bool = false,
+  source_text~ : String? = None,
 ) -> Value {
   let interp = self
   let gen_proto : Value = match
@@ -776,10 +776,10 @@ fn create_generator_instance(
   strict : Bool,
   closure : Environment,
   func_prototype : Value,
-  is_method? : Bool = false,
-  is_arrow? : Bool = false,
-  callee? : Value = Undefined,
-  is_async? : Bool = false,
+  is_method~ : Bool = false,
+  is_arrow~ : Bool = false,
+  callee~ : Value = Undefined,
+  is_async~ : Bool = false,
 ) -> Value raise Error {
   // Sync parameter initialization is an active guest function call. Async
   // families have separate activation ownership and remain outside this path.

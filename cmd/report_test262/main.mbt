@@ -66,7 +66,7 @@ fn optional_int64_arg(raw : String?, label : String) -> Int64? raise {
 }
 
 ///|
-fn exit_with_code(code : Int) -> Unit {
+fn exit_with_code(code : Int32) -> Unit {
   if code != 0 {
     @sys.exit(code)
   }

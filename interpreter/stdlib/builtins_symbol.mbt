@@ -147,8 +147,8 @@ fn setup_symbol_builtins(
   }
 
   // Symbol.prototype[@@toPrimitive](hint)
-  let symbol_proto_sym_props : Map[Int, Value] = Map([])
-  let symbol_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let symbol_proto_sym_props : Map[Int32, Value] = Map([])
+  let symbol_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   let toprimitive_method = @runtime.make_method_func(
     name="[Symbol.toPrimitive]",
     length=1,

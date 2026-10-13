@@ -9,7 +9,7 @@ fn expect_numeric_recursion_function_plan(
   name : String,
   parameter : String,
   recursive_callee : String,
-  declaration_index : Int,
+  declaration_index : Int32,
 ) -> Unit raise {
   inspect(plan.syntax.name, content=name)
   inspect(plan.syntax.parameter, content=parameter)

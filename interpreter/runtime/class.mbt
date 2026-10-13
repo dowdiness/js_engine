@@ -38,7 +38,7 @@ fn Interpreter::create_class(
   members : Array[@ast.ClassMember],
   env : Environment,
   source_text : String?,
-  class_binding? : String? = None,
+  class_binding~ : String? = None,
 ) -> Value raise Error {
   // Class bodies are always strict per spec
   let class_ctx : ExecContext = {
@@ -99,8 +99,8 @@ fn Interpreter::create_class(
   // Pre-insert constructor so it appears first in property enumeration order
   let proto_props : Map[String, Value] = { "constructor": Undefined }
   let proto_descriptors : Map[String, PropDescriptor] = Map([])
-  let proto_symbol_props : Map[Int, Value] = Map([])
-  let proto_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
+  let proto_symbol_props : Map[Int32, Value] = Map([])
+  let proto_symbol_descriptors : Map[Int32, PropDescriptor] = Map([])
   // Create the constructor's intrinsic own properties before evaluating class
   // elements. Static elements may then redefine the configurable `name`
   // property while preserving the spec-mandated insertion order.
@@ -127,12 +127,12 @@ fn Interpreter::create_class(
     setter: None,
     is_accessor: false,
   }
-  let static_symbol_props : Map[Int, Value] = Map([])
-  let static_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
+  let static_symbol_props : Map[Int32, Value] = Map([])
+  let static_symbol_descriptors : Map[Int32, PropDescriptor] = Map([])
   // Track constructor method
   let mut ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])? = None
   let mut ctor_materializer = self.capture_deferred_function_materializer()
-  let mut ctor_param_count : Int = 0
+  let mut ctor_param_count : Int32 = 0
   let mut constructor_overridden : Bool = false
   // Collect instance field initializers (evaluated during construction)
   let instance_fields : Array[ClassFieldInit] = []

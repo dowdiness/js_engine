@@ -36,7 +36,7 @@ fn BytecodeActivationUnsupportedReason::display_text(
 }
 
 ///|
-fn candidate_route_path_json(path : Array[Int]) -> Json {
+fn candidate_route_path_json(path : Array[Int32]) -> Json {
   Json::array(
     path.map(index => Json::number(index.to_double(), repr=index.to_string())),
   )
@@ -53,7 +53,7 @@ fn candidate_route_name_json(name : String?) -> Json {
 ///|
 fn candidate_route_plan_record(
   candidate : CandidateFunction,
-  path : Array[Int],
+  path : Array[Int32],
 ) -> Json {
   let (executor, reason_phase, reason) = match candidate.selection {
     UseBytecode(_) => ("bytecode", Json::null(), Json::null())
@@ -82,8 +82,8 @@ fn candidate_route_plan_record(
 ///|
 fn candidate_route_plan_records(
   candidate : CandidateFunction,
-  path : Array[Int],
-) -> (Array[Json], Int, Int, Int, Int) {
+  path : Array[Int32],
+) -> (Array[Json], Int32, Int32, Int32, Int32) {
   let records = [candidate_route_plan_record(candidate, path)]
   let (initial_bytecode, initial_tree, initial_lowering, initial_activation) = match
     candidate.selection {

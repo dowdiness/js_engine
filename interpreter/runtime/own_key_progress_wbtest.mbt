@@ -119,7 +119,7 @@ fn own_key_runtime_budget_outcome(
   source : Value,
 ) -> String {
   let policy = ExecutionPolicy::new(1000L, 100L, InterruptionHandle()).unwrap()
-  let result : Result[Int, Error] = Ok(
+  let result : Result[Int32, Error] = Ok(
     interp.with_execution_policy(policy, () => {
       interp.own_property_keys(source).length()
     }),
@@ -301,7 +301,7 @@ test "nested Proxy ownKeys classifies a native prebuilt result" {
 fn own_key_runtime_interrupting_source(
   interp : Interpreter,
   interruption : InterruptionHandle,
-  calls : Ref[Int],
+  calls : Ref[Int32],
 ) -> Value {
   let getter = make_method_func(
     name="interrupting source getter",
@@ -359,7 +359,7 @@ fn own_key_runtime_value_result_code(result : Result[Value, Error]) -> String {
 fn own_key_runtime_descriptor_cancel_proxy(
   interp : Interpreter,
   interruption : InterruptionHandle,
-  calls : Ref[Int],
+  calls : Ref[Int32],
   returned_keys : Array[Value],
 ) -> Value {
   let base = make_object(
@@ -431,7 +431,7 @@ fn own_key_runtime_symbol_only_consumer_proxy(
   interp : Interpreter,
   interruption : InterruptionHandle,
 ) -> Value {
-  let calls : Ref[Int] = { val: 0, }
+  let calls : Ref[Int32] = { val: 0, }
   let symbol = interp.realm_state.well_known_symbols.iterator
   own_key_runtime_descriptor_cancel_proxy(interp, interruption, calls, [
     Symbol(symbol),
@@ -541,7 +541,7 @@ test "synchronous proxy ownKeys stops before native index classification" {
 test "Proxy ownKeys observes the final target descriptor cancellation" {
   let interp = Interpreter::new()
   let unbounded_interruption = InterruptionHandle()
-  let unbounded_calls : Ref[Int] = { val: 0, }
+  let unbounded_calls : Ref[Int32] = { val: 0, }
   let unbounded_source = own_key_runtime_descriptor_cancel_proxy(
     interp,
     unbounded_interruption,
@@ -554,8 +554,8 @@ test "Proxy ownKeys observes the final target descriptor cancellation" {
 
   let sync_interruption = InterruptionHandle()
   let managed_interruption = InterruptionHandle()
-  let sync_calls : Ref[Int] = { val: 0, }
-  let managed_calls : Ref[Int] = { val: 0, }
+  let sync_calls : Ref[Int32] = { val: 0, }
+  let managed_calls : Ref[Int32] = { val: 0, }
   let sync_source = own_key_runtime_descriptor_cancel_proxy(
     interp,
     sync_interruption,
@@ -614,8 +614,8 @@ test "native getter interruption stops before synchronous and managed writes" {
   let interp = Interpreter::new()
   let sync_interruption = InterruptionHandle()
   let managed_interruption = InterruptionHandle()
-  let sync_calls : Ref[Int] = { val: 0, }
-  let managed_calls : Ref[Int] = { val: 0, }
+  let sync_calls : Ref[Int32] = { val: 0, }
+  let managed_calls : Ref[Int32] = { val: 0, }
   let sync_source = own_key_runtime_interrupting_source(
     interp, sync_interruption, sync_calls,
   )

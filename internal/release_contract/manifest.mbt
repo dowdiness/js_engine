@@ -8,8 +8,8 @@ pub suberror ReleaseContractError {
 
 ///|
 pub struct UnitTestCounts {
-  passed : Int
-  executed : Int
+  passed : Int32
+  executed : Int32
 } derive(Debug, Eq)
 
 ///|
@@ -20,18 +20,18 @@ pub extend UnitTestCounts with Eq::{equal, not_equal}
 
 ///|
 fn UnitTestCounts::UnitTestCounts(
-  passed : Int,
-  executed : Int,
+  passed : Int32,
+  executed : Int32,
 ) -> UnitTestCounts {
   { passed, executed, }
 }
 
 ///|
 pub struct ConformanceCounts {
-  passed : Int
-  executed : Int
-  discovered : Int
-  skipped : Int
+  passed : Int32
+  executed : Int32
+  discovered : Int32
+  skipped : Int32
 } derive(Debug, Eq)
 
 ///|
@@ -42,10 +42,10 @@ pub extend ConformanceCounts with Eq::{equal, not_equal}
 
 ///|
 fn ConformanceCounts::ConformanceCounts(
-  passed : Int,
-  executed : Int,
-  discovered : Int,
-  skipped : Int,
+  passed : Int32,
+  executed : Int32,
+  discovered : Int32,
+  skipped : Int32,
 ) -> ConformanceCounts {
   { passed, executed, discovered, skipped, }
 }
@@ -56,7 +56,7 @@ pub struct Test262Evidence {
   source_commit : String
   source_tree : String
   corpus_commit : String
-  result_schema_version : Int
+  result_schema_version : Int32
   summary_sha256 : String
   skip_metadata_sha256 : String
   edition_report_sha256 : String
@@ -76,7 +76,7 @@ fn Test262Evidence::Test262Evidence(
   source_commit : String,
   source_tree : String,
   corpus_commit : String,
-  result_schema_version : Int,
+  result_schema_version : Int32,
   summary_sha256 : String,
   skip_metadata_sha256 : String,
   edition_report_sha256 : String,
@@ -100,7 +100,7 @@ fn Test262Evidence::Test262Evidence(
 ///|
 pub struct PackageEvidence {
   content_sha256 : String
-  file_count : Int
+  file_count : Int32
 } derive(Debug, Eq)
 
 ///|
@@ -112,14 +112,14 @@ pub extend PackageEvidence with Eq::{equal, not_equal}
 ///|
 fn PackageEvidence::PackageEvidence(
   content_sha256 : String,
-  file_count : Int,
+  file_count : Int32,
 ) -> PackageEvidence {
   { content_sha256, file_count, }
 }
 
 ///|
 pub struct ReleaseCandidateManifest {
-  schema_version : Int
+  schema_version : Int32
   version : String
   candidate_tree : String
   unit_tests : UnitTestCounts
@@ -135,7 +135,7 @@ pub extend ReleaseCandidateManifest with Eq::{equal, not_equal}
 
 ///|
 fn ReleaseCandidateManifest::ReleaseCandidateManifest(
-  schema_version : Int,
+  schema_version : Int32,
   version : String,
   candidate_tree : String,
   unit_tests : UnitTestCounts,
@@ -237,7 +237,7 @@ fn decode_int_field(
   fields : Map[String, Json],
   key : String,
   path : String,
-) -> Int raise ReleaseContractError {
+) -> Int32 raise ReleaseContractError {
   @json.from_json(require_field(fields, key, path)) catch {
     _ => manifest_error(path + "." + key + " must be an integer")
   }
@@ -392,7 +392,7 @@ pub fn parse_manifest(
 }
 
 ///|
-fn json_int(value : Int) -> Json {
+fn json_int(value : Int32) -> Json {
   Json::number(value.to_double(), repr=value.to_string())
 }
 

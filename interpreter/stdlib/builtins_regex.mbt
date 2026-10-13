@@ -12,16 +12,16 @@ priv enum RegexNode {
   Dot // matches any char except newline (or any char with dotAll flag)
   CharClass(Array[(Char, Char)], Bool) // ranges, negated
   Anchor(AnchorKind)
-  Quantified(RegexNode, Int, Int?, Bool) // node, min, max(None=infinity), greedy
-  Group(Array[RegexNode], Int, String?) // children, group_index, name
+  Quantified(RegexNode, Int32, Int32?, Bool) // node, min, max(None=infinity), greedy
+  Group(Array[RegexNode], Int32, String?) // children, group_index, name
   Alternation(Array[RegexNode], Array[RegexNode]) // left, right
   Sequence(Array[RegexNode])
   WordBoundary(Bool) // true = \b, false = \B
   Lookbehind(Array[RegexNode], Bool) // children, positive (true=(?<=...), false=(?<!...))
   Lookahead(Array[RegexNode], Bool) // children, positive (true=(?=...), false=(?!...))
-  Backreference(Int) // group number (1-based)
+  Backreference(Int32) // group number (1-based)
   NamedBackreference(String) // group name before post-parse resolution
-  DuplicateNamedBackreference(Array[Int]) // duplicate-name group indices
+  DuplicateNamedBackreference(Array[Int32]) // duplicate-name group indices
 }
 
 ///|
@@ -42,8 +42,8 @@ fn regex_utf16_string_chars(input : String) -> Array[Char] {
 ///|
 fn regex_chars_to_string(
   chars : Array[Char],
-  start : Int,
-  end_ : Int,
+  start : Int32,
+  end_ : Int32,
   code_units : Bool,
 ) -> String {
   let buf = StringBuilder()
@@ -62,8 +62,8 @@ fn regex_chars_to_string(
 fn regex_domain_substring(
   input : String,
   chars : Array[Char],
-  start : Int,
-  end_ : Int,
+  start : Int32,
+  end_ : Int32,
   code_units : Bool,
 ) -> String {
   if code_units {
@@ -82,8 +82,8 @@ fn regex_append_domain_range(
   buf : StringBuilder,
   input : String,
   chars : Array[Char],
-  start : Int,
-  end_ : Int,
+  start : Int32,
+  end_ : Int32,
   code_units : Bool,
 ) -> Unit {
   if start < end_ {
@@ -102,11 +102,11 @@ fn regex_append_domain_range(
 ///|
 priv struct RegexParser {
   pattern : Array[Char]
-  mut pos : Int
-  mut group_count : Int
+  mut pos : Int32
+  mut group_count : Int32
   unicode : Bool
-  group_names : Map[String, Int]
-  group_name_entries : Array[(String, Int)]
+  group_names : Map[String, Int32]
+  group_name_entries : Array[(String, Int32)]
   mut has_unterminated_k_backref : Bool
   mut has_bare_k : Bool
 }
@@ -114,8 +114,8 @@ priv struct RegexParser {
 ///|
 fn RegexParser::new(
   pattern : String,
-  unicode? : Bool = false,
-  code_units? : Bool = false,
+  unicode~ : Bool = false,
+  code_units~ : Bool = false,
 ) -> RegexParser {
   {
     pattern: if code_units {
@@ -198,9 +198,9 @@ fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
 
 ///|
 fn regex_named_group_indices(
-  group_name_entries : Array[(String, Int)],
-) -> Map[String, Array[Int]] {
-  let indices : Map[String, Array[Int]] = Map([])
+  group_name_entries : Array[(String, Int32)],
+) -> Map[String, Array[Int32]] {
+  let indices : Map[String, Array[Int32]] = Map([])
   for entry in group_name_entries {
     let (name, idx) = entry
     match indices.get(name) {
@@ -214,7 +214,7 @@ fn regex_named_group_indices(
 ///|
 fn resolve_named_backreferences(
   node : RegexNode,
-  group_names : Map[String, Array[Int]],
+  group_names : Map[String, Array[Int32]],
 ) -> RegexNode raise Error {
   match node {
     NamedBackreference(name) =>
@@ -283,7 +283,7 @@ fn resolve_named_backreferences(
 ///|
 fn validate_numeric_backreferences(
   node : RegexNode,
-  group_count : Int,
+  group_count : Int32,
 ) -> Unit raise Error {
   match node {
     Backreference(idx) =>
@@ -779,7 +779,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
 }
 
 ///|
-fn hex_digit_value(c : Char) -> Int {
+fn hex_digit_value(c : Char) -> Int32 {
   if c >= '0' && c <= '9' {
     c.to_int() - '0'.to_int()
   } else if c >= 'a' && c <= 'f' {
@@ -806,7 +806,7 @@ fn RegexParser::has_fixed_unicode_escape(self : RegexParser) -> Bool {
 /// Decode a Unicode-mode CharacterEscape whose escape letter was just consumed.
 fn RegexParser::parse_unicode_mode_character_escape(
   self : RegexParser,
-  in_character_class? : Bool = false,
+  in_character_class~ : Bool = false,
 ) -> Char raise Error {
   let (char, next) = @regexp_syntax.parse_unicode_mode_character_escape(
     self.pattern,
@@ -822,8 +822,8 @@ fn RegexParser::parse_unicode_mode_character_escape(
 /// shared with RegExp literal early-error validation in the lexer.
 fn RegexParser::parse_unicode_escape(
   self : RegexParser,
-  allow_braced? : Bool = true,
-  combine_surrogate_pair? : Bool = true,
+  allow_braced~ : Bool = true,
+  combine_surrogate_pair~ : Bool = true,
 ) -> Char raise Error {
   let (char, next) = @regexp_syntax.parse_unicode_escape(
     self.pattern,
@@ -838,7 +838,7 @@ fn RegexParser::parse_unicode_escape(
 ///|
 /// Check if a code point is in a known non-identifier Unicode range
 /// (symbols, punctuation, emoji, control, formatting, surrogates).
-fn is_non_identifier_codepoint(cp : Int) -> Bool {
+fn is_non_identifier_codepoint(cp : Int32) -> Bool {
   // ASCII non-identifier (handled separately by callers for $, _)
   (cp >= 0x00 && cp <= 0x23) || // Control + space + !"#
   (cp == 0x25 || cp == 0x26) || // %, &
@@ -887,7 +887,7 @@ fn is_non_identifier_codepoint(cp : Int) -> Bool {
 ///|
 /// Check if a code point is a combining mark or modifier — valid in
 /// ID_Continue but NOT in ID_Start position.
-fn is_combining_or_modifier(cp : Int) -> Bool {
+fn is_combining_or_modifier(cp : Int32) -> Bool {
   (cp >= 0x0300 && cp <= 0x036F) || // Combining Diacritical Marks
   (cp >= 0x0483 && cp <= 0x0489) || // Cyrillic combining marks
   (
@@ -1378,7 +1378,7 @@ fn RegexParser::check_greedy(self : RegexParser) -> Bool {
 }
 
 ///|
-fn RegexParser::parse_int(self : RegexParser) -> Int? {
+fn RegexParser::parse_int(self : RegexParser) -> Int32? {
   let start = self.pos
   while self.pos < self.pattern.length() &&
         self.pattern[self.pos] >= '0' &&
@@ -1399,25 +1399,25 @@ fn RegexParser::parse_int(self : RegexParser) -> Int? {
 
 ///|
 struct RegexMatch {
-  start : Int
-  end_ : Int
+  start : Int32
+  end_ : Int32
   captures : Array[String?]
-  capture_versions : Array[Int]
-  group_names : Array[(String, Int)]
+  capture_versions : Array[Int32]
+  group_names : Array[(String, Int32)]
 }
 
 ///|
 priv struct RegexStateSnapshot {
   captures : Array[String?]
-  capture_versions : Array[Int]
-  capture_epoch : Int
+  capture_versions : Array[Int32]
+  capture_epoch : Int32
 }
 
 ///|
 priv struct RegexExecState {
   captures : Array[String?]
-  capture_versions : Array[Int]
-  mut capture_epoch : Int
+  capture_versions : Array[Int32]
+  mut capture_epoch : Int32
   // When true (inside a lookbehind), set_capture preserves the first
   // capture of each group instead of overwriting (spec §22.2.3.2 direction=-1).
   mut preserve_first_capture : Bool
@@ -1425,12 +1425,12 @@ priv struct RegexExecState {
 
 ///|
 priv struct QuantifiedMatchState {
-  pos : Int
+  pos : Int32
   snapshot : RegexStateSnapshot
 }
 
 ///|
-fn RegexExecState::RegexExecState(num_groups : Int) -> RegexExecState {
+fn RegexExecState::RegexExecState(num_groups : Int32) -> RegexExecState {
   {
     captures: Array::make(num_groups, None),
     capture_versions: Array::make(num_groups, 0),
@@ -1465,7 +1465,7 @@ fn RegexExecState::restore(
 ///|
 fn RegexExecState::set_capture(
   self : RegexExecState,
-  group_idx : Int,
+  group_idx : Int32,
   captured : String,
 ) -> Unit {
   if group_idx > 0 && group_idx <= self.captures.length() {
@@ -1478,7 +1478,7 @@ fn RegexExecState::set_capture(
 ///|
 fn RegexExecState::clear_capture(
   self : RegexExecState,
-  group_idx : Int,
+  group_idx : Int32,
 ) -> Unit {
   if group_idx > 0 && group_idx <= self.captures.length() {
     self.captures[group_idx - 1] = None
@@ -1579,9 +1579,9 @@ fn match_char_class_icase(
 fn match_backreference_capture(
   captured : String,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   flags : RegexFlags,
-) -> Int? {
+) -> Int32? {
   let cap_chars = regex_input_chars(captured, !flags.unicode)
   if pos + cap_chars.length() > input.length() {
     return None
@@ -1596,12 +1596,12 @@ fn match_backreference_capture(
 
 ///|
 fn match_duplicate_named_backreference(
-  indices : Array[Int],
+  indices : Array[Int32],
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
   flags : RegexFlags,
-) -> Int? {
+) -> Int32? {
   let mut selected_idx = -1
   let mut selected_version = -1
   for group_num in indices {
@@ -1633,10 +1633,10 @@ fn match_duplicate_named_backreference(
 fn regex_exec_single(
   node : RegexNode,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
   flags : RegexFlags,
-) -> Int? {
+) -> Int32? {
   // Match a single non-sequence node
   match node {
     Literal(ch) =>
@@ -1834,10 +1834,10 @@ fn regex_exec_single(
 fn regex_exec(
   node : RegexNode,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
   flags : RegexFlags,
-) -> Int? {
+) -> Int32? {
   match node {
     Sequence(nodes) => match_sequence(nodes, 0, input, pos, state, flags)
     _ => regex_exec_single(node, input, pos, state, flags)
@@ -1911,7 +1911,7 @@ fn has_first_char_bound(node : RegexNode) -> Bool {
 ///|
 /// Compute min and max match lengths for a regex node.
 /// Returns (min_chars, max_chars?), where None = unbounded.
-fn node_match_length_bounds(node : RegexNode) -> (Int, Int?) {
+fn node_match_length_bounds(node : RegexNode) -> (Int32, Int32?) {
   match node {
     Literal(_) | Dot | CharClass(_, _) => (1, Some(1))
     Anchor(_) | WordBoundary(_) => (0, Some(0))
@@ -1943,9 +1943,9 @@ fn node_match_length_bounds(node : RegexNode) -> (Int, Int?) {
 }
 
 ///|
-fn sequence_length_bounds(nodes : Array[RegexNode]) -> (Int, Int?) {
+fn sequence_length_bounds(nodes : Array[RegexNode]) -> (Int32, Int32?) {
   let mut min_sum = 0
-  let mut max_sum : Int? = Some(0)
+  let mut max_sum : Int32? = Some(0)
   for node in nodes {
     let (n_min, n_max) = node_match_length_bounds(node)
     min_sum += n_min
@@ -1964,9 +1964,9 @@ fn sequence_length_bounds(nodes : Array[RegexNode]) -> (Int, Int?) {
 fn advance_to_candidate(
   node : RegexNode,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   flags : RegexFlags,
-) -> Int {
+) -> Int32 {
   match node {
     Literal(ch) => {
       let mut i = pos
@@ -2003,11 +2003,11 @@ fn advance_to_candidate(
 fn quantified_match_count(
   inner : RegexNode,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
-  max : Int?,
+  max : Int32?,
   flags : RegexFlags,
-) -> Int {
+) -> Int32 {
   let mut current = pos
   let mut count = 0
   while true {
@@ -2033,9 +2033,9 @@ fn quantified_match_count(
 fn collect_quantified_states(
   node : RegexNode,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
-  max : Int?,
+  max : Int32?,
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
   let states : Array[QuantifiedMatchState] = [
@@ -2091,9 +2091,9 @@ fn collect_quantified_states(
 ///|
 fn match_sequence_candidates(
   nodes : Array[RegexNode],
-  idx : Int,
+  idx : Int32,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
@@ -2178,7 +2178,7 @@ fn match_sequence_candidates(
 fn match_node_candidates(
   node : RegexNode,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
   flags : RegexFlags,
 ) -> Array[QuantifiedMatchState] {
@@ -2327,12 +2327,12 @@ fn match_node_candidates(
 ///|
 fn match_sequence(
   nodes : Array[RegexNode],
-  idx : Int,
+  idx : Int32,
   input : Array[Char],
-  pos : Int,
+  pos : Int32,
   state : RegexExecState,
   flags : RegexFlags,
-) -> Int? {
+) -> Int32? {
   let saved = state.snapshot()
   let candidates = match_sequence_candidates(
     nodes, idx, input, pos, state, flags,
@@ -2348,7 +2348,7 @@ fn match_sequence(
 }
 
 ///|
-fn count_groups(node : RegexNode) -> Int {
+fn count_groups(node : RegexNode) -> Int32 {
   match node {
     Literal(_)
     | Dot
@@ -2423,8 +2423,8 @@ fn count_groups(node : RegexNode) -> Int {
 ///|
 priv struct ParsedRegex {
   node : RegexNode
-  num_groups : Int
-  group_names : Array[(String, Int)]
+  num_groups : Int32
+  group_names : Array[(String, Int32)]
 }
 
 ///|
@@ -2444,9 +2444,9 @@ fn regex_input_chars(input : String, code_units : Bool) -> Array[Char] {
 ///|
 fn regex_match_index_to_code_unit_index(
   input : String,
-  index : Int,
+  index : Int32,
   code_units : Bool,
-) -> Int {
+) -> Int32 {
   if code_units {
     index
   } else {
@@ -2457,8 +2457,8 @@ fn regex_match_index_to_code_unit_index(
 ///|
 fn parse_regex_domain(
   pattern : String,
-  unicode? : Bool = false,
-  code_units? : Bool = false,
+  unicode~ : Bool = false,
+  code_units~ : Bool = false,
 ) -> ParsedRegex raise Error {
   let parser = RegexParser::new(pattern, unicode~, code_units~)
   let node = parser.parse()
@@ -2472,7 +2472,7 @@ fn parse_regex_domain(
 /// Parse the source in the historical scalar domain used by public helpers.
 fn parse_regex(
   pattern : String,
-  unicode? : Bool = false,
+  unicode~ : Bool = false,
 ) -> ParsedRegex raise Error {
   parse_regex_domain(pattern, unicode~, code_units=false)
 }
@@ -2493,7 +2493,7 @@ pub fn regex_match_at(
   pattern : String,
   flags : String,
   input : String,
-  start_pos : Int,
+  start_pos : Int32,
 ) -> RegexMatch? raise Error {
   let unicode = regexp_is_unicode_mode(flags)
   let parsed = parse_regex(pattern, unicode~)
@@ -2518,7 +2518,7 @@ fn regex_search_parsed(
   parsed : ParsedRegex,
   flags : String,
   input : String,
-  start_pos : Int,
+  start_pos : Int32,
   code_units : Bool,
 ) -> RegexMatch? {
   let input_chars = regex_input_chars(input, code_units)
@@ -2587,7 +2587,7 @@ fn regex_search_domain(
   pattern : String,
   flags : String,
   input : String,
-  start_pos : Int,
+  start_pos : Int32,
   code_units : Bool,
 ) -> RegexMatch? raise Error {
   let parsed = parse_regex_domain(
@@ -2603,7 +2603,7 @@ pub fn regex_search(
   pattern : String,
   flags : String,
   input : String,
-  start_pos? : Int = 0,
+  start_pos~ : Int32 = 0,
 ) -> RegexMatch? raise Error {
   let parsed = parse_regex(pattern, unicode=regexp_is_unicode_mode(flags))
   regex_search_parsed(parsed, flags, input, start_pos, false)
@@ -2961,8 +2961,8 @@ fn set_regexp_internal_slot_descriptors(data : ObjectData) -> Unit {
 
 ///|
 fn set_regexp_intrinsic_constructor_slot(
-  symbol_properties : Map[Int, Value],
-  symbol_descriptors : Map[Int, PropDescriptor],
+  symbol_properties : Map[Int32, Value],
+  symbol_descriptors : Map[Int32, PropDescriptor],
   ctor : Value,
 ) -> Unit {
   symbol_properties[REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID] = ctor
@@ -3479,7 +3479,7 @@ fn make_regexp_object_with_proto(
   props["lastIndex"] = Value::Number(0.0)
   // RegExp instance state is stored as hidden internal slots. Public accessors
   // live on RegExp.prototype and compute from these slots.
-  let sym_props : Map[Int, Value] = Map([])
+  let sym_props : Map[Int32, Value] = Map([])
   sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
   sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
   sym_props[REGEXP_MATCHER_SYMBOL_ID] = matcher
@@ -3496,7 +3496,7 @@ fn make_regexp_object_with_proto(
     is_accessor: false,
   }
 
-  let re_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let re_sym_descs : Map[Int32, PropDescriptor] = Map([])
   re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_MATCHER_SYMBOL_ID] = regexp_internal_slot_descriptor()
@@ -3540,7 +3540,7 @@ pub fn make_regexp_object_with_realm_state(
 }
 
 ///|
-pub fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
+pub fn substring(chars : Array[Char], start : Int32, end_ : Int32) -> String {
   let buf = StringBuilder()
   for i = start; i < end_; i = i + 1 {
     buf.write_char(chars[i])
@@ -3552,8 +3552,8 @@ pub fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
 priv struct RegExpReplaceMatch {
   matched : String
   captures : Array[Value]
-  position : Int
-  match_length : Int
+  position : Int32
+  match_length : Int32
   named_captures : Value
 }
 
@@ -3573,7 +3573,10 @@ fn regexp_to_length(value : Value, interp : Interpreter) -> Double raise Error {
 }
 
 ///|
-fn regexp_to_length_int(value : Value, interp : Interpreter) -> Int raise Error {
+fn regexp_to_length_int(
+  value : Value,
+  interp : Interpreter,
+) -> Int32 raise Error {
   let len = regexp_to_length(value, interp)
   if len > 100000.0 {
     100000
@@ -3585,9 +3588,9 @@ fn regexp_to_length_int(value : Value, interp : Interpreter) -> Int raise Error 
 ///|
 fn regexp_clamp_position(
   value : Value,
-  max_len : Int,
+  max_len : Int32,
   interp : Interpreter,
-) -> Int raise Error {
+) -> Int32 raise Error {
   let n = @runtime.to_number(value, interp=Some(interp))
   if n.is_nan() || n <= 0.0 {
     0
@@ -3626,8 +3629,8 @@ fn regexp_advance_string_index(
 ///|
 fn regexp_char_index_to_code_unit_index(
   input : String,
-  char_index : Int,
-) -> Int {
+  char_index : Int32,
+) -> Int32 {
   let chars = input.to_array()
   let end_ = if char_index > chars.length() {
     chars.length()
@@ -3648,8 +3651,8 @@ fn regexp_char_index_to_code_unit_index(
 ///|
 fn regexp_code_unit_index_to_char_index(
   input : String,
-  code_unit_index : Int,
-) -> Int {
+  code_unit_index : Int32,
+) -> Int32 {
   if code_unit_index <= 0 {
     return 0
   }
@@ -3913,14 +3916,14 @@ fn regexp_create_string_iterator(
   global : Bool,
   full_unicode : Bool,
 ) -> Value {
-  let sym_props : Map[Int, Value] = Map([])
+  let sym_props : Map[Int32, Value] = Map([])
   sym_props[REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID] = Bool(true)
   sym_props[REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID] = regexp
   sym_props[REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID] = String_(input)
   sym_props[REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID] = Bool(global)
   sym_props[REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID] = Bool(full_unicode)
   sym_props[REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID] = Bool(false)
-  let sym_descs : Map[Int, PropDescriptor] = Map([])
+  let sym_descs : Map[Int32, PropDescriptor] = Map([])
   let slot_desc = regexp_internal_slot_descriptor()
   sym_descs[REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID] = slot_desc
   sym_descs[REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID] = slot_desc
@@ -3997,7 +4000,7 @@ fn regexp_named_captures_for_substitution(value : Value) -> Value raise Error {
 fn regexp_get_substitution(
   matched : String,
   input : String,
-  position : Int,
+  position : Int32,
   captures : Array[Value],
   named_captures : Value,
   replacement : String,
@@ -4120,10 +4123,10 @@ fn regexp_get_substitution(
 fn regexp_replace_append(
   input : String,
   input_chars : Array[Char],
-  state : (StringBuilder, Int),
+  state : (StringBuilder, Int32),
   item : RegExpReplaceMatch,
   replacement : String,
-) -> (StringBuilder, Int) {
+) -> (StringBuilder, Int32) {
   let (buf, next_source_position) = state
   if item.position >= next_source_position {
     regex_append_domain_range(
@@ -4458,7 +4461,7 @@ fn regexp_species_constructor(
 }
 
 ///|
-fn regexp_string_slice(input : String, start : Int, end_ : Int) -> String {
+fn regexp_string_slice(input : String, start : Int32, end_ : Int32) -> String {
   input.unsafe_substring(start~, end=end_)
 }
 
@@ -4468,7 +4471,7 @@ fn regexp_split_last_index(
   splitter : Value,
   input : String,
   loc : @token.Loc,
-) -> Int raise Error {
+) -> Int32 raise Error {
   let input_size = @runtime.utf16_length(input)
   let e = regexp_to_length(
     interp.get_property(splitter, "lastIndex", loc),
@@ -4737,7 +4740,7 @@ fn string_replace_regex_func_impl(
   pattern : String,
   flags : String,
   replace_fn : Value,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> Value raise {
   let unicode = regexp_is_unicode_mode(flags)
   let code_units = !unicode
@@ -4822,7 +4825,7 @@ fn call_replace_fn(
   input_chars : Array[Char],
   input : String,
   code_units : Bool,
-  interp? : Interpreter? = None,
+  interp~ : Interpreter? = None,
 ) -> String raise {
   let args : Array[Value] = []
   // First arg: full match string
@@ -5021,12 +5024,12 @@ pub fn get_regexp_string_iterator_proto(
     None => {
       let iterator_sym = well_known_symbols.iterator
       let tostringtag_sym = well_known_symbols.to_string_tag
-      let proto_sym_props : Map[Int, Value] = Map([])
+      let proto_sym_props : Map[Int32, Value] = Map([])
       proto_sym_props[tostringtag_sym.id] = Value::String_(
         "RegExp String Iterator",
       )
       let proto_props : Map[String, Value] = Map([])
-      let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+      let proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
       proto_sym_descs[tostringtag_sym.id] = {
         writable: false,
         enumerable: false,

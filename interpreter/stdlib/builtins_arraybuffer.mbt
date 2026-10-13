@@ -10,14 +10,14 @@ const MAX_ARRAYBUFFER_BYTE_LENGTH = 16777216
 /// The actual bytes are stored in `realm_state.arraybuffer_store`, keyed by ID.
 fn alloc_arraybuffer(
   arraybuffer_state : @runtime.ArrayBufferState,
-  byte_length : Int,
-) -> Int raise Error {
+  byte_length : Int32,
+) -> Int32 raise Error {
   if byte_length < 0 || byte_length > MAX_ARRAYBUFFER_BYTE_LENGTH {
     raise @errors.RangeError(message="ArrayBuffer allocation size is too large")
   }
   let id = arraybuffer_state.id_counter.val
   arraybuffer_state.id_counter.val = id + 1
-  let bytes : Array[Int] = []
+  let bytes : Array[Int32] = []
   for i = 0; i < byte_length; i = i + 1 {
     let _ = i
     bytes.push(0)
@@ -30,8 +30,8 @@ fn alloc_arraybuffer(
 /// Get the byte array for a given buffer ID. Returns None if detached.
 fn get_arraybuffer_state_bytes(
   arraybuffer_state : @runtime.ArrayBufferState,
-  id : Int,
-) -> Array[Int]? {
+  id : Int32,
+) -> Array[Int32]? {
   if arraybuffer_state.detached.contains(id) {
     return None
   }
@@ -42,29 +42,32 @@ fn get_arraybuffer_state_bytes(
 /// Get the byte array for a given buffer ID. Returns None if detached.
 pub fn get_arraybuffer_bytes(
   realm_state : @runtime.RealmState,
-  id : Int,
-) -> Array[Int]? {
+  id : Int32,
+) -> Array[Int32]? {
   get_arraybuffer_state_bytes(realm_state.arraybuffer_state, id)
 }
 
 ///|
 fn detach_arraybuffer_state(
   arraybuffer_state : @runtime.ArrayBufferState,
-  id : Int,
+  id : Int32,
 ) -> Unit {
   arraybuffer_state.detached[id] = true
 }
 
 ///|
 /// Detach an ArrayBuffer by its ID.
-pub fn detach_arraybuffer(realm_state : @runtime.RealmState, id : Int) -> Unit {
+pub fn detach_arraybuffer(
+  realm_state : @runtime.RealmState,
+  id : Int32,
+) -> Unit {
   detach_arraybuffer_state(realm_state.arraybuffer_state, id)
 }
 
 ///|
 fn is_arraybuffer_state_detached(
   arraybuffer_state : @runtime.ArrayBufferState,
-  id : Int,
+  id : Int32,
 ) -> Bool {
   arraybuffer_state.detached.contains(id)
 }
@@ -73,7 +76,7 @@ fn is_arraybuffer_state_detached(
 /// Check if an ArrayBuffer is detached.
 pub fn is_arraybuffer_detached(
   realm_state : @runtime.RealmState,
-  id : Int,
+  id : Int32,
 ) -> Bool {
   is_arraybuffer_state_detached(realm_state.arraybuffer_state, id)
 }
@@ -132,7 +135,7 @@ fn detach_arraybuffer_value(
 
 ///|
 /// Get the buffer ID from an ArrayBuffer Object value.
-pub fn get_buffer_id(obj : Value) -> Int? {
+pub fn get_buffer_id(obj : Value) -> Int32? {
   match obj {
     Object(data) =>
       if data.class_name == "ArrayBuffer" {
@@ -151,7 +154,7 @@ pub fn get_buffer_id(obj : Value) -> Int? {
 /// Create an ArrayBuffer object with the given byte length.
 pub fn make_arraybuffer_object(
   realm_state : @runtime.RealmState,
-  byte_length : Int,
+  byte_length : Int32,
   proto : Value,
 ) -> Value raise Error {
   let id = alloc_arraybuffer(realm_state.arraybuffer_state, byte_length)
@@ -440,9 +443,9 @@ pub fn setup_arraybuffer_builtins(
 
   // Add Symbol.toStringTag
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let ab_proto_sym_props : Map[Int, Value] = Map([])
+  let ab_proto_sym_props : Map[Int32, Value] = Map([])
   ab_proto_sym_props[tostringtag_sym.id] = Value::String_("ArrayBuffer")
-  let ab_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
+  let ab_proto_sym_descs : Map[Int32, PropDescriptor] = Map([])
   ab_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -645,7 +648,7 @@ pub fn validate_typedarray_buffer(
 
 ///|
 /// Get the bytes-per-element for a TypedArray type name.
-pub fn typed_array_bytes_per_element(name : String) -> Int {
+pub fn typed_array_bytes_per_element(name : String) -> Int32 {
   match name {
     "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1
     "Int16Array" | "Uint16Array" => 2
