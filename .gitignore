@@ -36,3 +36,6 @@ jetstream3-reference-experiment/
 .claude/
 .codex
 .slopless/
+
+# Orb portal metadata
+.amp/portals/*

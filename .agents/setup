@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+start=$SECONDS
+echo "[orb setup] Preparing MoonBit toolchain"
+if [[ ! -x "$HOME/.moon/bin/moon" ]]; then
+  curl -fsSL https://cli.moonbitlang.com/install/unix.sh | SHELL=/bin/true bash -s latest
+fi
+export PATH="$HOME/.moon/bin:$PATH"
+
+# The installer only adds to .bashrc, which non-interactive login shells do not read.
+profile_marker='# js_engine MoonBit toolchain'
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<'EOF'
+
+# js_engine MoonBit toolchain
+case ":$PATH:" in
+  *":$HOME/.moon/bin:"*) ;;
+  *) export PATH="$HOME/.moon/bin:$PATH" ;;
+esac
+EOF
+fi
+echo "[orb setup] MoonBit ready in $((SECONDS - start))s"
+
+start=$SECONDS
+echo "[orb setup] Updating MoonBit dependencies"
+moon update
+moon check
+echo "[orb setup] MoonBit dependencies ready in $((SECONDS - start))s"
+
+start=$SECONDS
+echo "[orb setup] Preparing playground dependencies"
+lock_hash="$(sha256sum playground/web/package-lock.json | cut -d' ' -f1)"
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+stamp="${lock_hash}-node${node_major}"
+if [[ ! -d playground/web/node_modules || ! -f playground/web/node_modules/.orb-setup-lock || "$(cat playground/web/node_modules/.orb-setup-lock)" != "$stamp" ]]; then
+  (cd playground/web && npm ci --no-audit --no-fund)
+  printf '%s\n' "$stamp" > playground/web/node_modules/.orb-setup-lock
+fi
+if [[ ! -f playground/web/node_modules/.orb-setup-browser ]]; then
+  (cd playground/web && npx playwright install --with-deps chromium)
+  touch playground/web/node_modules/.orb-setup-browser
+fi
+echo "[orb setup] Playground dependencies ready in $((SECONDS - start))s"
