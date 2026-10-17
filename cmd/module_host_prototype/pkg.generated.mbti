@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/cmd/module_host_prototype"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+type PrototypeHost
+
+type PrototypeInput derive(@json.FromJson)
+
+type PrototypeProgram
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,1706 @@
+{
+  "kind": "throwaway-realm-free-static-link-experiment",
+  "baseline_prototype_commit": "9fc1767aa6f047b1c3fe74bf32341c34f9e35add",
+  "command": "make -s module-host-prototype ARGS=--all",
+  "moon": "moon 0.1.20260904 (94521db 2026-09-04)\n\nFeature flags enabled: rr_moon_mod,rr_moon_pkg",
+  "node": "v24.14.1",
+  "target": "native",
+  "scope": "Symbolic static ESM import/export resolution only. Not a full Module early-error pass, linking plan consumer, immutable Program guarantee, or large-graph stack-safety claim.",
+  "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-resolveexport",
+  "source_sha256": {
+    "cmd/module_host_prototype/static_link/validate.mbt": "2936b5b57997326b53c9bb5773ae6875ff00d612721cc2f654ac0a4a927b53c6",
+    "cmd/module_host_prototype/static_link/moon.pkg": "8811c38640c196a2a6d65c4f491a310357cfbd910c3ac9b3725731d0534f4bd9",
+    "cmd/module_host_prototype/main.mbt": "766691c5f8da8d747066c685a7586bff285fefe551821927b5f5fdaf154d3da4",
+    "scripts/module_host_prototype.cjs": "d01d96b864e34e35157a3b634b9d4db4f735ca9da0931596199ed900ebc04c4a",
+    "scripts/module_host_reference.mjs": "1ec0d788205f543a5aa5b701cead9728f8dac559f2923a6261186560e6c66e7b"
+  },
+  "observations": [
+    {
+      "scenario": "plain",
+      "question": "Can prepared code outlive its source host and isolate module state across sessions?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "counter",
+          "main"
+        ],
+        "parse_calls": 2,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "counter",
+            "key": "counter"
+          },
+          {
+            "operation": "load",
+            "key": "counter"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "1",
+              "2"
+            ],
+            "output": [
+              "counter evaluated"
+            ]
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "1",
+              "2"
+            ],
+            "output": [
+              "counter evaluated"
+            ]
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "3"
+          ],
+          "output": [
+            "counter evaluated"
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "transformed-js",
+      "question": "Does switching the same JavaScript input from identity to esbuild preserve the host contract?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "counter",
+          "main"
+        ],
+        "parse_calls": 2,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "counter",
+            "key": "counter"
+          },
+          {
+            "operation": "load",
+            "key": "counter"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "1",
+              "2"
+            ],
+            "output": [
+              "counter evaluated"
+            ]
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "1",
+              "2"
+            ],
+            "output": [
+              "counter evaluated"
+            ]
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "3"
+          ],
+          "output": [
+            "counter evaluated"
+          ]
+        }
+      },
+      "transform": {
+        "tool": "esbuild@0.25.9",
+        "generated_code": "import { next } from \"counter\";\nfunction main() {\n  return next();\n}\nexport {\n  main\n};\n//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsib3JpZ2luYWwuanMiXSwKICAic291cmNlc0NvbnRlbnQiOiBbImltcG9ydCB7IG5leHQgfSBmcm9tIFwiY291bnRlclwiOyBleHBvcnQgZnVuY3Rpb24gbWFpbigpeyByZXR1cm4gbmV4dCgpOyB9Il0sCiAgIm1hcHBpbmdzIjogIkFBQUEsU0FBUyxZQUFZO0FBQWtCLFNBQVMsT0FBTTtBQUFFLFNBQU8sS0FBSztBQUFHOyIsCiAgIm5hbWVzIjogW10KfQo=\n",
+        "source_map": {
+          "version": 3,
+          "sources": [
+            "original.js"
+          ],
+          "sourcesContent": [
+            "import { next } from \"counter\"; export function main(){ return next(); }"
+          ],
+          "mappings": "AAAA,SAAS,YAAY;AAAkB,SAAS,OAAM;AAAE,SAAO,KAAK;AAAG;",
+          "names": []
+        }
+      }
+    },
+    {
+      "scenario": "aliases",
+      "question": "Do two host aliases resolve to one module instance and one shared live binding?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "counter",
+          "main"
+        ],
+        "parse_calls": 2,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "counter",
+            "key": "counter"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "alias",
+            "key": "counter"
+          },
+          {
+            "operation": "load",
+            "key": "counter"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "3",
+              "7"
+            ],
+            "output": [
+              "counter evaluated",
+              "true"
+            ]
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "3",
+              "7"
+            ],
+            "output": [
+              "counter evaluated",
+              "true"
+            ]
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "11"
+          ],
+          "output": [
+            "counter evaluated",
+            "true"
+          ]
+        }
+      }
+    },
+    {
+      "scenario": "cycle",
+      "question": "Can a cyclic graph be collected before instantiation, without reading TDZ bindings?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "b",
+          "main"
+        ],
+        "parse_calls": 2,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "b",
+            "key": "b"
+          },
+          {
+            "operation": "load",
+            "key": "b"
+          },
+          {
+            "operation": "resolve",
+            "importer": "b",
+            "request": "main",
+            "key": "main"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "cycle-tdz",
+      "question": "Does an actual early read across a cycle fail during evaluation?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "b",
+          "main"
+        ],
+        "parse_calls": 2,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "b",
+            "key": "b"
+          },
+          {
+            "operation": "load",
+            "key": "b"
+          },
+          {
+            "operation": "resolve",
+            "importer": "b",
+            "request": "main",
+            "key": "main"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "error",
+            "phase": "evaluate",
+            "message": "ReferenceError: Cannot access 'b' before initialization",
+            "source_location": null,
+            "calls": [],
+            "output": []
+          },
+          {
+            "status": "error",
+            "phase": "evaluate",
+            "message": "ReferenceError: Cannot access 'b' before initialization",
+            "source_location": null,
+            "calls": [],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "error",
+          "phase": "evaluate",
+          "message": "ReferenceError: Cannot access 'b' before initialization",
+          "source_location": null,
+          "calls": [],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "evaluate",
+        "error": "ReferenceError",
+        "message": "Cannot access 'a' before initialization",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "missing-source",
+      "question": "Does preparation reject an unresolved reachable source before a Session exists?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:67:5-67:35@dowdiness/js_engine FAILED: missing source: missing)",
+        "diagnostic": {
+          "phase": "load",
+          "identity": "missing"
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "missing",
+            "key": "missing"
+          },
+          {
+            "operation": "load",
+            "key": "missing"
+          }
+        ],
+        "parse_calls": 1
+      }
+    },
+    {
+      "scenario": "parse-error",
+      "question": "Does preparation retain an identity and source span for invalid generated JavaScript?",
+      "verdict": "design-gap-observed",
+      "finding": "Parser rejects the input and retains identity, but this syntax-error path returns no structured source span.",
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:107:9-107:30@dowdiness/js_engine FAILED: SyntaxError: Unexpected token Semicolon at line 1, col 22)",
+        "diagnostic": {
+          "phase": "parse",
+          "identity": "main",
+          "location": null
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          }
+        ],
+        "parse_calls": 1
+      }
+    },
+    {
+      "scenario": "missing-export",
+      "question": "Does realm-free validation reject a missing export before Session creation?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: missing-export: main / missing)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "missing-export",
+          "identity": "main",
+          "export_name": "missing",
+          "line": 1,
+          "column": 25
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "parse_calls": 2
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "The requested module 'dep' does not provide an export named 'missing'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "reexports",
+      "question": "Are named and star reexports included in reachable dependency discovery?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "barrel",
+          "dep",
+          "main"
+        ],
+        "parse_calls": 3,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "alias",
+            "key": "dep"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "transformed",
+      "question": "Can a real TSX transform erase a type-only dependency and introduce an executable helper import?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "probe/jsx-runtime",
+          "main"
+        ],
+        "parse_calls": 2,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "probe/jsx-runtime",
+            "key": "probe/jsx-runtime"
+          },
+          {
+            "operation": "load",
+            "key": "probe/jsx-runtime"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": [
+              "42"
+            ]
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": [
+              "42"
+            ]
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": [
+            "42"
+          ]
+        }
+      },
+      "transform": {
+        "tool": "esbuild@0.25.9",
+        "generated_code": "import { jsx } from \"probe/jsx-runtime\";\nconst answer = 42;\nconst node = /* @__PURE__ */ jsx(\"answer\", { value: answer });\nconsole.log(node);\nfunction main() {\n  return node;\n}\nexport {\n  main\n};\n//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsib3JpZ2luYWwudHN4Il0sCiAgInNvdXJjZXNDb250ZW50IjogWyJpbXBvcnQgdHlwZSB7IE1pc3NpbmcgfSBmcm9tIFwidHlwZXMtbm90LXByb3ZpZGVkXCI7XG5jb25zdCBhbnN3ZXI6IG51bWJlciA9IDQyO1xuY29uc3Qgbm9kZSA9IDxhbnN3ZXIgdmFsdWU9e2Fuc3dlcn0gLz47XG5jb25zb2xlLmxvZyhub2RlKTtcbmV4cG9ydCBmdW5jdGlvbiBtYWluKCk6IG51bWJlciB7IHJldHVybiBub2RlOyB9XG4iXSwKICAibWFwcGluZ3MiOiAiQUFFYTtBQURiLE1BQU0sU0FBaUI7QUFDdkIsTUFBTSxPQUFPLG9CQUFDLFlBQU8sT0FBTyxRQUFRO0FBQ3BDLFFBQVEsSUFBSSxJQUFJO0FBQ1QsU0FBUyxPQUFlO0FBQUUsU0FBTztBQUFNOyIsCiAgIm5hbWVzIjogW10KfQo=\n",
+        "source_map": {
+          "version": 3,
+          "sources": [
+            "original.tsx"
+          ],
+          "sourcesContent": [
+            "import type { Missing } from \"types-not-provided\";\nconst answer: number = 42;\nconst node = <answer value={answer} />;\nconsole.log(node);\nexport function main(): number { return node; }\n"
+          ],
+          "mappings": "AAEa;AADb,MAAM,SAAiB;AACvB,MAAM,OAAO,oBAAC,YAAO,OAAO,QAAQ;AACpC,QAAQ,IAAI,IAAI;AACT,SAAS,OAAe;AAAE,SAAO;AAAM;",
+          "names": []
+        }
+      }
+    },
+    {
+      "scenario": "mapped-error",
+      "question": "Can a real source map locate a runtime failure with the current graph execution result?",
+      "verdict": "design-gap-observed",
+      "finding": "A real source map exists, but this direct graph/call path exposes only a raw JsException; generated-location observation and diagnostic projection are not connected.",
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "main"
+        ],
+        "parse_calls": 1,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "error",
+            "phase": "call",
+            "message": "dowdiness/js_engine/interpreter/runtime.JsException.JsException",
+            "source_location": null,
+            "calls": [],
+            "output": []
+          },
+          {
+            "status": "error",
+            "phase": "call",
+            "message": "dowdiness/js_engine/interpreter/runtime.JsException.JsException",
+            "source_location": null,
+            "calls": [],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "error",
+          "phase": "call",
+          "message": "dowdiness/js_engine/interpreter/runtime.JsException.JsException",
+          "source_location": null,
+          "calls": [],
+          "output": []
+        }
+      },
+      "transform": {
+        "tool": "esbuild@0.25.9",
+        "generated_code": "const label = \"mapped failure\";\nfunction main() {\n  throw new Error(label);\n}\nexport {\n  main\n};\n//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsib3JpZ2luYWwudHMiXSwKICAic291cmNlc0NvbnRlbnQiOiBbImNvbnN0IGxhYmVsOiBzdHJpbmcgPSBcIm1hcHBlZCBmYWlsdXJlXCI7XG5leHBvcnQgZnVuY3Rpb24gbWFpbigpOiBuZXZlciB7XG4gIHRocm93IG5ldyBFcnJvcihsYWJlbCk7XG59XG4iXSwKICAibWFwcGluZ3MiOiAiQUFBQSxNQUFNLFFBQWdCO0FBQ2YsU0FBUyxPQUFjO0FBQzVCLFFBQU0sSUFBSSxNQUFNLEtBQUs7QUFDdkI7IiwKICAibmFtZXMiOiBbXQp9Cg==\n",
+        "source_map": {
+          "version": 3,
+          "sources": [
+            "original.ts"
+          ],
+          "sourcesContent": [
+            "const label: string = \"mapped failure\";\nexport function main(): never {\n  throw new Error(label);\n}\n"
+          ],
+          "mappings": "AAAA,MAAM,QAAgB;AACf,SAAS,OAAc;AAC5B,QAAM,IAAI,MAAM,KAAK;AACvB;",
+          "names": []
+        },
+        "map_witness": {
+          "origin": "manually selected generated throw token, not runtime diagnostic",
+          "generated": {
+            "line": 3,
+            "column": 3
+          },
+          "original": {
+            "generatedLine": 2,
+            "generatedColumn": 0,
+            "originalSource": "original.ts",
+            "originalLine": 2,
+            "originalColumn": 2
+          }
+        }
+      }
+    },
+    {
+      "scenario": "live-entrypoint",
+      "question": "Does looking up an entrypoint in materialized exports observe a changed live binding?",
+      "verdict": "design-gap-observed",
+      "finding": "The materialized export snapshot keeps the old function: second call should re-read the live binding and reject 0.",
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "main"
+        ],
+        "parse_calls": 1,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "1",
+              "1"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "1",
+              "1"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "1"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "first": 1,
+        "second": "TypeError",
+        "binding": "number"
+      }
+    },
+    {
+      "scenario": "ambiguous-required",
+      "question": "Does a required ambiguous star export fail without creating a Realm?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: ambiguous-export: main / value)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "ambiguous-export",
+          "identity": "main",
+          "export_name": "value",
+          "line": 1,
+          "column": 23
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "left",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "right",
+            "key": "right"
+          },
+          {
+            "operation": "load",
+            "key": "left"
+          },
+          {
+            "operation": "load",
+            "key": "right"
+          }
+        ],
+        "parse_calls": 4
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "The requested module 'barrel' contains conflicting star exports for name 'value'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "ambiguous-unused",
+      "question": "Is an unused ambiguity allowed, rather than rejecting the entire star export set?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "barrel",
+          "left",
+          "right",
+          "main"
+        ],
+        "parse_calls": 4,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "left",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "right",
+            "key": "right"
+          },
+          {
+            "operation": "load",
+            "key": "left"
+          },
+          {
+            "operation": "load",
+            "key": "right"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "diamond-same-binding",
+      "question": "Do named and imported-then-exported paths to one binding avoid false ambiguity?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "barrel",
+          "left",
+          "right",
+          "dep",
+          "main"
+        ],
+        "parse_calls": 5,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "left",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "right",
+            "key": "right"
+          },
+          {
+            "operation": "load",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "left",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "right"
+          },
+          {
+            "operation": "resolve",
+            "importer": "right",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "same-value-distinct-bindings",
+      "question": "Are distinct local bindings ambiguous even when their Module and runtime values match?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: ambiguous-export: main / value)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "ambiguous-export",
+          "identity": "main",
+          "export_name": "value",
+          "line": 1,
+          "column": 23
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "left",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "right",
+            "key": "right"
+          },
+          {
+            "operation": "load",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "left",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "right"
+          },
+          {
+            "operation": "resolve",
+            "importer": "right",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "parse_calls": 5
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "The requested module 'barrel' contains conflicting star exports for name 'value'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "explicit-shadows-stars",
+      "question": "Does an explicit local export take precedence over competing star exports?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "barrel",
+          "left",
+          "right",
+          "main"
+        ],
+        "parse_calls": 4,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "left",
+            "key": "left"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "right",
+            "key": "right"
+          },
+          {
+            "operation": "load",
+            "key": "left"
+          },
+          {
+            "operation": "load",
+            "key": "right"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "missing-unused-reexport",
+      "question": "Is an invalid explicit reexport rejected even if nobody requests that name?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: missing-export: barrel / missing)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "missing-export",
+          "identity": "barrel",
+          "export_name": "missing",
+          "line": 1,
+          "column": 25
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "parse_calls": 3
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "The requested module 'dep' does not provide an export named 'missing'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "explicit-invalid-no-fallback",
+      "question": "Can a star export incorrectly repair an invalid explicit reexport?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: missing-export: main / value)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "missing-export",
+          "identity": "main",
+          "export_name": "value",
+          "line": 1,
+          "column": 23
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "absent",
+            "key": "absent"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "good",
+            "key": "good"
+          },
+          {
+            "operation": "load",
+            "key": "absent"
+          },
+          {
+            "operation": "load",
+            "key": "good"
+          }
+        ],
+        "parse_calls": 4
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "The requested module 'absent' does not provide an export named 'value'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "star-excludes-default",
+      "question": "Is default excluded from a bare star reexport?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: missing-export: main / default)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "missing-export",
+          "identity": "main",
+          "export_name": "default",
+          "line": 1,
+          "column": 19
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "parse_calls": 3
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "The requested module 'barrel' does not provide an export named 'default'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "reexport-cycle-without-origin",
+      "question": "Does a circular reexport with no defining binding terminate and fail?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "error",
+        "message": "Failure(cmd/module_host_prototype/main.mbt:156:7-156:59@dowdiness/js_engine FAILED: missing-export: main / value)",
+        "diagnostic": {
+          "phase": "static-link",
+          "kind": "missing-export",
+          "identity": "main",
+          "export_name": "value",
+          "line": 1,
+          "column": 23
+        },
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "b",
+            "key": "b"
+          },
+          {
+            "operation": "load",
+            "key": "b"
+          },
+          {
+            "operation": "resolve",
+            "importer": "b",
+            "request": "c",
+            "key": "c"
+          },
+          {
+            "operation": "load",
+            "key": "c"
+          },
+          {
+            "operation": "resolve",
+            "importer": "c",
+            "request": "b",
+            "key": "b"
+          }
+        ],
+        "parse_calls": 3
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "link",
+        "error": "SyntaxError",
+        "message": "Detected cycle while resolving name 'value' in 'c'",
+        "output": [],
+        "calls": []
+      }
+    },
+    {
+      "scenario": "star-cycle-with-origin",
+      "question": "Can a cyclic star graph resolve a real defining binding?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "a",
+          "b",
+          "main"
+        ],
+        "parse_calls": 3,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "a",
+            "key": "a"
+          },
+          {
+            "operation": "load",
+            "key": "a"
+          },
+          {
+            "operation": "resolve",
+            "importer": "a",
+            "request": "b",
+            "key": "b"
+          },
+          {
+            "operation": "load",
+            "key": "b"
+          },
+          {
+            "operation": "resolve",
+            "importer": "b",
+            "request": "a",
+            "key": "a"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "namespace-reexport",
+      "question": "Can namespace reexports resolve symbolically, without allocating namespace objects?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "barrel",
+          "dep",
+          "main"
+        ],
+        "parse_calls": 3,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          },
+          {
+            "operation": "resolve",
+            "importer": "main",
+            "request": "barrel",
+            "key": "barrel"
+          },
+          {
+            "operation": "load",
+            "key": "barrel"
+          },
+          {
+            "operation": "resolve",
+            "importer": "barrel",
+            "request": "dep",
+            "key": "dep"
+          },
+          {
+            "operation": "load",
+            "key": "dep"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          },
+          {
+            "status": "ok",
+            "phase": "call",
+            "calls": [
+              "42",
+              "42"
+            ],
+            "output": []
+          }
+        ],
+        "resumed_first": {
+          "status": "ok",
+          "phase": "call",
+          "calls": [
+            "42"
+          ],
+          "output": []
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "ok",
+        "output": [],
+        "calls": [
+          "42",
+          "42"
+        ]
+      }
+    },
+    {
+      "scenario": "prepare-without-effects",
+      "question": "Can preparation succeed for a module whose evaluation logs and then always throws?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "main"
+        ],
+        "parse_calls": 1,
+        "host_sources_after_release": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          }
+        ],
+        "execution": "not-started"
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "linked",
+        "output": []
+      }
+    },
+    {
+      "scenario": "evaluate-side-effects",
+      "question": "Does the same prepared source produce its marker and exception only when evaluated?",
+      "verdict": "supported-for-this-fixture",
+      "finding": null,
+      "report": {
+        "preparation": "ok",
+        "modules": [
+          "main"
+        ],
+        "parse_calls": 1,
+        "host_sources_after_release": 0,
+        "host_calls_during_sessions": 0,
+        "host_events": [
+          {
+            "operation": "load",
+            "key": "main"
+          }
+        ],
+        "sessions": [
+          {
+            "status": "error",
+            "phase": "evaluate",
+            "message": "dowdiness/js_engine/interpreter/runtime.JsException.JsException",
+            "source_location": null,
+            "calls": [],
+            "output": [
+              "evaluation marker"
+            ]
+          },
+          {
+            "status": "error",
+            "phase": "evaluate",
+            "message": "dowdiness/js_engine/interpreter/runtime.JsException.JsException",
+            "source_location": null,
+            "calls": [],
+            "output": [
+              "evaluation marker"
+            ]
+          }
+        ],
+        "resumed_first": {
+          "status": "error",
+          "phase": "evaluate",
+          "message": "dowdiness/js_engine/interpreter/runtime.JsException.JsException",
+          "source_location": null,
+          "calls": [],
+          "output": [
+            "evaluation marker"
+          ]
+        }
+      },
+      "reference": {
+        "engine": "v24.14.1",
+        "status": "error",
+        "phase": "evaluate",
+        "error": "Error",
+        "message": "evaluation only",
+        "output": [
+          "evaluation marker"
+        ],
+        "calls": []
+      }
+    }
+  ]
+}
