@@ -2,17 +2,13 @@
 test "collect_var_declared_names: var declaration" {
   let prog = @parser.parse("var x;")
   let names = @static_semantics.collect_var_declared_names(prog.stmts)
-  inspect(names.contains("x"), content="true")
-  inspect(names.length(), content="1")
+  json_inspect(names, content=["x"])
 }
 
 ///|
 test "collect_var_declared_names: let and const are not collected" {
   let prog = @parser.parse("let x; const y = 1;")
-  inspect(
-    @static_semantics.collect_var_declared_names(prog.stmts).length(),
-    content="0",
-  )
+  json_inspect(@static_semantics.collect_var_declared_names(prog.stmts), content=[])
 }
 
 ///|
@@ -29,7 +25,7 @@ test "collect_var_declared_names: function decl excluded when include_funcs=fals
     prog.stmts,
     include_funcs=false,
   )
-  inspect(names.length(), content="0")
+  json_inspect(names, content=[])
 }
 
 ///|
@@ -55,8 +51,7 @@ test "collect_var_declared_names: function decl inside if is block-scoped (§B.3
   // implicit block around the then-branch, not a var-declared name. The
   // IfStmt arm in collect_var_declared_names forces in_block=true, which
   // makes count_funcs false regardless of include_funcs.
-  inspect(names.contains("f"), content="false")
-  inspect(names.length(), content="0")
+  json_inspect(names, content=[])
 }
 
 ///|
