@@ -284,29 +284,6 @@ fn get_substitution(
 }
 
 ///|
-/// Convert a MoonBit string (sequence of Unicode code points) to an array
-/// of UTF-16 code units.  Supplementary characters (code point > 0xFFFF) are
-/// split into a surrogate pair (high surrogate + low surrogate).
-fn string_to_utf16(s : String) -> Array[Int32] {
-  let units : Array[Int32] = []
-  let cps = s.to_array()
-  for ch in cps {
-    let cp = ch.to_int()
-    if cp > 0xFFFF {
-      // Encode as surrogate pair
-      let adjusted = cp - 0x10000
-      let high = 0xD800 + (adjusted >> 10)
-      let low = 0xDC00 + (adjusted & 0x3FF)
-      units.push(high)
-      units.push(low)
-    } else {
-      units.push(cp)
-    }
-  }
-  units
-}
-
-///|
 /// ECMAScript ToIntegerOrInfinity for numeric String method positions.
 fn string_to_integer_or_infinity(n : Double) -> Double {
   if n.is_nan() || n == 0.0 {
@@ -321,22 +298,6 @@ fn string_to_integer_or_infinity(n : Double) -> Double {
 }
 
 ///|
-/// Get the UTF-16 length of a string (counting code units, not code points).
-pub fn utf16_length(s : String) -> Int32 {
-  let cps = s.to_array()
-  let mut len = 0
-  for ch in cps {
-    let cp = ch.to_int()
-    if cp > 0xFFFF {
-      len += 2
-    } else {
-      len += 1
-    }
-  }
-  len
-}
-
-///|
 /// Search a UTF-16 string forward while charging each code-unit comparison.
 /// The caller owns receiver/search/position coercion and result conversion;
 /// this helper is shared by String.prototype.indexOf and includes only.
@@ -346,8 +307,8 @@ fn string_index_of_observed(
   search : String,
   start : Int32,
 ) -> Int32 raise Error {
-  let s_units = string_to_utf16(str)
-  let search_units = string_to_utf16(search)
+  let s_units = @runtime.string_to_utf16(str)
+  let search_units = @runtime.string_to_utf16(search)
   let slen = s_units.length()
   let search_len = search_units.length()
   if search_len == 0 {
@@ -382,8 +343,8 @@ fn string_last_index_of_observed(
   search : String,
   from : Int32,
 ) -> Int32 raise Error {
-  let s_units = string_to_utf16(str)
-  let search_units = string_to_utf16(search)
+  let s_units = @runtime.string_to_utf16(str)
+  let search_units = @runtime.string_to_utf16(search)
   let slen = s_units.length()
   let search_len = search_units.length()
   if search_len == 0 {
@@ -583,8 +544,8 @@ pub fn get_string_method(
           } else {
             "undefined"
           }
-          let slen = utf16_length(str)
-          let search_len = utf16_length(search)
+          let slen = @runtime.utf16_length(str)
+          let search_len = @runtime.utf16_length(search)
           let from_idx = if args.length() > 1 {
             interp.to_number(args[1]).to_int()
           } else {
@@ -1299,7 +1260,7 @@ pub fn get_string_method(
           } else {
             "undefined"
           }
-          let slen = utf16_length(str)
+          let slen = @runtime.utf16_length(str)
           let raw_end : Double = if args.length() > 1 && !(args[1] is Undefined) {
             string_to_integer_or_infinity(interp.to_number(args[1]))
           } else {
@@ -1312,13 +1273,13 @@ pub fn get_string_method(
           } else {
             raw_end.to_int()
           }
-          let search_units = string_to_utf16(search)
+          let search_units = @runtime.string_to_utf16(search)
           let search_len = search_units.length()
           let start = end_pos - search_len
           if start < 0 {
             return Value::Bool(false)
           }
-          let s_units = string_to_utf16(str)
+          let s_units = @runtime.string_to_utf16(str)
           for i = 0; i < search_len; i = i + 1 {
             interp.observe_execution_step()
             if s_units[start + i] != search_units[i] {
