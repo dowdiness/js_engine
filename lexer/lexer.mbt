@@ -331,7 +331,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if !has_digits {
       raise @errors.SyntaxError(message=missing_msg)
     }
-    if prev_underscore && buf.to_string().length() > 0 {
+    if prev_underscore {
       raise @errors.SyntaxError(
         message="Numeric separator cannot appear at the end at line \{line}, col \{col - 1}",
       )
@@ -836,7 +836,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       // Check for trailing underscore before decimal point
-      if prev_underscore && buf.to_string().length() > 0 {
+      if prev_underscore {
         // Peek if next is not a decimal point
         if offset >= len || char_at(offset) != '.' {
           raise @errors.SyntaxError(
@@ -847,7 +847,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       // Decimal part
       if offset < len && char_at(offset) == '.' {
         // Trailing underscore before '.' is actually invalid
-        if prev_underscore && buf.to_string().length() > 0 {
+        if prev_underscore {
           raise @errors.SyntaxError(
             message="Numeric separator cannot appear before decimal point at line \{loc.line}, col \{col - 1}",
           )
@@ -898,7 +898,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       // Exponent part
       if offset < len && (char_at(offset) == 'e' || char_at(offset) == 'E') {
         // Check for trailing underscore before 'e'
-        if prev_underscore && buf.to_string().length() > 0 {
+        if prev_underscore {
           raise @errors.SyntaxError(
             message="Numeric separator cannot appear before exponent at line \{loc.line}, col \{col - 1}",
           )
