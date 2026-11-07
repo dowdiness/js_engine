@@ -249,6 +249,7 @@ pub extend Token with Show::{output, to_string}
 /// `loc.offset + raw.length()`, which is correct for all tokens whose `raw`
 /// field is the verbatim source slice. The lexer always supplies an explicit
 /// value.
+#alias(new)
 pub fn Token::Token(
   kind : TokenKind,
   loc : Loc,
@@ -262,17 +263,6 @@ pub fn Token::Token(
     end_offset
   }
   { kind, loc, raw, lex_form, end_offset, }
-}
-
-///|
-pub fn Token::new(
-  kind : TokenKind,
-  loc : Loc,
-  raw : String,
-  lex_form~ : LexForm = LexNormal,
-  end_offset~ : Int32 = -1,
-) -> Token noraise {
-  Token(kind, loc, raw, lex_form~, end_offset~)
 }
 
 ///|
